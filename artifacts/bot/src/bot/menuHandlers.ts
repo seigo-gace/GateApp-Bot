@@ -1,5 +1,4 @@
 import { Telegraf, Markup } from "telegraf";
-import type { CallbackQuery, Update } from "telegraf/types";
 import {
   topMenuKeyboard,
   addMenuKeyboard,
@@ -12,10 +11,10 @@ import {
   ruleEditKeyboard,
   gateLinkKeyboard,
   logDestKeyboard,
-  addAdminKeyboard,
   topicManageKeyboard,
   previewKeyboard,
   blacklistMenuKeyboard,
+  requestChatKeyboard,
 } from "./keyboards.js";
 import * as targetRepo from "../repositories/targetRepo.js";
 import * as logGroupRepo from "../repositories/logGroupRepo.js";
@@ -58,6 +57,7 @@ export function registerMenuHandlers(bot: Telegraf) {
   });
 
   // ─── ADD: entry_group / entry_channel / log_group ───
+  // Uses Telegram's native request_chat button (chat picker UI)
   bot.action(/^add:(entry_group|entry_channel|log_group)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const type = (ctx.match as RegExpMatchArray)[1] as string;
@@ -65,22 +65,28 @@ export function registerMenuHandlers(bot: Telegraf) {
 
     await sessionRepo.upsertAdminSession({
       tg_user_id: userId,
-      state: "awaiting_forward",
+      state: "awaiting_chat_select",
       awaiting_input: type,
       temp_data: null,
     });
 
-    const label = type === "entry_group"
-      ? "参加用グループ"
-      : type === "entry_channel"
-      ? "参加用チャンネル"
-      : "ログ用グループ";
+    const label =
+      type === "entry_group"
+        ? "参加用グループ"
+        : type === "entry_channel"
+        ? "参加用チャンネル"
+        : "ログ用グループ";
 
-    await ctx.editMessageText(
-      `${label}を追加します。\n\nそのグループ/チャンネルからメッセージを転送してください。\n（グループ内のメッセージを長押しして「転送」→このBotのDMへ）`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("キャンセル", "menu:add")],
-      ])
+    const isChannel = type === "entry_channel";
+    const isForum = type === "log_group";
+
+    // request_id: 1=entry_group, 2=entry_channel, 3=log_group
+    const requestId = type === "entry_group" ? 1 : type === "entry_channel" ? 2 : 3;
+
+    // Send reply keyboard with request_chat button (Telegram native chat picker)
+    await ctx.reply(
+      `${label}を選んでください。\n下のボタンを押すと、チャット選択画面が開きます。`,
+      requestChatKeyboard(label, requestId, isChannel, isForum)
     );
   });
 
@@ -154,6 +160,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       ``,
       `名前: ${target.title}`,
       `種別: ${displayTargetType(target.target_type)}`,
+      `Chat ID: ${target.chat_id}`,
       `ゲートリンク: ${target.gate_code ? "発行済" : "未発行"}`,
       `Bot対策: ${challenge?.enabled ? "ON" : "OFF"}`,
       `質問数: ${enabledQs}問`,
@@ -292,15 +299,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       });
     }
     const statusText = q.enabled ? "使用中" : "未使用";
-    const text = [
-      `質問${orderIndex} [${statusText}]`,
-      `質問文: ${q.question_text || "（未設定）"}`,
-      `選択肢1: ${q.button1_label || "（未設定）"}`,
-      `選択肢2: ${q.button2_label || "（未設定）"}`,
-      `選択肢3: ${q.button3_label || "（未設定）"}`,
-      `正解: ${q.correct_button}番`,
-      `次へボタン: ${q.next_label}`,
-    ].join("\n");
+    const text = buildQuestionText(orderIndex, statusText, q);
     await ctx.editMessageText(text, questionEditKeyboard(targetId, orderIndex, q.enabled));
   });
 
@@ -309,14 +308,15 @@ export function registerMenuHandlers(bot: Telegraf) {
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const orderIndex = parseInt((ctx.match as RegExpMatchArray)[2]!);
     const val = (ctx.match as RegExpMatchArray)[3] === "on";
-    await questionRepo.upsertQuestion({ target_id: targetId, order_index: orderIndex, enabled: val, question_text: "", button1_label: "", button2_label: "", button3_label: "", correct_button: 1, next_label: "次へ" });
+    const existing = await questionRepo.getQuestionByTargetAndOrder(targetId, orderIndex);
+    if (existing) {
+      await questionRepo.updateQuestion(existing.question_id, { enabled: val });
+    }
     const q = await questionRepo.getQuestionByTargetAndOrder(targetId, orderIndex);
     const statusText = q!.enabled ? "使用中" : "未使用";
-    const text = [`質問${orderIndex} [${statusText}]`, `質問文: ${q!.question_text || "（未設定）"}`, `選択肢1: ${q!.button1_label || "（未設定）"}`, `選択肢2: ${q!.button2_label || "（未設定）"}`, `選択肢3: ${q!.button3_label || "（未設定）"}`, `正解: ${q!.correct_button}番`, `次へボタン: ${q!.next_label}`].join("\n");
-    await ctx.editMessageText(text, questionEditKeyboard(targetId, orderIndex, q!.enabled));
+    await ctx.editMessageText(buildQuestionText(orderIndex, statusText, q!), questionEditKeyboard(targetId, orderIndex, q!.enabled));
   });
 
-  // Handle setting question text / options / correct / next
   bot.action(/^q:settext:(\d+):([123])$/, async (ctx) => {
     await ctx.answerCbQuery();
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
@@ -377,8 +377,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     if (q) await questionRepo.updateQuestion(q.question_id, { correct_button: correct });
     const updated = await questionRepo.getQuestionByTargetAndOrder(targetId, orderIndex);
     const statusText = updated!.enabled ? "使用中" : "未使用";
-    const text = [`質問${orderIndex} [${statusText}]`, `質問文: ${updated!.question_text || "（未設定）"}`, `選択肢1: ${updated!.button1_label || "（未設定）"}`, `選択肢2: ${updated!.button2_label || "（未設定）"}`, `選択肢3: ${updated!.button3_label || "（未設定）"}`, `正解: ${updated!.correct_button}番`, `次へボタン: ${updated!.next_label}`].join("\n");
-    await ctx.editMessageText(text, questionEditKeyboard(targetId, orderIndex, updated!.enabled));
+    await ctx.editMessageText(buildQuestionText(orderIndex, statusText, updated!), questionEditKeyboard(targetId, orderIndex, updated!.enabled));
   });
 
   bot.action(/^q:setnext:(\d+):([123])$/, async (ctx) => {
@@ -467,15 +466,13 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const userId = ctx.from!.id;
-    // Start gate flow in test mode for admin
     await sessionRepo.upsertGateSession({
       tg_user_id: userId,
       target_id: targetId,
       step: "start",
       challenge_fails: 0,
     });
-    await ctx.editMessageText("テストモードでゲートフローを開始します。\nBotのDMを確認してください。");
-    // Trigger gate flow
+    await ctx.editMessageText("テストモードでゲートフローを開始します。");
     const { startGateFlow } = await import("./gateHandlers.js");
     await startGateFlow(ctx.telegram, userId, targetId, true);
   });
@@ -490,7 +487,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       const lg = await logGroupRepo.getLogGroupByChatId(Number(target.log_chat_id));
       logInfo = lg ? lg.title : `ID: ${target.log_chat_id}`;
     }
-    const threadInfo = target?.log_thread_id ? `スレッド: ${target.log_thread_id}` : "トピック: 未設定";
+    const threadInfo = target?.log_thread_id ? `トピック: ${target.log_thread_id}` : "トピック: 未設定";
     await ctx.editMessageText(
       `ログ保存先\n\nログ用グループ: ${logInfo}\n${threadInfo}`,
       logDestKeyboard(targetId)
@@ -524,7 +521,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     const logGroupId = parseInt((ctx.match as RegExpMatchArray)[2]!);
     const lg = await logGroupRepo.getLogGroupById(logGroupId);
     if (!lg) return;
-    await targetRepo.updateTarget(targetId, { log_chat_id: lg.chat_id });
+    await targetRepo.updateTarget(targetId, { log_chat_id: lg.chat_id, log_thread_id: null });
     await ctx.editMessageText(
       `ログ用グループを「${lg.title}」に設定しました。\n次にトピックを選んでください。`,
       logDestKeyboard(targetId)
@@ -559,11 +556,10 @@ export function registerMenuHandlers(bot: Telegraf) {
   });
 
   bot.action(/^logdest:settopic:(\d+):(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery("トピックを設定しました");
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const threadId = parseInt((ctx.match as RegExpMatchArray)[2]!);
     await targetRepo.updateTarget(targetId, { log_thread_id: threadId });
-    await ctx.answerCbQuery("トピックを設定しました");
     await ctx.editMessageText("トピックを設定しました。", logDestKeyboard(targetId));
   });
 
@@ -586,18 +582,10 @@ export function registerMenuHandlers(bot: Telegraf) {
   bot.action(/^target:addadmin:(\d+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
-    await ctx.editMessageText(
-      "Botを管理者として追加するには、対象のグループまたはチャンネルの管理者設定からBotを追加してください。",
-      addAdminKeyboard(targetId, "target")
-    );
-  });
-
-  bot.action(/^addadmin:(group|channel):(target|lg):(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-      "Telegramの管理者設定からBotのユーザーを検索し、管理者として追加してください。\n必要な権限: メンバーの招待・キック、メッセージ送信",
-      Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:top")]])
-    );
+    const target = await targetRepo.getTargetById(targetId);
+    if (!target) return;
+    const me = await ctx.telegram.getMe();
+    await showAddAdminInstructions(ctx, me.username!, target.chat_id, target.target_type, targetId, null);
   });
 
   // ─── TARGET: delete ───
@@ -660,7 +648,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       await ctx.editMessageText("トピックがありません。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
       return;
     }
-    const lines = topics.map((t) => `• ${t.title} (ID: ${t.thread_id})`).join("\n");
+    const lines = topics.map((t) => `• ${t.title} (スレッドID: ${t.thread_id})`).join("\n");
     await ctx.editMessageText(`トピック一覧:\n${lines}`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
   });
 
@@ -712,10 +700,10 @@ export function registerMenuHandlers(bot: Telegraf) {
   bot.action(/^lg:addadmin:(\d+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
-    await ctx.editMessageText(
-      "Botをスーパーグループの管理者として追加してください。\n必要な権限: メッセージ送信、トピック管理",
-      addAdminKeyboard(lgId, "lg")
-    );
+    const lg = await logGroupRepo.getLogGroupById(lgId);
+    if (!lg) return;
+    const me = await ctx.telegram.getMe();
+    await showAddAdminInstructions(ctx, me.username!, lg.chat_id, "log_group", null, lgId);
   });
 
   // ─── LOG GROUP: delete ───
@@ -781,4 +769,74 @@ async function showTargetDetail(ctx: Context, targetId: number): Promise<void> {
     `${target.title}\n（${target.target_type === "entry_group" ? "参加用グループ" : "参加用チャンネル"}）`,
     targetDetailKeyboard(targetId)
   );
+}
+
+// ─── Shared: show admin instructions ───
+async function showAddAdminInstructions(
+  ctx: Context,
+  botUsername: string,
+  chatId: number,
+  chatType: string,
+  targetId: number | null,
+  lgId: number | null
+): Promise<void> {
+  const backBtn = targetId
+    ? Markup.button.callback("戻る", `target:detail:${targetId}`)
+    : Markup.button.callback("戻る", `lg:detail:${lgId}`);
+
+  // Try to promote bot as admin automatically
+  let autoResult = "";
+  try {
+    const bot = (ctx as any).telegram;
+    const me = await bot.getMe();
+    const botId = me.id;
+
+    if (chatType === "entry_group" || chatType === "log_group") {
+      await bot.promoteChatMember(chatId, botId, {
+        is_anonymous: false,
+        can_manage_chat: true,
+        can_delete_messages: true,
+        can_restrict_members: true,
+        can_invite_users: true,
+        can_pin_messages: chatType === "entry_group",
+        can_manage_topics: chatType === "log_group",
+      });
+      autoResult = "✅ Botを管理者に設定しました。";
+    } else if (chatType === "entry_channel") {
+      await bot.promoteChatMember(chatId, botId, {
+        is_anonymous: false,
+        can_manage_chat: true,
+        can_post_messages: true,
+        can_edit_messages: true,
+        can_delete_messages: true,
+        can_invite_users: true,
+      });
+      autoResult = "✅ Botをチャンネル管理者に設定しました。";
+    }
+  } catch (err: any) {
+    // Bot not in chat or no permission — show manual link
+    const isChannel = chatType === "entry_channel";
+    const addLink = isChannel
+      ? `https://t.me/${botUsername}?startchannel=addadmin`
+      : `https://t.me/${botUsername}?startgroup=addadmin`;
+    autoResult = `Botがまだグループに参加していないか、権限が不足しています。\n\n手順:\n1. 下のリンクからBotを追加\n2. 管理者権限を付与\n3. 招待リンク作成・メンバー制限・メッセージ送信を許可`;
+
+    const buttons = [[Markup.button.url("Botをグループに追加", addLink)], [backBtn]];
+    await ctx.editMessageText(autoResult, Markup.inlineKeyboard(buttons));
+    return;
+  }
+
+  await ctx.editMessageText(autoResult, Markup.inlineKeyboard([[backBtn]]));
+}
+
+function buildQuestionText(orderIndex: number, statusText: string, q: any): string {
+  return [
+    `質問${orderIndex} [${statusText}]`,
+    `質問文: ${q.question_text || "（未設定）"}`,
+    `選択肢1: ${q.button1_label || "（未設定）"}`,
+    `選択肢2: ${q.button2_label || "（未設定）"}`,
+    `選択肢3: ${q.button3_label || "（未設定）"}`,
+    `正解: ${q.correct_button}番`,
+    `次へボタン: ${q.next_label}`,
+  ].join("\n");
 }

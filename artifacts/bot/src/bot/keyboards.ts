@@ -1,5 +1,42 @@
 import { Markup } from "telegraf";
 
+// ─── request_chat keyboard (reply keyboard with native chat picker button) ───
+// Returns a reply keyboard that triggers Telegram's chat selection UI
+export function requestChatKeyboard(
+  label: string,
+  requestId: number,
+  isChannel: boolean,
+  isForum: boolean
+) {
+  const button: any = {
+    text: `📋 ${label}を選ぶ`,
+    request_chat: {
+      request_id: requestId,
+      chat_is_channel: isChannel,
+      request_title: true,
+      request_username: true,
+      ...(isForum ? { chat_is_forum: true } : {}),
+      // Require the user to have admin rights in the selected chat
+      user_administrator_rights: {
+        can_invite_users: true,
+      },
+    },
+  };
+
+  return {
+    reply_markup: {
+      keyboard: [[button]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  };
+}
+
+// Remove reply keyboard
+export function removeKeyboard() {
+  return Markup.removeKeyboard();
+}
+
 export function topMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback("新しく追加", "menu:add")],

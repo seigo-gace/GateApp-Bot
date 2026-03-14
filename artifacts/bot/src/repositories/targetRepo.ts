@@ -17,6 +17,11 @@ export async function getTargetByGateCode(gateCode: string): Promise<Target | un
   return rows[0];
 }
 
+export async function getTargetByChatId(chatId: number): Promise<Target | undefined> {
+  const rows = await db.select().from(targets).where(eq(targets.chat_id, chatId));
+  return rows[0];
+}
+
 export async function getEntryTargetsByOwner(ownerUserId: number): Promise<Target[]> {
   return db
     .select()

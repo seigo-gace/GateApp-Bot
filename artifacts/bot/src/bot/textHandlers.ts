@@ -7,110 +7,109 @@ import * as logGroupRepo from "../repositories/logGroupRepo.js";
 import * as blacklistRepo from "../repositories/blacklistRepo.js";
 import * as ownerRepo from "../repositories/ownerRepo.js";
 import { generateGateCode } from "../utils/gateCode.js";
-import type { Context, Message } from "telegraf/types";
 
 export function registerTextHandlers(bot: Telegraf): void {
   bot.on("message", async (ctx) => {
     const userId = ctx.from!.id;
+    const msg = ctx.message as any;
     const adminSession = await sessionRepo.getAdminSession(userId);
 
-    // Handle forwarded messages for group/channel/log group registration
-    const msg = ctx.message as any;
-
-    // Check if this is a forwarded message (for adding groups/channels/log groups)
-    if (adminSession?.state === "awaiting_forward" && adminSession.awaiting_input) {
+    // ─── chat_shared: Telegram native chat picker result ───
+    if (msg.chat_shared && adminSession?.state === "awaiting_chat_select" && adminSession.awaiting_input) {
       const type = adminSession.awaiting_input as string;
+      const chatShared = msg.chat_shared as { request_id: number; chat_id: number; title?: string; username?: string };
+      const chatId = chatShared.chat_id;
+      const title = chatShared.title ?? chatShared.username ?? `Chat ${chatId}`;
+      const botUsername = (await ctx.telegram.getMe()).username!;
 
-      // Check for forward_origin (newer API) or forward_from_chat (older)
-      const forwardChat =
-        msg.forward_origin?.chat ??
-        msg.forward_from_chat ??
-        null;
+      // Remove the reply keyboard
+      await ctx.reply("選択中...", Markup.removeKeyboard());
 
-      if (forwardChat) {
-        const chatId = forwardChat.id as number;
-        const title = forwardChat.title as string ?? "不明";
+      await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null });
 
-        // Verify type matches
-        const chatType = forwardChat.type as string;
-        if (type === "entry_channel" && chatType !== "channel") {
-          await ctx.reply("チャンネルから転送してください。");
+      if (type === "log_group") {
+        // Check for duplicate
+        const existing = await logGroupRepo.getLogGroupByChatId(chatId);
+        if (existing) {
+          await ctx.reply(
+            `「${title}」はすでにロググループとして登録されています。`,
+            Markup.inlineKeyboard([
+              [Markup.button.callback("詳細を見る", `lg:detail:${existing.log_group_id}`)],
+              [Markup.button.callback("メインメニュー", "menu:top")],
+            ])
+          );
           return;
         }
-        if (type === "entry_group" && chatType !== "group" && chatType !== "supergroup") {
-          await ctx.reply("グループから転送してください。");
-          return;
-        }
-        if (type === "log_group" && chatType !== "supergroup") {
-          await ctx.reply("スーパーグループ（フォーラム対応グループ）から転送してください。");
+
+        const lg = await logGroupRepo.createLogGroup({
+          owner_user_id: userId,
+          chat_id: chatId,
+          title,
+        });
+
+        // Try to auto-promote bot as admin
+        const autoAdminResult = await tryPromoteAdmin(ctx.telegram, chatId, "log_group");
+
+        await ctx.reply(
+          `ロググループ「${title}」を登録しました。\n\n${autoAdminResult.message}`,
+          buildPostRegisterKeyboard(autoAdminResult.success, botUsername, chatId, false, null, lg.log_group_id)
+        );
+      } else {
+        // Check for duplicate
+        const existing = await targetRepo.getTargetByChatId(chatId);
+        if (existing) {
+          await ctx.reply(
+            `「${title}」はすでに登録されています。`,
+            Markup.inlineKeyboard([
+              [Markup.button.callback("詳細を見る", `target:detail:${existing.target_id}`)],
+              [Markup.button.callback("メインメニュー", "menu:top")],
+            ])
+          );
           return;
         }
 
         const gateCode = generateGateCode();
+        const newTarget = await targetRepo.createTarget({
+          owner_user_id: userId,
+          target_type: type,
+          chat_id: chatId,
+          title,
+          gate_code: gateCode,
+        });
 
-        if (type === "log_group") {
-          // Register as log group
-          const lg = await logGroupRepo.createLogGroup({
-            owner_user_id: userId,
-            chat_id: chatId,
-            title,
+        // Create defaults
+        const { upsertChallenge } = await import("../repositories/challengeRepo.js");
+        await upsertChallenge({ target_id: newTarget.target_id, enabled: true, difficulty: "standard", max_fail: 3 });
+        for (let i = 1; i <= 3; i++) {
+          await questionRepo.upsertQuestion({
+            target_id: newTarget.target_id,
+            order_index: i,
+            enabled: false,
+            question_text: "",
+            button1_label: "",
+            button2_label: "",
+            button3_label: "",
+            correct_button: 1,
+            next_label: "次へ",
           });
-          await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null });
-          await ctx.reply(
-            `ロググループ「${title}」を登録しました。\n次にトピックを設定しましょう。`,
-            Markup.inlineKeyboard([
-              [Markup.button.callback("トピック管理", `lg:topics:${lg.log_group_id}`)],
-              [Markup.button.callback("メインメニュー", "menu:top")],
-            ])
-          );
-        } else {
-          // Register as entry target
-          const newTarget = await targetRepo.createTarget({
-            owner_user_id: userId,
-            target_type: type,
-            chat_id: chatId,
-            title,
-            gate_code: gateCode,
-          });
-          // Create default challenge, questions, rule records
-          const { upsertChallenge } = await import("../repositories/challengeRepo.js");
-          await upsertChallenge({ target_id: newTarget.target_id, enabled: true, difficulty: "standard", max_fail: 3 });
-          for (let i = 1; i <= 3; i++) {
-            await questionRepo.upsertQuestion({
-              target_id: newTarget.target_id,
-              order_index: i,
-              enabled: false,
-              question_text: "",
-              button1_label: "",
-              button2_label: "",
-              button3_label: "",
-              correct_button: 1,
-              next_label: "次へ",
-            });
-          }
-          await ruleRepo.upsertRule({ target_id: newTarget.target_id, rule_text: "", accept_label: "同意する", reject_label: "同意しない" });
-
-          await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null });
-
-          const me = await ctx.telegram.getMe();
-          const gateLink = `https://t.me/${me.username}?start=gate_${gateCode}`;
-
-          await ctx.reply(
-            `「${title}」を登録しました。\nゲートリンク: ${gateLink}`,
-            Markup.inlineKeyboard([
-              [Markup.button.callback("詳細設定", `target:detail:${newTarget.target_id}`)],
-              [Markup.button.callback("メインメニュー", "menu:top")],
-            ])
-          );
         }
-        return;
-      } else {
-        await ctx.reply("グループ/チャンネルからのメッセージを転送してください。");
-        return;
+        await ruleRepo.upsertRule({ target_id: newTarget.target_id, rule_text: "", accept_label: "同意する", reject_label: "同意しない" });
+
+        const gateLink = `https://t.me/${botUsername}?start=gate_${gateCode}`;
+        const isChannel = type === "entry_channel";
+
+        // Try to auto-promote bot as admin
+        const autoAdminResult = await tryPromoteAdmin(ctx.telegram, chatId, type);
+
+        await ctx.reply(
+          `「${title}」を登録しました。\n\n${autoAdminResult.message}\n\nゲートリンク:\n${gateLink}`,
+          buildPostRegisterKeyboard(autoAdminResult.success, botUsername, chatId, isChannel, newTarget.target_id, null)
+        );
       }
+      return;
     }
 
-    // Handle awaiting text inputs
+    // ─── awaiting_text inputs ───
     if (adminSession?.state === "awaiting_text" && adminSession.awaiting_input) {
       const input = adminSession.awaiting_input as string;
       const text = (msg.text as string | undefined)?.trim();
@@ -242,16 +241,87 @@ export function registerTextHandlers(bot: Telegraf): void {
       return;
     }
 
-    // Default: show menu for admins
+    // ─── Default: show menu for admins ───
     const owner = await ownerRepo.getOwner(userId);
     if (owner) {
       const { topMenuKeyboard } = await import("./keyboards.js");
       await ctx.reply("管理メニュー", topMenuKeyboard());
     }
   });
+}
 
-  // Handle new chat members (for kick on no username)
-  bot.on("chat_member", async (ctx) => {
-    // handled elsewhere
-  });
+// ─── Auto-promote bot as admin ───
+async function tryPromoteAdmin(
+  telegram: any,
+  chatId: number,
+  chatType: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const me = await telegram.getMe();
+    const botId = me.id;
+
+    if (chatType === "entry_group" || chatType === "log_group") {
+      await telegram.promoteChatMember(chatId, botId, {
+        is_anonymous: false,
+        can_manage_chat: true,
+        can_delete_messages: true,
+        can_restrict_members: true,
+        can_invite_users: true,
+        can_pin_messages: chatType === "entry_group",
+        can_manage_topics: chatType === "log_group",
+      });
+    } else if (chatType === "entry_channel") {
+      await telegram.promoteChatMember(chatId, botId, {
+        is_anonymous: false,
+        can_manage_chat: true,
+        can_post_messages: true,
+        can_edit_messages: true,
+        can_delete_messages: true,
+        can_invite_users: true,
+      });
+    }
+
+    return { success: true, message: "✅ Botを管理者として設定しました。" };
+  } catch (err: any) {
+    const reason = err?.description ?? err?.message ?? "不明なエラー";
+    if (reason.includes("not a member") || reason.includes("USER_NOT_PARTICIPANT") || reason.includes("CHAT_ADMIN_REQUIRED")) {
+      return {
+        success: false,
+        message: `⚠️ Botがまだグループに参加していないか、権限が不足しています。\n下のボタンからBotを追加してください。`,
+      };
+    }
+    return {
+      success: false,
+      message: `⚠️ 管理者設定に失敗しました: ${reason}\nBotを手動でグループ管理者に追加してください。`,
+    };
+  }
+}
+
+// ─── Post-registration keyboard ───
+function buildPostRegisterKeyboard(
+  autoAdminSuccess: boolean,
+  botUsername: string,
+  chatId: number,
+  isChannel: boolean,
+  targetId: number | null,
+  lgId: number | null
+) {
+  const buttons: any[][] = [];
+
+  if (!autoAdminSuccess) {
+    const addLink = isChannel
+      ? `https://t.me/${botUsername}?startchannel=addadmin`
+      : `https://t.me/${botUsername}?startgroup=addadmin`;
+    buttons.push([Markup.button.url("🔧 Botをグループに追加して管理者設定", addLink)]);
+  }
+
+  if (targetId) {
+    buttons.push([Markup.button.callback("詳細設定", `target:detail:${targetId}`)]);
+  } else if (lgId) {
+    buttons.push([Markup.button.callback("トピック管理", `lg:topics:${lgId}`)]);
+  }
+
+  buttons.push([Markup.button.callback("メインメニュー", "menu:top")]);
+
+  return Markup.inlineKeyboard(buttons);
 }
