@@ -1,0 +1,30 @@
+{
+  "name": "@workspace/bot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.cjs",
+    "build": "tsx build.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:push": "drizzle-kit push --config ./drizzle.config.ts",
+    "db:push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "drizzle-orm": "catalog:",
+    "pg": "^8.20.0",
+    "zod": "catalog:",
+    "drizzle-zod": "^0.8.3",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.18.0",
+    "drizzle-kit": "^0.31.9",
+    "tsx": "catalog:",
+    "typescript": "~5.9.2",
+    "esbuild": "^0.27.3"
+  }
+}
