@@ -1,5 +1,5 @@
 import { db, gate_sessions, admin_sessions } from "../db/index.js";
-import { eq } from "drizzle-orm";
+import { eq, lte } from "drizzle-orm";
 import type { GateSession, InsertGateSession } from "../db/schema/sessions.js";
 import type { AdminSession, InsertAdminSession } from "../db/schema/admin_sessions.js";
 
@@ -26,6 +26,17 @@ export async function upsertGateSession(data: InsertGateSession): Promise<GateSe
 
 export async function deleteGateSession(userId: number): Promise<void> {
   await db.delete(gate_sessions).where(eq(gate_sessions.tg_user_id, userId));
+}
+
+export async function deleteExpiredSessions(): Promise<number> {
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const result = await db
+    .delete(gate_sessions)
+    .where(lte(gate_sessions.created_at, oneDayAgo));
+  const adminResult = await db
+    .delete(admin_sessions)
+    .where(lte(admin_sessions.created_at, oneDayAgo));
+  return (result.rowCount || 0) + (adminResult.rowCount || 0);
 }
 
 // Admin sessions

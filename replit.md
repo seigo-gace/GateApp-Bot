@@ -4,6 +4,8 @@
 
 pnpm workspace monorepo using TypeScript. Contains a Telegram 参加承認ゲートBot and supporting infrastructure.
 
+**本番稼働最適化完了：** DB接続プール、グレースフルシャットダウン、自動セッション削除、エラーリカバリー機能を実装済み。
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
