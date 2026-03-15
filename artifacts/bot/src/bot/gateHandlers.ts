@@ -214,13 +214,31 @@ async function approveUser(
     });
   }
 
-  await telegram.sendMessage(
-    userId,
-    "承認が完了しました。下のボタンから参加してください。",
-    Markup.inlineKeyboard([
-      [Markup.button.url("参加する", inviteLink)],
-    ])
-  );
+  // Send approval video with button
+  try {
+    const { readFileSync } = await import("fs");
+    const { join } = await import("path");
+    const videoPath = join(process.cwd(), "artifacts/bot/assets/approval_video.mp4");
+    const videoBuffer = readFileSync(videoPath);
+    await (telegram as any).sendVideo(userId, videoBuffer, {
+      caption: "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🎉 参加する", url: inviteLink }],
+        ],
+      },
+    });
+  } catch (err: any) {
+    // Fallback to text message if video send fails
+    console.warn(`[GATE] Video send failed, using fallback: ${err.message}`);
+    await telegram.sendMessage(
+      userId,
+      "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
+      Markup.inlineKeyboard([
+        [Markup.button.url("🎉 参加する", inviteLink)],
+      ])
+    );
+  }
 
   // Send log
   await sendLog({ telegram } as unknown as Telegraf, {
