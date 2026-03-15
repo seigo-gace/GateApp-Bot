@@ -273,7 +273,11 @@ async function rejectUser(
 export function registerGateHandlers(bot: Telegraf): void {
   // Challenge answer
   bot.action(/^gate:challenge:(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    try {
+      await ctx.answerCbQuery();
+    } catch (err) {
+      // Ignore callback query timeout
+    }
     const selectedIndex = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const userId = ctx.from!.id;
     const session = await sessionRepo.getGateSession(userId);
@@ -292,7 +296,11 @@ export function registerGateHandlers(bot: Telegraf): void {
 
     if (selectedIndex === challenge.correctIndex) {
       activeChallenges.delete(userId);
-      await ctx.editMessageText("正解です！");
+      try {
+        await ctx.editMessageText("正解です！");
+      } catch (err) {
+        // Message may already be edited
+      }
       await stepNext(ctx.telegram, userId, target, "challenge", isTest);
     } else {
       const challengeCfg = await challengeRepo.getChallengeByTarget(target.target_id);
@@ -301,7 +309,11 @@ export function registerGateHandlers(bot: Telegraf): void {
 
       if (newFails >= maxFail) {
         activeChallenges.delete(userId);
-        await ctx.editMessageText("本人確認に失敗しました。参加できません。");
+        try {
+          await ctx.editMessageText("本人確認に失敗しました。参加できません。");
+        } catch (err) {
+          // Message may already be edited
+        }
         await rejectUser(
           ctx.telegram,
           userId,
@@ -324,17 +336,25 @@ export function registerGateHandlers(bot: Telegraf): void {
         const newQ = generateChallenge(challengeCfg?.difficulty ?? "standard");
         activeChallenges.set(userId, newQ);
         const buttons = newQ.options.map((opt, i) => Markup.button.callback(opt, `gate:challenge:${i}`));
-        await ctx.editMessageText(
-          `不正解です（残り${remaining}回）\n\n${newQ.text}`,
-          Markup.inlineKeyboard([buttons])
-        );
+        try {
+          await ctx.editMessageText(
+            `不正解です（残り${remaining}回）\n\n${newQ.text}`,
+            Markup.inlineKeyboard([buttons])
+          );
+        } catch (err) {
+          // Message may already be edited
+        }
       }
     }
   });
 
   // Question answer
   bot.action(/^gate:q:(q[123]):([123])$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    try {
+      await ctx.answerCbQuery();
+    } catch (err) {
+      // Ignore callback query timeout
+    }
     const step = (ctx.match as RegExpMatchArray)[1] as string;
     const buttonNum = parseInt((ctx.match as RegExpMatchArray)[2]!);
     const userId = ctx.from!.id;
@@ -350,10 +370,18 @@ export function registerGateHandlers(bot: Telegraf): void {
     if (!q) return;
 
     if (buttonNum === q.correct_button) {
-      await ctx.editMessageText(q.next_label || "次へ");
+      try {
+        await ctx.editMessageText(q.next_label || "次へ");
+      } catch (err) {
+        // Message may already be edited
+      }
       await stepNext(ctx.telegram, userId, target, step, false);
     } else {
-      await ctx.editMessageText("不正解のため参加できません。");
+      try {
+        await ctx.editMessageText("不正解のため参加できません。");
+      } catch (err) {
+        // Message may already be edited
+      }
       await rejectUser(
         ctx.telegram,
         userId,
@@ -369,24 +397,40 @@ export function registerGateHandlers(bot: Telegraf): void {
 
   // Rule accept/reject
   bot.action("gate:rule:accept", async (ctx) => {
-    await ctx.answerCbQuery();
+    try {
+      await ctx.answerCbQuery();
+    } catch (err: any) {
+      // Ignore callback query timeout errors
+    }
     const userId = ctx.from!.id;
     const session = await sessionRepo.getGateSession(userId);
     if (!session) { await ctx.reply("セッションが切れました。"); return; }
     const target = await targetRepo.getTargetById(session.target_id);
     if (!target) return;
-    await ctx.editMessageText("同意しました。");
+    try {
+      await ctx.editMessageText("同意しました。");
+    } catch (err) {
+      // Message may already be edited
+    }
     await stepNext(ctx.telegram, userId, target, "rules", false);
   });
 
   bot.action("gate:rule:reject", async (ctx) => {
-    await ctx.answerCbQuery();
+    try {
+      await ctx.answerCbQuery();
+    } catch (err: any) {
+      // Ignore callback query timeout errors
+    }
     const userId = ctx.from!.id;
     const session = await sessionRepo.getGateSession(userId);
     if (!session) { await ctx.reply("セッションが切れました。"); return; }
     const target = await targetRepo.getTargetById(session.target_id);
     if (!target) return;
-    await ctx.editMessageText("ルールに同意しなかったため参加できません。");
+    try {
+      await ctx.editMessageText("ルールに同意しなかったため参加できません。");
+    } catch (err) {
+      // Message may already be edited
+    }
     await rejectUser(
       ctx.telegram,
       userId,
