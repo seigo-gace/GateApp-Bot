@@ -290,6 +290,10 @@ async function rejectUser(
 export function registerGateHandlers(bot: Telegraf): void {
   // Challenge answer
   bot.action(/^gate:challenge:(\d+)$/, async (ctx) => {
+    // Only process in private chats
+    if (ctx.chat.type !== "private") {
+      return;
+    }
     try {
       await ctx.answerCbQuery();
     } catch (err) {
@@ -367,6 +371,7 @@ export function registerGateHandlers(bot: Telegraf): void {
 
   // Question answer
   bot.action(/^gate:q:(q[123]):([123])$/, async (ctx) => {
+    if (ctx.chat.type !== "private") return;
     try {
       await ctx.answerCbQuery();
     } catch (err) {
@@ -414,6 +419,7 @@ export function registerGateHandlers(bot: Telegraf): void {
 
   // Rule accept/reject
   bot.action("gate:rule:accept", async (ctx) => {
+    if (ctx.chat.type !== "private") return;
     try {
       await ctx.answerCbQuery();
     } catch (err: any) {
@@ -433,6 +439,7 @@ export function registerGateHandlers(bot: Telegraf): void {
   });
 
   bot.action("gate:rule:reject", async (ctx) => {
+    if (ctx.chat.type !== "private") return;
     try {
       await ctx.answerCbQuery();
     } catch (err: any) {

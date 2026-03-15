@@ -11,6 +11,11 @@ import { topMenuKeyboard } from "./keyboards.js";
 
 export function registerStartHandler(bot: Telegraf): void {
   bot.start(async (ctx) => {
+    // Only process in private chats
+    if (ctx.chat.type !== "private") {
+      return;
+    }
+    
     const userId = ctx.from.id;
     const username = ctx.from.username;
     const displayName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ");
