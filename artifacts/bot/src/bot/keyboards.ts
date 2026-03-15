@@ -41,8 +41,25 @@ export function topMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback("新しく追加", "menu:add")],
     [Markup.button.callback("管理中の一覧", "menu:list")],
+    [Markup.button.callback("🔑 管理者管理", "menu:admin_manage")],
     [Markup.button.callback("ブラックリスト", "menu:blacklist")],
   ]);
+}
+
+export function adminManageKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("管理者一覧", "admin:list")],
+    [Markup.button.callback("➕ 管理者追加", "admin:add")],
+    [Markup.button.callback("戻る", "menu:top")],
+  ]);
+}
+
+export function adminListKeyboard(admins: { owner_user_id: number; display_name: string }[]) {
+  const buttons = admins.map((a) => [
+    Markup.button.callback(`${a.display_name} (${a.owner_user_id})`, `admin:remove:${a.owner_user_id}`),
+  ]);
+  buttons.push([Markup.button.callback("戻る", "menu:admin_manage")]);
+  return Markup.inlineKeyboard(buttons);
 }
 
 export function addMenuKeyboard() {

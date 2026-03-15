@@ -7,6 +7,7 @@ import * as logGroupRepo from "../repositories/logGroupRepo.js";
 import * as blacklistRepo from "../repositories/blacklistRepo.js";
 import * as ownerRepo from "../repositories/ownerRepo.js";
 import { generateGateCode } from "../utils/gateCode.js";
+import { adminManageKeyboard } from "./keyboards.js";
 
 export function registerTextHandlers(bot: Telegraf): void {
   bot.on("message", async (ctx) => {
@@ -262,6 +263,15 @@ export function registerTextHandlers(bot: Telegraf): void {
         if (isNaN(targetUserId)) { await ctx.reply("有効なユーザーIDを送信してください。"); return; }
         await blacklistRepo.removeFromBlacklist(targetUserId);
         await ctx.reply(`ユーザーID ${targetUserId} をブラックリストから削除しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:blacklist")]]));
+        return;
+      }
+
+      // Add admin
+      if (input === "admin:add_id") {
+        const newAdminId = parseInt(text);
+        if (isNaN(newAdminId)) { await ctx.reply("有効なTelegram IDを送信してください。"); return; }
+        await ownerRepo.addOwner(newAdminId);
+        await ctx.reply(`✅ ユーザーID ${newAdminId} を管理者として追加しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:admin_manage")]]));
         return;
       }
 

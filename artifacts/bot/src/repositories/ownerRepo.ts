@@ -22,3 +22,22 @@ export async function upsertOwner(data: InsertOwner): Promise<Owner> {
 export async function getAllOwners(): Promise<Owner[]> {
   return db.select().from(owners);
 }
+
+export async function addOwner(userId: number, displayName?: string): Promise<Owner> {
+  const rows = await db
+    .insert(owners)
+    .values({
+      owner_user_id: userId,
+      display_name: displayName ?? `Admin ${userId}`,
+    })
+    .onConflictDoUpdate({
+      target: owners.owner_user_id,
+      set: { display_name: displayName ?? `Admin ${userId}` },
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function removeOwner(userId: number): Promise<void> {
+  await db.delete(owners).where(eq(owners.owner_user_id, userId));
+}

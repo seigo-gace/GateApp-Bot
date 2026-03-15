@@ -15,6 +15,8 @@ import {
   previewKeyboard,
   blacklistMenuKeyboard,
   requestChatKeyboard,
+  adminManageKeyboard,
+  adminListKeyboard,
 } from "./keyboards.js";
 import * as targetRepo from "../repositories/targetRepo.js";
 import * as logGroupRepo from "../repositories/logGroupRepo.js";
@@ -725,6 +727,47 @@ export function registerMenuHandlers(bot: Telegraf) {
     const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     await logGroupRepo.deleteLogGroup(lgId);
     await ctx.editMessageText("削除しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", "list:log")]]));
+  });
+
+  // ─── ADMIN MANAGER ───
+  bot.action("menu:admin_manage", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText("🔑 管理者管理", adminManageKeyboard());
+  });
+
+  bot.action("admin:list", async (ctx) => {
+    await ctx.answerCbQuery();
+    const admins = await ownerRepo.getAllOwners();
+    if (admins.length === 0) {
+      await ctx.editMessageText("管理者がいません。", Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:admin_manage")]]));
+      return;
+    }
+    await ctx.editMessageText("管理者一覧（クリックで削除）:", adminListKeyboard(admins));
+  });
+
+  bot.action("admin:add", async (ctx) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from!.id;
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: "admin:add_id", temp_data: null });
+    await ctx.editMessageText("追加するユーザーのTelegram IDを送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", "menu:admin_manage")]]));
+  });
+
+  bot.action(/^admin:remove:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const currentUserId = ctx.from!.id;
+    
+    // 最後の管理者は削除不可
+    const admins = await ownerRepo.getAllOwners();
+    if (admins.length === 1) {
+      await ctx.answerCbQuery("最後の管理者は削除できません", true);
+      return;
+    }
+
+    await ownerRepo.removeOwner(targetId);
+    await ctx.answerCbQuery("削除しました");
+    const updated = await ownerRepo.getAllOwners();
+    await ctx.editMessageText("管理者一覧（クリックで削除）:", adminListKeyboard(updated));
   });
 
   // ─── BLACKLIST ───
