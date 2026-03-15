@@ -214,14 +214,14 @@ async function approveUser(
     });
   }
 
-  // Send approval video with button
+  // Send approval GIF 1 with join button
   try {
     const { readFileSync } = await import("fs");
     const { join } = await import("path");
-    const videoPath = join(process.cwd(), "artifacts/bot/assets/approval_video.mp4");
-    const videoBuffer = readFileSync(videoPath);
-    await (telegram as any).sendVideo(userId, videoBuffer, {
-      caption: "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
+    const gifPath = join(process.cwd(), "artifacts/bot/assets/approval1.gif");
+    const gifBuffer = readFileSync(gifPath);
+    await (telegram as any).sendAnimation(userId, gifBuffer, {
+      caption: "✨ 承認が完了しました！\n\n下のボタンから参加してください。",
       reply_markup: {
         inline_keyboard: [
           [{ text: "🎉 参加する", url: inviteLink }],
@@ -229,8 +229,7 @@ async function approveUser(
       },
     });
   } catch (err: any) {
-    // Fallback to text message if video send fails
-    console.warn(`[GATE] Video send failed, using fallback: ${err.message}`);
+    console.warn(`[GATE] GIF 1 send failed, using fallback: ${err.message}`);
     await telegram.sendMessage(
       userId,
       "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",

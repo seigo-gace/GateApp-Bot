@@ -272,6 +272,30 @@ export function registerTextHandlers(bot: Telegraf): void {
         } catch (err) {
           // ignore
         }
+      } else {
+        // User successfully joined - send GIF 2 and auto-delete after delay
+        try {
+          const { readFileSync } = await import("fs");
+          const { join } = await import("path");
+          const gif2Path = join(process.cwd(), "artifacts/bot/assets/approval2.gif");
+          const gif2Buffer = readFileSync(gif2Path);
+          
+          const sentMsg = await (ctx.telegram as any).sendAnimation(joiningUserId, gif2Buffer, {
+            caption: "🎉 グループへようこそ！\n\nあなたは参加が承認されました。",
+          });
+
+          // Auto-delete message after 10 seconds
+          setTimeout(async () => {
+            try {
+              await ctx.telegram.deleteMessage(joiningUserId, sentMsg.message_id);
+              console.log(`[INVITE] Auto-deleted welcome GIF for user ${joiningUserId}`);
+            } catch (err) {
+              console.warn(`[INVITE] Failed to auto-delete GIF: ${err}`);
+            }
+          }, 10000);
+        } catch (err: any) {
+          console.warn(`[INVITE] GIF 2 send failed: ${err.message}`);
+        }
       }
     } catch (err: any) {
       console.error(`[CHAT_MEMBER] ${err.message}`);
