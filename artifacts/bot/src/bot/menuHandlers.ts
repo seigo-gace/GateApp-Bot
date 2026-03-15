@@ -582,6 +582,45 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.editMessageText(text, logDestKeyboard(targetId));
   });
 
+  // ─── TARGET: promote to admin ───
+  bot.action(/^target:promote-admin:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const target = await targetRepo.getTargetById(targetId);
+    if (!target) { await ctx.editMessageText("見つかりません"); return; }
+    
+    try {
+      const botId = (await ctx.telegram.getMe()).id;
+      
+      // Try to promote with all necessary permissions
+      if (target.target_type === "entry_group" || target.target_type === "log_group") {
+        await ctx.telegram.promoteChatMember(target.chat_id, botId, {
+          is_anonymous: false,
+          can_manage_chat: true,
+          can_delete_messages: true,
+          can_restrict_members: true,
+          can_invite_users: true,
+          can_pin_messages: true,
+          can_manage_topics: target.target_type === "log_group",
+        });
+      } else if (target.target_type === "entry_channel") {
+        await ctx.telegram.promoteChatMember(target.chat_id, botId, {
+          is_anonymous: false,
+          can_manage_chat: true,
+          can_post_messages: true,
+          can_edit_messages: true,
+          can_delete_messages: true,
+          can_invite_users: true,
+        });
+      }
+      
+      await ctx.editMessageText("✅ Botを管理者として設定しました。", Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `target:detail:${targetId}`)]]));
+    } catch (err: any) {
+      const reason = err?.description ?? err?.message ?? "不明なエラー";
+      await ctx.editMessageText(`❌ 管理者設定に失敗: ${reason}\n\nBotがグループに参加していることを確認してください。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:detail:${targetId}`)]]));
+    }
+  });
+
   // ─── TARGET: addadmin ───
   bot.action(/^target:addadmin:(\d+)$/, async (ctx) => {
     await ctx.answerCbQuery();
@@ -665,6 +704,36 @@ export function registerMenuHandlers(bot: Telegraf) {
     const userId = ctx.from!.id;
     await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:create:${lgId}`, temp_data: null });
     await ctx.editMessageText("新しいトピック名を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `lg:detail:${lgId}`)]]));
+  });
+
+  // ─── LOG GROUP: promote to admin ───
+  bot.action(/^lg:promote-admin:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const lg = await logGroupRepo.getLogGroupById(lgId);
+    if (!lg) { await ctx.editMessageText("見つかりません"); return; }
+    
+    try {
+      const botId = (await ctx.telegram.getMe()).id;
+      
+      // Promote with all necessary permissions for log group
+      await ctx.telegram.promoteChatMember(lg.chat_id, botId, {
+        is_anonymous: false,
+        can_manage_chat: true,
+        can_delete_messages: true,
+        can_restrict_members: true,
+        can_invite_users: true,
+        can_pin_messages: true,
+        can_manage_topics: true,
+      });
+      
+      // Show topic selection after successful admin promotion
+      const { logGroupTopicSelectKeyboard } = await import("./keyboards.js");
+      await ctx.editMessageText("✅ Botを管理者として設定しました。\n\nトピックを設定しますか？", logGroupTopicSelectKeyboard(lgId));
+    } catch (err: any) {
+      const reason = err?.description ?? err?.message ?? "不明なエラー";
+      await ctx.editMessageText(`❌ 管理者設定に失敗: ${reason}\n\nBotがグループに参加していることを確認してください。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:detail:${lgId}`)]]));
+    }
   });
 
   bot.action(/^lg:autogenerate:(\d+)$/, async (ctx) => {

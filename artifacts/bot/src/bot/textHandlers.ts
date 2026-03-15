@@ -61,9 +61,18 @@ export function registerTextHandlers(bot: Telegraf): void {
         // Import logGroupTopicSelectKeyboard
         const { logGroupTopicSelectKeyboard } = await import("./keyboards.js");
 
+        const logAdminButtons = autoAdminResult.success 
+          ? logGroupTopicSelectKeyboard(lg.log_group_id).reply_markup.inline_keyboard
+          : [
+              [Markup.button.callback("🔐 管理者に昇格させる", `lg:promote-admin:${lg.log_group_id}`)],
+              [Markup.button.callback("トピック管理", `lg:topics:${lg.log_group_id}`)],
+            ];
+
         await ctx.reply(
-          `ロググループ「${title}」を登録しました。\n\n${autoAdminResult.message}\n\nトピックを設定しますか？`,
-          logGroupTopicSelectKeyboard(lg.log_group_id)
+          `ロググループ「${title}」を登録しました。\n\n${autoAdminResult.message}${autoAdminResult.success ? '\n\nトピックを設定しますか？' : ''}`,
+          autoAdminResult.success 
+            ? logGroupTopicSelectKeyboard(lg.log_group_id)
+            : Markup.inlineKeyboard(logAdminButtons)
         );
       } else {
         const existing = await targetRepo.getTargetByChatId(chatId);
@@ -111,9 +120,16 @@ export function registerTextHandlers(bot: Telegraf): void {
         // Bot is in chat, now promote to admin
         const autoAdminResult = await tryPromoteAdmin(ctx.telegram, chatId, type);
 
+        const adminButtons = [
+          autoAdminResult.success 
+            ? [Markup.button.callback("詳細設定", `target:detail:${newTarget.target_id}`)]
+            : [Markup.button.callback("🔐 管理者に昇格させる", `target:promote-admin:${newTarget.target_id}`)],
+          [Markup.button.callback("メインメニュー", "menu:top")]
+        ];
+        
         await ctx.reply(
           `「${title}」を登録しました。\n\n${autoAdminResult.message}\n\nゲートリンク:\n${gateLink}`,
-          buildPostRegisterKeyboard(autoAdminResult.success, botUsername, chatId, isChannel, newTarget.target_id, null)
+          Markup.inlineKeyboard(adminButtons)
         );
       }
       return;
