@@ -35,34 +35,7 @@ export function registerTextHandlers(bot: Telegraf): void {
 
       await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null });
 
-      // ─── CHECK: Is bot already a member of the chat? ───
-      let botIsMember = false;
-      try {
-        const botMember = await ctx.telegram.getChatMember(chatId, botId);
-        botIsMember = !["left", "kicked"].includes(botMember.status);
-      } catch (err: any) {
-        // Chat not found or bot has no access
-        botIsMember = false;
-      }
-
-      if (!botIsMember) {
-        // ─── BOT NOT IN CHAT: Show deep link to add bot ───
-        const isChannel = type === "entry_channel";
-        const deepLink = isChannel
-          ? `https://t.me/${botUsername}?startchannel=${type}`
-          : `https://t.me/${botUsername}?startgroup=${type}`;
-
-        await ctx.reply(
-          `⚠️ Botがまだこのチャットに参加していません。\n\n下のリンクからBotをグループ/チャンネルに追加してください。その後、もう一度この操作をしてください。`,
-          Markup.inlineKeyboard([
-            [Markup.button.url("🔧 Botをグループに追加", deepLink)],
-            [Markup.button.callback("メインメニュー", "menu:top")],
-          ])
-        );
-        return;
-      }
-
-      // ─── BOT IS ALREADY IN CHAT: Try to promote to admin ───
+      // ─── PROCESS REGISTRATION (skip membership check) ───
       if (type === "log_group") {
         const existing = await logGroupRepo.getLogGroupByChatId(chatId);
         if (existing) {
