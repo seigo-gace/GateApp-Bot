@@ -85,6 +85,10 @@ export async function updateTarget(
   return rows[0];
 }
 
+export async function getTargetsByLogChatId(logChatId: number): Promise<Target[]> {
+  return db.select().from(targets).where(eq(targets.log_chat_id, logChatId));
+}
+
 export async function deleteTarget(targetId: number): Promise<void> {
   await db.delete(targets).where(eq(targets.target_id, targetId));
 }

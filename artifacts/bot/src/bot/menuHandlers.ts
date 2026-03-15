@@ -647,6 +647,11 @@ export function registerMenuHandlers(bot: Telegraf) {
     const allTopics = await logGroupRepo.getExistingTopicsForSelection(lgId);
     const selectedTopic = allTopics.find(t => t.topic_id === topicId);
     if (selectedTopic) {
+      // If this log group has associated targets, update their log_thread_id
+      const targets = await targetRepo.getTargetsByLogChatId(lgId);
+      for (const target of targets) {
+        await targetRepo.updateTarget(target.target_id, { log_thread_id: topicId });
+      }
       await ctx.editMessageText(`✅ トピック「${selectedTopic.name}」を選択しました。`, Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]]));
     } else {
       await ctx.editMessageText("トピックが見つかりません。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:detail:${lgId}`)]]));
