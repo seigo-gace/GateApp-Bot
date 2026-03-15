@@ -27,6 +27,26 @@ export async function getActiveInviteLink(
   return rows.find((r) => r.expire_at > now);
 }
 
+export async function getInviteLinkByUrl(url: string): Promise<InviteLink | undefined> {
+  const rows = await db
+    .select()
+    .from(invite_links)
+    .where(
+      and(
+        eq(invite_links.invite_link, url),
+        isNull(invite_links.used_at),
+        isNull(invite_links.revoked_at)
+      )
+    )
+    .limit(1);
+  const link = rows[0];
+  // チェック: 期限切れでないか確認
+  if (!link || link.expire_at <= new Date()) {
+    return undefined;
+  }
+  return link;
+}
+
 export async function markInviteLinkUsed(inviteId: number): Promise<void> {
   await db
     .update(invite_links)

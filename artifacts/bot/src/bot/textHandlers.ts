@@ -248,6 +248,35 @@ export function registerTextHandlers(bot: Telegraf): void {
       await ctx.reply("管理メニュー", topMenuKeyboard());
     }
   });
+
+  // Validate invite link on join - ensure 1-time use by authorized user only
+  bot.on("chat_member", async (ctx) => {
+    try {
+      const update = ctx.update.my_chat_member;
+      if (!update) return;
+      const newStatus = update.new_chat_member.status;
+      const oldStatus = update.old_chat_member.status;
+      if (!["member", "restricted"].includes(newStatus) || oldStatus !== "left") return;
+      
+      const joiningUserId = update.new_chat_member.user.id;
+      const chatId = update.chat.id;
+      const inviteLink = update.invite_link?.invite_link;
+      if (!inviteLink) return;
+
+      const { validateAndUseInviteLink } = await import("../services/inviteService.js");
+      const result = await validateAndUseInviteLink(ctx.telegram, inviteLink, joiningUserId, chatId);
+      if (!result.valid) {
+        try {
+          await ctx.telegram.banChatMember(chatId, joiningUserId);
+          await ctx.telegram.unbanChatMember(chatId, joiningUserId);
+        } catch (err) {
+          // ignore
+        }
+      }
+    } catch (err: any) {
+      console.error(`[CHAT_MEMBER] ${err.message}`);
+    }
+  });
 }
 
 // ─── Auto-promote bot as admin ───

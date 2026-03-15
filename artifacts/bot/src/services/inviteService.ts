@@ -37,3 +37,34 @@ export async function revokeInviteLink(
   }
   await inviteRepo.revokeInviteLink(inviteId);
 }
+
+// 招待リンク検証：ユーザー ID と期限を確認
+export async function validateAndUseInviteLink(
+  bot: Telegraf,
+  inviteLinkUrl: string,
+  attemptingUserId: number,
+  chatId: number
+): Promise<{ valid: boolean; owned: boolean; inviteId?: number }> {
+  const link = await inviteRepo.getInviteLinkByUrl(inviteLinkUrl);
+  
+  if (!link) {
+    return { valid: false, owned: false };
+  }
+
+  const isOwner = link.tg_user_id === attemptingUserId;
+  
+  if (!isOwner) {
+    // 本人でない場合、リンク無効化して拒否
+    try {
+      await (bot.telegram as any).revokeChatInviteLink(chatId, inviteLinkUrl);
+    } catch (err) {
+      // Ignore revoke errors
+    }
+    await inviteRepo.revokeInviteLink(link.invite_id);
+    return { valid: false, owned: false };
+  }
+
+  // 本人の場合、リンク使用済みマーク
+  await inviteRepo.markInviteLinkUsed(link.invite_id);
+  return { valid: true, owned: true, inviteId: link.invite_id };
+}
