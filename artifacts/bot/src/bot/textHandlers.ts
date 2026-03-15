@@ -11,6 +11,11 @@ import { adminManageKeyboard } from "./keyboards.js";
 
 export function registerTextHandlers(bot: Telegraf): void {
   bot.on("message", async (ctx) => {
+    // Only process messages in private chats (DM)
+    if (ctx.chat.type !== "private") {
+      return;
+    }
+    
     const userId = ctx.from!.id;
     const msg = ctx.message as any;
     const adminSession = await sessionRepo.getAdminSession(userId);
@@ -295,6 +300,12 @@ export function registerTextHandlers(bot: Telegraf): void {
     try {
       const update = ctx.update.my_chat_member;
       if (!update) return;
+      
+      // Only process bot join events (bot's own chat_member status change)
+      if (update.new_chat_member.user.id !== (await ctx.telegram.getMe()).id) {
+        return;
+      }
+      
       const newStatus = update.new_chat_member.status;
       const oldStatus = update.old_chat_member.status;
       if (!["member", "restricted"].includes(newStatus) || oldStatus !== "left") return;
