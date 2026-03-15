@@ -8,7 +8,10 @@ id = "artifacts/mockup-sandbox"
 
 [deployment]
 router = "application"
-deploymentTarget = "autoscale"
+deploymentTarget = "gce"
+build = ["sh", "-c", "pnpm --filter @workspace/bot run build"]
+run = ["sh", "-c", "pnpm --filter @workspace/bot run start"]
+ignorePorts = true
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
