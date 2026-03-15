@@ -247,7 +247,7 @@ export function logGroupTopicSelectKeyboard(logGroupId: number) {
   return Markup.inlineKeyboard([
     [Markup.button.callback("📌 既存トピックを選択", `lg:select-topic:${logGroupId}`)],
     [Markup.button.callback("➕ 新規トピックを作成", `lg:create-topic:${logGroupId}`)],
-    [Markup.button.callback("スキップ", `lg:detail:${logGroupId}`)],
+    [Markup.button.callback("🔄 自動生成", `lg:autogenerate:${logGroupId}`)],
   ]);
 }
 
