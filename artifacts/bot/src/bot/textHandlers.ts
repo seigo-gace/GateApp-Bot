@@ -80,9 +80,12 @@ export function registerTextHandlers(bot: Telegraf): void {
         // Bot is in chat, now promote to admin
         const autoAdminResult = await tryPromoteAdmin(ctx.telegram, chatId, "log_group");
 
+        // Import logGroupTopicSelectKeyboard
+        const { logGroupTopicSelectKeyboard } = await import("./keyboards.js");
+
         await ctx.reply(
-          `ロググループ「${title}」を登録しました。\n\n${autoAdminResult.message}`,
-          buildPostRegisterKeyboard(autoAdminResult.success, botUsername, chatId, false, null, lg.log_group_id)
+          `ロググループ「${title}」を登録しました。\n\n${autoAdminResult.message}\n\nトピックを設定しますか？`,
+          logGroupTopicSelectKeyboard(lg.log_group_id)
         );
       } else {
         const existing = await targetRepo.getTargetByChatId(chatId);

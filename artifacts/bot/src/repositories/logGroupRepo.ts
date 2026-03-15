@@ -79,3 +79,12 @@ export async function updateLogTopic(
 export async function deleteLogTopic(logTopicId: number): Promise<void> {
   await db.delete(log_topics).where(eq(log_topics.log_topic_id, logTopicId));
 }
+
+// Get existing topics from DB for this log group
+export async function getExistingTopicsForSelection(logGroupId: number): Promise<{ topic_id: number; name: string }[]> {
+  const topics = await getTopicsByLogGroup(logGroupId);
+  return topics.map((t) => ({
+    topic_id: t.log_topic_id,
+    name: t.title || `Topic ${t.thread_id}`,
+  }));
+}

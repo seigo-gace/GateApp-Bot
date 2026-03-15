@@ -243,6 +243,22 @@ export function previewKeyboard(targetId: number) {
   ]);
 }
 
+export function logGroupTopicSelectKeyboard(logGroupId: number) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("📌 既存トピックを選択", `lg:select-topic:${logGroupId}`)],
+    [Markup.button.callback("➕ 新規トピックを作成", `lg:create-topic:${logGroupId}`)],
+    [Markup.button.callback("スキップ", `lg:detail:${logGroupId}`)],
+  ]);
+}
+
+export function forumTopicsKeyboard(logGroupId: number, topics: { topic_id: number; name: string }[]) {
+  const buttons = topics.map((t) => [
+    Markup.button.callback(`${t.name}`, `lg:topic-selected:${logGroupId}:${t.topic_id}`),
+  ]);
+  buttons.push([Markup.button.callback("戻る", `lg:detail:${logGroupId}`)]);
+  return Markup.inlineKeyboard(buttons);
+}
+
 export function blacklistMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback("一覧を見る", "bl:list")],

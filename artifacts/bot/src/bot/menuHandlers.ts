@@ -17,6 +17,8 @@ import {
   requestChatKeyboard,
   adminManageKeyboard,
   adminListKeyboard,
+  logGroupTopicSelectKeyboard,
+  forumTopicsKeyboard,
 } from "./keyboards.js";
 import * as targetRepo from "../repositories/targetRepo.js";
 import * as logGroupRepo from "../repositories/logGroupRepo.js";
@@ -621,6 +623,43 @@ export function registerMenuHandlers(bot: Telegraf) {
     const lg = await logGroupRepo.getLogGroupById(lgId);
     if (!lg) { await ctx.editMessageText("見つかりません"); return; }
     await ctx.editMessageText(`${lg.title}\n（ロググループ）`, logGroupDetailKeyboard(lgId));
+  });
+
+  bot.action(/^lg:select-topic:(\d+)$/, async (ctx) => {
+    const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const lg = await logGroupRepo.getLogGroupById(lgId);
+    if (!lg) { await ctx.answerCbQuery("見つかりません"); return; }
+    await ctx.answerCbQuery();
+    
+    const topics = await logGroupRepo.getExistingTopicsForSelection(lgId);
+    if (topics.length === 0) {
+      await ctx.editMessageText("トピックが見つかりません。新規作成してください。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:detail:${lgId}`)]]));
+      return;
+    }
+    await ctx.editMessageText("トピックを選択:", forumTopicsKeyboard(lgId, topics));
+  });
+
+  bot.action(/^lg:topic-selected:(\d+):(\d+)$/, async (ctx) => {
+    const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const topicId = parseInt((ctx.match as RegExpMatchArray)[2]!);
+    await ctx.answerCbQuery();
+    
+    const allTopics = await logGroupRepo.getExistingTopicsForSelection(lgId);
+    const selectedTopic = allTopics.find(t => t.topic_id === topicId);
+    if (selectedTopic) {
+      await ctx.editMessageText(`✅ トピック「${selectedTopic.name}」を選択しました。`, Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]]));
+    } else {
+      await ctx.editMessageText("トピックが見つかりません。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:detail:${lgId}`)]]));
+    }
+  });
+
+  bot.action(/^lg:create-topic:(\d+)$/, async (ctx) => {
+    const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    await ctx.answerCbQuery();
+    
+    const userId = ctx.from!.id;
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:create:${lgId}`, temp_data: null });
+    await ctx.editMessageText("新しいトピック名を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `lg:detail:${lgId}`)]]));
   });
 
   bot.action(/^lg:info:(\d+)$/, async (ctx) => {
