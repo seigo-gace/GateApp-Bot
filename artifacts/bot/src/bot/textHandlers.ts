@@ -21,14 +21,43 @@ export function registerTextHandlers(bot: Telegraf): void {
       const chatId = chatShared.chat_id;
       const title = chatShared.title ?? chatShared.username ?? `Chat ${chatId}`;
       const botUsername = (await ctx.telegram.getMe()).username!;
+      const me = await ctx.telegram.getMe();
+      const botId = me.id;
 
       // Remove the reply keyboard
       await ctx.reply("選択中...", Markup.removeKeyboard());
 
       await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null });
 
+      // ─── CHECK: Is bot already a member of the chat? ───
+      let botIsMember = false;
+      try {
+        const botMember = await ctx.telegram.getChatMember(chatId, botId);
+        botIsMember = !["left", "kicked"].includes(botMember.status);
+      } catch (err: any) {
+        // Chat not found or bot has no access
+        botIsMember = false;
+      }
+
+      if (!botIsMember) {
+        // ─── BOT NOT IN CHAT: Show deep link to add bot ───
+        const isChannel = type === "entry_channel";
+        const deepLink = isChannel
+          ? `https://t.me/${botUsername}?startchannel=${type}`
+          : `https://t.me/${botUsername}?startgroup=${type}`;
+
+        await ctx.reply(
+          `⚠️ Botがまだこのチャットに参加していません。\n\n下のリンクからBotをグループ/チャンネルに追加してください。その後、もう一度この操作をしてください。`,
+          Markup.inlineKeyboard([
+            [Markup.button.url("🔧 Botをグループに追加", deepLink)],
+            [Markup.button.callback("メインメニュー", "menu:top")],
+          ])
+        );
+        return;
+      }
+
+      // ─── BOT IS ALREADY IN CHAT: Try to promote to admin ───
       if (type === "log_group") {
-        // Check for duplicate
         const existing = await logGroupRepo.getLogGroupByChatId(chatId);
         if (existing) {
           await ctx.reply(
@@ -47,7 +76,7 @@ export function registerTextHandlers(bot: Telegraf): void {
           title,
         });
 
-        // Try to auto-promote bot as admin
+        // Bot is in chat, now promote to admin
         const autoAdminResult = await tryPromoteAdmin(ctx.telegram, chatId, "log_group");
 
         await ctx.reply(
@@ -55,7 +84,6 @@ export function registerTextHandlers(bot: Telegraf): void {
           buildPostRegisterKeyboard(autoAdminResult.success, botUsername, chatId, false, null, lg.log_group_id)
         );
       } else {
-        // Check for duplicate
         const existing = await targetRepo.getTargetByChatId(chatId);
         if (existing) {
           await ctx.reply(
@@ -98,7 +126,7 @@ export function registerTextHandlers(bot: Telegraf): void {
         const gateLink = `https://t.me/${botUsername}?start=gate_${gateCode}`;
         const isChannel = type === "entry_channel";
 
-        // Try to auto-promote bot as admin
+        // Bot is in chat, now promote to admin
         const autoAdminResult = await tryPromoteAdmin(ctx.telegram, chatId, type);
 
         await ctx.reply(
