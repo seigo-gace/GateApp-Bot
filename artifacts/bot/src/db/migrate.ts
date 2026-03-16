@@ -117,10 +117,13 @@ export async function runMigrations(): Promise<void> {
         target_id INTEGER NOT NULL,
         step TEXT NOT NULL DEFAULT 'start',
         challenge_fails INTEGER NOT NULL DEFAULT 0,
+        challenge_data JSONB,
         last_attempt TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
 
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,

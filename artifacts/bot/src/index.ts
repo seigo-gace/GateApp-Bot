@@ -75,7 +75,10 @@ async function main() {
     }
   }, 5 * 60 * 1000);
 
-  bot.launch().catch((err) => {
+  bot.launch({
+    dropPendingUpdates: true,
+    allowedUpdates: ["message", "callback_query", "chat_member", "chat_shared"],
+  }).catch((err) => {
     console.error("Bot launch error:", err);
     process.exit(1);
   });

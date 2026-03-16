@@ -14,9 +14,6 @@ import { COOLDOWN_SECONDS } from "../config/env.js";
 import type { Target } from "../db/schema/targets.js";
 import type { Context } from "telegraf";
 
-// In-memory challenge storage (per user)
-const activeChallenges = new Map<number, ChallengeQuestion>();
-
 export async function startGateFlow(
   telegram: Telegram,
   userId: number,
@@ -29,7 +26,6 @@ export async function startGateFlow(
     return;
   }
 
-  // Cooldown check (skip for test mode)
   if (!isTest) {
     const session = await sessionRepo.getGateSession(userId);
     if (session?.last_attempt) {
@@ -50,6 +46,7 @@ export async function startGateFlow(
     target_id: targetId,
     step: "start",
     challenge_fails: 0,
+    challenge_data: null,
     last_attempt: new Date(),
   });
 
@@ -99,6 +96,7 @@ export async function stepNext(
     target_id: target.target_id,
     step: nextStep,
     challenge_fails: session?.challenge_fails ?? 0,
+    challenge_data: session?.challenge_data ?? null,
     last_attempt: session?.last_attempt ?? new Date(),
   });
 
@@ -118,7 +116,14 @@ async function sendStep(
 
   if (step === "challenge" && challenge?.enabled) {
     const q = generateChallenge(challenge.difficulty);
-    activeChallenges.set(userId, q);
+    await sessionRepo.upsertGateSession({
+      tg_user_id: userId,
+      target_id: target.target_id,
+      step: "challenge",
+      challenge_fails: (await sessionRepo.getGateSession(userId))?.challenge_fails ?? 0,
+      challenge_data: q as any,
+      last_attempt: (await sessionRepo.getGateSession(userId))?.last_attempt ?? new Date(),
+    });
 
     const buttons = q.options.map((opt, i) =>
       Markup.button.callback(opt, `gate:challenge:${i}`)
@@ -181,13 +186,11 @@ async function approveUser(
     return;
   }
 
-  // Get user info from session/cache (we don't have ctx here, use approval record)
   const approval = await approvalRepo.getLatestApproval(target.target_id, userId);
   const displayName = approval?.display_name ?? String(userId);
   const username = approval?.username ?? undefined;
   const isPremium = approval?.is_premium ?? false;
 
-  // Create invite link
   let inviteLink: string | null = null;
   try {
     const inv = await createInviteLink(
@@ -206,7 +209,6 @@ async function approveUser(
     return;
   }
 
-  // Update approval
   if (approval) {
     await approvalRepo.updateApproval(approval.approval_id, {
       status: "approved",
@@ -214,7 +216,6 @@ async function approveUser(
     });
   }
 
-  // Send approval GIF 1 with join button
   try {
     const { readFileSync } = await import("fs");
     const { join } = await import("path");
@@ -239,7 +240,6 @@ async function approveUser(
     );
   }
 
-  // Send log
   await sendLog({ telegram } as unknown as Telegraf, {
     type: "approved",
     targetTitle: target.title,
@@ -287,183 +287,172 @@ async function rejectUser(
   await sessionRepo.deleteGateSession(userId);
 }
 
-export function registerGateHandlers(bot: Telegraf): void {
-  // Challenge answer
-  bot.action(/^gate:challenge:(\d+)$/, async (ctx) => {
-    // Only process in private chats
-    if (ctx.chat.type !== "private") {
-      return;
-    }
-    try {
-      await ctx.answerCbQuery();
-    } catch (err) {
-      // Ignore callback query timeout
-    }
-    const selectedIndex = parseInt((ctx.match as RegExpMatchArray)[1]!);
-    const userId = ctx.from!.id;
-    const session = await sessionRepo.getGateSession(userId);
-    if (!session) { await ctx.reply("セッションが切れました。ゲートリンクからやり直してください。"); return; }
+async function safeCbReply(ctx: Context, text: string): Promise<void> {
+  try {
+    await ctx.reply(text);
+  } catch (err) {
+    console.error("[GATE] safeCbReply failed:", err);
+  }
+}
 
-    const target = await targetRepo.getTargetById(session.target_id);
-    if (!target) return;
-
-    const challenge = activeChallenges.get(userId);
-    if (!challenge) {
-      await ctx.reply("問題データが見つかりません。やり直してください。");
-      return;
-    }
-
-    const isTest = false; // TODO: propagate test mode through session
-
-    if (selectedIndex === challenge.correctIndex) {
-      activeChallenges.delete(userId);
-      try {
-        await ctx.editMessageText("正解です！");
-      } catch (err) {
-        // Message may already be edited
-      }
-      await stepNext(ctx.telegram, userId, target, "challenge", isTest);
+async function safeEditMessage(ctx: Context, text: string, markup?: any): Promise<void> {
+  try {
+    if (markup) {
+      await ctx.editMessageText(text, markup);
     } else {
-      const challengeCfg = await challengeRepo.getChallengeByTarget(target.target_id);
-      const maxFail = challengeCfg?.max_fail ?? 3;
-      const newFails = (session.challenge_fails ?? 0) + 1;
+      await ctx.editMessageText(text);
+    }
+  } catch (err) {
+    // Message may already be edited or deleted
+  }
+}
 
-      if (newFails >= maxFail) {
-        activeChallenges.delete(userId);
-        try {
-          await ctx.editMessageText("本人確認に失敗しました。参加できません。");
-        } catch (err) {
-          // Message may already be edited
-        }
-        await rejectUser(
-          ctx.telegram,
-          userId,
-          target,
-          "Bot判定失敗",
-          "bot_failed",
-          ctx.from!.username,
-          ctx.from!.first_name,
-          (ctx.from as any).is_premium
-        );
-      } else {
+export function registerGateHandlers(bot: Telegraf): void {
+  bot.action(/^gate:challenge:(\d+)$/, async (ctx) => {
+    if (ctx.chat?.type !== "private") return;
+    try { await ctx.answerCbQuery(); } catch {}
+
+    try {
+      const selectedIndex = parseInt((ctx.match as RegExpMatchArray)[1]!);
+      const userId = ctx.from!.id;
+      const session = await sessionRepo.getGateSession(userId);
+      if (!session) {
+        await safeCbReply(ctx, "セッションが切れました。ゲートリンクからやり直してください。");
+        return;
+      }
+
+      const target = await targetRepo.getTargetById(session.target_id);
+      if (!target) return;
+
+      const challenge = session.challenge_data as ChallengeQuestion | null;
+      if (!challenge) {
+        await safeCbReply(ctx, "問題データが見つかりません。ゲートリンクからやり直してください。");
+        return;
+      }
+
+      if (selectedIndex === challenge.correctIndex) {
         await sessionRepo.upsertGateSession({
           tg_user_id: userId,
           target_id: target.target_id,
           step: "challenge",
-          challenge_fails: newFails,
+          challenge_fails: session.challenge_fails ?? 0,
+          challenge_data: null,
           last_attempt: session.last_attempt ?? new Date(),
         });
-        const remaining = maxFail - newFails;
-        const newQ = generateChallenge(challengeCfg?.difficulty ?? "standard");
-        activeChallenges.set(userId, newQ);
-        const buttons = newQ.options.map((opt, i) => Markup.button.callback(opt, `gate:challenge:${i}`));
-        try {
-          await ctx.editMessageText(
-            `不正解です（残り${remaining}回）\n\n${newQ.text}`,
-            Markup.inlineKeyboard([buttons])
+        await safeEditMessage(ctx, "正解です！");
+        await stepNext(ctx.telegram, userId, target, "challenge", false);
+      } else {
+        const challengeCfg = await challengeRepo.getChallengeByTarget(target.target_id);
+        const maxFail = challengeCfg?.max_fail ?? 3;
+        const newFails = (session.challenge_fails ?? 0) + 1;
+
+        if (newFails >= maxFail) {
+          await safeEditMessage(ctx, "本人確認に失敗しました。参加できません。");
+          await rejectUser(
+            ctx.telegram, userId, target, "Bot判定失敗", "bot_failed",
+            ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
           );
-        } catch (err) {
-          // Message may already be edited
+        } else {
+          const remaining = maxFail - newFails;
+          const newQ = generateChallenge(challengeCfg?.difficulty ?? "standard");
+          await sessionRepo.upsertGateSession({
+            tg_user_id: userId,
+            target_id: target.target_id,
+            step: "challenge",
+            challenge_fails: newFails,
+            challenge_data: newQ as any,
+            last_attempt: session.last_attempt ?? new Date(),
+          });
+          const buttons = newQ.options.map((opt, i) => Markup.button.callback(opt, `gate:challenge:${i}`));
+          await safeEditMessage(ctx, `不正解です（残り${remaining}回）\n\n${newQ.text}`, Markup.inlineKeyboard([buttons]));
         }
       }
+    } catch (err) {
+      console.error("[GATE] challenge handler error:", err);
+      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
     }
   });
 
-  // Question answer
   bot.action(/^gate:q:(q[123]):([123])$/, async (ctx) => {
-    if (ctx.chat.type !== "private") return;
+    if (ctx.chat?.type !== "private") return;
+    try { await ctx.answerCbQuery(); } catch {}
+
     try {
-      await ctx.answerCbQuery();
+      const step = (ctx.match as RegExpMatchArray)[1] as string;
+      const buttonNum = parseInt((ctx.match as RegExpMatchArray)[2]!);
+      const userId = ctx.from!.id;
+      const session = await sessionRepo.getGateSession(userId);
+      if (!session) {
+        await safeCbReply(ctx, "セッションが切れました。");
+        return;
+      }
+
+      const target = await targetRepo.getTargetById(session.target_id);
+      if (!target) return;
+
+      const questions = (await questionRepo.getQuestionsByTarget(target.target_id)).filter((q) => q.enabled);
+      const qIndex = step === "q1" ? 0 : step === "q2" ? 1 : 2;
+      const q = questions[qIndex];
+      if (!q) return;
+
+      if (buttonNum === q.correct_button) {
+        await safeEditMessage(ctx, q.next_label || "次へ");
+        await stepNext(ctx.telegram, userId, target, step, false);
+      } else {
+        await safeEditMessage(ctx, "不正解のため参加できません。");
+        await rejectUser(
+          ctx.telegram, userId, target, "質問失敗", "rejected",
+          ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
+        );
+      }
     } catch (err) {
-      // Ignore callback query timeout
-    }
-    const step = (ctx.match as RegExpMatchArray)[1] as string;
-    const buttonNum = parseInt((ctx.match as RegExpMatchArray)[2]!);
-    const userId = ctx.from!.id;
-    const session = await sessionRepo.getGateSession(userId);
-    if (!session) { await ctx.reply("セッションが切れました。"); return; }
-
-    const target = await targetRepo.getTargetById(session.target_id);
-    if (!target) return;
-
-    const questions = (await questionRepo.getQuestionsByTarget(target.target_id)).filter((q) => q.enabled);
-    const qIndex = step === "q1" ? 0 : step === "q2" ? 1 : 2;
-    const q = questions[qIndex];
-    if (!q) return;
-
-    if (buttonNum === q.correct_button) {
-      try {
-        await ctx.editMessageText(q.next_label || "次へ");
-      } catch (err) {
-        // Message may already be edited
-      }
-      await stepNext(ctx.telegram, userId, target, step, false);
-    } else {
-      try {
-        await ctx.editMessageText("不正解のため参加できません。");
-      } catch (err) {
-        // Message may already be edited
-      }
-      await rejectUser(
-        ctx.telegram,
-        userId,
-        target,
-        "質問失敗",
-        "rejected",
-        ctx.from!.username,
-        ctx.from!.first_name,
-        (ctx.from as any).is_premium
-      );
+      console.error("[GATE] question handler error:", err);
+      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
     }
   });
 
-  // Rule accept/reject
   bot.action("gate:rule:accept", async (ctx) => {
-    if (ctx.chat.type !== "private") return;
+    if (ctx.chat?.type !== "private") return;
+    try { await ctx.answerCbQuery(); } catch {}
+
     try {
-      await ctx.answerCbQuery();
-    } catch (err: any) {
-      // Ignore callback query timeout errors
-    }
-    const userId = ctx.from!.id;
-    const session = await sessionRepo.getGateSession(userId);
-    if (!session) { await ctx.reply("セッションが切れました。"); return; }
-    const target = await targetRepo.getTargetById(session.target_id);
-    if (!target) return;
-    try {
-      await ctx.editMessageText("同意しました。");
+      const userId = ctx.from!.id;
+      const session = await sessionRepo.getGateSession(userId);
+      if (!session) {
+        await safeCbReply(ctx, "セッションが切れました。");
+        return;
+      }
+      const target = await targetRepo.getTargetById(session.target_id);
+      if (!target) return;
+      await safeEditMessage(ctx, "同意しました。");
+      await stepNext(ctx.telegram, userId, target, "rules", false);
     } catch (err) {
-      // Message may already be edited
+      console.error("[GATE] rule:accept handler error:", err);
+      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
     }
-    await stepNext(ctx.telegram, userId, target, "rules", false);
   });
 
   bot.action("gate:rule:reject", async (ctx) => {
-    if (ctx.chat.type !== "private") return;
+    if (ctx.chat?.type !== "private") return;
+    try { await ctx.answerCbQuery(); } catch {}
+
     try {
-      await ctx.answerCbQuery();
-    } catch (err: any) {
-      // Ignore callback query timeout errors
-    }
-    const userId = ctx.from!.id;
-    const session = await sessionRepo.getGateSession(userId);
-    if (!session) { await ctx.reply("セッションが切れました。"); return; }
-    const target = await targetRepo.getTargetById(session.target_id);
-    if (!target) return;
-    try {
-      await ctx.editMessageText("ルールに同意しなかったため参加できません。");
+      const userId = ctx.from!.id;
+      const session = await sessionRepo.getGateSession(userId);
+      if (!session) {
+        await safeCbReply(ctx, "セッションが切れました。");
+        return;
+      }
+      const target = await targetRepo.getTargetById(session.target_id);
+      if (!target) return;
+      await safeEditMessage(ctx, "ルールに同意しなかったため参加できません。");
+      await rejectUser(
+        ctx.telegram, userId, target, "ルール拒否", "rejected",
+        ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
+      );
     } catch (err) {
-      // Message may already be edited
+      console.error("[GATE] rule:reject handler error:", err);
+      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
     }
-    await rejectUser(
-      ctx.telegram,
-      userId,
-      target,
-      "ルール拒否",
-      "rejected",
-      ctx.from!.username,
-      ctx.from!.first_name,
-      (ctx.from as any).is_premium
-    );
   });
 }
