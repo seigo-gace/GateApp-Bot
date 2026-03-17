@@ -13,6 +13,7 @@ export const gate_sessions = pgTable("gate_sessions", {
   step: text("step").notNull().default("start"),
   challenge_fails: integer("challenge_fails").notNull().default(0),
   challenge_data: jsonb("challenge_data"),
+  last_message_id: integer("last_message_id"),
   last_attempt: timestamp("last_attempt"),
   created_at: timestamp("created_at").notNull().defaultNow(),
   updated_at: timestamp("updated_at").notNull().defaultNow(),

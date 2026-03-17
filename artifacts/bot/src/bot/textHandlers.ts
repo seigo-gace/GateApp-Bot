@@ -30,15 +30,19 @@ export function registerTextHandlers(bot: Telegraf): void {
       const me = await ctx.telegram.getMe();
       const botId = me.id;
 
-      // Remove the reply keyboard
-      await ctx.reply("選択中...", Markup.removeKeyboard());
+      if (adminSession.last_message_id) {
+        try { await ctx.telegram.deleteMessage(userId, adminSession.last_message_id); } catch {}
+      }
 
-      await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null });
+      const loadingMsg = await ctx.reply("選択中...", Markup.removeKeyboard());
+
+      await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null, last_message_id: null });
 
       // ─── PROCESS REGISTRATION (skip membership check) ───
       if (type === "log_group") {
         const existing = await logGroupRepo.getLogGroupByChatId(chatId);
         if (existing) {
+          try { await ctx.telegram.deleteMessage(userId, loadingMsg.message_id); } catch {}
           await ctx.reply(
             `「${title}」はすでにロググループとして登録されています。`,
             Markup.inlineKeyboard([
@@ -55,10 +59,7 @@ export function registerTextHandlers(bot: Telegraf): void {
           title,
         });
 
-        // Bot is in chat, now promote to admin
         const autoAdminResult = await tryPromoteAdmin(ctx.telegram, chatId, "log_group");
-
-        // Import logGroupTopicSelectKeyboard
         const { logGroupTopicSelectKeyboard } = await import("./keyboards.js");
 
         const logAdminButtons = autoAdminResult.success 
@@ -68,6 +69,7 @@ export function registerTextHandlers(bot: Telegraf): void {
               [Markup.button.callback("トピック管理", `lg:topics:${lg.log_group_id}`)],
             ];
 
+        try { await ctx.telegram.deleteMessage(userId, loadingMsg.message_id); } catch {}
         await ctx.reply(
           `ロググループ「${title}」を登録しました。\n\n${autoAdminResult.message}${autoAdminResult.success ? '\n\nトピックを設定しますか？' : ''}`,
           autoAdminResult.success 
@@ -77,6 +79,7 @@ export function registerTextHandlers(bot: Telegraf): void {
       } else {
         const existing = await targetRepo.getTargetByChatId(chatId);
         if (existing) {
+          try { await ctx.telegram.deleteMessage(userId, loadingMsg.message_id); } catch {}
           await ctx.reply(
             `「${title}」はすでに登録されています。`,
             Markup.inlineKeyboard([
@@ -127,6 +130,7 @@ export function registerTextHandlers(bot: Telegraf): void {
           [Markup.button.callback("メインメニュー", "menu:top")]
         ];
         
+        try { await ctx.telegram.deleteMessage(userId, loadingMsg.message_id); } catch {}
         await ctx.reply(
           `「${title}」を登録しました。\n\n${autoAdminResult.message}\n\nゲートリンク:\n${gateLink}`,
           Markup.inlineKeyboard(adminButtons)
@@ -145,7 +149,11 @@ export function registerTextHandlers(bot: Telegraf): void {
         return;
       }
 
-      await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null });
+      if (adminSession.last_message_id) {
+        try { await ctx.telegram.deleteMessage(userId, adminSession.last_message_id); } catch {}
+      }
+
+      await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null, last_message_id: null });
 
       // Question text
       if (input.startsWith("q:text:")) {

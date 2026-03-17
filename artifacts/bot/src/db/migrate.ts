@@ -118,12 +118,14 @@ export async function runMigrations(): Promise<void> {
         step TEXT NOT NULL DEFAULT 'start',
         challenge_fails INTEGER NOT NULL DEFAULT 0,
         challenge_data JSONB,
+        last_message_id INTEGER,
         last_attempt TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
 
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
 
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
@@ -132,9 +134,12 @@ export async function runMigrations(): Promise<void> {
         log_group_id INTEGER,
         awaiting_input TEXT,
         temp_data TEXT,
+        last_message_id INTEGER,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
     `);
   } finally {
     client.release();

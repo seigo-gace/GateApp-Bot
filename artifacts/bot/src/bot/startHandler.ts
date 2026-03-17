@@ -84,7 +84,7 @@ export function registerStartHandler(bot: Telegraf): void {
         status: "pending",
       });
 
-      // Start gate flow
+      try { await ctx.deleteMessage(); } catch {}
       await startGateFlow(ctx.telegram, userId, target.target_id, false);
       return;
     }

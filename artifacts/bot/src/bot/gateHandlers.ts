@@ -14,6 +14,15 @@ import { COOLDOWN_SECONDS } from "../config/env.js";
 import type { Target } from "../db/schema/targets.js";
 import type { Context } from "telegraf";
 
+async function deleteOldMessage(telegram: Telegram, userId: number, messageId: number | null | undefined): Promise<void> {
+  if (!messageId) return;
+  try {
+    await telegram.deleteMessage(userId, messageId);
+  } catch {
+    // Message may already be deleted or expired
+  }
+}
+
 export async function startGateFlow(
   telegram: Telegram,
   userId: number,
@@ -47,6 +56,7 @@ export async function startGateFlow(
     step: "start",
     challenge_fails: 0,
     challenge_data: null,
+    last_message_id: null,
     last_attempt: new Date(),
   });
 
@@ -63,11 +73,9 @@ export async function stepNext(
   const challenge = await challengeRepo.getChallengeByTarget(target.target_id);
   const questions = (await questionRepo.getQuestionsByTarget(target.target_id)).filter((q) => q.enabled);
   const rule = await ruleRepo.getRuleByTarget(target.target_id);
-
   const session = await sessionRepo.getGateSession(userId);
 
   let nextStep: string;
-
   switch (currentStep) {
     case "start":
       nextStep = challenge?.enabled ? "challenge" : questions.length > 0 ? "q1" : rule?.rule_text ? "rules" : "approve";
@@ -97,6 +105,7 @@ export async function stepNext(
     step: nextStep,
     challenge_fails: session?.challenge_fails ?? 0,
     challenge_data: session?.challenge_data ?? null,
+    last_message_id: session?.last_message_id ?? null,
     last_attempt: session?.last_attempt ?? new Date(),
   });
 
@@ -114,25 +123,28 @@ async function sendStep(
   const questions = (await questionRepo.getQuestionsByTarget(target.target_id)).filter((q) => q.enabled);
   const rule = await ruleRepo.getRuleByTarget(target.target_id);
 
+  const session = await sessionRepo.getGateSession(userId);
+  await deleteOldMessage(telegram, userId, session?.last_message_id);
+
   if (step === "challenge" && challenge?.enabled) {
     const q = generateChallenge(challenge.difficulty);
-    await sessionRepo.upsertGateSession({
-      tg_user_id: userId,
-      target_id: target.target_id,
-      step: "challenge",
-      challenge_fails: (await sessionRepo.getGateSession(userId))?.challenge_fails ?? 0,
-      challenge_data: q as any,
-      last_attempt: (await sessionRepo.getGateSession(userId))?.last_attempt ?? new Date(),
-    });
-
     const buttons = q.options.map((opt, i) =>
       Markup.button.callback(opt, `gate:challenge:${i}`)
     );
-    await telegram.sendMessage(
+    const sent = await telegram.sendMessage(
       userId,
       `本人確認のため、問題に答えてください。\n\n${q.text}`,
       Markup.inlineKeyboard([buttons])
     );
+    await sessionRepo.upsertGateSession({
+      tg_user_id: userId,
+      target_id: target.target_id,
+      step: "challenge",
+      challenge_fails: session?.challenge_fails ?? 0,
+      challenge_data: q as any,
+      last_message_id: sent.message_id,
+      last_attempt: session?.last_attempt ?? new Date(),
+    });
     return;
   }
 
@@ -143,19 +155,26 @@ async function sendStep(
       await stepNext(telegram, userId, target, step, isTest);
       return;
     }
-
     const btns = [
       q.button1_label && Markup.button.callback(q.button1_label, `gate:q:${step}:1`),
       q.button2_label && Markup.button.callback(q.button2_label, `gate:q:${step}:2`),
       q.button3_label && Markup.button.callback(q.button3_label, `gate:q:${step}:3`),
     ].filter(Boolean) as ReturnType<typeof Markup.button.callback>[];
-
-    await telegram.sendMessage(userId, q.question_text, Markup.inlineKeyboard([btns]));
+    const sent = await telegram.sendMessage(userId, q.question_text, Markup.inlineKeyboard([btns]));
+    await sessionRepo.upsertGateSession({
+      tg_user_id: userId,
+      target_id: target.target_id,
+      step,
+      challenge_fails: session?.challenge_fails ?? 0,
+      challenge_data: session?.challenge_data ?? null,
+      last_message_id: sent.message_id,
+      last_attempt: session?.last_attempt ?? new Date(),
+    });
     return;
   }
 
   if (step === "rules" && rule?.rule_text) {
-    await telegram.sendMessage(
+    const sent = await telegram.sendMessage(
       userId,
       rule.rule_text,
       Markup.inlineKeyboard([
@@ -165,6 +184,15 @@ async function sendStep(
         ],
       ])
     );
+    await sessionRepo.upsertGateSession({
+      tg_user_id: userId,
+      target_id: target.target_id,
+      step: "rules",
+      challenge_fails: session?.challenge_fails ?? 0,
+      challenge_data: session?.challenge_data ?? null,
+      last_message_id: sent.message_id,
+      last_attempt: session?.last_attempt ?? new Date(),
+    });
     return;
   }
 
@@ -287,26 +315,6 @@ async function rejectUser(
   await sessionRepo.deleteGateSession(userId);
 }
 
-async function safeCbReply(ctx: Context, text: string): Promise<void> {
-  try {
-    await ctx.reply(text);
-  } catch (err) {
-    console.error("[GATE] safeCbReply failed:", err);
-  }
-}
-
-async function safeEditMessage(ctx: Context, text: string, markup?: any): Promise<void> {
-  try {
-    if (markup) {
-      await ctx.editMessageText(text, markup);
-    } else {
-      await ctx.editMessageText(text);
-    }
-  } catch (err) {
-    // Message may already be edited or deleted
-  }
-}
-
 export function registerGateHandlers(bot: Telegraf): void {
   bot.action(/^gate:challenge:(\d+)$/, async (ctx) => {
     if (ctx.chat?.type !== "private") return;
@@ -317,7 +325,7 @@ export function registerGateHandlers(bot: Telegraf): void {
       const userId = ctx.from!.id;
       const session = await sessionRepo.getGateSession(userId);
       if (!session) {
-        await safeCbReply(ctx, "セッションが切れました。ゲートリンクからやり直してください。");
+        await ctx.reply("セッションが切れました。ゲートリンクからやり直してください。");
         return;
       }
 
@@ -326,20 +334,21 @@ export function registerGateHandlers(bot: Telegraf): void {
 
       const challenge = session.challenge_data as ChallengeQuestion | null;
       if (!challenge) {
-        await safeCbReply(ctx, "問題データが見つかりません。ゲートリンクからやり直してください。");
+        await ctx.reply("問題データが見つかりません。ゲートリンクからやり直してください。");
         return;
       }
 
       if (selectedIndex === challenge.correctIndex) {
+        try { await ctx.deleteMessage(); } catch {}
         await sessionRepo.upsertGateSession({
           tg_user_id: userId,
           target_id: target.target_id,
           step: "challenge",
           challenge_fails: session.challenge_fails ?? 0,
           challenge_data: null,
+          last_message_id: null,
           last_attempt: session.last_attempt ?? new Date(),
         });
-        await safeEditMessage(ctx, "正解です！");
         await stepNext(ctx.telegram, userId, target, "challenge", false);
       } else {
         const challengeCfg = await challengeRepo.getChallengeByTarget(target.target_id);
@@ -347,7 +356,8 @@ export function registerGateHandlers(bot: Telegraf): void {
         const newFails = (session.challenge_fails ?? 0) + 1;
 
         if (newFails >= maxFail) {
-          await safeEditMessage(ctx, "本人確認に失敗しました。参加できません。");
+          try { await ctx.deleteMessage(); } catch {}
+          await ctx.telegram.sendMessage(userId, "本人確認に失敗しました。参加できません。");
           await rejectUser(
             ctx.telegram, userId, target, "Bot判定失敗", "bot_failed",
             ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
@@ -355,21 +365,27 @@ export function registerGateHandlers(bot: Telegraf): void {
         } else {
           const remaining = maxFail - newFails;
           const newQ = generateChallenge(challengeCfg?.difficulty ?? "standard");
+          const buttons = newQ.options.map((opt, i) => Markup.button.callback(opt, `gate:challenge:${i}`));
+          try {
+            await ctx.editMessageText(
+              `不正解です（残り${remaining}回）\n\n${newQ.text}`,
+              Markup.inlineKeyboard([buttons])
+            );
+          } catch {}
           await sessionRepo.upsertGateSession({
             tg_user_id: userId,
             target_id: target.target_id,
             step: "challenge",
             challenge_fails: newFails,
             challenge_data: newQ as any,
+            last_message_id: ctx.callbackQuery?.message?.message_id ?? null,
             last_attempt: session.last_attempt ?? new Date(),
           });
-          const buttons = newQ.options.map((opt, i) => Markup.button.callback(opt, `gate:challenge:${i}`));
-          await safeEditMessage(ctx, `不正解です（残り${remaining}回）\n\n${newQ.text}`, Markup.inlineKeyboard([buttons]));
         }
       }
     } catch (err) {
       console.error("[GATE] challenge handler error:", err);
-      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
+      try { await ctx.reply("エラーが発生しました。ゲートリンクからやり直してください。"); } catch {}
     }
   });
 
@@ -383,7 +399,7 @@ export function registerGateHandlers(bot: Telegraf): void {
       const userId = ctx.from!.id;
       const session = await sessionRepo.getGateSession(userId);
       if (!session) {
-        await safeCbReply(ctx, "セッションが切れました。");
+        await ctx.reply("セッションが切れました。");
         return;
       }
 
@@ -396,10 +412,20 @@ export function registerGateHandlers(bot: Telegraf): void {
       if (!q) return;
 
       if (buttonNum === q.correct_button) {
-        await safeEditMessage(ctx, q.next_label || "次へ");
+        try { await ctx.deleteMessage(); } catch {}
+        await sessionRepo.upsertGateSession({
+          tg_user_id: userId,
+          target_id: target.target_id,
+          step,
+          challenge_fails: session.challenge_fails ?? 0,
+          challenge_data: null,
+          last_message_id: null,
+          last_attempt: session.last_attempt ?? new Date(),
+        });
         await stepNext(ctx.telegram, userId, target, step, false);
       } else {
-        await safeEditMessage(ctx, "不正解のため参加できません。");
+        try { await ctx.deleteMessage(); } catch {}
+        await ctx.telegram.sendMessage(userId, "不正解のため参加できません。");
         await rejectUser(
           ctx.telegram, userId, target, "質問失敗", "rejected",
           ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
@@ -407,7 +433,7 @@ export function registerGateHandlers(bot: Telegraf): void {
       }
     } catch (err) {
       console.error("[GATE] question handler error:", err);
-      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
+      try { await ctx.reply("エラーが発生しました。ゲートリンクからやり直してください。"); } catch {}
     }
   });
 
@@ -419,16 +445,25 @@ export function registerGateHandlers(bot: Telegraf): void {
       const userId = ctx.from!.id;
       const session = await sessionRepo.getGateSession(userId);
       if (!session) {
-        await safeCbReply(ctx, "セッションが切れました。");
+        await ctx.reply("セッションが切れました。");
         return;
       }
       const target = await targetRepo.getTargetById(session.target_id);
       if (!target) return;
-      await safeEditMessage(ctx, "同意しました。");
+      try { await ctx.deleteMessage(); } catch {}
+      await sessionRepo.upsertGateSession({
+        tg_user_id: userId,
+        target_id: target.target_id,
+        step: "rules",
+        challenge_fails: session.challenge_fails ?? 0,
+        challenge_data: null,
+        last_message_id: null,
+        last_attempt: session.last_attempt ?? new Date(),
+      });
       await stepNext(ctx.telegram, userId, target, "rules", false);
     } catch (err) {
       console.error("[GATE] rule:accept handler error:", err);
-      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
+      try { await ctx.reply("エラーが発生しました。ゲートリンクからやり直してください。"); } catch {}
     }
   });
 
@@ -440,19 +475,20 @@ export function registerGateHandlers(bot: Telegraf): void {
       const userId = ctx.from!.id;
       const session = await sessionRepo.getGateSession(userId);
       if (!session) {
-        await safeCbReply(ctx, "セッションが切れました。");
+        await ctx.reply("セッションが切れました。");
         return;
       }
       const target = await targetRepo.getTargetById(session.target_id);
       if (!target) return;
-      await safeEditMessage(ctx, "ルールに同意しなかったため参加できません。");
+      try { await ctx.deleteMessage(); } catch {}
+      await ctx.telegram.sendMessage(userId, "ルールに同意しなかったため参加できません。");
       await rejectUser(
         ctx.telegram, userId, target, "ルール拒否", "rejected",
         ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
       );
     } catch (err) {
       console.error("[GATE] rule:reject handler error:", err);
-      await safeCbReply(ctx, "エラーが発生しました。ゲートリンクからやり直してください。");
+      try { await ctx.reply("エラーが発生しました。ゲートリンクからやり直してください。"); } catch {}
     }
   });
 }

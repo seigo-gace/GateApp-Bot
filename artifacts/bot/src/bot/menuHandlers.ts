@@ -67,11 +67,14 @@ export function registerMenuHandlers(bot: Telegraf) {
     const type = (ctx.match as RegExpMatchArray)[1] as string;
     const userId = ctx.from!.id;
 
+    try { await ctx.deleteMessage(); } catch {}
+
     await sessionRepo.upsertAdminSession({
       tg_user_id: userId,
       state: "awaiting_chat_select",
       awaiting_input: type,
       temp_data: null,
+      last_message_id: null,
     });
 
     const label =
@@ -87,11 +90,17 @@ export function registerMenuHandlers(bot: Telegraf) {
     // request_id: 1=entry_group, 2=entry_channel, 3=log_group
     const requestId = type === "entry_group" ? 1 : type === "entry_channel" ? 2 : 3;
 
-    // Send reply keyboard with request_chat button (Telegram native chat picker)
-    await ctx.reply(
+    const sent = await ctx.reply(
       `${label}を選んでください。\n下のボタンを押すと、チャット選択画面が開きます。`,
       requestChatKeyboard(label, requestId, isChannel, isForum)
     );
+    await sessionRepo.upsertAdminSession({
+      tg_user_id: userId,
+      state: "awaiting_chat_select",
+      awaiting_input: type,
+      temp_data: null,
+      last_message_id: sent.message_id,
+    });
   });
 
   // ─── LIST: entry ───
@@ -330,7 +339,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       tg_user_id: userId,
       state: "awaiting_text",
       awaiting_input: `q:text:${targetId}:${orderIndex}`,
-      temp_data: null,
+      temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null,
     });
     await ctx.editMessageText(
       `質問${orderIndex}の質問文を送信してください。`,
@@ -347,7 +356,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       tg_user_id: userId,
       state: "awaiting_text",
       awaiting_input: `q:options:${targetId}:${orderIndex}`,
-      temp_data: null,
+      temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null,
     });
     await ctx.editMessageText(
       `選択肢を3行で送信してください。\n例:\n選択肢A\n選択肢B\n選択肢C`,
@@ -393,7 +402,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       tg_user_id: userId,
       state: "awaiting_text",
       awaiting_input: `q:next:${targetId}:${orderIndex}`,
-      temp_data: null,
+      temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null,
     });
     await ctx.editMessageText(
       `次へボタンの文言を送信してください。`,
@@ -415,7 +424,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `rule:text:${targetId}`, temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `rule:text:${targetId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("ルール本文を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `target:rules:${targetId}`)]]));
   });
 
@@ -423,7 +432,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `rule:accept:${targetId}`, temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `rule:accept:${targetId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("承諾ボタンの文言を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `target:rules:${targetId}`)]]));
   });
 
@@ -431,7 +440,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `rule:reject:${targetId}`, temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `rule:reject:${targetId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("拒否ボタンの文言を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `target:rules:${targetId}`)]]));
   });
 
@@ -476,7 +485,7 @@ export function registerMenuHandlers(bot: Telegraf) {
       step: "start",
       challenge_fails: 0,
     });
-    await ctx.editMessageText("テストモードでゲートフローを開始します。");
+    try { await ctx.deleteMessage(); } catch {}
     const { startGateFlow } = await import("./gateHandlers.js");
     await startGateFlow(ctx.telegram, userId, targetId, true);
   });
@@ -702,7 +711,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:create:${lgId}`, temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:create:${lgId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("新しいトピック名を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `lg:detail:${lgId}`)]]));
   });
 
@@ -813,7 +822,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:create:${lgId}`, log_group_id: lgId, temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:create:${lgId}`, log_group_id: lgId, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("新しいトピック名を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `lg:topics:${lgId}`)]]));
   });
 
@@ -835,7 +844,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const topicId = parseInt((ctx.match as RegExpMatchArray)[2]!);
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:rename:${lgId}:${topicId}`, log_group_id: lgId, temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:rename:${lgId}:${topicId}`, log_group_id: lgId, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("新しいトピック名を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `lg:topics:${lgId}`)]]));
   });
 
@@ -903,7 +912,7 @@ export function registerMenuHandlers(bot: Telegraf) {
   bot.action("admin:add", async (ctx) => {
     await ctx.answerCbQuery();
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: "admin:add_id", temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: "admin:add_id", temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("追加するユーザーのTelegram IDを送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", "menu:admin_manage")]]));
   });
 
@@ -945,14 +954,14 @@ export function registerMenuHandlers(bot: Telegraf) {
   bot.action("bl:add", async (ctx) => {
     await ctx.answerCbQuery();
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: "bl:add", temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: "bl:add", temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("追加するユーザーIDを送信してください（数字のみ）。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", "menu:blacklist")]]));
   });
 
   bot.action("bl:remove", async (ctx) => {
     await ctx.answerCbQuery();
     const userId = ctx.from!.id;
-    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: "bl:remove", temp_data: null });
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: "bl:remove", temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("削除するユーザーIDを送信してください（数字のみ）。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", "menu:blacklist")]]));
   });
 }
