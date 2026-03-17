@@ -80,11 +80,19 @@ export async function deleteLogTopic(logTopicId: number): Promise<void> {
   await db.delete(log_topics).where(eq(log_topics.log_topic_id, logTopicId));
 }
 
-// Get existing topics from DB for this log group
-export async function getExistingTopicsForSelection(logGroupId: number): Promise<{ topic_id: number; name: string }[]> {
+export async function getExistingTopicsForSelection(logGroupId: number): Promise<{ topic_id: number; thread_id: number; name: string }[]> {
   const topics = await getTopicsByLogGroup(logGroupId);
   return topics.map((t) => ({
     topic_id: t.log_topic_id,
+    thread_id: t.thread_id,
     name: t.title || `Topic ${t.thread_id}`,
   }));
+}
+
+export async function getTopicByThreadId(logGroupId: number, threadId: number): Promise<LogTopic | undefined> {
+  const rows = await db
+    .select()
+    .from(log_topics)
+    .where(eq(log_topics.log_group_id, logGroupId));
+  return rows.find((t) => t.thread_id === threadId);
 }

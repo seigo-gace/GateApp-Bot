@@ -246,14 +246,16 @@ export function previewKeyboard(targetId: number) {
 export function logGroupTopicSelectKeyboard(logGroupId: number) {
   return Markup.inlineKeyboard([
     [Markup.button.callback("📌 既存トピックを選択", `lg:select-topic:${logGroupId}`)],
+    [Markup.button.callback("📎 リンクで指定", `lg:link-topic:${logGroupId}`)],
     [Markup.button.callback("➕ 新規トピックを作成", `lg:create-topic:${logGroupId}`)],
     [Markup.button.callback("🔄 自動生成", `lg:autogenerate:${logGroupId}`)],
+    [Markup.button.callback("戻る", `lg:detail:${logGroupId}`)],
   ]);
 }
 
-export function forumTopicsKeyboard(logGroupId: number, topics: { topic_id: number; name: string }[]) {
+export function forumTopicsKeyboard(logGroupId: number, topics: { topic_id: number; thread_id: number; name: string }[]) {
   const buttons = topics.map((t) => [
-    Markup.button.callback(`${t.name}`, `lg:topic-selected:${logGroupId}:${t.topic_id}`),
+    Markup.button.callback(`${t.name}`, `lg:topic-selected:${logGroupId}:${t.thread_id}`),
   ]);
   buttons.push([Markup.button.callback("戻る", `lg:detail:${logGroupId}`)]);
   return Markup.inlineKeyboard(buttons);

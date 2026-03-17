@@ -689,18 +689,20 @@ export function registerMenuHandlers(bot: Telegraf) {
 
   bot.action(/^lg:topic-selected:(\d+):(\d+)$/, async (ctx) => {
     const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
-    const topicId = parseInt((ctx.match as RegExpMatchArray)[2]!);
+    const threadId = parseInt((ctx.match as RegExpMatchArray)[2]!);
     await ctx.answerCbQuery();
     
+    const lg = await logGroupRepo.getLogGroupById(lgId);
+    if (!lg) { await ctx.editMessageText("見つかりません"); return; }
+    
     const allTopics = await logGroupRepo.getExistingTopicsForSelection(lgId);
-    const selectedTopic = allTopics.find(t => t.topic_id === topicId);
+    const selectedTopic = allTopics.find(t => t.thread_id === threadId);
     if (selectedTopic) {
-      // If this log group has associated targets, update their log_thread_id
-      const targets = await targetRepo.getTargetsByLogChatId(lgId);
+      const targets = await targetRepo.getTargetsByLogChatId(Number(lg.chat_id));
       for (const target of targets) {
-        await targetRepo.updateTarget(target.target_id, { log_thread_id: topicId });
+        await targetRepo.updateTarget(target.target_id, { log_thread_id: threadId });
       }
-      await ctx.editMessageText(`✅ トピック「${selectedTopic.name}」を選択しました。`, Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]]));
+      await ctx.editMessageText(`✅ トピック「${selectedTopic.name}」(thread_id: ${threadId}) を設定しました。`, Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]]));
     } else {
       await ctx.editMessageText("トピックが見つかりません。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:detail:${lgId}`)]]));
     }
@@ -713,6 +715,17 @@ export function registerMenuHandlers(bot: Telegraf) {
     const userId = ctx.from!.id;
     await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:create:${lgId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("新しいトピック名を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `lg:detail:${lgId}`)]]));
+  });
+
+  bot.action(/^lg:link-topic:(\d+)$/, async (ctx) => {
+    const lgId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    await ctx.answerCbQuery();
+    const userId = ctx.from!.id;
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `topic:link:${lgId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
+    await ctx.editMessageText(
+      "トピックのリンクを送信してください。\n\n取得方法: Telegramグループでトピックを長押し（右クリック）→「リンクをコピー」\n\n例: https://t.me/c/1234567890/123",
+      Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `lg:detail:${lgId}`)]])
+    );
   });
 
   // ─── LOG GROUP: promote to admin ───
@@ -752,7 +765,20 @@ export function registerMenuHandlers(bot: Telegraf) {
     const lg = await logGroupRepo.getLogGroupById(lgId);
     if (!lg) { await ctx.editMessageText("見つかりません"); return; }
     
-    // Auto-generate topic with timestamp
+    const existingTopics = await logGroupRepo.getTopicsByLogGroup(lgId);
+    if (existingTopics.length > 0) {
+      const latest = existingTopics[existingTopics.length - 1]!;
+      const targets = await targetRepo.getTargetsByLogChatId(Number(lg.chat_id));
+      for (const target of targets) {
+        await targetRepo.updateTarget(target.target_id, { log_thread_id: latest.thread_id });
+      }
+      await ctx.editMessageText(
+        `既存トピック「${latest.title}」(thread_id: ${latest.thread_id}) を使用します。\n新規作成は不要です。`,
+        Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]])
+      );
+      return;
+    }
+    
     const now = new Date();
     const timestamp = now.toLocaleString("ja-JP", {
       year: "numeric",
@@ -761,29 +787,26 @@ export function registerMenuHandlers(bot: Telegraf) {
       hour: "2-digit",
       minute: "2-digit",
     });
-    const topicName = `auto_${timestamp}`;
+    const topicName = `log_${timestamp}`;
     
     try {
-      // Create forum topic via Telegram API
       const result = await (ctx.telegram as any).createForumTopic(lg.chat_id, topicName);
       const threadId = result.message_thread_id;
       
-      // Save to DB
       await logGroupRepo.createLogTopic({
         log_group_id: lgId,
         thread_id: threadId,
         title: topicName,
       });
       
-      // Update associated targets' log_thread_id
-      const targets = await targetRepo.getTargetsByLogChatId(lgId);
+      const targets = await targetRepo.getTargetsByLogChatId(Number(lg.chat_id));
       for (const target of targets) {
         await targetRepo.updateTarget(target.target_id, { log_thread_id: threadId });
       }
       
-      await ctx.editMessageText(`✅ トピック「${topicName}」を自動生成しました。`, Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]]));
+      await ctx.editMessageText(`✅ トピック「${topicName}」(thread_id: ${threadId}) を自動生成しました。`, Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]]));
     } catch (err: any) {
-      await ctx.editMessageText(`❌ 自動生成に失敗しました: ${err.message}`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:detail:${lgId}`)]]));
+      await ctx.editMessageText(`❌ 自動生成に失敗しました: ${err.message}\n\n再試行しても新しいトピックは作成されません。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:detail:${lgId}`)]]));
     }
   });
 

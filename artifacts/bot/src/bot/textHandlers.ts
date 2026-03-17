@@ -224,6 +224,65 @@ export function registerTextHandlers(bot: Telegraf): void {
         return;
       }
 
+      if (input.startsWith("topic:link:")) {
+        const lgId = parseInt(input.split(":")[2]!);
+        const lg = await logGroupRepo.getLogGroupById(lgId);
+        if (!lg) { await ctx.reply("グループが見つかりません。"); return; }
+
+        const linkMatch = text.match(/https?:\/\/t\.me\/c\/(\d+)\/(\d+)/);
+        if (!linkMatch) {
+          await ctx.reply(
+            "トピックリンクの形式が正しくありません。\n\n例: https://t.me/c/1234567890/123",
+            Markup.inlineKeyboard([[Markup.button.callback("やり直す", `lg:link-topic:${lgId}`)], [Markup.button.callback("戻る", `lg:detail:${lgId}`)]])
+          );
+          return;
+        }
+
+        const threadId = parseInt(linkMatch[2]!);
+
+        const existing = await logGroupRepo.getTopicByThreadId(lgId, threadId);
+        if (existing) {
+          const targets = await targetRepo.getTargetsByLogChatId(Number(lg.chat_id));
+          for (const target of targets) {
+            await targetRepo.updateTarget(target.target_id, { log_thread_id: threadId });
+          }
+          await ctx.reply(
+            `既に登録済みのトピック「${existing.title}」(thread_id: ${threadId}) を設定しました。`,
+            Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]])
+          );
+          return;
+        }
+
+        try {
+          const testMsg = await ctx.telegram.sendMessage(lg.chat_id, "トピック確認中…", { message_thread_id: threadId } as any);
+          await ctx.telegram.deleteMessage(lg.chat_id, testMsg.message_id);
+        } catch {
+          await ctx.reply(
+            `❌ thread_id ${threadId} へのアクセスに失敗しました。\nトピックが存在すること、Botが管理者であることを確認してください。`,
+            Markup.inlineKeyboard([[Markup.button.callback("やり直す", `lg:link-topic:${lgId}`)], [Markup.button.callback("戻る", `lg:detail:${lgId}`)]])
+          );
+          return;
+        }
+
+        const topicName = `topic_${threadId}`;
+        await logGroupRepo.createLogTopic({
+          log_group_id: lgId,
+          thread_id: threadId,
+          title: topicName,
+        });
+
+        const targets = await targetRepo.getTargetsByLogChatId(Number(lg.chat_id));
+        for (const target of targets) {
+          await targetRepo.updateTarget(target.target_id, { log_thread_id: threadId });
+        }
+
+        await ctx.reply(
+          `✅ トピック「${topicName}」(thread_id: ${threadId}) を登録・設定しました。`,
+          Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]])
+        );
+        return;
+      }
+
       // Topic create
       if (input.startsWith("topic:create:")) {
         const lgId = parseInt(input.split(":")[2]!);
