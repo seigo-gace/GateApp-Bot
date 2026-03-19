@@ -250,7 +250,13 @@ export function registerMenuHandlers(bot: Telegraf) {
     await ctx.answerCbQuery();
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const val = (ctx.match as RegExpMatchArray)[2] === "on";
-    await challengeRepo.upsertChallenge({ target_id: targetId, enabled: val, difficulty: "standard", max_fail: 3 });
+    const existing = await challengeRepo.getChallengeByTarget(targetId);
+    await challengeRepo.upsertChallenge({
+      target_id: targetId,
+      enabled: val,
+      difficulty: existing?.difficulty ?? "standard",
+      max_fail: existing?.max_fail ?? 3,
+    });
     const challenge = await challengeRepo.getChallengeByTarget(targetId);
     await ctx.editMessageText(
       "Bot対策設定",
