@@ -354,56 +354,74 @@ export function registerTextHandlers(bot: Telegraf): void {
   // Validate invite link on join - ensure 1-time use by authorized user only
   bot.on("chat_member", async (ctx) => {
     try {
-      const update = ctx.update.my_chat_member;
+      const update = (ctx.update as any).chat_member;
       if (!update) return;
-      
-      // Only process bot join events (bot's own chat_member status change)
-      if (update.new_chat_member.user.id !== (await ctx.telegram.getMe()).id) {
-        return;
-      }
-      
+
       const newStatus = update.new_chat_member.status;
       const oldStatus = update.old_chat_member.status;
-      if (!["member", "restricted"].includes(newStatus) || oldStatus !== "left") return;
-      
+
+      if (!["member", "restricted"].includes(newStatus)) return;
+      if (!["left", "kicked"].includes(oldStatus)) return;
+
       const joiningUserId = update.new_chat_member.user.id;
       const chatId = update.chat.id;
-      const inviteLink = update.invite_link?.invite_link;
-      if (!inviteLink) return;
+      const inviteLinkUrl = update.invite_link?.invite_link;
+      if (!inviteLinkUrl) return;
 
-      const { validateAndUseInviteLink } = await import("../services/inviteService.js");
-      const result = await validateAndUseInviteLink(ctx.telegram, inviteLink, joiningUserId, chatId);
+      const botId = (await ctx.telegram.getMe()).id;
+      if (joiningUserId === botId) return;
+
+      const { validateAndUseInviteLink, revokeInviteLink } = await import("../services/inviteService.js");
+      const result = await validateAndUseInviteLink(
+        { telegram: ctx.telegram } as unknown as import("telegraf").Telegraf,
+        inviteLinkUrl,
+        joiningUserId,
+        chatId
+      );
+
       if (!result.valid) {
+        console.warn(`[CHAT_MEMBER] Invalid invite link used by ${joiningUserId} in ${chatId}`);
         try {
           await ctx.telegram.banChatMember(chatId, joiningUserId);
           await ctx.telegram.unbanChatMember(chatId, joiningUserId);
-        } catch (err) {
-          // ignore
-        }
-      } else {
-        // User successfully joined - send GIF 2 and auto-delete after delay
-        try {
-          const { readFileSync } = await import("fs");
-          const { join } = await import("path");
-          const gif2Path = join(process.cwd(), "artifacts/bot/assets/approval2.gif");
-          const gif2Buffer = readFileSync(gif2Path);
-          
-          const sentMsg = await (ctx.telegram as any).sendAnimation(joiningUserId, gif2Buffer, {
-            caption: "🎉 グループへようこそ！\n\nあなたは参加が承認されました。",
-          });
+        } catch {}
+        return;
+      }
 
-          // Auto-delete message after 10 seconds
-          setTimeout(async () => {
-            try {
-              await ctx.telegram.deleteMessage(joiningUserId, sentMsg.message_id);
-              console.log(`[INVITE] Auto-deleted welcome GIF for user ${joiningUserId}`);
-            } catch (err) {
-              console.warn(`[INVITE] Failed to auto-delete GIF: ${err}`);
-            }
-          }, 10000);
-        } catch (err: any) {
-          console.warn(`[INVITE] GIF 2 send failed: ${err.message}`);
+      console.log(`[CHAT_MEMBER] User ${joiningUserId} joined ${chatId} via invite link`);
+
+      try {
+        await (ctx.telegram as any).revokeChatInviteLink(chatId, inviteLinkUrl);
+        console.log(`[INVITE] Revoked used invite link for user ${joiningUserId}`);
+      } catch (err: any) {
+        console.warn(`[INVITE] Failed to revoke link: ${err.message}`);
+      }
+      if (result.inviteId) {
+        await inviteRepo.revokeInviteLink(result.inviteId);
+      }
+
+      const session = await sessionRepo.getGateSession(joiningUserId);
+      if (session?.last_message_id) {
+        try {
+          await ctx.telegram.deleteMessage(joiningUserId, session.last_message_id);
+        } catch {}
+      }
+      await sessionRepo.deleteGateSession(joiningUserId);
+
+      try {
+        const { readFileSync, existsSync } = await import("fs");
+        const { join } = await import("path");
+        const gif2Path = join(process.cwd(), "artifacts/bot/assets/approval2.gif");
+        if (existsSync(gif2Path)) {
+          const gif2Buffer = readFileSync(gif2Path);
+          await ctx.telegram.sendAnimation(
+            joiningUserId,
+            { source: gif2Buffer, filename: "welcome.gif" } as any,
+            { caption: "🎉 グループへようこそ！" }
+          );
         }
+      } catch (err: any) {
+        console.warn(`[INVITE] Welcome GIF send failed: ${err.message}`);
       }
     } catch (err: any) {
       console.error(`[CHAT_MEMBER] ${err.message}`);
