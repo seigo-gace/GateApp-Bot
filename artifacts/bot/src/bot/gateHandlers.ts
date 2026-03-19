@@ -60,6 +60,29 @@ export async function startGateFlow(
     last_attempt: new Date(),
   });
 
+  try {
+    const { readFileSync, existsSync } = await import("fs");
+    const { join } = await import("path");
+    const gifPath = join(process.cwd(), "artifacts/bot/assets/approval2.gif");
+    if (existsSync(gifPath)) {
+      const gifBuffer = readFileSync(gifPath);
+      const sent = await telegram.sendAnimation(userId, { source: gifBuffer, filename: "welcome.gif" } as any, {
+        caption: `「${target.title}」への参加審査を開始します。`,
+      });
+      await sessionRepo.upsertGateSession({
+        tg_user_id: userId,
+        target_id: targetId,
+        step: "start",
+        challenge_fails: 0,
+        challenge_data: null,
+        last_message_id: sent.message_id,
+        last_attempt: new Date(),
+      });
+    }
+  } catch (err: any) {
+    console.warn(`[GATE] Welcome GIF send failed: ${err.message}`);
+  }
+
   await stepNext(telegram, userId, target, "start", isTest);
 }
 
@@ -244,21 +267,41 @@ async function approveUser(
     });
   }
 
+  const { readFileSync, existsSync } = await import("fs");
+  const { join } = await import("path");
+  const assetsDir = join(process.cwd(), "artifacts/bot/assets");
+
   try {
-    const { readFileSync } = await import("fs");
-    const { join } = await import("path");
-    const gifPath = join(process.cwd(), "artifacts/bot/assets/approval1.gif");
-    const gifBuffer = readFileSync(gifPath);
-    await (telegram as any).sendAnimation(userId, gifBuffer, {
-      caption: "✨ 承認が完了しました！\n\n下のボタンから参加してください。",
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "🎉 参加する", url: inviteLink }],
-        ],
-      },
-    });
+    const videoPath = join(assetsDir, "approval_video.mp4");
+    if (existsSync(videoPath)) {
+      const videoBuffer = readFileSync(videoPath);
+      await telegram.sendVideo(userId, { source: videoBuffer, filename: "approval.mp4" } as any);
+    }
   } catch (err: any) {
-    console.warn(`[GATE] GIF 1 send failed, using fallback: ${err.message}`);
+    console.warn(`[GATE] Approval video send failed: ${err.message}`);
+  }
+
+  try {
+    const gifPath = join(assetsDir, "approval1.gif");
+    if (existsSync(gifPath)) {
+      const gifBuffer = readFileSync(gifPath);
+      await telegram.sendAnimation(userId, { source: gifBuffer, filename: "approval.gif" } as any, {
+        caption: "✨ 承認が完了しました！\n\n下のボタンから参加してください。",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🎉 参加する", url: inviteLink }],
+          ],
+        },
+      });
+    } else {
+      await telegram.sendMessage(
+        userId,
+        "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
+        Markup.inlineKeyboard([[Markup.button.url("🎉 参加する", inviteLink)]])
+      );
+    }
+  } catch (err: any) {
+    console.warn(`[GATE] GIF send failed, using text fallback: ${err.message}`);
     await telegram.sendMessage(
       userId,
       "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
