@@ -270,22 +270,25 @@ async function approveUser(
   const { readFileSync, existsSync } = await import("fs");
   const { join } = await import("path");
   const assetsDir = join(process.cwd(), "artifacts/bot/assets");
+  const sentMessageIds: number[] = [];
 
   try {
     const videoPath = join(assetsDir, "approval_video.mp4");
     if (existsSync(videoPath)) {
       const videoBuffer = readFileSync(videoPath);
-      await telegram.sendVideo(userId, { source: videoBuffer, filename: "approval.mp4" } as any);
+      const sent = await telegram.sendVideo(userId, { source: videoBuffer, filename: "approval.mp4" } as any);
+      sentMessageIds.push(sent.message_id);
     }
   } catch (err: any) {
     console.warn(`[GATE] Approval video send failed: ${err.message}`);
   }
 
+  let approvalMsgId: number | null = null;
   try {
     const gifPath = join(assetsDir, "approval1.gif");
     if (existsSync(gifPath)) {
       const gifBuffer = readFileSync(gifPath);
-      await telegram.sendAnimation(userId, { source: gifBuffer, filename: "approval.gif" } as any, {
+      const sent = await telegram.sendAnimation(userId, { source: gifBuffer, filename: "approval.gif" } as any, {
         caption: "✨ 承認が完了しました！\n\n下のボタンから参加してください。",
         reply_markup: {
           inline_keyboard: [
@@ -293,23 +296,28 @@ async function approveUser(
           ],
         },
       });
+      approvalMsgId = sent.message_id;
     } else {
-      await telegram.sendMessage(
+      const sent = await telegram.sendMessage(
         userId,
         "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
         Markup.inlineKeyboard([[Markup.button.url("🎉 参加する", inviteLink)]])
       );
+      approvalMsgId = sent.message_id;
     }
   } catch (err: any) {
     console.warn(`[GATE] GIF send failed, using text fallback: ${err.message}`);
-    await telegram.sendMessage(
+    const sent = await telegram.sendMessage(
       userId,
       "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
       Markup.inlineKeyboard([
         [Markup.button.url("🎉 参加する", inviteLink)],
       ])
     );
+    approvalMsgId = sent.message_id;
   }
+
+  if (approvalMsgId) sentMessageIds.push(approvalMsgId);
 
   await sendLog({ telegram } as unknown as Telegraf, {
     type: "approved",
@@ -322,7 +330,15 @@ async function approveUser(
     logThreadId: target.log_thread_id ? Number(target.log_thread_id) : null,
   });
 
-  await sessionRepo.deleteGateSession(userId);
+  await sessionRepo.upsertGateSession({
+    tg_user_id: userId,
+    target_id: target.target_id,
+    step: "approved",
+    challenge_fails: 0,
+    challenge_data: { pendingMessageIds: sentMessageIds } as any,
+    last_message_id: approvalMsgId,
+    last_attempt: new Date(),
+  });
 }
 
 async function rejectUser(

@@ -6,6 +6,7 @@ import * as ruleRepo from "../repositories/ruleRepo.js";
 import * as logGroupRepo from "../repositories/logGroupRepo.js";
 import * as blacklistRepo from "../repositories/blacklistRepo.js";
 import * as ownerRepo from "../repositories/ownerRepo.js";
+import * as inviteRepo from "../repositories/inviteRepo.js";
 import { generateGateCode } from "../utils/gateCode.js";
 import { adminManageKeyboard } from "./keyboards.js";
 
@@ -401,12 +402,18 @@ export function registerTextHandlers(bot: Telegraf): void {
       }
 
       const session = await sessionRepo.getGateSession(joiningUserId);
-      if (session?.last_message_id) {
-        try {
-          await ctx.telegram.deleteMessage(joiningUserId, session.last_message_id);
-        } catch {}
+      if (session) {
+        const pendingIds: number[] = (session.challenge_data as any)?.pendingMessageIds ?? [];
+        if (session.last_message_id && !pendingIds.includes(session.last_message_id)) {
+          pendingIds.push(session.last_message_id);
+        }
+        for (const msgId of pendingIds) {
+          try {
+            await ctx.telegram.deleteMessage(joiningUserId, msgId);
+          } catch {}
+        }
+        await sessionRepo.deleteGateSession(joiningUserId);
       }
-      await sessionRepo.deleteGateSession(joiningUserId);
 
       try {
         const { readFileSync, existsSync } = await import("fs");
