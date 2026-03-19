@@ -1,7 +1,7 @@
 #!/bin/bash
 (while true; do
   echo "[BOT] Starting Telegram Gate Bot..."
-  node artifacts/bot/dist/index.cjs
+  node artifacts/bot/dist/index.mjs
   EXIT_CODE=$?
   echo "[BOT] Bot exited with code $EXIT_CODE. Restarting in 3 seconds..."
   sleep 3

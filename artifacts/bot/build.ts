@@ -5,8 +5,8 @@ await esbuild.build({
   bundle: true,
   platform: "node",
   target: "node20",
-  format: "cjs",
-  outfile: "dist/index.cjs",
+  format: "esm",
+  outfile: "dist/index.mjs",
   external: ["pg-native"],
   packages: "bundle",
   banner: {
