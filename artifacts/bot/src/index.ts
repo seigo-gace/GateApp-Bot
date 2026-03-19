@@ -56,10 +56,11 @@ async function main() {
       }
 
       try {
-        await pool.drain();
-        console.log("[HEALTH] Pool drained for reconnect");
-      } catch (drainErr) {
-        console.error("[HEALTH] Pool drain failed:", drainErr);
+        const client = await pool.connect();
+        client.release();
+        console.log("[HEALTH] Pool reconnect OK");
+      } catch (reconnErr) {
+        console.error("[HEALTH] Pool reconnect failed:", reconnErr);
       }
     }
   }, 2 * 60 * 1000);
