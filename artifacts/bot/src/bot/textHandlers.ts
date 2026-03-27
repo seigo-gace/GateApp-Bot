@@ -331,6 +331,14 @@ export function registerTextHandlers(bot: Telegraf): void {
         return;
       }
 
+      // Media caption
+      if (input.startsWith("media:caption:")) {
+        const targetId = parseInt(input.split(":")[2]!);
+        await targetRepo.updateTarget(targetId, { approval_caption: text });
+        await ctx.reply("承認テキストを設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:media:${targetId}`)]]));
+        return;
+      }
+
       // Add admin
       if (input === "admin:add_id") {
         const newAdminId = parseInt(text);
@@ -341,6 +349,42 @@ export function registerTextHandlers(bot: Telegraf): void {
       }
 
       await ctx.reply("入力を受け付けました。");
+      return;
+    }
+
+    // ─── Media upload handling ───
+    if (adminSession?.state === "awaiting_media" && adminSession.awaiting_input?.startsWith("media:upload:")) {
+      const targetId = parseInt(adminSession.awaiting_input.split(":")[2]!);
+      if (adminSession.last_message_id) {
+        try { await ctx.telegram.deleteMessage(userId, adminSession.last_message_id); } catch {}
+      }
+      await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null, last_message_id: null });
+
+      let fileId: string | null = null;
+      let mediaType: string | null = null;
+
+      if (msg.video) {
+        fileId = msg.video.file_id;
+        mediaType = "video";
+      } else if (msg.animation) {
+        fileId = msg.animation.file_id;
+        mediaType = "animation";
+      } else if (msg.photo && msg.photo.length > 0) {
+        fileId = msg.photo[msg.photo.length - 1].file_id;
+        mediaType = "photo";
+      } else if (msg.document) {
+        fileId = msg.document.file_id;
+        mediaType = "document";
+      }
+
+      if (!fileId) {
+        await ctx.reply("動画・GIF・画像を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:media:${targetId}`)]]));
+        return;
+      }
+
+      await targetRepo.updateTarget(targetId, { approval_media_file_id: fileId, approval_media_type: mediaType });
+      const { mediaSettingsKeyboard } = await import("./keyboards.js");
+      await ctx.reply("メディアを設定しました。", mediaSettingsKeyboard(targetId, true));
       return;
     }
 
@@ -416,19 +460,11 @@ export function registerTextHandlers(bot: Telegraf): void {
       }
 
       try {
-        const { readFileSync, existsSync } = await import("fs");
-        const { join } = await import("path");
-        const gif2Path = join(process.cwd(), "artifacts/bot/assets/approval2.gif");
-        if (existsSync(gif2Path)) {
-          const gif2Buffer = readFileSync(gif2Path);
-          await ctx.telegram.sendAnimation(
-            joiningUserId,
-            { source: gif2Buffer, filename: "welcome.gif" } as any,
-            { caption: "🎉 グループへようこそ！" }
-          );
-        }
+        const target = await targetRepo.getTargetByChatId(chatId);
+        const welcomeText = target ? `🎉 「${target.title}」へようこそ！` : "🎉 グループへようこそ！";
+        await ctx.telegram.sendMessage(joiningUserId, welcomeText);
       } catch (err: any) {
-        console.warn(`[INVITE] Welcome GIF send failed: ${err.message}`);
+        console.warn(`[INVITE] Welcome message send failed: ${err.message}`);
       }
     } catch (err: any) {
       console.error(`[CHAT_MEMBER] ${err.message}`);

@@ -16,7 +16,7 @@ pnpm workspace monorepo using TypeScript. Contains a Telegram 参加承認ゲー
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **Build**: esbuild (ESM bundle, .mjs output)
 - **Telegram Bot**: telegraf v4
 
 ## Structure

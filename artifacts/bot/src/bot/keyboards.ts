@@ -86,11 +86,22 @@ export function targetDetailKeyboard(targetId: number) {
     [Markup.button.callback("Bot対策", `target:challenge:${targetId}`)],
     [Markup.button.callback("参加質問", `target:questions:${targetId}`)],
     [Markup.button.callback("ルール", `target:rules:${targetId}`)],
+    [Markup.button.callback("承認メディア設定", `target:media:${targetId}`)],
     [Markup.button.callback("参加条件プレビュー", `target:preview:${targetId}`)],
     [Markup.button.callback("ログ保存先", `target:logdest:${targetId}`)],
     [Markup.button.callback("管理者追加", `target:addadmin:${targetId}`)],
     [Markup.button.callback("削除", `target:delete:${targetId}`)],
     [Markup.button.callback("戻る", "list:entry")],
+  ]);
+}
+
+export function mediaSettingsKeyboard(targetId: number, hasMedia: boolean) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(hasMedia ? "✅ カスタムメディア設定済み" : "⬜ デフォルト動画使用中", `media:info:${targetId}`)],
+    [Markup.button.callback("メディアをアップロード", `media:upload:${targetId}`)],
+    [Markup.button.callback("承認テキストを設定", `media:caption:${targetId}`)],
+    [Markup.button.callback("メディアをリセット（デフォルトに戻す）", `media:reset:${targetId}`)],
+    [Markup.button.callback("戻る", `target:detail:${targetId}`)],
   ]);
 }
 

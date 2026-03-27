@@ -14,13 +14,64 @@ import { COOLDOWN_SECONDS } from "../config/env.js";
 import type { Target } from "../db/schema/targets.js";
 import type { Context } from "telegraf";
 
+function titleHeader(target: Target): string {
+  return `【${target.title}】\n`;
+}
+
 async function deleteOldMessage(telegram: Telegram, userId: number, messageId: number | null | undefined): Promise<void> {
   if (!messageId) return;
   try {
     await telegram.deleteMessage(userId, messageId);
-  } catch {
-    // Message may already be deleted or expired
+  } catch {}
+}
+
+async function sendMediaWithCaption(
+  telegram: Telegram,
+  userId: number,
+  target: Target,
+  caption: string,
+  replyMarkup?: any
+): Promise<number> {
+  const { readFileSync, existsSync } = await import("fs");
+  const { join } = await import("path");
+
+  const mediaFileId = target.approval_media_file_id;
+  const mediaType = target.approval_media_type;
+
+  if (mediaFileId && mediaType) {
+    try {
+      const opts: any = { caption, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) };
+      let sent: any;
+      if (mediaType === "video") {
+        sent = await telegram.sendVideo(userId, mediaFileId, opts);
+      } else if (mediaType === "animation") {
+        sent = await telegram.sendAnimation(userId, mediaFileId, opts);
+      } else if (mediaType === "photo") {
+        sent = await telegram.sendPhoto(userId, mediaFileId, opts);
+      } else {
+        sent = await telegram.sendDocument(userId, mediaFileId, opts);
+      }
+      return sent.message_id;
+    } catch (err: any) {
+      console.warn(`[GATE] Custom media send failed: ${err.message}`);
+    }
   }
+
+  const defaultVideoPath = join(process.cwd(), "artifacts/bot/assets/default_gate.mp4");
+  if (existsSync(defaultVideoPath)) {
+    try {
+      const videoBuffer = readFileSync(defaultVideoPath);
+      const opts: any = { caption, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) };
+      const sent = await telegram.sendVideo(userId, { source: videoBuffer, filename: "gate.mp4" } as any, opts);
+      return sent.message_id;
+    } catch (err: any) {
+      console.warn(`[GATE] Default video send failed: ${err.message}`);
+    }
+  }
+
+  const opts: any = replyMarkup ? { reply_markup: replyMarkup } : {};
+  const sent = await telegram.sendMessage(userId, caption, opts);
+  return sent.message_id;
 }
 
 export async function startGateFlow(
@@ -59,29 +110,6 @@ export async function startGateFlow(
     last_message_id: null,
     last_attempt: new Date(),
   });
-
-  try {
-    const { readFileSync, existsSync } = await import("fs");
-    const { join } = await import("path");
-    const gifPath = join(process.cwd(), "artifacts/bot/assets/approval2.gif");
-    if (existsSync(gifPath)) {
-      const gifBuffer = readFileSync(gifPath);
-      const sent = await telegram.sendAnimation(userId, { source: gifBuffer, filename: "welcome.gif" } as any, {
-        caption: `「${target.title}」への参加審査を開始します。`,
-      });
-      await sessionRepo.upsertGateSession({
-        tg_user_id: userId,
-        target_id: targetId,
-        step: "start",
-        challenge_fails: 0,
-        challenge_data: null,
-        last_message_id: sent.message_id,
-        last_attempt: new Date(),
-      });
-    }
-  } catch (err: any) {
-    console.warn(`[GATE] Welcome GIF send failed: ${err.message}`);
-  }
 
   await stepNext(telegram, userId, target, "start", isTest);
 }
@@ -156,7 +184,7 @@ async function sendStep(
     );
     const sent = await telegram.sendMessage(
       userId,
-      `本人確認のため、問題に答えてください。\n\n${q.text}`,
+      `${titleHeader(target)}本人確認のため、問題に答えてください。\n\n${q.text}`,
       Markup.inlineKeyboard([buttons])
     );
     await sessionRepo.upsertGateSession({
@@ -183,7 +211,7 @@ async function sendStep(
       q.button2_label && Markup.button.callback(q.button2_label, `gate:q:${step}:2`),
       q.button3_label && Markup.button.callback(q.button3_label, `gate:q:${step}:3`),
     ].filter(Boolean) as ReturnType<typeof Markup.button.callback>[];
-    const sent = await telegram.sendMessage(userId, q.question_text, Markup.inlineKeyboard([btns]));
+    const sent = await telegram.sendMessage(userId, `${titleHeader(target)}${q.question_text}`, Markup.inlineKeyboard([btns]));
     await sessionRepo.upsertGateSession({
       tg_user_id: userId,
       target_id: target.target_id,
@@ -199,7 +227,7 @@ async function sendStep(
   if (step === "rules" && rule?.rule_text) {
     const sent = await telegram.sendMessage(
       userId,
-      rule.rule_text,
+      `${titleHeader(target)}${rule.rule_text}`,
       Markup.inlineKeyboard([
         [
           Markup.button.callback(rule.accept_label || "同意する", "gate:rule:accept"),
@@ -232,7 +260,7 @@ async function approveUser(
   isTest: boolean
 ): Promise<void> {
   if (isTest) {
-    await telegram.sendMessage(userId, "テスト完了: 承認フローが正常に動作しています。");
+    await telegram.sendMessage(userId, `${titleHeader(target)}テスト完了: 承認フローが正常に動作しています。`);
     await sessionRepo.deleteGateSession(userId);
     return;
   }
@@ -255,7 +283,7 @@ async function approveUser(
     console.error(`[GATE] Failed to create invite link: ${err.message}`);
     await telegram.sendMessage(
       userId,
-      "招待リンクの生成に失敗しました。管理者にお問い合わせください。"
+      `${titleHeader(target)}招待リンクの生成に失敗しました。管理者にお問い合わせください。`
     );
     return;
   }
@@ -267,57 +295,28 @@ async function approveUser(
     });
   }
 
-  const { readFileSync, existsSync } = await import("fs");
-  const { join } = await import("path");
-  const assetsDir = join(process.cwd(), "artifacts/bot/assets");
-  const sentMessageIds: number[] = [];
+  const caption = target.approval_caption
+    ? `${titleHeader(target)}${target.approval_caption}`
+    : `${titleHeader(target)}✨ 承認が完了しました！\n\n下のボタンから参加してください。`;
 
-  try {
-    const videoPath = join(assetsDir, "approval_video.mp4");
-    if (existsSync(videoPath)) {
-      const videoBuffer = readFileSync(videoPath);
-      const sent = await telegram.sendVideo(userId, { source: videoBuffer, filename: "approval.mp4" } as any);
-      sentMessageIds.push(sent.message_id);
-    }
-  } catch (err: any) {
-    console.warn(`[GATE] Approval video send failed: ${err.message}`);
-  }
+  const replyMarkup = {
+    inline_keyboard: [
+      [{ text: "🎉 参加する", url: inviteLink }],
+    ],
+  };
 
   let approvalMsgId: number | null = null;
   try {
-    const gifPath = join(assetsDir, "approval1.gif");
-    if (existsSync(gifPath)) {
-      const gifBuffer = readFileSync(gifPath);
-      const sent = await telegram.sendAnimation(userId, { source: gifBuffer, filename: "approval.gif" } as any, {
-        caption: "✨ 承認が完了しました！\n\n下のボタンから参加してください。",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🎉 参加する", url: inviteLink }],
-          ],
-        },
-      });
-      approvalMsgId = sent.message_id;
-    } else {
-      const sent = await telegram.sendMessage(
-        userId,
-        "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
-        Markup.inlineKeyboard([[Markup.button.url("🎉 参加する", inviteLink)]])
-      );
-      approvalMsgId = sent.message_id;
-    }
+    approvalMsgId = await sendMediaWithCaption(telegram, userId, target, caption, replyMarkup);
   } catch (err: any) {
-    console.warn(`[GATE] GIF send failed, using text fallback: ${err.message}`);
+    console.warn(`[GATE] Media send failed, text fallback: ${err.message}`);
     const sent = await telegram.sendMessage(
       userId,
-      "✨ 承認が完了しました！🎉\n\n下のボタンから参加してください。",
-      Markup.inlineKeyboard([
-        [Markup.button.url("🎉 参加する", inviteLink)],
-      ])
+      caption,
+      Markup.inlineKeyboard([[Markup.button.url("🎉 参加する", inviteLink)]])
     );
     approvalMsgId = sent.message_id;
   }
-
-  if (approvalMsgId) sentMessageIds.push(approvalMsgId);
 
   await sendLog({ telegram } as unknown as Telegraf, {
     type: "approved",
@@ -335,7 +334,7 @@ async function approveUser(
     target_id: target.target_id,
     step: "approved",
     challenge_fails: 0,
-    challenge_data: { pendingMessageIds: sentMessageIds } as any,
+    challenge_data: { pendingMessageIds: approvalMsgId ? [approvalMsgId] : [] } as any,
     last_message_id: approvalMsgId,
     last_attempt: new Date(),
   });
@@ -416,7 +415,7 @@ export function registerGateHandlers(bot: Telegraf): void {
 
         if (newFails >= maxFail) {
           try { await ctx.deleteMessage(); } catch {}
-          await ctx.telegram.sendMessage(userId, "本人確認に失敗しました。参加できません。");
+          await ctx.telegram.sendMessage(userId, `${titleHeader(target)}本人確認に失敗しました。参加できません。`);
           await rejectUser(
             ctx.telegram, userId, target, "Bot判定失敗", "bot_failed",
             ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
@@ -427,7 +426,7 @@ export function registerGateHandlers(bot: Telegraf): void {
           const buttons = newQ.options.map((opt, i) => Markup.button.callback(opt, `gate:challenge:${i}`));
           try {
             await ctx.editMessageText(
-              `不正解です（残り${remaining}回）\n\n${newQ.text}`,
+              `${titleHeader(target)}不正解です（残り${remaining}回）\n\n${newQ.text}`,
               Markup.inlineKeyboard([buttons])
             );
           } catch {}
@@ -484,7 +483,7 @@ export function registerGateHandlers(bot: Telegraf): void {
         await stepNext(ctx.telegram, userId, target, step, false);
       } else {
         try { await ctx.deleteMessage(); } catch {}
-        await ctx.telegram.sendMessage(userId, "不正解のため参加できません。");
+        await ctx.telegram.sendMessage(userId, `${titleHeader(target)}不正解のため参加できません。`);
         await rejectUser(
           ctx.telegram, userId, target, "質問失敗", "rejected",
           ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium
@@ -540,7 +539,7 @@ export function registerGateHandlers(bot: Telegraf): void {
       const target = await targetRepo.getTargetById(session.target_id);
       if (!target) return;
       try { await ctx.deleteMessage(); } catch {}
-      await ctx.telegram.sendMessage(userId, "ルールに同意しなかったため参加できません。");
+      await ctx.telegram.sendMessage(userId, `${titleHeader(target)}ルールに同意しなかったため参加できません。`);
       await rejectUser(
         ctx.telegram, userId, target, "ルール拒否", "rejected",
         ctx.from!.username, ctx.from!.first_name, (ctx.from as any).is_premium

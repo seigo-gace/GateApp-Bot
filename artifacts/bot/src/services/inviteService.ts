@@ -1,6 +1,14 @@
 import { Telegraf } from "telegraf";
 import * as inviteRepo from "../repositories/inviteRepo.js";
+import * as targetRepo from "../repositories/targetRepo.js";
 import type { InviteLink } from "../db/schema/invite_links.js";
+
+function formatInviteName(counter: number): string {
+  const num = counter + 1;
+  if (num <= 99) return `DC_GATEjp=${String(num).padStart(2, "0")}`;
+  if (num <= 999) return `DC_GATEjp=${String(num).padStart(3, "0")}`;
+  return `DC_GATEjp=${String(num).padStart(4, "0")}`;
+}
 
 export async function createInviteLink(
   bot: Telegraf,
@@ -8,13 +16,20 @@ export async function createInviteLink(
   chatId: number,
   userId: number
 ): Promise<InviteLink> {
-  const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+  const target = await targetRepo.getTargetById(targetId);
+  const currentCounter = target?.invite_counter ?? 0;
+  const linkName = formatInviteName(currentCounter);
+
+  const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const link = await (bot.telegram as any).createChatInviteLink(chatId, {
+    name: linkName,
     member_limit: 1,
     expire_date: Math.floor(expireAt.getTime() / 1000),
     creates_join_request: false,
   });
+
+  await targetRepo.updateTarget(targetId, { invite_counter: currentCounter + 1 });
 
   return inviteRepo.createInviteLink({
     target_id: targetId,
@@ -38,7 +53,6 @@ export async function revokeInviteLink(
   await inviteRepo.revokeInviteLink(inviteId);
 }
 
-// 招待リンク検証：ユーザー ID と期限を確認
 export async function validateAndUseInviteLink(
   bot: Telegraf,
   inviteLinkUrl: string,
@@ -46,25 +60,21 @@ export async function validateAndUseInviteLink(
   chatId: number
 ): Promise<{ valid: boolean; owned: boolean; inviteId?: number }> {
   const link = await inviteRepo.getInviteLinkByUrl(inviteLinkUrl);
-  
+
   if (!link) {
     return { valid: false, owned: false };
   }
 
   const isOwner = link.tg_user_id === attemptingUserId;
-  
+
   if (!isOwner) {
-    // 本人でない場合、リンク無効化して拒否
     try {
       await (bot.telegram as any).revokeChatInviteLink(chatId, inviteLinkUrl);
-    } catch (err) {
-      // Ignore revoke errors
-    }
+    } catch (err) {}
     await inviteRepo.revokeInviteLink(link.invite_id);
     return { valid: false, owned: false };
   }
 
-  // 本人の場合、リンク使用済みマーク
   await inviteRepo.markInviteLinkUsed(link.invite_id);
   return { valid: true, owned: true, inviteId: link.invite_id };
 }

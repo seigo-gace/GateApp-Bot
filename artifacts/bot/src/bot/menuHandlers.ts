@@ -19,6 +19,7 @@ import {
   adminListKeyboard,
   logGroupTopicSelectKeyboard,
   forumTopicsKeyboard,
+  mediaSettingsKeyboard,
 } from "./keyboards.js";
 import * as targetRepo from "../repositories/targetRepo.js";
 import * as logGroupRepo from "../repositories/logGroupRepo.js";
@@ -448,6 +449,49 @@ export function registerMenuHandlers(bot: Telegraf) {
     const userId = ctx.from!.id;
     await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `rule:reject:${targetId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
     await ctx.editMessageText("拒否ボタンの文言を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `target:rules:${targetId}`)]]));
+  });
+
+  // ─── TARGET: media settings ───
+  bot.action(/^target:media:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const target = await targetRepo.getTargetById(targetId);
+    const hasMedia = !!target?.approval_media_file_id;
+    const lines = ["承認メディア設定", ""];
+    if (hasMedia) {
+      lines.push(`メディアタイプ: ${target!.approval_media_type}`);
+    } else {
+      lines.push("メディア: デフォルト動画を使用");
+    }
+    lines.push(`テキスト: ${target?.approval_caption || "（デフォルト）"}`);
+    await ctx.editMessageText(lines.join("\n"), mediaSettingsKeyboard(targetId, hasMedia));
+  });
+
+  bot.action(/^media:info:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+  });
+
+  bot.action(/^media:upload:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const userId = ctx.from!.id;
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_media", awaiting_input: `media:upload:${targetId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
+    await ctx.editMessageText("承認時に送信するメディア（動画・GIF・画像）を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `target:media:${targetId}`)]]));
+  });
+
+  bot.action(/^media:caption:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    const userId = ctx.from!.id;
+    await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "awaiting_text", awaiting_input: `media:caption:${targetId}`, temp_data: null, last_message_id: (ctx.callbackQuery?.message as any)?.message_id ?? null });
+    await ctx.editMessageText("承認時に表示するテキストを送信してください。", Markup.inlineKeyboard([[Markup.button.callback("キャンセル", `target:media:${targetId}`)]]));
+  });
+
+  bot.action(/^media:reset:(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
+    await targetRepo.updateTarget(targetId, { approval_media_file_id: null, approval_media_type: null, approval_caption: null });
+    await ctx.editMessageText("メディアをデフォルトにリセットしました。", mediaSettingsKeyboard(targetId, false));
   });
 
   // ─── TARGET: preview ───

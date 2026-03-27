@@ -140,6 +140,11 @@ export async function runMigrations(): Promise<void> {
       );
 
       ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
+
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS approval_media_file_id TEXT;
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS approval_media_type TEXT;
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS approval_caption TEXT;
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS invite_counter INTEGER NOT NULL DEFAULT 0;
     `);
   } finally {
     client.release();
