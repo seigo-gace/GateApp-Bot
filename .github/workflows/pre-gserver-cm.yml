@@ -11,4 +11,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test artifacts/bot/tests/cmRotation.test.mjs artifacts/bot/tests/privateAdmission.test.mjs
+      - run: node --test artifacts/bot/tests/cmRotation.test.mjs artifacts/bot/tests/privateAdmission.test.mjs artifacts/bot/tests/mpbBoundary.test.mjs
