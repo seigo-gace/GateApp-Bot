@@ -56,10 +56,35 @@ export function prepareMpbCommand(input, deps) {
   });
 }
 
+// The real GroupBot repositories resolve destinations and authorization
+// asynchronously via PostgreSQL. Resolve both before the existing sync
+// validation, and reject both pending promises and non-boolean permission.
+export async function prepareMpbCommandAsync(input, deps) {
+  if (!deps || typeof deps.resolveDestination !== "function" ||
+      typeof deps.canAct !== "function") {
+    throw new Error("MPB_DEPENDENCIES_MISSING");
+  }
+  if (!input || typeof input !== "object") throw new Error("INVALID_MPB_COMMAND");
+  const target = await deps.resolveDestination({
+    originToken: input.originToken, actorUserId: input.actorUserId,
+    sourceType: input.sourceType, sourceId: input.sourceId,
+  });
+  const checked = validateMpbTarget(target);
+  const allowed = await deps.canAct({
+    actorUserId: input.actorUserId, sourceType: input.sourceType,
+    sourceId: input.sourceId, destinationKey: checked.destinationKey,
+    action: input.action,
+  });
+  return prepareMpbCommand(input, {
+    resolveDestination: () => target,
+    canAct: () => allowed,
+  });
+}
+
 // The existing MPB, not this adapter, owns idempotency, durable queue,
 // publication binding, retry, revision checks, and audit.
 export async function executeMpbCommand(input, deps) {
-  const command = prepareMpbCommand(input, deps);
+  const command = await prepareMpbCommandAsync(input, deps);
   const fn = deps.existingMpb?.[command.action];
   if (typeof fn !== "function") throw new Error("EXISTING_MPB_NOT_WIRED");
   const result = await fn(command);
