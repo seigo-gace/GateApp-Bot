@@ -66,3 +66,17 @@ test("invalid actor, revision and missing content fail closed", () => {
   assert.throws(() => prepareMpbCommand({...input(), revision: 0}, deps()), /INVALID_MPB_COMMAND/);
   assert.throws(() => prepareMpbCommand({...input(), text: ""}, deps()), /MPB_TEXT_REQUIRED/);
 });
+
+test("async authorization adapter accepts resolved owner", async () => {
+ const d = deps();
+ d.resolveDestination = async () => ({verified:true, allowed:true, canPost:true, chatId:-1001234567890, threadId:321, destinationKey:"topic:approved"});
+ d.canAct = async () => true;
+ const result = await executeMpbCommand(input(), d);
+ assert.equal(result.post_id, "existing-mpb-id");
+});
+
+test("async unknown topic is blocked", async () => {
+ const d = deps();
+ d.resolveDestination = async () => null;
+ await assert.rejects(executeMpbCommand(input(), d), /DESTINATION_NOT_VERIFIED/);
+});
