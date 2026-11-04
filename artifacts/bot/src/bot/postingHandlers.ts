@@ -267,7 +267,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const announcementText=preview("room",draft);
    await createAnnouncement(ctx.from.id,rev,"announcement",announcementText,
      undefined,[],[],Number(saved.sourceId));
-   await markRoomDraftSaved(ctx.from.id,rev);
+   await markRoomDraftSaved(ctx.from.id,rev,Number(saved.sourceId));
    await ctx.answerCbQuery("非公開保存しました");
    await ctx.editMessageText("✅ ROOMを非公開保存しました。\nROOM #"+saved.sourceId+
      "\n/myrooms で準備・開始・延期・終了を管理できます。"+
