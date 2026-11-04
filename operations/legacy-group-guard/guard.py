@@ -27,6 +27,8 @@ PERMISSION_KEYS = (
 LOCKED = {key: False for key in PERMISSION_KEYS}
 # Never act on old join notifications left by a failed webhook.
 JOIN_MAX_AGE_SECONDS = 120
+EXPECTED_BOT_ID = 8086265383
+MESSAGE_DELETE_MAX_AGE_SECONDS = 47 * 60 * 60
 
 
 def fresh_join_event(timestamp):
