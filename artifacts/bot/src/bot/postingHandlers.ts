@@ -1,7 +1,7 @@
 import { Markup, type Telegraf } from "telegraf";
 import { getProfile } from "../services/profileRepository.js";
 import { renderPublicProfile } from "../services/profileCore.js";
-import { listVerifiedTopics } from "../services/postingDelivery.js";
+import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,type AnnouncementKind } from "../services/postingDomain.js";
