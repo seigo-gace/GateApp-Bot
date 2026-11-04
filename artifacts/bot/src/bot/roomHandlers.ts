@@ -37,12 +37,14 @@ export function registerRoomHandlers(bot:Telegraf):void{
   if(action==="schedule"||action==="postpone"){
    await ctx.answerCbQuery();
    await pool.query(
-    `INSERT INTO public_post_drafts (owner_user_id,module,step,data)
-     VALUES($1,'room','awaiting_datetime',$2::jsonb)
-     ON CONFLICT(owner_user_id,module) DO UPDATE SET
-      step='awaiting_datetime',data=EXCLUDED.data,
-      revision=public_post_drafts.revision+1,updated_at=NOW()`,
-    [ctx.from.id,JSON.stringify({roomId,revision:rev,action})]);
+    `INSERT INTO room_host_sessions
+      (owner_user_id,room_id,expected_revision,requested_action,expires_at)
+     VALUES($1,$2,$3,$4,NOW()+INTERVAL '20 minutes')
+     ON CONFLICT(owner_user_id) DO UPDATE SET
+      room_id=EXCLUDED.room_id,expected_revision=EXCLUDED.expected_revision,
+      requested_action=EXCLUDED.requested_action,expires_at=EXCLUDED.expires_at,
+      updated_at=NOW()`,
+    [ctx.from.id,roomId,rev,action]);
    await ctx.reply("変更後の開催日時を日本時間で入力してください。例：2026/11/20 20:00");
    return;
   }
@@ -57,19 +59,18 @@ export function registerRoomHandlers(bot:Telegraf):void{
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||ctx.message.text.startsWith("/"))return next();
   const d=await pool.query(
-   `SELECT data,revision FROM public_post_drafts WHERE owner_user_id=$1
-     AND module='room' AND step='awaiting_datetime'`,[ctx.from.id]);
+   `SELECT room_id,expected_revision,requested_action FROM room_host_sessions
+     WHERE owner_user_id=$1 AND expires_at>NOW()`,[ctx.from.id]);
   if(d.rows.length!==1)return next();
   try{
-   const data=d.rows[0].data;
+   const data=d.rows[0];
    const date=parseJstDateTime(ctx.message.text);
-   const outcome=await updateRoomState(ctx.from.id,Number(data.roomId),
-    Number(data.revision),data.action,date);
+   const outcome=await updateRoomState(ctx.from.id,Number(data.room_id),
+    Number(data.expected_revision),data.requested_action,date);
    await pool.query(
-    `DELETE FROM public_post_drafts WHERE owner_user_id=$1
-    AND module='room' AND step='awaiting_datetime' AND revision=$2`,
-    [ctx.from.id,d.rows[0].revision]);
-   await ctx.reply("✅ 開催日時を保存しました。ROOM #"+data.roomId+
+    "DELETE FROM room_host_sessions WHERE owner_user_id=$1 AND room_id=$2",
+    [ctx.from.id,Number(data.room_id)]);
+   await ctx.reply("✅ 開催日時を保存しました。ROOM #"+data.room_id+
     "\n状態："+outcome.state+"\n/myrooms から確認できます。");
   }catch(e){await ctx.reply("日時かROOMの状態を確認できません。/myrooms から開き直してください。");}
  });
