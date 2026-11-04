@@ -14,7 +14,8 @@ export type ProfileBasicDraft = ProfileBasic & {position?: ProfilePosition};
 export function parseProfileBasic(text: string): ProfileBasic {
   const lines = text.trim().split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   if (lines.length < 1 || lines.length > 2) throw new Error("名前は任意、数値は1行で入力してください");
-  const nickname = lines.length === 2 ? lines[0] : null;
+  if (lines.length !== 2 || !lines[0]) throw new Error("ニックネームと3数値の2行入力が必須です");
+  const nickname = lines[0];
   if (nickname && nickname.length > 40) throw new Error("ニックネームは40文字以内です");
   const m = lines[lines.length - 1].match(/^(\d{2,3}) (\d{2,3}) (\d{2,3})$/);
   if (!m) throw new Error("身長 体重 年齢を半角スペースで区切って入力してください。例：175 80 39");
@@ -49,7 +50,7 @@ export function renderProfileBasicPreview(p: ProfileBasicDraft, username: string
  * Telegram username and account URL are NEVER added automatically.
  */
 export function renderPublicProfile(p: ProfileBasicDraft): string {
-  if (!p.position || !isProfilePosition(p.position)) throw new Error("PROFILE_INCOMPLETE");
+  if (!p.nickname?.trim() || !p.position || !isProfilePosition(p.position)) throw new Error("PROFILE_INCOMPLETE");
   return [
     "🪪 " + escapeProfileHtml(p.nickname?.trim() || "匿名ユーザー"),
     p.heightCm + "cm | " + p.weightKg + "kg | " + p.age + "歳 | " + escapeProfileHtml(p.position),
