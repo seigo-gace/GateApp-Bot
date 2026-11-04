@@ -1,11 +1,11 @@
 /** TGtumbler A05 profile basic fields. Adopted Notion profile spec.
- * Nickname is optional; the three numbers share one line.
+ * Adopted latest spec: nickname is mandatory; three numbers share line 2.
  * Saving a profile never publishes it to a group.
  */
 export const PROFILE_POSITIONS = ["タチ", "タチリバ", "リバ", "ウケリバ", "ウケ"] as const;
 export type ProfilePosition = typeof PROFILE_POSITIONS[number];
 export type ProfileBasic = {
-  nickname: string | null;
+  nickname: string;
   heightCm: number;
   weightKg: number;
   age: number;
@@ -13,7 +13,7 @@ export type ProfileBasic = {
 export type ProfileBasicDraft = ProfileBasic & {position?: ProfilePosition};
 export function parseProfileBasic(text: string): ProfileBasic {
   const lines = text.trim().split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-  if (lines.length < 1 || lines.length > 2) throw new Error("名前は任意、数値は1行で入力してください");
+  if (lines.length !== 2) throw new Error("ニックネームと3数値の2行入力が必須です");
   if (lines.length !== 2 || !lines[0]) throw new Error("ニックネームと3数値の2行入力が必須です");
   const nickname = lines[0];
   if (nickname && nickname.length > 40) throw new Error("ニックネームは40文字以内です");
