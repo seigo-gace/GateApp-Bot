@@ -1,6 +1,6 @@
 import { Markup, type Telegraf } from "telegraf";
 import { getProfile } from "../services/profileRepository.js";
-import { renderPublicProfile } from "../services/profileCore.js";
+import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
@@ -132,7 +132,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
    await ctx.answerCbQuery();
    await ctx.editMessageText(
-    "公開確認：\n"+text+"\n\n投稿先："+selected.board+" / "+selected.title+"\nこの宛先に公開する場合だけボタンを押してください。",
+    "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+"\nこの宛先に公開する場合だけボタンを押してください。",
     {parse_mode:"HTML",...Markup.inlineKeyboard([
      [Markup.button.callback("✅ この内容を公開",`post:publish:${module}:${rev}:${topicId}`)],
      [Markup.button.callback("キャンセル（非公開のまま）","post:cancel")],
@@ -170,8 +170,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }else{
      const kind=draft.data.kind as AnnouncementKind;
      const value=String(draft.data.text);
-     const ann=await createAnnouncement(ctx.from.id,revision,kind,value);
-     sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,kind,text:value});
+     const eventAt=draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined;
+     const ann=await createAnnouncement(ctx.from.id,revision,kind,value,eventAt);
+     sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,kind,text:value,eventAt});
     }
    }
    const result=await publishPost(ctx.telegram,{
