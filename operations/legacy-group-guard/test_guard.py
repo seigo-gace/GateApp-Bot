@@ -64,9 +64,9 @@ class GuardTests(unittest.TestCase):
             if method == "getChatMember":
                 return {"status": "member"}
             return True
-        with patch.object(guard, "api", fake_api):
+        with patch.object(guard, "api", fake_api), patch.object(guard.time, "time", return_value=1000):
             result = guard.handle_update("token", guard.ALLOWED_OLD_CHAT_ID, 500,
-                {"update_id": 10, "chat_member": {
+                {"update_id": 10, "chat_member": {"date": 990,
                     "chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
                     "old_chat_member": {"status": "left"},
                     "new_chat_member": {"status": "member", "user": {"id": 901, "is_bot": False}}
@@ -83,14 +83,37 @@ class GuardTests(unittest.TestCase):
             if method == "getChatMember":
                 return {"status": "member"}
             return True
-        with patch.object(guard, "api", fake_api):
+        with patch.object(guard, "api", fake_api), patch.object(guard.time, "time", return_value=1000):
             outcomes = guard.handle_update("token", guard.ALLOWED_OLD_CHAT_ID, 500,
-                {"message": {"chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
+                {"message": {"date": 990, "chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
                              "message_id": 31,
                              "new_chat_members": [{"id": 902, "is_bot": True}]}})
         self.assertEqual(outcomes, ["KICKED", "MESSAGE_DELETED"])
         self.assertEqual(methods, ["getChatMember", "banChatMember",
                                   "unbanChatMember", "deleteMessage"])
+
+    def test_stale_join_backlog_never_kicks_current_member(self):
+        with patch.object(guard.time, "time", return_value=1000):
+            for date in (None, 500, 0, 1200):
+                for kind in ("chat_member", "message"):
+                    with self.subTest(date=date, kind=kind), patch.object(guard, "api") as mock_api:
+                        if kind == "chat_member":
+                            update = {"chat_member": {
+                                "date": date, "chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
+                                "old_chat_member": {"status": "left"},
+                                "new_chat_member": {"status": "member", "user": {"id": 901}}}}
+                            expected = []
+                        else:
+                            update = {"message": {
+                                "date": date, "chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
+                                "message_id": 42, "new_chat_members": [{"id": 901}]}}
+                            expected = ["MESSAGE_DELETED"]
+                            mock_api.return_value = True
+                        self.assertEqual(guard.handle_update(
+                            "token", guard.ALLOWED_OLD_CHAT_ID, 500, update), expected)
+                        methods = [call.args[1] for call in mock_api.call_args_list]
+                        self.assertNotIn("banChatMember", methods)
+                        self.assertNotIn("unbanChatMember", methods)
 
     def test_admin_is_not_kicked(self):
         methods = []
