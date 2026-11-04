@@ -11,7 +11,7 @@ const BOARDS: Readonly<Record<string,BoardKey>>={
  "-1003770334893":"gay_board",
 };
 const COMMANDS: Readonly<Record<string,PostPurpose>>={
- bindprofile:"profile",bindroom:"room",bindannounce:"announcement",
+ bindprofile:"profile",bindroom:"room",bindannounce:"announcement",bindlink:"link",
 };
 export function registerTopicBindingHandlers(bot:Telegraf):void{
  for(const [command,purpose] of Object.entries(COMMANDS)){
