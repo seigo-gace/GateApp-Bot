@@ -6,9 +6,7 @@ services:
     env_file: .env
     environment:
       GUARD_STATE_FILE: /state/state.json
-      CANONICAL_PHOTO_FILE: /canonical/photo.jpg
     volumes:
-      - ./canonical.jpg:/canonical/photo.jpg:ro
       - ./state:/state
     read_only: true
     security_opt:
