@@ -3,10 +3,10 @@
  */
 import { Markup,type Telegraf } from "telegraf";
 import {pool} from "../db/index.js";
-import {updateRoomState,reportRoomParticipation,type RoomAction} from "../services/roomLifecycle.js";
+import {updateRoomState,changeRoomVisibility,reportRoomParticipation,type RoomAction} from "../services/roomLifecycle.js";
 import {parseJstDateTime} from "../services/postingDomain.js";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../services/roomAccess.js";
-function actions(roomId:number,revision:number,status:string){
+function actions(roomId:number,revision:number,status:string,visibility?:string){
  const allowed:Record<string,RoomAction[]>={
   draft:["schedule","prepare","cancel"],
   scheduled:["prepare","postpone","cancel"],
@@ -16,8 +16,15 @@ function actions(roomId:number,revision:number,status:string){
  };
  const labels:Record<RoomAction,string>={schedule:"📅 予約",prepare:"✅ 準備完了",
   start:"▶ 開始を申告",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"■ 終了を申告"};
- return Markup.inlineKeyboard((allowed[status]||[]).map(x=>[
-  Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`)]));
+ const rows=(allowed[status]||[]).map(x=>[
+  Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`)]);
+ if(["draft","scheduled","ready"].includes(status)&&visibility){
+  const next=visibility==="public"?"approved_only":"public";
+  rows.push([Markup.button.callback(
+    next==="public"?"🔓 自由参加へ変更":"🔐 承認制へ変更",
+    `room:visibility:${roomId}:${revision}:${next}`)]);
+ }
+ return Markup.inlineKeyboard(rows);
 }
 export function registerRoomHandlers(bot:Telegraf):void{
  bot.command("joinrooms",async ctx=>{
@@ -48,12 +55,31 @@ export function registerRoomHandlers(bot:Telegraf):void{
  bot.command("myrooms",async ctx=>{
   if(ctx.chat.type!=="private")return;
   const r=await pool.query(
-   `SELECT room_id,title,status,revision FROM room_posts
+   `SELECT room_id,title,status,revision,join_visibility FROM room_posts
     WHERE owner_user_id=$1 ORDER BY updated_at DESC LIMIT 20`,[ctx.from.id]);
   if(!r.rows.length){await ctx.reply("ROOMはまだありません。/room で下書きから作成できます。");return;}
   for(const x of r.rows){
    await ctx.reply("🎬 "+String(x.title)+"\n状態："+String(x.status)+
-    "\nROOM #"+x.room_id,actions(Number(x.room_id),Number(x.revision),x.status));
+    "\nROOM #"+x.room_id,actions(Number(x.room_id),Number(x.revision),x.status,x.join_visibility));
+  }
+ });
+ bot.action(/^room:visibility:(\d+):(\d+):(public|approved_only)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const roomId=Number(ctx.match[1]),expectedRevision=Number(ctx.match[2]);
+  const visibility=ctx.match[3] as "public"|"approved_only";
+  try{
+   const update=await changeRoomVisibility(
+    ctx.from.id,roomId,expectedRevision,visibility);
+   await ctx.answerCbQuery("参加方式を保存しました");
+   const current=await pool.query(
+    "SELECT status FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
+    [roomId,ctx.from.id]);
+   await ctx.editMessageText("ROOM #"+roomId+" の参加方式："+
+    (visibility==="public"?"自由参加":"承認制")+
+    "\n既存投稿の更新要求をDBへ登録しました。会議URLは公開していません。",
+    actions(roomId,update.revision,current.rows[0]?.status||"draft",visibility));
+  }catch{
+   await ctx.answerCbQuery("設定を変更できません。/myrooms で状態を確認してください。");
   }
  });
  bot.action(/^room:action:(\d+):(\d+):(schedule|prepare|start|postpone|cancel|finish)$/,async ctx=>{
