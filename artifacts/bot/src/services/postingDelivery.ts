@@ -61,14 +61,12 @@ export async function acknowledgeDelivery(id:number,messageId:number):Promise<vo
  try{
   await cx.query("BEGIN");
   const update=await cx.query(
-   "UPDATE posting_deliveries SET status='sent',telegram_message_id=$2,updated_at=NOW() WHERE delivery_id=$1 AND status='sending' RETURNING source_type,owner_user_id",
+   "UPDATE posting_deliveries SET status='sent',telegram_message_id=$2,updated_at=NOW() WHERE delivery_id=$1 AND status='sending' RETURNING delivery_id",
    [id,messageId]
   );
   if(update.rows.length!==1)throw new Error("DELIVERY_STALE");
-  if(update.rows[0].source_type==="profile"){
-   await cx.query("UPDATE profiles SET status='published' WHERE owner_user_id=$1",
-    [update.rows[0].owner_user_id]);
-  }
+  // MPB owns delivery only. Source-specific profile/ROOM/announcement state
+  // must be updated by their owning module after the delivery receipt.
   await cx.query("COMMIT");
  }catch(e){await cx.query("ROLLBACK");throw e;}finally{cx.release();}
 }
