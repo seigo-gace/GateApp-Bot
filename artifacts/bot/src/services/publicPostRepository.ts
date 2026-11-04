@@ -61,7 +61,7 @@ export async function createRoom(id:number,revision:number,title:string,external
  );
  return {sourceId:String(r.rows[0].room_id),joinUrl:String(r.rows[0].join_url)};
 }
-export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string):
+export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string,eventAt?:Date):
  Promise<{sourceId:string}>{
  const key="announcement:"+validOwner(id)+":"+revision;
  const r=await pool.query(
@@ -69,7 +69,7 @@ export async function createAnnouncement(id:number,revision:number,kind:Announce
    VALUES($1,$2,$3,$4,'draft')
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
-  [key,id,kind,text]
+  [key,id,kind,text,eventAt||null]
  );
  return {sourceId:String(r.rows[0].announcement_id)};
 }
