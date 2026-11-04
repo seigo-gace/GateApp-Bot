@@ -44,3 +44,14 @@ export function renderProfileBasicPreview(p: ProfileBasicDraft, username: string
     "PR：",
   ].join("\n");
 }
+
+/** Public profile contains only explicitly collected profile fields.
+ * Telegram username and account URL are NEVER added automatically.
+ */
+export function renderPublicProfile(p: ProfileBasicDraft): string {
+  if (!p.position || !isProfilePosition(p.position)) throw new Error("PROFILE_INCOMPLETE");
+  return [
+    "🪪 " + escapeProfileHtml(p.nickname?.trim() || "匿名ユーザー"),
+    p.heightCm + "cm | " + p.weightKg + "kg | " + p.age + "歳 | " + escapeProfileHtml(p.position),
+  ].join("\n");
+}
