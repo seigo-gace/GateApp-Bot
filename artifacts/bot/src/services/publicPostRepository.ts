@@ -96,3 +96,26 @@ export async function createLinkButton(id:number,revision:number,draft:LinkDraft
  );
  return {sourceId:String(r.rows[0].link_post_id)};
 }
+
+/** Source owner transitions after an MPB send receipt. The delivery adapter
+ * never writes the business tables. Failed state sync is reported as reconcile.
+ */
+export async function markPostSourcePublished(
+ ownerId:number,module:PostModule,sourceId:string
+):Promise<void>{
+ validOwner(ownerId);
+ if(!/^\d+$/.test(sourceId))throw new Error("POST_SOURCE_ID_INVALID");
+ const table=module==="link"?"link_button_posts":"announcement_posts";
+ const idColumn=module==="link"?"link_post_id":"announcement_id";
+ const next=module==="link"?
+  `UPDATE link_button_posts SET status='published',updated_at=NOW()
+    WHERE link_post_id=$1 AND owner_user_id=$2
+      AND status IN ('draft','published') RETURNING link_post_id`:
+  `UPDATE announcement_posts SET status='published',
+      accept_applications=CASE WHEN kind='recruitment' THEN TRUE ELSE FALSE END,
+      updated_at=NOW()
+    WHERE announcement_id=$1 AND owner_user_id=$2
+      AND status IN ('draft','publishing','published') RETURNING announcement_id`;
+ const r=await pool.query(next,[sourceId,ownerId]);
+ if(r.rows.length!==1)throw new Error("POST_SOURCE_SYNC_NEEDS_RECONCILE");
+}
