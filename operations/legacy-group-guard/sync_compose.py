@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import stat
+import sys
 import urllib.request
 
 ROOT = Path("/home/gace/legacy-group-guard-deploy/operations/legacy-group-guard")
@@ -71,3 +72,4 @@ finally:
     print("EXIT_CODE=" + ("0" if status == "PASS" else "1"))
     print("PROJECT_END=LegacyGuard")
     print("========== GACE_RESULT_END ==========", flush=True)
+sys.exit(0 if status == "PASS" else 1)
