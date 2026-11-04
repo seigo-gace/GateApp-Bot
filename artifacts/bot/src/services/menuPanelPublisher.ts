@@ -3,7 +3,7 @@
  * Every ambiguous send/edit/pin result is persisted for manual reconciliation.
  */
 import type { Telegram } from "telegraf";
-import { Markup } from "telegraf";
+import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
 import {guideMessageUrl} from "../bot/generalGuideHandlers.js";
 import {newMenuToken,tokenHash,type MenuFeature} from "./menuOrigin.js";
@@ -100,15 +100,13 @@ export async function publishExistingMenuPanel(
   const rendered=renderMenuPanel({
    type:panel.panel_type,board:board(chatId),links,entryLinks:entries,
   });
-  const keyboard=Markup.inlineKeyboard(rendered.rows.map(row=>
-   row.map(b=>Markup.button.url(b.text,b.url))));
+  const dispatcher=createTelegramDispatcher(telegram);
+  const target={chatId,threadId};
+  const body={text:rendered.text,buttons:rendered.rows};
   if(messageId!==null){
-   await telegram.editMessageText(chatId,messageId,undefined,rendered.text,keyboard);
+   await dispatcher.revise(target,messageId,body);
   }else{
-   const message=await telegram.sendMessage(chatId,rendered.text,{
-    message_thread_id:threadId,...keyboard,
-   });
-   messageId=message.message_id;
+   messageId=await dispatcher.publish(target,body);
    await pool.query(
     "UPDATE board_menu_panels SET message_id=$2,updated_at=NOW() WHERE panel_id=$1 AND state='publishing'",
     [panel.panel_id,messageId]);
