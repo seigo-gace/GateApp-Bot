@@ -1,5 +1,5 @@
 import { Markup, type Telegraf, type Telegram } from "telegraf";
-import { getProfile } from "../services/profileRepository.js";
+import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
@@ -289,13 +289,19 @@ export function registerPostingHandlers(bot:Telegraf):void{
     sourceType:module==="room"?"announcement":module,
     destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,approved:true,
    });
-   if(module!=="profile")await markDraftPublished(ctx.from.id,module,revision);
+   try{
+    if(module==="profile")
+     await recordProfilePublication(ctx.from.id,revision,result.chatId,result.threadId,result.messageId);
+    else await markDraftPublished(ctx.from.id,module,revision);
+   }catch{
+    throw new Error("POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE");
+   }
    await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
    const msg=e instanceof Error?e.message:"投稿失敗";
-   await ctx.reply(msg==="PUBLISH_NEEDS_RECONCILE"?
-    "送信結果の照合が必要です。重複投稿防止のため自動再送は行いません。":
+   await ctx.reply(msg==="PUBLISH_NEEDS_RECONCILE"||msg==="POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE"?
+    "投稿と元データの照合が必要です。重複投稿防止のため自動再送は行いません。":
     "投稿を確認できませんでした："+msg);
   }
  });
