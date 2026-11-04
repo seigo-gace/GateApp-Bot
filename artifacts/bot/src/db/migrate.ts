@@ -70,6 +70,16 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(chat_id,message_thread_id,panel_type)
       );
+      CREATE TABLE IF NOT EXISTS gaybbs_feature_release_gates (
+        feature TEXT PRIMARY KEY CHECK(feature IN ('profile','announcement','room','link','search')),
+        source_commit TEXT NOT NULL CHECK(length(source_commit)=40),
+        ci_evidence TEXT NOT NULL,
+        gserver_runtime_evidence TEXT NOT NULL,
+        telegram_e2e_evidence TEXT NOT NULL,
+        approved_by BIGINT NOT NULL,
+        approved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE
+      );
       CREATE TABLE IF NOT EXISTS board_menu_entry_tokens (
         token_hash TEXT PRIMARY KEY,
         panel_id BIGINT NOT NULL REFERENCES board_menu_panels(panel_id),
