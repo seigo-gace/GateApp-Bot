@@ -244,7 +244,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.reply(e instanceof Error?e.message:"入力内容を確認してください。");
   }
  });
- bot.action(/^post:linkcols:(\\d+):([123])$/,async ctx=>{
+ bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
   if(!privateDM(ctx))return;
   const rev=Number(ctx.match[1]),cols=Number(ctx.match[2]) as 1|2|3;
   const d=await getDraft(ctx.from.id,"link");
