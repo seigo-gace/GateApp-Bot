@@ -89,7 +89,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    "予告文を送ってください。開催日時は公開前に別途必要です。":
    "本文を1通で送ってください。公開前に内容と投稿先を確認します。");
  });
- bot.action(/^post:tag:(\\d+):(\\d{1,2})$/,async ctx=>{
+ bot.action(/^post:tag:(\d+):(\d{1,2})$/,async ctx=>{
   if(!privateDM(ctx))return;
   const rev=Number(ctx.match[1]), i=Number(ctx.match[2]);
   const d=await getDraft(ctx.from.id,"announcement");
@@ -105,7 +105,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.editMessageText("🎯 募集目的・📍場所/移動を選択してください（足ありは独立）",
    tagPanel(next));
  });
- bot.action(/^post:place:(\\d+):([012])$/,async ctx=>{
+ bot.action(/^post:place:(\d+):([012])$/,async ctx=>{
   if(!privateDM(ctx))return;
   const rev=Number(ctx.match[1]),index=Number(ctx.match[2]);
   const d=await getDraft(ctx.from.id,"announcement");
@@ -125,7 +125,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.editMessageText("🎯 募集目的・📍場所/移動を選択してください（足ありは独立）",
    tagPanel(next));
  });
- bot.action(/^post:tagsdone:(\\d+)$/,async ctx=>{
+ bot.action(/^post:tagsdone:(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const rev=Number(ctx.match[1]);
   const d=await getDraft(ctx.from.id,"announcement");
@@ -140,7 +140,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     text:String(d.data.text),purposeCodes,placeCodes});
    const updated=await updateDraft(ctx.from.id,"announcement",rev,"preview",d.data);
    await ctx.answerCbQuery();
-   await ctx.editMessageText("プレビュー（まだ投稿していません）\\n"+preview("announcement",updated));
+   await ctx.editMessageText("プレビュー（まだ投稿していません）\n"+preview("announcement",updated));
    await destinationMenu(ctx,"announcement",updated.revision);
   }catch(e){
    await ctx.answerCbQuery(e instanceof Error?e.message:"タグ内容を確認してください。");
