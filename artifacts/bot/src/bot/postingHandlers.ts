@@ -5,16 +5,23 @@ import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDeliver
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,type AnnouncementKind } from "../services/postingDomain.js";
-import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,
+import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,createLinkButton,
  createAnnouncement,markDraftPublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
+import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 
-type Module="profile"|"room"|"announcement";
-const LABELS:Record<Module,string>={profile:"プロフィール",room:"ROOM",announcement:"告知・募集"};
+type Module="profile"|"room"|"announcement"|"link";
+const LABELS:Record<Module,string>={profile:"プロフィール",room:"ROOM",announcement:"告知・募集",link:"リンクボタン"};
 function privateDM(ctx:{chat?:{type:string}}):boolean{return ctx.chat?.type==="private";}
 function preview(module:Module,draft:EditorDraft):string {
+ if(module==="link"){
+  const d=draft.data as LinkDraft;
+  return renderLinkCard(d)+"\n"+d.buttons.map((b,i)=>
+   (i+1)+". "+escapeProfileHtml(b.label)+" → "+escapeProfileHtml(new URL(b.url).hostname)).join("\n")+
+   "\n表示列数："+d.columns;
+ }
  if(module==="room"){
   const title=String(draft.data.title||"");
   const url=draft.data.externalUrl ? String(draft.data.externalUrl) : undefined;
@@ -72,6 +79,12 @@ export async function startRoomEditor(telegram:Telegram,userId:number):Promise<v
  await telegram.sendMessage(userId,
   "🎬 ROOM名を入力してください。持込URLを使う場合は「ROOM名 | https://...」と1通で送れます。URL省略時はJitsiを生成します。");
 }
+/** LinkButton uses the same DM draft, owner and verified topic as other posts. */
+export async function startLinkEditor(telegram:Telegram,userId:number):Promise<void>{
+ await beginDraft(userId,"link","awaiting_text");
+ await telegram.sendMessage(userId,
+  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。");
+}
 /** Announcement category editor shared by command and Topic deep link. */
 export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
  const draft=await beginDraft(userId,"announcement","awaiting_kind");
@@ -92,6 +105,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("room",async ctx=>{
   if(!privateDM(ctx))return;
   await startRoomEditor(ctx.telegram,ctx.from.id);
+ });
+ bot.command("link",async ctx=>{
+  if(!privateDM(ctx))return;
+  await startLinkEditor(ctx.telegram,ctx.from.id);
  });
  bot.command("announce",async ctx=>{
   if(!privateDM(ctx))return;
@@ -184,6 +201,16 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await destinationMenu(ctx,current.module,updated.revision);
     return;
    }
+   if(current.module==="link"){
+    const parsed=parseLinkInput(input);
+    const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
+      {...parsed,columns:1});
+    await ctx.reply("プレビュー（まだ投稿していません）\n"+preview("link",updated));
+    await ctx.reply("ボタンの表示列数を選択してください。",
+      Markup.inlineKeyboard([[1,2,3].map(i=>Markup.button.callback(
+        i+"列",`post:linkcols:${updated.revision}:${i}`))]));
+    return;
+   }
    if(current.module==="room"){
     const parts=input.split(" | ");
     if(parts.length>2)throw new Error("ROOM名とURLは「 | 」で区切ってください。");
@@ -217,7 +244,20 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.reply(e instanceof Error?e.message:"入力内容を確認してください。");
   }
  });
- bot.action(/^post:choose:(profile|room|announcement):(\d+):(\d+)$/,async ctx=>{
+ bot.action(/^post:linkcols:(\\d+):([123])$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]),cols=Number(ctx.match[2]) as 1|2|3;
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.step!=="preview"||d.revision!==rev){
+   await ctx.answerCbQuery("古い選択です。/link で再開してください。");return;
+  }
+  const data={...d.data,columns:cols};
+  const next=await updateDraft(ctx.from.id,"link",rev,"preview",data);
+  await ctx.answerCbQuery("列数を保存しました");
+  await ctx.editMessageText("公開前プレビュー\n"+preview("link",next));
+  await destinationMenu(ctx,"link",next.revision);
+ });
+ bot.action(/^post:choose:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const module=ctx.match[1] as Module;
   const rev=Number(ctx.match[2]);const topicId=Number(ctx.match[3]);
@@ -248,7 +288,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("公開しません");
   await ctx.editMessageText("公開は取り消しました。下書きは保存されています。");
  });
- bot.action(/^post:publish:(profile|room|announcement):(\d+):(\d+)$/,async ctx=>{
+ bot.action(/^post:publish:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const module=ctx.match[1] as Module;
   const revision=Number(ctx.match[2]);const topicId=Number(ctx.match[3]);
