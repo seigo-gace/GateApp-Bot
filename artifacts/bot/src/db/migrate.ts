@@ -18,6 +18,33 @@ export async function runMigrations(): Promise<void> {
         revision INTEGER NOT NULL DEFAULT 1,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS posting_topics (
+        topic_id BIGSERIAL PRIMARY KEY,
+        board_key TEXT NOT NULL CHECK (board_key IN ('area_bbs','video_chat','gay_board')),
+        purpose TEXT NOT NULL CHECK (purpose IN ('profile','room','announcement')),
+        chat_id BIGINT NOT NULL CHECK (chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK (message_thread_id > 0),
+        title TEXT NOT NULL,
+        verified_by BIGINT,
+        verified_at TIMESTAMPTZ,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        UNIQUE (board_key,purpose,chat_id,message_thread_id),
+        CHECK (NOT enabled OR (verified_at IS NOT NULL AND verified_by IS NOT NULL))
+      );
+      CREATE TABLE IF NOT EXISTS posting_deliveries (
+        delivery_id BIGSERIAL PRIMARY KEY,
+        source_type TEXT NOT NULL CHECK (source_type IN ('profile','room','announcement')),
+        source_id TEXT NOT NULL,
+        owner_user_id BIGINT NOT NULL,
+        source_revision INTEGER NOT NULL CHECK (source_revision > 0),
+        posting_topic_id BIGINT NOT NULL REFERENCES posting_topics(topic_id),
+        operation_key TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (status IN ('pending','sending','sent','needs_reconcile','failed','deleted')),
+        telegram_message_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS profile_drafts (
         owner_user_id BIGINT PRIMARY KEY,
         step TEXT NOT NULL,
