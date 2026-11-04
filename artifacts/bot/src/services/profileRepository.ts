@@ -77,3 +77,36 @@ export async function savePrivateDraft(id: number, revision: number,
     throw e;
   } finally { client.release(); }
 }
+
+/** Profile source owns public-state transitions. MPB only owns delivery.
+ * A Telegram success with a DB failure must be reconciled using delivery rows;
+ * publishing again is NOT a recovery action.
+ */
+export async function recordProfilePublication(
+ id:number,revision:number,chatId:number,threadId:number,messageId:number
+):Promise<void>{
+ ownerId(id);
+ if(![revision,threadId,messageId].every(n=>Number.isSafeInteger(n)&&n>0)||
+    !Number.isSafeInteger(chatId)||chatId>=0)
+  throw new Error("PROFILE_PUBLICATION_INVALID");
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const p=await c.query(
+   `UPDATE profiles SET status='published',updated_at=NOW()
+    WHERE owner_user_id=$1 AND revision=$2 AND status IN ('private','published')
+    RETURNING owner_user_id`,[id,revision]);
+  if(p.rows.length!==1)throw new Error("PROFILE_REVISION_CHANGED_AFTER_SEND");
+  await c.query(
+   `INSERT INTO profile_publications
+      (owner_user_id,chat_id,thread_id,message_id,status,synced_revision,updated_at)
+    VALUES($1,$2,$3,$4,'published',$5,NOW())
+    ON CONFLICT(owner_user_id,chat_id,thread_id) DO UPDATE SET
+      message_id=EXCLUDED.message_id,status='published',
+      synced_revision=EXCLUDED.synced_revision,last_error=NULL,updated_at=NOW()
+    WHERE profile_publications.synced_revision IS NULL OR
+      profile_publications.synced_revision<=EXCLUDED.synced_revision`,
+   [id,chatId,threadId,messageId,revision]);
+  await c.query("COMMIT");
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}
