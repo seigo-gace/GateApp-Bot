@@ -10,6 +10,7 @@ import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
+import {createRoom,createAnnouncement} from "../src/services/publicPostRepository.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -161,6 +162,34 @@ try{
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Finished ROOM must stop distributing join URL");
  console.log("GAYBBS_DB_ROOM_JOIN_AUTHORIZATION=PASS");
+ // Separate private creation is idempotent and has no MPB send.
+ const privateSaved=await createRoom(555001,1,"プライベート作成");
+ const privateSame=await createRoom(555001,1,"プライベート作成");
+ assert.equal(privateSaved.sourceId,privateSame.sourceId);
+ assert.equal(privateSaved.joinUrl,privateSame.joinUrl);
+ const status=await pool.query(
+  "SELECT status,join_visibility FROM room_posts WHERE room_id=$1",
+  [privateSaved.sourceId]);
+ assert.equal(status.rows[0].status,"draft");
+ assert.equal(status.rows[0].join_visibility,"approved_only");
+ const linkedDraft=await createAnnouncement(555001,1,"announcement",
+  "ROOM作成のお知らせ（非公開）",undefined,[],[],
+  Number(privateSaved.sourceId));
+ const linkedSame=await createAnnouncement(555001,1,"announcement",
+  "ROOM作成のお知らせ（非公開）",undefined,[],[],
+  Number(privateSaved.sourceId));
+ assert.equal(linkedDraft.sourceId,linkedSame.sourceId);
+ const linkState=await pool.query(
+  "SELECT status,room_id FROM announcement_posts WHERE announcement_id=$1",
+  [linkedDraft.sourceId]);
+ assert.equal(linkState.rows[0].status,"draft");
+ assert.equal(Number(linkState.rows[0].room_id),Number(privateSaved.sourceId));
+ const actualPosts=await pool.query(
+  "SELECT count(*)::int AS n FROM posting_deliveries WHERE source_type='announcement' AND source_id=$1",
+  [linkedDraft.sourceId]);
+ assert.equal(actualPosts.rows[0].n,0,"private save cannot publish Telegram");
+ console.log("GAYBBS_DB_ROOM_PRIVATE_SAVE_IDEMPOTENT=PASS");
+
 
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
