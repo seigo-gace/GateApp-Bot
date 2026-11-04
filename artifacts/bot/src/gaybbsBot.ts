@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
-import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor } from "./bot/postingHandlers.js";
+import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
@@ -46,6 +46,8 @@ async function main():Promise<void>{
      await startRoomEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="announcement"){
      await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+    }else if(origin.feature==="link"){
+     await startLinkEditor(ctx.telegram,ctx.from.id);
     }else{
      await ctx.reply("この機能の公開準備が完了していません。");
     }
@@ -54,7 +56,7 @@ async function main():Promise<void>{
    }
    return;
   }
-  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開\n/room — ROOM作成\n/announce — 告知・予告・募集作成\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
+  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開\n/room — ROOM作成\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
  });
  registerProfileHandlers(bot);
  registerPostingHandlers(bot);
