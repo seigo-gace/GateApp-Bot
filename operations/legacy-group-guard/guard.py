@@ -4,7 +4,6 @@
 Only the explicitly configured OLD_CHAT_ID is managed. Requires Telegram bot
 admin rights: delete messages, restrict members, change chat info.
 """
-import hashlib
 import json
 import logging
 import os
@@ -87,7 +86,7 @@ def save_state(path, data):
     tmp.replace(path)
 
 
-def restore(token, chat_id, title, about, photo, state, state_path):
+def restore(token, chat_id, title, about, state, state_path):
     chat = api(token, "getChat", {"chat_id": chat_id})
     if chat.get("type") != "supergroup" or int(chat["id"]) != chat_id:
         raise TelegramError("Unexpected chat type/id: refused")
@@ -176,10 +175,6 @@ def run():
     about = "このグループは閉鎖され一切の機能を停止しています"
     if len(title) > 128 or len(about) > 255:
         raise ValueError("Canonical group text is too long")
-    photo_path = Path(required("CANONICAL_PHOTO_FILE"))
-    if not photo_path.is_file() or photo_path.stat().st_size > 10 * 1024 * 1024:
-        raise ValueError("Missing/oversized canonical photo")
-    photo = photo_path.read_bytes()
     state_path = Path(os.environ.get("GUARD_STATE_FILE", "./.guard-state.json"))
     state = load_state(state_path)
     me = api(token, "getMe")
@@ -194,7 +189,7 @@ def run():
     while True:
         try:
             if time.monotonic() >= next_check:
-                restore(token, chat_id, title, about, photo, state, state_path)
+                restore(token, chat_id, title, about, state, state_path)
                 next_check = time.monotonic() + 30
             updates = api(token, "getUpdates", {
                 "offset": offset, "timeout": 10,
