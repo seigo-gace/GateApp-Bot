@@ -1,5 +1,6 @@
 import { pool } from "../db/index.js";
 import { createJitsiJoinUrl, type AnnouncementKind } from "./postingDomain.js";
+import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
 
 export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
@@ -79,4 +80,19 @@ export async function markDraftPublished(id:number,module:PostModule,revision:nu
    WHERE owner_user_id=$1 AND module=$2 AND revision=$3 AND step='preview'`,
   [validOwner(id),module,revision]
  );
+}
+
+/** Idempotent LinkButton source. MPB stores Telegram message IDs separately. */
+export async function createLinkButton(id:number,revision:number,draft:LinkDraft):
+ Promise<{sourceId:string}>{
+ validOwner(id);validateLinkDraft(draft);
+ const key="link:"+id+":"+revision;
+ const r=await pool.query(
+  `INSERT INTO link_button_posts(request_key,owner_user_id,content,buttons,columns)
+   VALUES($1,$2,$3,$4::jsonb,$5)
+   ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
+   RETURNING link_post_id`,
+  [key,id,draft.text,JSON.stringify(draft.buttons),draft.columns]
+ );
+ return {sourceId:String(r.rows[0].link_post_id)};
 }
