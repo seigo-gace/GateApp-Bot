@@ -4,7 +4,7 @@ import { renderPublicProfile } from "../services/profileCore.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
-  validateRoom,assertHttpsMeetingUrl,type AnnouncementKind } from "../services/postingDomain.js";
+  validateRoom,assertHttpsMeetingUrl,parseJstDateTime,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,
  createAnnouncement,markDraftPublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
@@ -21,7 +21,8 @@ function preview(module:Module,draft:EditorDraft):string {
  }
  const kind=draft.data.kind as AnnouncementKind;
  return buildAnnouncementCard(validateAnnouncement({ownerId:1,kind,
-  text:String(draft.data.text||"")}));
+  text:String(draft.data.text||""),
+  eventAt:draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined}));
 }
 async function destinationMenu(ctx:{reply:Function},module:Module,revision:number):Promise<void>{
  const options=await listVerifiedTopics(module as PostPurpose);
@@ -76,6 +77,16 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const input=ctx.message.text.trim();
   try{
    let data:Record<string,unknown>;
+   if(current.step==="awaiting_datetime"){
+    const date=parseJstDateTime(input);
+    data={...current.data,eventAt:date.toISOString()};
+    validateAnnouncement({ownerId:ctx.from.id,
+      kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
+    const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
+    await ctx.reply("プレビュー（まだ投稿していません）\\n"+preview(current.module,updated));
+    await destinationMenu(ctx,current.module,updated.revision);
+    return;
+   }
    if(current.module==="room"){
     const parts=input.split(" | ");
     if(parts.length>2)throw new Error("ROOM名とURLは「 | 」で区切ってください。");
@@ -87,7 +98,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else{
     if(!current.data.kind)throw new Error("投稿種別が未選択です。");
     const kind=current.data.kind as AnnouncementKind;
-    if(kind==="preview")throw new Error("予告は開催日時の入力が必要です。日時設定対応までは公開を保留しています。");
+    if(kind==="preview"){
+     await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_datetime",
+       {...current.data,text:input});
+     await ctx.reply("開催日時を1通で入力してください（日本時間）。例：2026/11/20 20:00");
+     return;
+    }
     validateAnnouncement({ownerId:ctx.from.id,kind,text:input});
     data={...current.data,text:input};
    }
@@ -113,9 +129,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(!d||d.step!=="preview"||d.revision!==rev)throw new Error("下書きが更新されています。");
     text=preview(module,d);
    }
+   const selected=await getVerifiedTopic(topicId,module as PostPurpose);
    await ctx.answerCbQuery();
    await ctx.editMessageText(
-    "公開確認：\n"+text+"\n\n投稿先を確認し、公開を希望する場合だけボタンを押してください。",
+    "公開確認：\\n"+text+"\\n\\n投稿先："+selected.board+" / "+selected.title+"\\nこの宛先に公開する場合だけボタンを押してください。",
     {parse_mode:"HTML",...Markup.inlineKeyboard([
      [Markup.button.callback("✅ この内容を公開",`post:publish:${module}:${rev}:${topicId}`)],
      [Markup.button.callback("キャンセル（非公開のまま）","post:cancel")],
