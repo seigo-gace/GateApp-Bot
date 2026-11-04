@@ -83,7 +83,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     validateAnnouncement({ownerId:ctx.from.id,
       kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
-    await ctx.reply("プレビュー（まだ投稿していません）\\n"+preview(current.module,updated));
+    await ctx.reply("プレビュー（まだ投稿していません）\n"+preview(current.module,updated));
     await destinationMenu(ctx,current.module,updated.revision);
     return;
    }
@@ -132,7 +132,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
    await ctx.answerCbQuery();
    await ctx.editMessageText(
-    "公開確認：\\n"+text+"\\n\\n投稿先："+selected.board+" / "+selected.title+"\\nこの宛先に公開する場合だけボタンを押してください。",
+    "公開確認：\n"+text+"\n\n投稿先："+selected.board+" / "+selected.title+"\nこの宛先に公開する場合だけボタンを押してください。",
     {parse_mode:"HTML",...Markup.inlineKeyboard([
      [Markup.button.callback("✅ この内容を公開",`post:publish:${module}:${rev}:${topicId}`)],
      [Markup.button.callback("キャンセル（非公開のまま）","post:cancel")],
