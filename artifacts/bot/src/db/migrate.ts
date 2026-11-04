@@ -233,6 +233,19 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(announcement_id,applicant_user_id)
       );
+      CREATE TABLE IF NOT EXISTS announcement_application_entries (
+        token_hash TEXT PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS announcement_application_sessions (
+        applicant_user_id BIGINT PRIMARY KEY,
+        token_hash TEXT NOT NULL REFERENCES announcement_application_entries(token_hash),
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS announcement_notifications (
         notification_id BIGSERIAL PRIMARY KEY,
         announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
