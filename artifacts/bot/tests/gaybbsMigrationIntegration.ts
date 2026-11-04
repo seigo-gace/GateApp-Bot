@@ -7,6 +7,8 @@ import {pool,closePool} from "../src/db/index.js";
 import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
 import {updateRoomState} from "../src/services/roomLifecycle.js";
 import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
+import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
+import type {Telegram} from "telegraf";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -91,5 +93,39 @@ try{
  assert.equal(linkedStatus.rows[0].status,"finished");
  assert.equal(linkedStatus.rows[0].accept_applications,false);
  console.log("GAYBBS_DB_ROOM_ANNOUNCEMENT_OUTBOX=PASS");
+ // Entirely disposable CI database; no feature gate is enabled in production.
+ await pool.query(
+  `INSERT INTO gaybbs_feature_release_gates
+  (feature,source_commit,ci_evidence,gserver_runtime_evidence,
+    telegram_e2e_evidence,approved_by,enabled)
+  VALUES('announcement',repeat('a',40),'CI_TEST_ONLY',
+    'DB_TEST_ONLY','FAKE_TELEGRAM_TEST_ONLY',111001,TRUE)`);
+ await pool.query("UPDATE announcement_notifications SET state='sent' WHERE state='pending'");
+ await pool.query(
+  `INSERT INTO announcement_notifications
+    (announcement_id,recipient_user_id,event_key,payload)
+  VALUES($1,222001,'db-notify-success','{"action":"accepted"}'::jsonb)`,
+  [linkedId]);
+ const calls:string[]=[];
+ const fake={sendMessage:async(_user:number,message:string)=>{
+  calls.push(message);return {message_id:9001};
+ }} as unknown as Telegram;
+ process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED="enabled";
+ const sent=await deliverNextAnnouncementNotification(fake);
+ assert.equal(sent?.state,"sent");
+ assert.equal(calls.length,1);
+ assert.equal(await deliverNextAnnouncementNotification(fake),null);
+ await pool.query(
+  `INSERT INTO announcement_notifications
+    (announcement_id,recipient_user_id,event_key,payload)
+   VALUES($1,222001,'db-notify-ambiguous','{"action":"accepted"}'::jsonb)`,
+  [linkedId]);
+ const ambiguous={sendMessage:async()=>{throw new Error("SIMULATED_TIMEOUT")}} as unknown as Telegram;
+ const uncertain=await deliverNextAnnouncementNotification(ambiguous);
+ assert.equal(uncertain?.state,"needs_reconcile");
+ assert.equal(await deliverNextAnnouncementNotification(fake),null,
+  "Unknown Telegram outcome must never be auto-sent again");
+ delete process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED;
+ console.log("GAYBBS_DB_NOTIFICATION_UNKNOWN_NEVER_RETRY=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
