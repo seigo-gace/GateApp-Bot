@@ -318,8 +318,21 @@ try{
     source_revision,posting_topic_id,operation_key,status,telegram_message_id)
    VALUES('announcement',$1,888001,1,$2,'purge-delivery','sent',5678)`,
   [String(obsolete),topic.rows[0].topic_id]);
+ const abandoned=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,
+    status,created_at)
+   VALUES('db-purge-no-expiry',888004,'announcement','STALE',
+    'published',NOW()-INTERVAL '8 days') RETURNING announcement_id`);
+ const abandonedId=Number(abandoned.rows[0].announcement_id);
+ const future=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,
+    status,created_at,event_at)
+   VALUES('db-purge-future',888005,'preview','FUTURE_EVENT',
+    'published',NOW()-INTERVAL '8 days',NOW()+INTERVAL '10 days')
+   RETURNING announcement_id`);
+ const futureId=Number(future.rows[0].announcement_id);
  const removed=await purgeDisposableAnnouncements();
- assert.ok(removed>=2,"closed and expired standalone must be removed");
+ assert.ok(removed>=3,"closed, expired and stale standalone must be removed");
  for(const id of [obsolete,expiredId]){
   assert.equal((await pool.query(
    "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
@@ -328,6 +341,12 @@ try{
  assert.equal((await pool.query(
    "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
    [keepId])).rows[0].n,1);
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [abandonedId])).rows[0].n,0);
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [futureId])).rows[0].n,1,"future event must survive idle TTL");
  assert.equal((await pool.query(
    "SELECT count(*)::int AS n FROM announcement_application_sessions WHERE applicant_user_id=888010"
   )).rows[0].n,0);
