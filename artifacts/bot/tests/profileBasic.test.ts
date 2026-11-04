@@ -2,11 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {parseProfileBasic, renderProfileBasicPreview, isProfilePosition} from "../src/services/profileCore.js";
 
-test("one message captures optional name and three numbers", () => {
+test("one message requires adopted name and three numbers", () => {
   assert.deepEqual(parseProfileBasic("ゼロ\n175 80 39"),
     {nickname:"ゼロ",heightCm:175,weightKg:80,age:39});
-  assert.deepEqual(parseProfileBasic("175 80 39"),
-    {nickname:null,heightCm:175,weightKg:80,age:39});
+  assert.throws(() => parseProfileBasic("175 80 39"),/ニックネーム/);
 });
 test("invalid format or out of range values are rejected", () => {
   for (const input of ["175\n80\n39","175,80,39","175  80 39","175 80 19",
