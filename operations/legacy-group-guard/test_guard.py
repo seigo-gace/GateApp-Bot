@@ -115,6 +115,17 @@ class GuardTests(unittest.TestCase):
                         self.assertNotIn("banChatMember", methods)
                         self.assertNotIn("unbanChatMember", methods)
 
+    def test_expired_message_is_skipped_without_telegram_call(self):
+        with patch.object(guard.time, "time", return_value=200000), patch.object(guard, "api") as api_mock:
+            actions = guard.handle_update("token", guard.ALLOWED_OLD_CHAT_ID, 500, {
+                "message": {"date": 1000, "chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
+                            "message_id": 99, "new_chat_members": [{"id": 901}]}})
+            self.assertEqual(actions, ["EXPIRED_MESSAGE_SKIPPED"])
+            api_mock.assert_not_called()
+
+    def test_bot_identity_constant(self):
+        self.assertEqual(guard.EXPECTED_BOT_ID, 8086265383)
+
     def test_admin_is_not_kicked(self):
         methods = []
         def fake_api(token, method, values=None, photo=None, timeout=25):
