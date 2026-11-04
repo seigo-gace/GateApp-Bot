@@ -38,7 +38,11 @@ async function main():Promise<void>{
    try{
     const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
     const cmd={profile:"/profile",announcement:"/announce",room:"/room",
-      link:"/link",search:"/search"}[origin.feature];
+      link:"",search:""}[origin.feature];
+    if(!cmd){
+     await ctx.reply("この機能はまだ公開されていません。元のトピックには戻れます。");
+     return;
+    }
     await ctx.reply("✅ 元のトピックを確認しました。投稿先を保持しています。\\n次の操作："+cmd+
       "\\n公開時には宛先と内容を確認します。");
    }catch{
