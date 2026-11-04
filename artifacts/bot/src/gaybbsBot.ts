@@ -13,6 +13,7 @@ import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicat
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
+import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 
 function readToken():string{
@@ -80,7 +81,9 @@ async function main():Promise<void>{
   allowedUpdates:["message","callback_query"],
  });
  console.log("GAYBBS_BOT_READY bot_id="+me.id);
+ const stopWorkers=startGayBbsWorkers(bot.telegram);
  const stop=async(signal:string)=>{
+  stopWorkers();
   bot.stop(signal);
   await closePool();
  };
