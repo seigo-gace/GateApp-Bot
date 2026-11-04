@@ -65,8 +65,8 @@ export async function createAnnouncement(id:number,revision:number,kind:Announce
  Promise<{sourceId:string}>{
  const key="announcement:"+validOwner(id)+":"+revision;
  const r=await pool.query(
-  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status)
-   VALUES($1,$2,$3,$4,'draft')
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,event_at,status)
+   VALUES($1,$2,$3,$4,$5,'draft')
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
   [key,id,kind,text,eventAt||null]
