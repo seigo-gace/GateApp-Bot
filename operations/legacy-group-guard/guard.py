@@ -183,6 +183,11 @@ def run():
     if rights.get("status") != "administrator" or not all(rights.get(k) for k in
         ("can_delete_messages", "can_restrict_members", "can_change_info")):
         raise TelegramError("Guard bot lacks required group admin rights")
+    # Telegram rejects getUpdates while a webhook is registered. Fail before any
+    # group mutation; never remove a webhook or discard pending updates here.
+    webhook = api(token, "getWebhookInfo")
+    if webhook.get("url"):
+        raise TelegramError("Webhook configured: polling refused; preserve pending updates")
     LOG.info("Guard ready: chat=%s bot_id=%s", chat_id, bot_id)
     offset = int(state.get("offset", 0))
     next_check = 0.0
