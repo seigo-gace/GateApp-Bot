@@ -18,6 +18,11 @@ export async function getAuthorizedRoom(
    WHERE r.room_id=$2 AND r.status IN ('ready','live')
    AND (
      r.owner_user_id=$1
+     OR (r.join_visibility='public' AND EXISTS(
+       SELECT 1 FROM announcement_posts public_notice
+        WHERE public_notice.room_id=r.room_id
+          AND public_notice.status IN ('published','filled')
+     ))
      OR EXISTS(
        SELECT 1 FROM announcement_posts a
          JOIN announcement_applications ap
@@ -36,7 +41,13 @@ export async function listAuthorizedRooms(userId:number):Promise<
  const r=await pool.query(
   `SELECT r.room_id,r.title,r.status FROM room_posts r
     WHERE r.status IN ('ready','live') AND (
-      r.owner_user_id=$1 OR EXISTS (
+      r.owner_user_id=$1
+      OR (r.join_visibility='public' AND EXISTS(
+        SELECT 1 FROM announcement_posts public_notice
+         WHERE public_notice.room_id=r.room_id
+           AND public_notice.status IN ('published','filled')
+      ))
+      OR EXISTS (
        SELECT 1 FROM announcement_posts a
        JOIN announcement_applications ap ON ap.announcement_id=a.announcement_id
        WHERE a.room_id=r.room_id AND a.status IN ('published','filled','closed')
