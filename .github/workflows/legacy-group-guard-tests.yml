@@ -23,5 +23,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Python syntax and offline regressions
         run: |
+          bash -n operations/legacy-group-guard/sync_guard_source.sh
           python3 -m py_compile operations/legacy-group-guard/guard.py operations/legacy-group-guard/test_guard.py
           python3 -m unittest discover -s operations/legacy-group-guard -p 'test_*.py' -v
