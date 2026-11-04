@@ -4,6 +4,7 @@ import type { PostPurpose } from "./topicRouting.js";
 
 export type PublishRequest = {
   sourceType:PostPurpose;
+  destinationPurpose?:PostPurpose;
   sourceId:string;
   ownerId:number;
   revision:number;
@@ -18,7 +19,7 @@ export async function publishPost(telegram:Telegram, req:PublishRequest):
   if(req.approved!==true)throw new Error("PUBLISH_CONSENT_REQUIRED");
   if(!req.sourceId||req.sourceId.length>120||!req.text.trim()||req.text.length>4096)
     throw new Error("PUBLISH_INPUT_INVALID");
-  const topic=await getVerifiedTopic(req.topicId,req.sourceType);
+  const topic=await getVerifiedTopic(req.topicId,req.destinationPurpose||req.sourceType);
   const chat=await telegram.getChat(topic.chatId);
   if(chat.id!==topic.chatId||chat.type!=="supergroup")
     throw new Error("PUBLISH_CHAT_UNVERIFIED");
