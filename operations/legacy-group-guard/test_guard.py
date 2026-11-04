@@ -15,14 +15,11 @@ class GuardTests(unittest.TestCase):
         with patch.dict("os.environ", {
             "GUARD_BOT_TOKEN": "123:placeholder",
             "OLD_CHAT_ID": str(-1003847210571),
-            "CANONICAL_TITLE": "x",
-            "CANONICAL_DESCRIPTION": "x",
-            "CANONICAL_PHOTO_FILE": "/does/not/exist",
         }):
             with self.assertRaisesRegex(ValueError, "Unapproved group ID"):
                 guard.run()
 
-    def test_restores_permissions_title_description_and_photo(self):
+    def test_restores_permissions_title_description_and_removes_photo(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "state.json"
             calls = []
@@ -38,28 +35,26 @@ class GuardTests(unittest.TestCase):
                 return True
             state = {}
             with patch.object(guard, "api", fake_api):
-                guard.restore("token", guard.ALLOWED_OLD_CHAT_ID, "approved", "approved", b"photo", state, path)
+                guard.restore("token", guard.ALLOWED_OLD_CHAT_ID, "approved", "approved", state, path)
             names = [x[0] for x in calls]
             self.assertIn("setChatTitle", names)
             self.assertIn("setChatDescription", names)
             self.assertIn("setChatPermissions", names)
-            self.assertIn("setChatPhoto", names)
+            self.assertIn("deleteChatPhoto", names)
             self.assertTrue(state["permissions_locked"])
-            self.assertEqual(state["canonical_photo_id"], "new")
 
     def test_does_not_modify_healthy_chat(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "state.json"
-            state = {"permissions_locked": True, "canonical_photo_id": "ok",
-                     "canonical_photo_sha256": __import__("hashlib").sha256(b"photo").hexdigest()}
+            state = {"permissions_locked": True}
             calls = []
             def fake_api(token, method, values=None, photo=None, timeout=25):
                 calls.append(method)
                 return {"type": "supergroup", "id": guard.ALLOWED_OLD_CHAT_ID,
                         "title": "approved", "description": "approved",
-                        "permissions": {}, "photo": {"small_file_unique_id": "ok"}}
+                        "permissions": {}}
             with patch.object(guard, "api", fake_api):
-                guard.restore("token", guard.ALLOWED_OLD_CHAT_ID, "approved", "approved", b"photo", state, path)
+                guard.restore("token", guard.ALLOWED_OLD_CHAT_ID, "approved", "approved", state, path)
             self.assertEqual(calls, ["getChat"])
 
     def test_joined_user_is_kicked_and_unbanned(self):
