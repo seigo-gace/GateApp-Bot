@@ -85,15 +85,6 @@ try{
   [linkedId,"room-event:"+source.eventId+":owner:"+linkedId]);
  assert.equal(ownerNotice.rows.length,1);
  assert.ok(!ownerNotice.rows[0].payload.includes("meet.jit.si"));
- const ended=await updateRoomState(111001,roomId,source.revision,"finish");
- assert.equal(ended.state,"finished");
- const closed=await projectNextRoomEvent();
- assert.equal(closed?.eventId,ended.eventId);
- const linkedStatus=await pool.query(
-  "SELECT status,accept_applications FROM announcement_posts WHERE announcement_id=$1",
-  [linkedId]);
- assert.equal(linkedStatus.rows[0].status,"finished");
- assert.equal(linkedStatus.rows[0].accept_applications,false);
  console.log("GAYBBS_DB_ROOM_ANNOUNCEMENT_OUTBOX=PASS");
  // Entirely disposable CI database; no feature gate is enabled in production.
  await pool.query(
@@ -129,6 +120,24 @@ try{
   "Unknown Telegram outcome must never be auto-sent again");
  delete process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED;
  console.log("GAYBBS_DB_NOTIFICATION_UNKNOWN_NEVER_RETRY=PASS");
+ const ended=await updateRoomState(111001,roomId,source.revision,"finish");
+ assert.equal(ended.state,"finished");
+ assert.equal(ended.eventId,null);
+ // All ROOM-dependent DB material, even previously delivered notification
+ // payloads and event logs, must disappear immediately at host finish.
+ for(const [query,params] of [
+  ["SELECT * FROM room_posts WHERE room_id=$1",[roomId]],
+  ["SELECT * FROM room_source_events WHERE room_id=$1",[roomId]],
+  ["SELECT * FROM announcement_posts WHERE announcement_id=$1",[linkedId]],
+  ["SELECT * FROM announcement_notifications WHERE announcement_id=$1",[linkedId]],
+  ["SELECT * FROM announcement_room_dispatches WHERE room_event_id=$1",[source.eventId]],
+ ] as const){
+  assert.equal((await pool.query(query,[...params])).rows.length,0,query);
+ }
+ assert.equal(await getAuthorizedRoom(111001,roomId),null);
+ await assert.rejects(()=>updateRoomState(111001,roomId,source.revision,"finish"),
+  /ALREADY_PURGED/);
+ console.log("GAYBBS_DB_ROOM_FINISH_HARD_DELETE=PASS");
  const joinRoom=await pool.query(
   `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
    VALUES('db-approved-room',111001,'承認制ROOM','jitsi',
@@ -155,12 +164,16 @@ try{
  assert.equal(await getAuthorizedRoom(444001,privateRoomId),null,
   "Unrelated user must never obtain ROOM URL");
  assert.equal((await listAuthorizedRooms(333001)).some(r=>r.id===privateRoomId),true);
- const closedRoom=await pool.query(
-  `UPDATE room_posts SET status='finished' WHERE room_id=$1 RETURNING room_id`,
-  [privateRoomId]);
- assert.equal(closedRoom.rows.length,1);
+ const cancelled=await updateRoomState(111001,privateRoomId,1,"cancel");
+ assert.equal(cancelled.state,"cancelled");
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
-  "Finished ROOM must stop distributing join URL");
+  "Cancelled ROOM must remove join URL and user records");
+ assert.equal((await pool.query(
+  "SELECT * FROM announcement_applications WHERE announcement_id=$1",[recruitmentId]
+ )).rows.length,0);
+ assert.equal((await pool.query(
+  "SELECT * FROM room_posts WHERE room_id=$1",[privateRoomId]
+ )).rows.length,0);
  console.log("GAYBBS_DB_ROOM_JOIN_AUTHORIZATION=PASS");
  // Separate private creation is idempotent and has no MPB send.
  const privateSaved=await createRoom(555001,1,"プライベート作成");
