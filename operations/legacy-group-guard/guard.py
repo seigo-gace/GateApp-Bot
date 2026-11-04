@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Legacy group read-only lockdown guard. Dedicated Bot token, no user session.
+"""Legacy group lockdown guard. Dedicated Bot token, no user session.
 
 Only the explicitly configured OLD_CHAT_ID is managed. Requires Telegram bot
 admin rights: delete messages, restrict members, change chat info.
@@ -98,7 +98,7 @@ def restore(token, chat_id, title, about, photo, state, state_path):
         api(token, "setChatDescription", {"chat_id": chat_id, "description": about})
         LOG.warning("Restored group description")
     permissions = chat.get("permissions") or {}
-    if any(bool(permissions.get(k)) for k in PERMISSION_KEYS):
+    if not state.get("permissions_locked") or any(bool(permissions.get(k)) for k in PERMISSION_KEYS):
         api(token, "setChatPermissions", {
             "chat_id": chat_id, "permissions": LOCKED,
             "use_independent_chat_permissions": "true"
