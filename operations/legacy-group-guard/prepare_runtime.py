@@ -10,7 +10,7 @@ ROOT = Path("/home/gace/legacy-group-guard-deploy/operations/legacy-group-guard"
 EXPECTED = {
     "guard.py": "f96374a68fc20d6c941d0f627ce3e795b6ce3fcf",
     "test_guard.py": "cd235fa397c98cc1f7779ed6aba2ff6347da597f",
-    "compose.yaml": "ffd36804f8cfb95a928a152cbcf3935b3c249fec",
+    "compose.yaml": "9e82ec3bce0f5ddc1ab021cc0acbb65a3fa87a6d",
     "Dockerfile": "f071887e583646e6cc6a02ca0c898bdeeddebd80",
 }
 
@@ -67,14 +67,13 @@ def execute():
             reason = "IMAGE_BUILD_FAILED"
             return
         print("IMAGE_BUILD=PASS")
-        # The Dockerfile has a dedicated 'guard' user. Grant access only to /state
-        # through an ephemeral container, never modify unrelated host files.
-        if not docker("compose", "run", "--rm", "--no-deps", "--user", "0:0",
-                      "--entrypoint", "chown", "legacy-group-guard",
-                      "guard:guard", "/state", timeout=35):
-            reason = "STATE_OWNERSHIP_FAILED"
+        # Docker Compose runs as the existing unprivileged host owner 1000:1000.
+        # No privileged container and no host ownership mutation.
+        info = state.stat()
+        if info.st_uid != 1000 or info.st_gid != 1000 or stat.S_IMODE(info.st_mode) != 0o700:
+            reason = "STATE_OWNER_OR_MODE_NOT_EXPECTED"
             return
-        if not docker("compose", "run", "--rm", "--no-deps", "--user", "guard",
+        if not docker("compose", "run", "--rm", "--no-deps",
                       "--entrypoint", "sh", "legacy-group-guard", "-c",
                       "touch /state/.gace-write-check && rm /state/.gace-write-check",
                       timeout=35):
