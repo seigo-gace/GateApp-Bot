@@ -83,12 +83,14 @@ export async function markDraftPublished(id:number,module:PostModule,revision:nu
 }
 
 /** A private ROOM is saved without publishing a Telegram URL or post. */
-export async function markRoomDraftSaved(id:number,revision:number):Promise<void>{
+export async function markRoomDraftSaved(id:number,revision:number,roomId:number):Promise<void>{
+ if(!Number.isSafeInteger(roomId)||roomId<=0)throw new Error("ROOM_ID_INVALID");
  const r=await pool.query(
-  `UPDATE public_post_drafts SET step='saved',updated_at=NOW()
+  `UPDATE public_post_drafts
+     SET step='saved',data=jsonb_build_object('roomId',$3::bigint),updated_at=NOW()
    WHERE owner_user_id=$1 AND module='room' AND revision=$2
      AND step IN ('preview','saved') RETURNING owner_user_id`,
-  [validOwner(id),revision]);
+  [validOwner(id),revision,roomId]);
  if(r.rows.length!==1)throw new Error("ROOM_DRAFT_STALE");
 }
 
