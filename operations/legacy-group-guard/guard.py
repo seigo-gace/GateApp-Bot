@@ -159,7 +159,8 @@ def handle_update(token, chat_id, bot_id, update):
         old = (change.get("old_chat_member") or {}).get("status")
         new = (change.get("new_chat_member") or {}).get("status")
         user = (change.get("new_chat_member") or {}).get("user")
-        if (fresh_join_event(change.get("date")) and old in ("left", "kicked")\n                and new in ("member", "restricted", "administrator")):
+        if (fresh_join_event(change.get("date")) and old in ("left", "kicked")
+                and new in ("member", "restricted", "administrator")):
             actions.append(kick_new_member(token, chat_id, user, bot_id))
     for field in ("message", "edited_message", "channel_post", "edited_channel_post"):
         msg = update.get(field) or {}
