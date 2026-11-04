@@ -34,14 +34,14 @@ export async function activateApplicationSession(
   throw new Error("APPLICATION_LINK_INVALID");
  const key=applicationTokenHash(match[1]!);
  const res=await pool.query(
-  `SELECT p.announcement_id,p.text,p.owner_user_id,p.status,
+  `SELECT p.announcement_id,p.text,p.owner_user_id,p.kind,p.status,
           p.accept_applications,p.deadline_at
    FROM announcement_application_entries e
    JOIN announcement_posts p ON p.announcement_id=e.announcement_id
    WHERE e.token_hash=$1 AND e.enabled=TRUE AND e.expires_at>NOW()`,[key]);
  if(res.rows.length!==1)throw new Error("APPLICATION_LINK_EXPIRED");
  const p=res.rows[0];
- if(p.kind==="recruitment"&&p.owner_user_id===applicantId)
+ if(p.kind!=="recruitment"||Number(p.owner_user_id)===applicantId)
   throw new Error("SELF_APPLICATION_REFUSED");
  if(p.status!=="published"||p.accept_applications!==true||
     (p.deadline_at&&new Date(p.deadline_at).getTime()<=Date.now()))
