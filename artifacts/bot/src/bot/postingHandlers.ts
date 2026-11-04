@@ -312,15 +312,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
      text=renderLinkCard(payload);
      buttons=buttonGrid(payload).map(row=>row.map(b=>({text:b.label,url:b.url})));
     }else if(module==="room"){
-     const name=String(draft.data.title);
-     const url=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
-     const room=await createRoom(ctx.from.id,revision,name,url);
-     text=preview(module,draft)+"\n"+
-      "🔗 <a href=\""+room.joinUrl.replace(/&/g,"&amp;").replace(/"/g,"&quot;")+"\">ROOMへ参加</a>";
-     // The adopted route is ROOM → Announcement → MPB, not ROOM → MPB.
-     const linked=await createAnnouncement(ctx.from.id,revision,"announcement",
-       text,undefined,[],[],Number(room.sourceId));
-     sourceId=linked.sourceId;
+     // ROOM v2: join_visibility=approved_only by default. Never leak a
+     // Jitsi/external URL to a public Topic before approved-only DM delivery
+     // and ROOM→Announcement→MPB crosslinks pass their acceptance gates.
+     throw new Error("ROOM_PRIVATE_JOIN_FLOW_NOT_VERIFIED");
     }else{
      const kind=draft.data.kind as AnnouncementKind;
      const value=String(draft.data.text);
