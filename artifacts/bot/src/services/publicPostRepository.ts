@@ -1,7 +1,7 @@
 import { pool } from "../db/index.js";
 import { createJitsiJoinUrl, type AnnouncementKind } from "./postingDomain.js";
 
-export type PostModule="room"|"announcement";
+export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
  module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_datetime"|"awaiting_tags"|"preview"|"published";
  revision:number; data:Record<string,unknown>;
