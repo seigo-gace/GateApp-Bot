@@ -8,6 +8,7 @@ import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,
  createAnnouncement,markDraftPublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
+import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 
 type Module="profile"|"room"|"announcement";
@@ -27,15 +28,26 @@ function preview(module:Module,draft:EditorDraft):string {
   purposeCodes:Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[],
   placeCodes:Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[]}));
 }
-async function destinationMenu(ctx:{reply:Function},module:Module,revision:number):Promise<void>{
+async function destinationMenu(ctx:{reply:Function;from?:{id:number}},module:Module,revision:number):Promise<void>{
  const options=await listVerifiedTopics(module as PostPurpose);
  if(!options.length){
   await ctx.reply("投稿先の実Topic IDがまだ確認されていません。管理者によるトピック接続後に公開できます。下書きは保持しています。");
   return;
  }
- await ctx.reply("投稿先を選択してください。グループへの投稿はまだ行いません。",
-  Markup.inlineKeyboard(options.slice(0,30).map(t=>[
-   Markup.button.callback(t.title+" / "+t.board,
+ const origin=ctx.from?.id?await currentMenuOrigin(ctx.from.id):null;
+ // N14: the topic a member came from is their default. It may not be a
+ // suitable purpose/board (e.g. Profile has its own dedicated topic).
+ // No guessed destination or silently substituted topic.
+ const matched=origin?options.find(x=>x.chatId===origin.chatId&&
+  x.threadId===origin.threadId):undefined;
+ const sorted=matched?[matched,...options.filter(x=>x.id!==matched.id)]:options;
+ const prefix=origin?(matched?
+  "✅ 元のトピックを候補の先頭に表示しています。":
+  "元のトピックはこの投稿種別に未登録です。別の実Topicを明示選択してください。"):
+  "元のトピックが不明なため、実Topicを明示選択してください。";
+ await ctx.reply(prefix+"\\n投稿先を選択してください。まだ公開しません。",
+  Markup.inlineKeyboard(sorted.slice(0,30).map(t=>[
+   Markup.button.callback((matched?.id===t.id?"📍 ":"")+t.title+" / "+t.board,
     `post:choose:${module}:${revision}:${t.id}`)])));
 }
 function tagPanel(draft:EditorDraft) {
