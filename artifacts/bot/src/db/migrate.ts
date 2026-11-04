@@ -18,6 +18,42 @@ export async function runMigrations(): Promise<void> {
         revision INTEGER NOT NULL DEFAULT 1,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS profile_tag_catalog (
+        category TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        PRIMARY KEY(category,tag)
+      );
+      CREATE TABLE IF NOT EXISTS profile_tags (
+        owner_user_id BIGINT NOT NULL REFERENCES profiles(owner_user_id) ON DELETE CASCADE,
+        purpose TEXT NOT NULL CHECK(purpose IN ('like','love')),
+        category TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        PRIMARY KEY(owner_user_id,purpose,category,tag),
+        FOREIGN KEY(category,tag) REFERENCES profile_tag_catalog(category,tag)
+      );
+      CREATE TABLE IF NOT EXISTS profile_media (
+        id BIGSERIAL PRIMARY KEY,
+        owner_user_id BIGINT NOT NULL REFERENCES profiles(owner_user_id) ON DELETE CASCADE,
+        file_id TEXT NOT NULL,
+        media_type TEXT NOT NULL CHECK(media_type IN ('photo','video')),
+        public_allowed BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS profile_publications (
+        owner_user_id BIGINT NOT NULL REFERENCES profiles(owner_user_id) ON DELETE CASCADE,
+        chat_id BIGINT NOT NULL CHECK(chat_id < 0),
+        thread_id BIGINT NOT NULL CHECK(thread_id > 0),
+        message_id BIGINT CHECK(message_id > 0),
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK(status IN ('pending','published','sync_error','hidden','delete_error')),
+        synced_revision INTEGER,
+        last_error TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(owner_user_id,chat_id,thread_id)
+      );
+      CREATE INDEX IF NOT EXISTS profile_pub_status_idx
+        ON profile_publications(status);
       CREATE TABLE IF NOT EXISTS general_guide_topics (
         chat_id BIGINT PRIMARY KEY CHECK(chat_id < 0),
         message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
