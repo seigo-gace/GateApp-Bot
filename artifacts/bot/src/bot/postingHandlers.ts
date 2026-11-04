@@ -5,7 +5,7 @@ import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDeliver
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,type AnnouncementKind } from "../services/postingDomain.js";
-import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,createLinkButton,
+import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,createLinkButton,markRoomDraftSaved,
  createAnnouncement,markDraftPublished,markPostSourcePublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
@@ -240,9 +240,40 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
    await ctx.reply("プレビュー（まだ投稿していません）\n"+preview(current.module,updated));
-   await destinationMenu(ctx,current.module,updated.revision);
+   if(current.module==="room"){
+    await ctx.reply("ROOMはまだ公開されていません。内容を確認して非公開保存してください。",
+      Markup.inlineKeyboard([[Markup.button.callback("✅ 非公開ROOMとして保存",
+        "room:save:"+updated.revision)]]));
+   }else{
+    await destinationMenu(ctx,current.module,updated.revision);
+   }
   }catch(e){
    await ctx.reply(e instanceof Error?e.message:"入力内容を確認してください。");
+  }
+ });
+ bot.action(/^room:save:(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]);
+  const draft=await getDraft(ctx.from.id,"room");
+  if(!draft||draft.step!=="preview"||draft.revision!==rev){
+   await ctx.answerCbQuery("下書きが更新されました。/room から再開してください。");
+   return;
+  }
+  try{
+   const title=String(draft.data.title||"");
+   const url=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
+   const saved=await createRoom(ctx.from.id,rev,title,url);
+   // ROOM is private until a separate Announcement/MPB release gate passes.
+   const announcementText=preview("room",draft);
+   await createAnnouncement(ctx.from.id,rev,"announcement",announcementText,
+     undefined,[],[],Number(saved.sourceId));
+   await markRoomDraftSaved(ctx.from.id,rev);
+   await ctx.answerCbQuery("非公開保存しました");
+   await ctx.editMessageText("✅ ROOMを非公開保存しました。\nROOM #"+saved.sourceId+
+     "\n/myrooms で準備・開始・延期・終了を管理できます。"+
+     "\n募集・案内はまだ公開していません。");
+  }catch{
+   await ctx.answerCbQuery("保存状態を確認してください");
   }
  });
  bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
