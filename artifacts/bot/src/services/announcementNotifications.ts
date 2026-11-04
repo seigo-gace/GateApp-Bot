@@ -19,6 +19,7 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
   started:"▶ ROOMの開始が申告されました。",
   prepared:"✅ ROOMホストの準備が完了しました。",
   scheduled:"📅 ROOMの開催予定が更新されました。",
+  visibility_changed:"🔐 ROOMの参加方式が変更されました。/myrooms で確認できます。",
  };
  const value=label[action];
  if(!value)throw new Error("NOTIFICATION_ACTION_NOT_SUPPORTED");
