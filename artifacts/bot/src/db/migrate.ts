@@ -80,11 +80,16 @@ export async function runMigrations(): Promise<void> {
         publish_at TIMESTAMPTZ,
         deadline_at TIMESTAMPTZ,
         capacity INTEGER,
+        purpose_codes TEXT[] NOT NULL DEFAULT '{}',
+        place_codes TEXT[] NOT NULL DEFAULT '{}',
         room_id BIGINT REFERENCES room_posts(room_id),
         revision INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE announcement_posts ADD COLUMN IF NOT EXISTS purpose_codes TEXT[] NOT NULL DEFAULT '{}';
+      ALTER TABLE announcement_posts ADD COLUMN IF NOT EXISTS place_codes TEXT[] NOT NULL DEFAULT '{}';
+
       CREATE TABLE IF NOT EXISTS profile_drafts (
         owner_user_id BIGINT PRIMARY KEY,
         step TEXT NOT NULL,
