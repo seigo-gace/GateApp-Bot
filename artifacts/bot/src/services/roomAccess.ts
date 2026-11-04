@@ -22,6 +22,14 @@ export async function getAuthorizedRoom(
        SELECT 1 FROM announcement_posts public_notice
         WHERE public_notice.room_id=r.room_id
           AND public_notice.status IN ('published','filled')
+          AND EXISTS (
+           SELECT 1 FROM posting_deliveries d
+           JOIN posting_topics topic ON topic.topic_id=d.posting_topic_id
+           WHERE d.source_type='announcement'
+             AND d.source_id=public_notice.announcement_id::text
+             AND d.status='sent' AND d.telegram_message_id IS NOT NULL
+             AND topic.enabled=TRUE AND topic.purpose='announcement'
+          )
      ))
      OR EXISTS(
        SELECT 1 FROM announcement_posts a
@@ -46,6 +54,14 @@ export async function listAuthorizedRooms(userId:number):Promise<
         SELECT 1 FROM announcement_posts public_notice
          WHERE public_notice.room_id=r.room_id
            AND public_notice.status IN ('published','filled')
+          AND EXISTS (
+           SELECT 1 FROM posting_deliveries d
+           JOIN posting_topics topic ON topic.topic_id=d.posting_topic_id
+           WHERE d.source_type='announcement'
+             AND d.source_id=public_notice.announcement_id::text
+             AND d.status='sent' AND d.telegram_message_id IS NOT NULL
+             AND topic.enabled=TRUE AND topic.purpose='announcement'
+          )
       ))
       OR EXISTS (
        SELECT 1 FROM announcement_posts a
