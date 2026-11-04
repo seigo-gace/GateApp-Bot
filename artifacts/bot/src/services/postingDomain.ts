@@ -77,3 +77,21 @@ export function buildAnnouncementCard(d:AnnouncementDraft):string{
  if(d.kind==="recruitment"&&d.deadlineAt)rows.push("応募締切："+d.deadlineAt.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）");
  return rows.join("\n");
 }
+
+/** Parse one Japanese-local input into UTC. Japan has no DST. */
+export function parseJstDateTime(input:string):Date{
+ const m=input.trim().match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+ if(!m)throw new Error("日時形式は YYYY/MM/DD HH:mm です");
+ const [year,month,day,hour,minute]=m.slice(1).map(Number);
+ if(year<2020||year>2100||month<1||month>12||day<1||day>31||
+    hour<0||hour>23||minute<0||minute>59)
+   throw new Error("日時の値が不正です");
+ const when=new Date(Date.UTC(year,month-1,day,hour-9,minute));
+ const check=new Date(when.getTime()+9*60*60*1000);
+ if(check.getUTCFullYear()!==year||check.getUTCMonth()!==month-1||
+    check.getUTCDate()!==day||check.getUTCHours()!==hour||
+    check.getUTCMinutes()!==minute)
+   throw new Error("存在しない日時です");
+ if(when.getTime()<Date.now()-60000)throw new Error("過去の日時は指定できません");
+ return when;
+}
