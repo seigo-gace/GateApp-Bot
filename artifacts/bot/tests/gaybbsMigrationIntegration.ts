@@ -11,6 +11,7 @@ import {deliverNextAnnouncementNotification} from "../src/services/announcementN
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement} from "../src/services/publicPostRepository.js";
+import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -280,5 +281,72 @@ try{
 
 
 
+
+ // Disposable standalone Announcement: terminal/expired rows disappear with
+ // application snapshots, notification payloads, tokens and MPB delivery ID.
+ const ephemeral=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status)
+   VALUES('db-purge-standalone',888001,'recruitment','PRIVATE_ONCE','closed')
+   RETURNING announcement_id`);
+ const obsolete=Number(ephemeral.rows[0].announcement_id);
+ const active=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status)
+   VALUES('db-purge-active',888002,'announcement','ACTIVE_KEEP','published')
+   RETURNING announcement_id`);
+ const keepId=Number(active.rows[0].announcement_id);
+ const expired=await pool.query(
+  `INSERT INTO announcement_posts
+    (request_key,owner_user_id,kind,text,status,expires_at)
+   VALUES('db-purge-time',888003,'preview','TIME_OUT','published',
+      NOW()-INTERVAL '1 minute') RETURNING announcement_id`);
+ const expiredId=Number(expired.rows[0].announcement_id);
+ await pool.query(
+  `INSERT INTO announcement_applications(announcement_id,applicant_user_id,consented_profile)
+    VALUES($1,888010,'{"private":"remove"}'::jsonb)`,[obsolete]);
+ await pool.query(
+  `INSERT INTO announcement_notifications
+    (announcement_id,recipient_user_id,event_key,payload)
+   VALUES($1,888010,'purge-notif','{"text":"remove"}'::jsonb)`,[obsolete]);
+ await pool.query(
+  `INSERT INTO announcement_application_entries(token_hash,announcement_id,expires_at)
+   VALUES('purge-application-token',$1,NOW()+INTERVAL '1 day')`,[obsolete]);
+ await pool.query(
+  `INSERT INTO announcement_application_sessions(applicant_user_id,token_hash,expires_at)
+   VALUES(888010,'purge-application-token',NOW()+INTERVAL '1 day')`);
+ await pool.query(
+  `INSERT INTO posting_deliveries(source_type,source_id,owner_user_id,
+    source_revision,posting_topic_id,operation_key,status,telegram_message_id)
+   VALUES('announcement',$1,888001,1,$2,'purge-delivery','sent',5678)`,
+  [String(obsolete),topic.rows[0].topic_id]);
+ const removed=await purgeDisposableAnnouncements();
+ assert.ok(removed>=2,"closed and expired standalone must be removed");
+ for(const id of [obsolete,expiredId]){
+  assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+   [id])).rows[0].n,0);
+ }
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+   [keepId])).rows[0].n,1);
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM announcement_application_sessions WHERE applicant_user_id=888010"
+  )).rows[0].n,0);
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM posting_deliveries WHERE operation_key='purge-delivery'"
+  )).rows[0].n,0);
+ assert.equal(await purgeDisposableAnnouncements(),0);
+ // Obsolete draft purging is bounded; a live draft is never removed.
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data,updated_at)
+    VALUES(899001,'announcement','awaiting_text','{"text":"old"}'::jsonb,
+    NOW()-INTERVAL '9 days')`);
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data,updated_at)
+    VALUES(899002,'announcement','awaiting_text','{"text":"active"}'::jsonb,NOW())`);
+ assert.equal(await purgeAbandonedDrafts(7),1);
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM public_post_drafts WHERE owner_user_id=899002"
+ )).rows[0].n,1);
+ console.log("GAYBBS_DB_DISPOSABLE_PURGE_NO_RESIDUE=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
