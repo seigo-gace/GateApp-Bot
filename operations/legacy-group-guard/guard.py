@@ -25,6 +25,17 @@ PERMISSION_KEYS = (
     "can_invite_users", "can_pin_messages", "can_manage_topics",
 )
 LOCKED = {key: False for key in PERMISSION_KEYS}
+# Never act on old join notifications left by a failed webhook.
+JOIN_MAX_AGE_SECONDS = 120
+
+
+def fresh_join_event(timestamp):
+    """No join kick without a valid, recent Telegram event timestamp."""
+    if not isinstance(timestamp, int) or isinstance(timestamp, bool):
+        return False
+    age = time.time() - timestamp
+    return -30 <= age <= JOIN_MAX_AGE_SECONDS
+
 
 
 class TelegramError(RuntimeError):
@@ -146,7 +157,7 @@ def handle_update(token, chat_id, bot_id, update):
         old = (change.get("old_chat_member") or {}).get("status")
         new = (change.get("new_chat_member") or {}).get("status")
         user = (change.get("new_chat_member") or {}).get("user")
-        if old in ("left", "kicked") and new in ("member", "restricted", "administrator"):
+        if (fresh_join_event(change.get("date")) and old in ("left", "kicked")\n                and new in ("member", "restricted", "administrator")):
             actions.append(kick_new_member(token, chat_id, user, bot_id))
     for field in ("message", "edited_message", "channel_post", "edited_channel_post"):
         msg = update.get(field) or {}
