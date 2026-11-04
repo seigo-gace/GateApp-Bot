@@ -295,7 +295,7 @@ export async function runMigrations(): Promise<void> {
         event_key TEXT NOT NULL UNIQUE,
         payload JSONB NOT NULL,
         state TEXT NOT NULL DEFAULT 'pending'
-          CHECK(state IN ('pending','sent','failed')),
+          CHECK(state IN ('pending','sending','sent','needs_reconcile','failed')),
         sent_at TIMESTAMPTZ
       );
       ALTER TABLE announcement_posts ADD COLUMN IF NOT EXISTS purpose_codes TEXT[] NOT NULL DEFAULT '{}';
