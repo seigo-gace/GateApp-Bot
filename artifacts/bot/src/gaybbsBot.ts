@@ -4,8 +4,8 @@ import { readFileSync, lstatSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Telegraf } from "telegraf";
-import { registerProfileHandlers } from "./bot/profileHandlers.js";
-import { registerPostingHandlers } from "./bot/postingHandlers.js";
+import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
+import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor } from "./bot/postingHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
@@ -38,14 +38,17 @@ async function main():Promise<void>{
   if(ctx.startPayload?.startsWith("m_")){
    try{
     const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
-    const cmd={profile:"/profile",announcement:"/announce",room:"/room",
-      link:"",search:""}[origin.feature];
-    if(!cmd){
-     await ctx.reply("この機能はまだ公開されていません。元のトピックには戻れます。");
-     return;
+    // N14 requires the Topic menu button itself to open the shared DM editor,
+    // not another instruction requiring a second /command.
+    if(origin.feature==="profile"){
+     await startProfileEditor(ctx);
+    }else if(origin.feature==="room"){
+     await startRoomEditor(ctx.telegram,ctx.from.id);
+    }else if(origin.feature==="announcement"){
+     await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+    }else{
+     await ctx.reply("この機能の公開準備が完了していません。");
     }
-    await ctx.reply("✅ 元のトピックを確認しました。投稿先を保持しています。\\n次の操作："+cmd+
-      "\\n公開時には宛先と内容を確認します。");
    }catch{
     await ctx.reply("この投稿メニューのリンクは期限切れ、または未登録です。元のトピックの新しい固定メニューを利用してください。");
    }
