@@ -4,7 +4,7 @@ import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
 
 export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_datetime"|"awaiting_tags"|"preview"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_datetime"|"awaiting_tags"|"preview"|"saved"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
@@ -55,7 +55,7 @@ export async function createRoom(id:number,revision:number,title:string,external
  const mode=externalUrl?"external":"jitsi";
  const r=await pool.query(
   `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
-   VALUES($1,$2,$3,$4,$5,'ready')
+   VALUES($1,$2,$3,$4,$5,'draft')
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING room_id,join_url`,
   [key,id,title,mode,joinUrl]
@@ -80,6 +80,16 @@ export async function markDraftPublished(id:number,module:PostModule,revision:nu
    WHERE owner_user_id=$1 AND module=$2 AND revision=$3 AND step='preview'`,
   [validOwner(id),module,revision]
  );
+}
+
+/** A private ROOM is saved without publishing a Telegram URL or post. */
+export async function markRoomDraftSaved(id:number,revision:number):Promise<void>{
+ const r=await pool.query(
+  `UPDATE public_post_drafts SET step='saved',updated_at=NOW()
+   WHERE owner_user_id=$1 AND module='room' AND revision=$2
+     AND step IN ('preview','saved') RETURNING owner_user_id`,
+  [validOwner(id),revision]);
+ if(r.rows.length!==1)throw new Error("ROOM_DRAFT_STALE");
 }
 
 /** Idempotent LinkButton source. MPB stores Telegram message IDs separately. */
