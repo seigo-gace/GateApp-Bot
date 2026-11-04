@@ -28,5 +28,6 @@ test("announcement text escapes HTML and types remain distinct",()=>{
  assert.ok(out.includes("&lt;b&gt;test&lt;/b&gt;"));
  assert.throws(()=>validateAnnouncement({ownerId:42,kind:"preview",text:"告知"}));
  assert.throws(()=>validateAnnouncement({ownerId:42,kind:"announcement",text:"知らせ",capacity:1}));
- assert.equal(validateAnnouncement({ownerId:42,kind:"recruitment",text:"参加者",capacity:3}).capacity,3);
+ assert.equal(validateAnnouncement({ownerId:42,kind:"recruitment",text:"参加者",capacity:3,purposeCodes:["サシ"],placeCodes:["場所あり","足あり"]}).capacity,3);
+ assert.throws(()=>validateAnnouncement({ownerId:42,kind:"recruitment",text:"参加者",purposeCodes:[]}));
 });
