@@ -201,7 +201,16 @@ export async function runMigrations(): Promise<void> {
         kind TEXT NOT NULL CHECK (kind IN ('announcement','preview','recruitment')),
         text TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'draft'
-          CHECK (status IN ('draft','published','closed','cancelled')),
+          CHECK (status IN ('draft','scheduled','publishing','published','closed','filled',
+                           'cancelled','finished','sync_error','needs_reconcile')),
+        accept_applications BOOLEAN NOT NULL DEFAULT FALSE,
+        profile_snapshot JSONB,
+        conditions JSONB NOT NULL DEFAULT '{}'::jsonb,
+        area_code TEXT,
+        scheduled_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ,
+        expiry_action TEXT NOT NULL DEFAULT 'close'
+          CHECK (expiry_action IN ('close','delete_post')),
         event_at TIMESTAMPTZ,
         publish_at TIMESTAMPTZ,
         deadline_at TIMESTAMPTZ,
@@ -212,6 +221,27 @@ export async function runMigrations(): Promise<void> {
         revision INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS announcement_applications (
+        application_id BIGSERIAL PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        applicant_user_id BIGINT NOT NULL,
+        consented_profile JSONB,
+        status TEXT NOT NULL DEFAULT 'submitted'
+          CHECK(status IN ('submitted','held','accepted','declined','withdrawn','expired')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(announcement_id,applicant_user_id)
+      );
+      CREATE TABLE IF NOT EXISTS announcement_notifications (
+        notification_id BIGSERIAL PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        recipient_user_id BIGINT NOT NULL,
+        event_key TEXT NOT NULL UNIQUE,
+        payload JSONB NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','sent','failed')),
+        sent_at TIMESTAMPTZ
       );
       ALTER TABLE announcement_posts ADD COLUMN IF NOT EXISTS purpose_codes TEXT[] NOT NULL DEFAULT '{}';
       ALTER TABLE announcement_posts ADD COLUMN IF NOT EXISTS place_codes TEXT[] NOT NULL DEFAULT '{}';
