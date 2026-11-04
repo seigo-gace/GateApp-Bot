@@ -1,4 +1,4 @@
-import { Markup, type Telegraf } from "telegraf";
+import { Markup, type Telegraf, type Telegram } from "telegraf";
 import { getProfile } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
@@ -66,6 +66,22 @@ function tagPanel(draft:EditorDraft) {
    "post:tagsdone:"+draft.revision)]);
  return Markup.inlineKeyboard(rows);
 }
+/** The same editor is called from /room and an authenticated M2 entry. */
+export async function startRoomEditor(telegram:Telegram,userId:number):Promise<void>{
+ await beginDraft(userId,"room","awaiting_text");
+ await telegram.sendMessage(userId,
+  "🎬 ROOM名を入力してください。持込URLを使う場合は「ROOM名 | https://...」と1通で送れます。URL省略時はJitsiを生成します。");
+}
+/** Announcement category editor shared by command and Topic deep link. */
+export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
+ const draft=await beginDraft(userId,"announcement","awaiting_kind");
+ await telegram.sendMessage(userId,"📢 投稿の種類を選択してください。",
+  Markup.inlineKeyboard([
+   [Markup.button.callback("告知",`post:kind:${draft.revision}:announcement`)],
+   [Markup.button.callback("予告",`post:kind:${draft.revision}:preview`)],
+   [Markup.button.callback("募集",`post:kind:${draft.revision}:recruitment`)],
+  ]));
+}
 export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("publishprofile",async ctx=>{
   if(!privateDM(ctx))return;
@@ -75,18 +91,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
  });
  bot.command("room",async ctx=>{
   if(!privateDM(ctx))return;
-  await beginDraft(ctx.from.id,"room","awaiting_text");
-  await ctx.reply("🎬 ROOM名を入力してください。持込URLを使う場合は「ROOM名 | https://...」と1通で送れます。URL省略時はJitsiを生成します。");
+  await startRoomEditor(ctx.telegram,ctx.from.id);
  });
  bot.command("announce",async ctx=>{
   if(!privateDM(ctx))return;
-  const draft=await beginDraft(ctx.from.id,"announcement","awaiting_kind");
-  await ctx.reply("📢 投稿の種類を選択してください。",
-   Markup.inlineKeyboard([
-    [Markup.button.callback("告知",`post:kind:${draft.revision}:announcement`)],
-    [Markup.button.callback("予告",`post:kind:${draft.revision}:preview`)],
-    [Markup.button.callback("募集",`post:kind:${draft.revision}:recruitment`)],
-   ]));
+  await startAnnouncementEditor(ctx.telegram,ctx.from.id);
  });
  bot.action(/^post:kind:(\d+):(announcement|preview|recruitment)$/,async ctx=>{
   if(!privateDM(ctx))return;
