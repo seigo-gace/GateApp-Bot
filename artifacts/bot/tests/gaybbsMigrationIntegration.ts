@@ -120,6 +120,36 @@ try{
   "Unknown Telegram outcome must never be auto-sent again");
  delete process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED;
  console.log("GAYBBS_DB_NOTIFICATION_UNKNOWN_NEVER_RETRY=PASS");
+ // Simulate all auxiliary meeting records to detect forgotten cleanup paths.
+ await pool.query(
+  `INSERT INTO room_participation_reports(room_id,reporter_user_id,report_type)
+   VALUES($1,222001,'join_failed')`,[roomId]);
+ await pool.query(
+  `INSERT INTO room_host_sessions
+     (owner_user_id,room_id,expected_revision,requested_action,expires_at)
+   VALUES(111001,$1,$2,'postpone',NOW()+INTERVAL '20 minutes')`,
+  [roomId,source.revision]);
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data)
+   VALUES(111001,'room','saved',$1::jsonb)`,
+  [JSON.stringify({roomId})]);
+ await pool.query(
+  `INSERT INTO announcement_application_entries(token_hash,announcement_id,expires_at)
+   VALUES('db-room-entry',$1,NOW()+INTERVAL '1 day')`,[linkedId]);
+ await pool.query(
+  `INSERT INTO announcement_application_sessions(applicant_user_id,token_hash,expires_at)
+   VALUES(222001,'db-room-entry',NOW()+INTERVAL '1 hour')`);
+ const deliveryTopic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,
+    title,verified_by,verified_at,enabled)
+   VALUES('video_chat','announcement',-1002373696859,987,'Room purge test',111001,NOW(),TRUE)
+   RETURNING topic_id`);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+   (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
+     operation_key,status,telegram_message_id)
+   VALUES('announcement',$1,111001,1,$2,'db-room-delivery','sent',87654)`,
+  [String(linkedId),deliveryTopic.rows[0].topic_id]);
  const ended=await updateRoomState(111001,roomId,source.revision,"finish");
  assert.equal(ended.state,"finished");
  assert.equal(ended.eventId,null);
@@ -131,6 +161,12 @@ try{
   ["SELECT * FROM announcement_posts WHERE announcement_id=$1",[linkedId]],
   ["SELECT * FROM announcement_notifications WHERE announcement_id=$1",[linkedId]],
   ["SELECT * FROM announcement_room_dispatches WHERE room_event_id=$1",[source.eventId]],
+  ["SELECT * FROM room_participation_reports WHERE room_id=$1",[roomId]],
+  ["SELECT * FROM room_host_sessions WHERE room_id=$1",[roomId]],
+  ["SELECT * FROM public_post_drafts WHERE owner_user_id=$1 AND module='room'",[111001]],
+  ["SELECT * FROM announcement_application_entries WHERE announcement_id=$1",[linkedId]],
+  ["SELECT * FROM announcement_application_sessions WHERE applicant_user_id=$1",[222001]],
+  ["SELECT * FROM posting_deliveries WHERE operation_key=$1",["db-room-delivery"]],
  ] as const){
   assert.equal((await pool.query(query,[...params])).rows.length,0,query);
  }
