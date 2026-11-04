@@ -28,7 +28,7 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS general_guide_documents (
         chat_id BIGINT NOT NULL REFERENCES general_guide_topics(chat_id),
         document_type TEXT NOT NULL CHECK(document_type IN
-          ('terms','rules','safety','howto','search','menu')),
+          ('terms','rules','safety','privacy','howto','search','menu')),
         message_id BIGINT CHECK(message_id > 0),
         content TEXT,
         version TEXT,
