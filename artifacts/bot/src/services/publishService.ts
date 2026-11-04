@@ -1,4 +1,5 @@
 import type { Telegram } from "telegraf";
+import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { getVerifiedTopic, claimDelivery, acknowledgeDelivery, markDeliveryUnknown } from "./postingDelivery.js";
 import type { PostPurpose } from "./topicRouting.js";
 
@@ -36,11 +37,11 @@ export async function publishPost(telegram:Telegram, req:PublishRequest):
    throw new Error("PUBLISH_NEEDS_RECONCILE");
   }
   try{
-   const sent=await telegram.sendMessage(topic.chatId,req.text,{
-     message_thread_id:topic.threadId,parse_mode:"HTML",
-   });
-   await acknowledgeDelivery(claimed.delivery.id,sent.message_id);
-   return {messageId:sent.message_id,chatId:topic.chatId,threadId:topic.threadId};
+   const messageId=await createTelegramDispatcher(telegram).publish(
+    {chatId:topic.chatId,threadId:topic.threadId},
+    {text:req.text,parseMode:"HTML"});
+   await acknowledgeDelivery(claimed.delivery.id,messageId);
+   return {messageId,chatId:topic.chatId,threadId:topic.threadId};
   }catch(error){
    // An API timeout may mean Telegram already accepted the message.
    // Never send a second copy without explicit reconciliation.
