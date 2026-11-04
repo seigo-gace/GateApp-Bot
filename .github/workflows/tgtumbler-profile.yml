@@ -1,0 +1,24 @@
+name: TGtumbler Profile A05 Source and DM Tests
+on:
+  pull_request:
+  push:
+    branches: ['chat/tgtumbler-profile-a05-20261104']
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/unused
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck existing Bot plus profile
+        run: pnpm --dir artifacts/bot run typecheck
+      - name: Test profile parsing and private DM registration
+        run: pnpm --dir artifacts/bot exec tsx --test tests/profileBasic.test.ts tests/profileHandlers.test.ts
