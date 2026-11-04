@@ -246,9 +246,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const name=String(draft.data.title);
      const url=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
      const room=await createRoom(ctx.from.id,revision,name,url);
-     sourceId=room.sourceId;
      text=preview(module,draft)+"\n"+
       "🔗 <a href=\""+room.joinUrl.replace(/&/g,"&amp;").replace(/"/g,"&quot;")+"\">ROOMへ参加</a>";
+     // The adopted route is ROOM → Announcement → MPB, not ROOM → MPB.
+     const linked=await createAnnouncement(ctx.from.id,revision,"announcement",
+       text,undefined,[],[],Number(room.sourceId));
+     sourceId=linked.sourceId;
     }else{
      const kind=draft.data.kind as AnnouncementKind;
      const value=String(draft.data.text);
@@ -262,7 +265,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }
    }
    const result=await publishPost(ctx.telegram,{
-    sourceType:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,approved:true,
+    sourceType:module==="room"?"announcement":module,
+    destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,approved:true,
    });
    if(module!=="profile")await markDraftPublished(ctx.from.id,module,revision);
    await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
