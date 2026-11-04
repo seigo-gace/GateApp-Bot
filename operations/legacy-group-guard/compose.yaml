@@ -3,6 +3,9 @@ services:
     build: .
     restart: unless-stopped
     init: true
+    # Match this PC's existing protected state directory (1000:1000, mode 0700).
+    # Keep a non-root UID; never chown the host directory from a privileged container.
+    user: "1000:1000"
     env_file: .env
     environment:
       GUARD_STATE_FILE: /state/state.json
