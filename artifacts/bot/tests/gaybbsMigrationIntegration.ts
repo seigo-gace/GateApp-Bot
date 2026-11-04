@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {runMigrations} from "../src/db/migrate.js";
 import {pool,closePool} from "../src/db/index.js";
 import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
-import {updateRoomState} from "../src/services/roomLifecycle.js";
+import {updateRoomState,changeRoomVisibility} from "../src/services/roomLifecycle.js";
 import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
@@ -189,6 +189,32 @@ try{
   [linkedDraft.sourceId]);
  assert.equal(actualPosts.rows[0].n,0,"private save cannot publish Telegram");
  console.log("GAYBBS_DB_ROOM_PRIVATE_SAVE_IDEMPOTENT=PASS");
+ // Free joining requires both explicit host choice AND an actually published
+ // matching Announcement; no default grant and no URL in public message data.
+ const chosen=await changeRoomVisibility(555001,Number(privateSaved.sourceId),1,"public");
+ assert.equal(chosen.visibility,"public");
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Unready room can never distribute the URL");
+ const prepared=await updateRoomState(555001,Number(privateSaved.sourceId),
+  chosen.revision,"prepare");
+ assert.equal(prepared.state,"ready");
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Even a prepared public-mode room requires published Announcement");
+ await pool.query(
+  "UPDATE announcement_posts SET status='published' WHERE announcement_id=$1",
+  [linkedDraft.sourceId]);
+ const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
+ assert.equal(guest?.id,Number(privateSaved.sourceId));
+ const reverted=await changeRoomVisibility(
+  555001,Number(privateSaved.sourceId),prepared.revision,"approved_only");
+ assert.equal(reverted.visibility,"approved_only");
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Switch back to approval-only must revoke public URL access");
+ await assert.rejects(
+  ()=>changeRoomVisibility(999999,Number(privateSaved.sourceId),
+    reverted.revision,"public"),/ROOM_NOT_OWNED/);
+ console.log("GAYBBS_DB_ROOM_EXPLICIT_PUBLIC_MODE_AND_REVOCATION=PASS");
+
 
 
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
