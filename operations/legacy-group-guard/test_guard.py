@@ -62,6 +62,77 @@ class GuardTests(unittest.TestCase):
                 guard.restore("token", guard.ALLOWED_OLD_CHAT_ID, "approved", "approved", b"photo", state, path)
             self.assertEqual(calls, ["getChat"])
 
+    def test_joined_user_is_kicked_and_unbanned(self):
+        calls = []
+        def fake_api(token, method, values=None, photo=None, timeout=25):
+            calls.append((method, values))
+            if method == "getChatMember":
+                return {"status": "member"}
+            return True
+        with patch.object(guard, "api", fake_api):
+            result = guard.handle_update("token", guard.ALLOWED_OLD_CHAT_ID, 500,
+                {"update_id": 10, "chat_member": {
+                    "chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
+                    "old_chat_member": {"status": "left"},
+                    "new_chat_member": {"status": "member", "user": {"id": 901, "is_bot": False}}
+                }})
+        self.assertEqual(result, ["KICKED"])
+        self.assertEqual([x[0] for x in calls],
+                         ["getChatMember", "banChatMember", "unbanChatMember"])
+        self.assertEqual(calls[1][1]["user_id"], 901)
+
+    def test_joined_bot_kicked_and_post_deleted(self):
+        methods = []
+        def fake_api(token, method, values=None, photo=None, timeout=25):
+            methods.append(method)
+            if method == "getChatMember":
+                return {"status": "member"}
+            return True
+        with patch.object(guard, "api", fake_api):
+            outcomes = guard.handle_update("token", guard.ALLOWED_OLD_CHAT_ID, 500,
+                {"message": {"chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
+                             "message_id": 31,
+                             "new_chat_members": [{"id": 902, "is_bot": True}]}})
+        self.assertEqual(outcomes, ["KICKED", "MESSAGE_DELETED"])
+        self.assertEqual(methods, ["getChatMember", "banChatMember",
+                                  "unbanChatMember", "deleteMessage"])
+
+    def test_admin_is_not_kicked(self):
+        methods = []
+        def fake_api(token, method, values=None, photo=None, timeout=25):
+            methods.append(method)
+            return {"status": "administrator"}
+        with patch.object(guard, "api", fake_api):
+            result = guard.kick_new_member("token", guard.ALLOWED_OLD_CHAT_ID,
+                                           {"id": 999, "is_bot": True}, 500)
+        self.assertEqual(result, "ADMIN_PROTECTED_BY_TELEGRAM")
+        self.assertEqual(methods, ["getChatMember"])
+
+    def test_guard_itself_not_kicked(self):
+        with patch.object(guard, "api") as api_mock:
+            result = guard.kick_new_member("token", guard.ALLOWED_OLD_CHAT_ID,
+                                           {"id": 500, "is_bot": True}, 500)
+        self.assertEqual(result, "GUARD_SELF")
+        api_mock.assert_not_called()
+
+    def test_other_chats_are_ignored(self):
+        with patch.object(guard, "api") as api_mock:
+            actions = guard.handle_update("token", guard.ALLOWED_OLD_CHAT_ID, 500,
+                {"message": {"chat": {"id": -1003847210571}, "message_id": 7,
+                             "new_chat_members": [{"id": 901, "is_bot": False}]}})
+        self.assertEqual(actions, [])
+        api_mock.assert_not_called()
+
+    def test_existing_member_changes_not_kicked(self):
+        with patch.object(guard, "api") as api_mock:
+            actions = guard.handle_update("token", guard.ALLOWED_OLD_CHAT_ID, 500,
+                {"chat_member": {"chat": {"id": guard.ALLOWED_OLD_CHAT_ID},
+                    "old_chat_member": {"status": "member"},
+                    "new_chat_member": {"status": "administrator",
+                        "user": {"id": 901, "is_bot": False}}}})
+        self.assertEqual(actions, [])
+        api_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
