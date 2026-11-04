@@ -9,6 +9,7 @@ import {updateRoomState} from "../src/services/roomLifecycle.js";
 import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
+import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -127,5 +128,39 @@ try{
   "Unknown Telegram outcome must never be auto-sent again");
  delete process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED;
  console.log("GAYBBS_DB_NOTIFICATION_UNKNOWN_NEVER_RETRY=PASS");
+ const joinRoom=await pool.query(
+  `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
+   VALUES('db-approved-room',111001,'承認制ROOM','jitsi',
+      'https://meet.jit.si/PRIVATE_ACCEPTED_ONLY','ready')
+   RETURNING room_id`);
+ const privateRoomId=Number(joinRoom.rows[0].room_id);
+ const recruitment=await pool.query(
+  `INSERT INTO announcement_posts
+    (request_key,owner_user_id,kind,text,status,room_id,capacity,accept_applications)
+   VALUES('db-approved-room-recruit',111001,'recruitment',
+      '承認制テスト','published',$1,2,TRUE)
+   RETURNING announcement_id`,[privateRoomId]);
+ const recruitmentId=Number(recruitment.rows[0].announcement_id);
+ const accepted=await submitApplication(recruitmentId,333001,null);
+ await submitApplication(recruitmentId,333002,null);
+ assert.ok(await getAuthorizedRoom(111001,privateRoomId),
+  "ROOM host must retain private access");
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Pending applicant must not receive the URL");
+ await decideApplication(111001,recruitmentId,accepted.applicationId,"accepted");
+ assert.ok((await getAuthorizedRoom(333001,privateRoomId))?.joinUrl.includes("PRIVATE_ACCEPTED_ONLY"));
+ assert.equal(await getAuthorizedRoom(333002,privateRoomId),null,
+  "Another pending applicant must not gain URL access");
+ assert.equal(await getAuthorizedRoom(444001,privateRoomId),null,
+  "Unrelated user must never obtain ROOM URL");
+ assert.equal((await listAuthorizedRooms(333001)).some(r=>r.id===privateRoomId),true);
+ const closedRoom=await pool.query(
+  `UPDATE room_posts SET status='finished' WHERE room_id=$1 RETURNING room_id`,
+  [privateRoomId]);
+ assert.equal(closedRoom.rows.length,1);
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Finished ROOM must stop distributing join URL");
+ console.log("GAYBBS_DB_ROOM_JOIN_AUTHORIZATION=PASS");
+
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
