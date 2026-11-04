@@ -121,6 +121,60 @@ def restore(token, chat_id, title, about, photo, state, state_path):
         LOG.warning("Restored canonical group photo")
 
 
+def kick_new_member(token, chat_id, user, self_bot_id):
+    """Remove only users/bots joining after guard starts, without a permanent ban.
+
+    Never remove the guard itself or an existing administrator. Telegram will reject
+    restricting administrators; record that limitation without weakening other rules.
+    """
+    if chat_id != ALLOWED_OLD_CHAT_ID:
+        raise TelegramError("Wrong chat: refusing kick")
+    if not isinstance(user, dict) or not isinstance(user.get("id"), int):
+        return "INVALID"
+    uid = int(user["id"])
+    if uid == self_bot_id:
+        return "GUARD_SELF"
+    info = api(token, "getChatMember", {"chat_id": chat_id, "user_id": uid})
+    status = info.get("status")
+    if status in ("administrator", "creator"):
+        LOG.error("New member has administrator rights; cannot kick id=%s", uid)
+        return "ADMIN_PROTECTED_BY_TELEGRAM"
+    if status in ("left", "kicked"):
+        return "ALREADY_LEFT"
+    api(token, "banChatMember", {"chat_id": chat_id, "user_id": uid, "revoke_messages": "true"})
+    api(token, "unbanChatMember", {"chat_id": chat_id, "user_id": uid, "only_if_banned": "true"})
+    LOG.warning("Kicked new member id=%s is_bot=%s", uid, bool(user.get("is_bot")))
+    return "KICKED"
+
+
+def handle_update(token, chat_id, bot_id, update):
+    """Delete every visible post and remove every observed joining user/bot."""
+    actions = []
+    if not isinstance(update, dict):
+        return actions
+    change = update.get("chat_member") or {}
+    if (change.get("chat") or {}).get("id") == chat_id:
+        old = (change.get("old_chat_member") or {}).get("status")
+        new = (change.get("new_chat_member") or {}).get("status")
+        user = (change.get("new_chat_member") or {}).get("user")
+        if old in ("left", "kicked") and new in ("member", "restricted", "administrator"):
+            actions.append(kick_new_member(token, chat_id, user, bot_id))
+    for field in ("message", "edited_message", "channel_post", "edited_channel_post"):
+        msg = update.get(field) or {}
+        if (msg.get("chat") or {}).get("id") != chat_id:
+            continue
+        # Membership service messages also contain new_chat_members; use both
+        # this fallback and chat_member updates with idempotent status checking.
+        for user in msg.get("new_chat_members") or []:
+            actions.append(kick_new_member(token, chat_id, user, bot_id))
+        if msg.get("message_id"):
+            api(token, "deleteMessage", {
+                "chat_id": chat_id, "message_id": int(msg["message_id"])
+            })
+            actions.append("MESSAGE_DELETED")
+    return actions
+
+
 def run():
     token = required("GUARD_BOT_TOKEN")
     if not token.split(":")[0].isdigit():
@@ -154,21 +208,23 @@ def run():
                 next_check = time.monotonic() + 30
             updates = api(token, "getUpdates", {
                 "offset": offset, "timeout": 10,
-                "allowed_updates": ["message", "edited_message", "channel_post", "edited_channel_post"]
+                "allowed_updates": ["message", "edited_message", "channel_post", "edited_channel_post", "chat_member"]
             }, timeout=18)
             for update in updates:
                 update_id = int(update["update_id"])
-                for field in ("message", "edited_message", "channel_post", "edited_channel_post"):
-                    msg = update.get(field) or {}
-                    if (msg.get("chat") or {}).get("id") == chat_id and msg.get("message_id"):
-                        try:
-                            api(token, "deleteMessage", {
-                                "chat_id": chat_id, "message_id": int(msg["message_id"])
-                            })
-                        except TelegramError as exc:
-                            LOG.error("Delete failed message=%s: %s", msg["message_id"], exc)
+                if update_id < offset:
+                    continue
+                try:
+                    actions = handle_update(token, chat_id, bot_id, update)
+                    if actions:
+                        LOG.info("Guard actions update=%s outcomes=%s", update_id, actions)
                         next_check = 0.0
-                offset = max(offset, update_id + 1)
+                except TelegramError as exc:
+                    # An API or permission error must not silently advance the
+                    # cursor and permanently discard a join or message to delete.
+                    LOG.error("Update failed id=%s: %s", update_id, exc)
+                    raise
+                offset = update_id + 1
                 state["offset"] = offset
                 save_state(state_path, state)
         except (TelegramError, OSError, ValueError) as exc:
