@@ -182,8 +182,8 @@ def run():
     chat_id = int(required("OLD_CHAT_ID"))
     if chat_id != ALLOWED_OLD_CHAT_ID:
         raise ValueError("Unapproved group ID: refused")
-    title = required("CANONICAL_TITLE")
-    about = required("CANONICAL_DESCRIPTION")
+    title = "閉鎖したグループ"
+    about = "このグループは閉鎖され一切の機能を停止しています"
     if len(title) > 128 or len(about) > 255:
         raise ValueError("Canonical group text is too long")
     photo_path = Path(required("CANONICAL_PHOTO_FILE"))
