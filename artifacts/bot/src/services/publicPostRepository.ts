@@ -3,7 +3,7 @@ import { createJitsiJoinUrl, type AnnouncementKind } from "./postingDomain.js";
 
 export type PostModule="room"|"announcement";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"preview"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_datetime"|"preview"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
@@ -31,7 +31,7 @@ export async function getDraft(id:number,module:PostModule):Promise<EditorDraft|
 export async function getWaitingDraft(id:number):Promise<EditorDraft|null>{
  const r=await pool.query(
   `SELECT module,step,data,revision FROM public_post_drafts
-   WHERE owner_user_id=$1 AND step='awaiting_text'
+   WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_datetime')
    ORDER BY updated_at DESC LIMIT 1`,[validOwner(id)]
  );
  return r.rows[0]??null;
