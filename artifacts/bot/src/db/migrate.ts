@@ -55,6 +55,36 @@ export async function runMigrations(): Promise<void> {
         PRIMARY KEY(chat_id,link_key),
         CHECK(NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
       );
+      CREATE TABLE IF NOT EXISTS board_menu_panels (
+        panel_id BIGSERIAL PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        panel_type TEXT NOT NULL CHECK(panel_type IN ('general_guide','posting')),
+        message_id BIGINT CHECK(message_id > 0),
+        pinned BOOLEAN NOT NULL DEFAULT FALSE,
+        revision INTEGER NOT NULL DEFAULT 1,
+        state TEXT NOT NULL DEFAULT 'unverified'
+          CHECK(state IN ('unverified','verified','publishing','published','needs_reconcile','retired')),
+        verified_by BIGINT,
+        verified_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(chat_id,message_thread_id,panel_type)
+      );
+      CREATE TABLE IF NOT EXISTS board_menu_entry_tokens (
+        token_hash TEXT PRIMARY KEY,
+        panel_id BIGINT NOT NULL REFERENCES board_menu_panels(panel_id),
+        feature TEXT NOT NULL CHECK(feature IN ('profile','announcement','room','link','search')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE
+      );
+      CREATE TABLE IF NOT EXISTS board_menu_sessions (
+        owner_user_id BIGINT PRIMARY KEY,
+        token_hash TEXT NOT NULL REFERENCES board_menu_entry_tokens(token_hash),
+        feature TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS posting_topics (
         topic_id BIGSERIAL PRIMARY KEY,
         board_key TEXT NOT NULL CHECK (board_key IN ('area_bbs','video_chat','gay_board')),
