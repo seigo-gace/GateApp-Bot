@@ -5,11 +5,11 @@
 import { Markup, type Telegraf } from "telegraf";
 import { pool } from "../db/index.js";
 
-export const GUIDE_TYPES = ["terms","rules","safety","howto","search","menu"] as const;
+export const GUIDE_TYPES = ["terms","rules","safety","privacy","howto","search","menu"] as const;
 export type GuideType = typeof GUIDE_TYPES[number];
 const GROUPS = new Set([-1003847210571,-1002373696859,-1003770334893]);
 const TITLES:Record<GuideType,string>={
- terms:"利用規約",rules:"グループルール",safety:"安全ガイドライン",
+ terms:"利用規約",rules:"グループルール",safety:"安全ガイドライン",privacy:"プライバシー",
  howto:"使い方・操作説明",search:"検索",menu:"案内メニュー",
 };
 export function guideMessageUrl(chatId:number,messageId:number):string {
@@ -67,7 +67,7 @@ export function registerGeneralGuideHandlers(bot:Telegraf):void{
   const thread=(ctx.message as {message_thread_id?:number}).message_thread_id;
   if(!token||!GUIDE_TYPES.includes(token)||!reply||!thread||
      (reply as {message_thread_id?:number}).message_thread_id!==thread){
-   await ctx.reply("既存の総合案内の文書投稿へ返信し、/bindguidemessage terms|rules|safety|howto|search|menu を指定してください。");
+   await ctx.reply("既存の総合案内の文書投稿へ返信し、/bindguidemessage terms|rules|safety|privacy|howto|search|menu を指定してください。");
    return;
   }
   const verified=await pool.query(
