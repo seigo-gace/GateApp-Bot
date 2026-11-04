@@ -18,6 +18,8 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Check new Bot Token enrollment script syntax
+        run: python3 -m py_compile scripts/register_gaybbs_bot_token.py
       - name: Typecheck existing Bot plus profile
         run: pnpm --dir artifacts/bot run typecheck
       - name: Test profile parsing and private DM registration
