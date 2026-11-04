@@ -45,6 +45,44 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS public_post_drafts (
+        owner_user_id BIGINT NOT NULL,
+        module TEXT NOT NULL CHECK (module IN ('room','announcement')),
+        step TEXT NOT NULL,
+        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        revision INTEGER NOT NULL DEFAULT 1,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (owner_user_id,module)
+      );
+      CREATE TABLE IF NOT EXISTS room_posts (
+        room_id BIGSERIAL PRIMARY KEY,
+        owner_user_id BIGINT NOT NULL,
+        title TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK (mode IN ('jitsi','external')),
+        join_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft','scheduled','ready','cancelled','finished')),
+        start_at TIMESTAMPTZ,
+        revision INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS announcement_posts (
+        announcement_id BIGSERIAL PRIMARY KEY,
+        owner_user_id BIGINT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('announcement','preview','recruitment')),
+        text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft','published','closed','cancelled')),
+        event_at TIMESTAMPTZ,
+        publish_at TIMESTAMPTZ,
+        deadline_at TIMESTAMPTZ,
+        capacity INTEGER,
+        room_id BIGINT REFERENCES room_posts(room_id),
+        revision INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS profile_drafts (
         owner_user_id BIGINT PRIMARY KEY,
         step TEXT NOT NULL,
