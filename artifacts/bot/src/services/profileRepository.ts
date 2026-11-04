@@ -64,7 +64,7 @@ export async function savePrivateDraft(id: number, revision: number,
     if (!p || !p.position) throw new Error("PROFILE_INCOMPLETE");
     const saved = await client.query(
       "INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'private') ON CONFLICT (owner_user_id) DO UPDATE SET nickname=EXCLUDED.nickname,username=EXCLUDED.username,height_cm=EXCLUDED.height_cm,weight_kg=EXCLUDED.weight_kg,age=EXCLUDED.age,position=EXCLUDED.position,revision=profiles.revision+1,updated_at=NOW() WHERE profiles.status='private' RETURNING nickname,username,height_cm,weight_kg,age,position,status,revision",
-      [id,p.nickname,p.username ?? username,p.heightCm,p.weightKg,p.age,p.position]
+      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position]
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
     await client.query("DELETE FROM profile_drafts WHERE owner_user_id=$1",[id]);
