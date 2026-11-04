@@ -14,12 +14,12 @@ This is a **standalone** Bot API application, not the active GateApp-Bot deploym
 - This standalone guard uses Telegram Bot API `getUpdates` Long Polling. No public HTTP endpoint or G-ACE Webhook Gateway is needed.
 - Existing `@ShowTimeLIVE_Bot` (Bot ID `8086265383`) is the original BAN bot; Master refreshed its token, and the old group administrator rights were verified. Do not request a new Bot identity.
 - **Verified 2026-11-04:** `getWebhookInfo` reported an existing webhook to `ssh.inkognit.org`, `pending_update_count=199` and a recent TLS delivery error. The stale webhook blocks polling even though the guard code is correct.
-- The guard **refuses startup while any webhook is configured**. It never changes the Telegram delivery mode itself and never calls `drop_pending_updates`.
+- The guard pins the existing Bot API identity (`8086265383`) and refuses an unexpected token identity.\n- Pending updates from an old webhook are processed conservatively: join actions require a Telegram event timestamp no more than 120 seconds old (30 seconds future skew allowed); older/missing join timestamps never trigger a kick. Messages older than 47 hours are skipped instead of blocking the queue. This protects current members but does not retroactively repair old abuse.\n- The guard **refuses startup while any webhook is configured**. It never changes the Telegram delivery mode itself and never calls `drop_pending_updates`.
 - Migration procedure: verify the one polling runtime and persistence, then explicitly call `deleteWebhook` with `drop_pending_updates=false`; immediately verify `getWebhookInfo.url` is empty and start the sole polling runtime. Handle the accumulated queue with caution: updates can be old, stale joins should not trigger arbitrary new bans, and a Telegram API queue is not a durable historical archive. Do not claim queue retention without observing it.
 - Do not use G-ACE Webhook Gateway for this bot unless Master explicitly changes the delivery-mode decision.
 
 ## Before deployment (not yet satisfied)
-1. Master must create or select a **working Telegram Bot API bot** in BotFather (the retired .env token returned HTTP 401). Configure Bot-to-Bot Communication Mode and test receipt of posts from other bots, particularly administrator bots.
+1. Use only existing `@ShowTimeLIVE_Bot` (`8086265383`), with the refreshed token already provisioned privately on the authorized host. The retired `.env` token that returned HTTP 401 must not be reused. Check Bot-to-Bot Communication Mode and receipt of posts from other bots, particularly administrator bots.
 2. Master must add that bot to G-JUMP with `can_delete_messages`, `can_restrict_members`, `can_change_info`. Other admins' ability to remove it, revert settings or send updates cannot be eliminated by Bot API.
 3. No photo file or text input is needed: closure title and description are hard-coded and the canonical profile image state is **no image**.
 4. Create `.env` from `.env.example`, populate token privately; do **not** commit `.env`. Prepare writable `state/` directory for container UID 100 (alpine guard user may vary; verify).
@@ -33,4 +33,4 @@ This is a **standalone** Bot API application, not the active GateApp-Bot deploym
 - Deleted messages are not preserved in this app; existing blacklist records are not migrated or altered.
 
 ## Current evidence
-Source prepared only. No runtime credentials, deployment or E2E proof yet; old `TGbot_grp_system/.env` token returned HTTP 401. The userbot's rented phone number is no longer available and must **not** be relied on.
+Source safety updates prepared; offline tests, runtime credentials, deployment and E2E remain **NOT VERIFIED** as of this change. Old `TGbot_grp_system/.env` token returned HTTP 401. The userbot's rented phone number is no longer available and must **not** be relied on.
