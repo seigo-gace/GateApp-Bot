@@ -56,6 +56,7 @@ export async function runMigrations(): Promise<void> {
       );
       CREATE TABLE IF NOT EXISTS room_posts (
         room_id BIGSERIAL PRIMARY KEY,
+        request_key TEXT NOT NULL UNIQUE,
         owner_user_id BIGINT NOT NULL,
         title TEXT NOT NULL,
         mode TEXT NOT NULL CHECK (mode IN ('jitsi','external')),
@@ -69,6 +70,7 @@ export async function runMigrations(): Promise<void> {
       );
       CREATE TABLE IF NOT EXISTS announcement_posts (
         announcement_id BIGSERIAL PRIMARY KEY,
+        request_key TEXT NOT NULL UNIQUE,
         owner_user_id BIGINT NOT NULL,
         kind TEXT NOT NULL CHECK (kind IN ('announcement','preview','recruitment')),
         text TEXT NOT NULL,
