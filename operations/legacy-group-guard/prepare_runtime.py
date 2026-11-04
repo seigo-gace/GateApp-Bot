@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import sys
 
 ROOT = Path("/home/gace/legacy-group-guard-deploy/operations/legacy-group-guard")
 EXPECTED = {
@@ -90,6 +91,8 @@ def execute():
         print("EXIT_CODE=" + ("0" if status == "PASS" else "1"))
         print("PROJECT_END=LegacyGuard")
         print("========== GACE_RESULT_END ==========", flush=True)
+    if status != "PASS":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
