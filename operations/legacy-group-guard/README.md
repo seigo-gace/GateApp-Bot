@@ -4,17 +4,18 @@ This is a **standalone** Bot API application, not the active GateApp-Bot deploym
 
 ## Functions
 - Delete **all received new and edited posts**, including those from ordinary users, administrators and bots, plus visible join service messages. The bot must receive the update first; it cannot prevent transient visibility.
-- Reconcile ordinary member send permissions to all-false at startup and every 30 seconds, including after an administrator relaxes them.\n- **Kick all newly joining users and bots** detected by `chat_member` or service updates: `banChatMember` followed by `unbanChatMember` (remove from group, without permanent block). Never kick the guard itself or existing members. New joiners already promoted to admin cannot be kicked by the Bot API; record the failure.
-- Restore configured group title/description and the owner-approved local photo, at startup and every 30 seconds.
+- Reconcile ordinary member send permissions to all-false at startup and every 30 seconds, including after an administrator relaxes them.
+- **Kick all newly joining users and bots** detected by `chat_member` or service updates: `banChatMember` followed by `unbanChatMember` (remove from group, without permanent block). Never kick the guard itself or existing members. New joiners already promoted to admin cannot be kicked by the Bot API; record the failure.
+- Restore fixed title `閉鎖したグループ` and description `このグループは閉鎖され一切の機能を停止しています`, and delete the group photo whenever present, at startup and every 30 seconds.
 - Preserve all existing administrator roles: never demote, kick, ban, or edit the blacklist.
-- Failure retries with bounded backoff; state file stores photo ID, offset, permission-restored flag. A single dedicated bot token must not be used by a second polling/webhook runtime.
+- Failure retries with bounded backoff; state file stores update offset and permission-restored flag. A single dedicated bot token must not be used by a second polling/webhook runtime.
 
 ## Before deployment (not yet satisfied)
 1. Master must create or select a **working Telegram Bot API bot** in BotFather (the retired .env token returned HTTP 401). Configure Bot-to-Bot Communication Mode and test receipt of posts from other bots, particularly administrator bots.
 2. Master must add that bot to G-JUMP with `can_delete_messages`, `can_restrict_members`, `can_change_info`. Other admins' ability to remove it, revert settings or send updates cannot be eliminated by Bot API.
-3. Obtain **Master-approved** canonical title, description, and original photo file. Do not take these automatically from a potentially defaced group. Save `canonical.jpg` in this directory.
-4. Create `.env` from `.env.example`, populate token and title/description privately; do **not** commit either `.env` or canonical photo. Prepare writable `state/` directory for container UID 100 (alpine guard user may vary; verify).
-5. On the authorized deployment machine, after checks, run `docker compose up -d --build`; verify `getMe`, the group rights, permission restoration, image/title/description restoration and representative admin/user/bot message deletion. Test restart and repeat. No automatic deployment/merges are included.
+3. No photo file or text input is needed: closure title and description are hard-coded and the canonical profile image state is **no image**.
+4. Create `.env` from `.env.example`, populate token privately; do **not** commit `.env`. Prepare writable `state/` directory for container UID 100 (alpine guard user may vary; verify).
+5. On the authorized deployment machine, after checks, run `docker compose up -d --build`; verify `getMe`, the group rights, permission restoration, photo deletion/title/description restoration and representative admin/user/bot message deletion. Test restart and repeat. No automatic deployment/merges are included.
 6. Offline tests: `python3 -m unittest discover -s operations/legacy-group-guard -p 'test_*.py'`.
 
 ## Telegram platform limits
@@ -24,4 +25,4 @@ This is a **standalone** Bot API application, not the active GateApp-Bot deploym
 - Deleted messages are not preserved in this app; existing blacklist records are not migrated or altered.
 
 ## Current evidence
-Source prepared only. No runtime credentials, canonical media, deployment or E2E proof yet; old `TGbot_grp_system/.env` token returned HTTP 401. The userbot's rented phone number is no longer available and must **not** be relied on.
+Source prepared only. No runtime credentials, deployment or E2E proof yet; old `TGbot_grp_system/.env` token returned HTTP 401. The userbot's rented phone number is no longer available and must **not** be relied on.
