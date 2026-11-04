@@ -41,3 +41,11 @@
 4. 3グループBot権限と実Topic message_thread_idを実APIで確認し、本人/閲覧者のTelegram実投稿・端末別E2Eを取る。
 
 **記録は監査完了を示すのみで、製品機能完成ではない。**
+
+## 監査後の実装修正（時系列追記・監査時の不足記録は残す）
+- Notion02のTypeScriptから目的タグ13件・場所二者択一+足あり独立の検証関数を `src/services/announcementTags.ts` に実際に移植、`tests/announcementTags.test.ts` を追加。
+- 募集DMに13目的選択・場所/移動指定のInlineKeyboardを接続。選択状態を本人のrevision付draftに保存し、公開カード/DB sourceへ伝達。既存の応募・検索やタグ別公開先ルーティングは未完成。
+- Notion02の `resolvePublishThread` と `validateForPublish` のコード契約を `announcementRouting.ts` に移植。ただし既存の実Topic台帳を用いた本番呼出は未接続で、実Routing完成とは呼ばない。
+- MPBの `PublishRequest` に配信先用途と業務Source型の分離を追加。
+- ROOMの初期公開処理をROOM→Announcementレコード→MPBへ修正（旧ROOM→MPB直接依存を廃止）。延期・中止・終了のイベント追随や利用者通知は未完成。
+- 各変更にCIと静的検証を実施・照合し、結果は最終HEADのCIと区別する。Gserver本番・Telegram実操作は未実行。
