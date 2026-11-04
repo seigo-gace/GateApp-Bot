@@ -11,6 +11,7 @@ export type PublishRequest = {
   revision:number;
   topicId:number;
   text:string;
+  buttons?:readonly (readonly {text:string;url:string}[])[];
   approved:boolean;
 };
 
@@ -39,7 +40,7 @@ export async function publishPost(telegram:Telegram, req:PublishRequest):
   try{
    const messageId=await createTelegramDispatcher(telegram).publish(
     {chatId:topic.chatId,threadId:topic.threadId},
-    {text:req.text,parseMode:"HTML"});
+    {text:req.text,parseMode:"HTML",buttons:req.buttons});
    await acknowledgeDelivery(claimed.delivery.id,messageId);
    return {messageId,chatId:topic.chatId,threadId:topic.threadId};
   }catch(error){
