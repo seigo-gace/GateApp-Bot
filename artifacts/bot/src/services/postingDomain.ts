@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { escapeProfileHtml } from "./profileCore.js";
+import { validateAnnouncementTags } from "./announcementTags.js";
 
 export const ANNOUNCEMENT_KINDS=["announcement","preview","recruitment"] as const;
 export type AnnouncementKind=typeof ANNOUNCEMENT_KINDS[number];
@@ -15,6 +16,7 @@ export type AnnouncementDraft={
  ownerId:number; kind:AnnouncementKind; text:string;
  eventAt?:Date|null; publishAt?:Date|null; deadlineAt?:Date|null;
  capacity?:number|null; roomId?:number|null;
+ purposeCodes?:string[]; placeCodes?:string[];
 };
 
 export function assertHttpsMeetingUrl(value:string):string {
@@ -58,6 +60,9 @@ export function validateAnnouncement(d:AnnouncementDraft):AnnouncementDraft{
  if(!ANNOUNCEMENT_KINDS.includes(d.kind))throw new Error("ANNOUNCEMENT_KIND_INVALID");
  if(!d.text.trim()||d.text.length>3500)throw new Error("ANNOUNCEMENT_TEXT_INVALID");
  if(d.kind==="preview"&&!d.eventAt)throw new Error("PREVIEW_EVENT_DATE_REQUIRED");
+ validateAnnouncementTags({purposeCodes:d.purposeCodes||[],placeCodes:d.placeCodes||[]});
+ if(d.kind==="recruitment"&&(!d.purposeCodes||d.purposeCodes.length===0))
+  throw new Error("RECRUITMENT_PURPOSE_REQUIRED");
  if(d.kind!=="recruitment"&&(d.capacity||d.deadlineAt))
   throw new Error("ANNOUNCEMENT_RECRUITMENT_ONLY_FIELDS");
  if(d.capacity!==undefined&&d.capacity!==null&&
@@ -72,6 +77,8 @@ export function buildAnnouncementCard(d:AnnouncementDraft):string{
  validateAnnouncement(d);
  const heading=d.kind==="announcement"?"📢 告知":d.kind==="preview"?"📅 予告":"📣 相手募集";
  const rows=[heading,escapeProfileHtml(d.text.trim())];
+ if(d.purposeCodes?.length)rows.push("🎯 目的："+d.purposeCodes.map(x=>"#"+escapeProfileHtml(x)).join(" "));
+ if(d.placeCodes?.length)rows.push("📍 場所/移動："+d.placeCodes.map(x=>"#"+escapeProfileHtml(x)).join(" "));
  if(d.eventAt)rows.push("開催："+d.eventAt.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）");
  if(d.kind==="recruitment"&&d.capacity)rows.push("定員："+d.capacity+"人");
  if(d.kind==="recruitment"&&d.deadlineAt)rows.push("応募締切："+d.deadlineAt.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）");
