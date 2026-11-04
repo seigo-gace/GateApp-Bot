@@ -1,4 +1,4 @@
-import { Telegraf, Markup } from "telegraf";
+import { Telegraf, Markup, type Context } from "telegraf";
 import type { ProfileDraft, SavedProfile } from "../services/profileRepository.js";
 import * as profileRepo from "../services/profileRepository.js";
 import {
@@ -22,29 +22,31 @@ function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}})
   return ctx.chat?.type === "private" && !!ctx.from?.username;
 }
 
+/** Shared entrypoint for /profile and validated M2 Topic→DM start links. */
+export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRepo):Promise<void>{
+ if(ctx.chat?.type!=="private"||!ctx.from)return;
+ if(!canUseProfile(ctx)){
+  await ctx.reply("Telegram設定でusernameを登録してから操作してください。");
+  return;
+ }
+ const existing=await repo.getProfile(ctx.from.id);
+ if(existing){
+  await ctx.reply(renderProfileBasicPreview(existing,ctx.from.username!),{
+   parse_mode:"HTML",...Markup.inlineKeyboard([
+    [Markup.button.callback("📝 基本情報を編集","pf:edit:basic")],
+   ]),
+  });
+  return;
+ }
+ await repo.putDraft(ctx.from.id,"awaiting_basic",{});
+ await ctx.reply(requestBasic);
+}
+
 export function registerProfileHandlers(
   bot: Telegraf,
   repo: ProfileRepo = profileRepo,
 ): void {
-  bot.command("profile", async (ctx) => {
-    if (ctx.chat.type !== "private") return;
-    if (!canUseProfile(ctx)) {
-      await ctx.reply("Telegram設定でusernameを登録してから操作してください。");
-      return;
-    }
-    const existing = await repo.getProfile(ctx.from.id);
-    if (existing) {
-      await ctx.reply(
-        renderProfileBasicPreview(existing, ctx.from.username!),
-        {parse_mode:"HTML", ...Markup.inlineKeyboard([
-          [Markup.button.callback("📝 基本情報を編集", "pf:edit:basic")],
-        ])}
-      );
-      return;
-    }
-    await repo.putDraft(ctx.from.id, "awaiting_basic", {});
-    await ctx.reply(requestBasic);
-  });
+  bot.command("profile", async ctx => startProfileEditor(ctx,repo));
 
   bot.action("pf:edit:basic", async (ctx) => {
     await ctx.answerCbQuery();
