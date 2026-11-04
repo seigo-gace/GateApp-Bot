@@ -75,11 +75,15 @@ export async function createAnnouncement(id:number,revision:number,kind:Announce
  return {sourceId:String(r.rows[0].announcement_id)};
 }
 export async function markDraftPublished(id:number,module:PostModule,revision:number):Promise<void>{
- await pool.query(
-  `UPDATE public_post_drafts SET step='published',updated_at=NOW()
-   WHERE owner_user_id=$1 AND module=$2 AND revision=$3 AND step='preview'`,
+ // Source and Telegram receipt are durable owners. Once published, there is
+ // no reason to retain the sensitive temporary editor payload in another row.
+ const r=await pool.query(
+  `DELETE FROM public_post_drafts
+   WHERE owner_user_id=$1 AND module=$2 AND revision=$3 AND step='preview'
+   RETURNING owner_user_id`,
   [validOwner(id),module,revision]
  );
+ if(r.rows.length!==1)throw new Error("POST_DRAFT_FINALIZATION_NEEDS_RECONCILE");
 }
 
 /** A private ROOM is saved without publishing a Telegram URL or post. */
