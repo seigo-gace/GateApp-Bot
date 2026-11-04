@@ -264,6 +264,17 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(announcement_id,applicant_user_id)
       );
+      CREATE TABLE IF NOT EXISTS announcement_room_dispatches (
+        dispatch_id BIGSERIAL PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        room_event_id BIGINT NOT NULL REFERENCES room_source_events(event_id),
+        source_revision INTEGER NOT NULL CHECK(source_revision > 0),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','sending','sent','needs_reconcile','skipped')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(announcement_id,room_event_id)
+      );
       CREATE TABLE IF NOT EXISTS announcement_application_entries (
         token_hash TEXT PRIMARY KEY,
         announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
