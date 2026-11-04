@@ -203,6 +203,20 @@ try{
  await pool.query(
   "UPDATE announcement_posts SET status='published' WHERE announcement_id=$1",
   [linkedDraft.sourceId]);
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Business status alone must never grant public join access without Telegram delivery");
+ const topic=await pool.query(
+  `INSERT INTO posting_topics
+    (board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled)
+    VALUES('video_chat','announcement',-1002373696859,123,'CI-only topic',
+      111001,NOW(),TRUE) RETURNING topic_id`);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+    (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
+      operation_key,status,telegram_message_id)
+    VALUES('announcement',$1,555001,1,$2,$3,'sent',10001)`,
+  [linkedDraft.sourceId,topic.rows[0].topic_id,
+   "db-test-published-room:"+linkedDraft.sourceId]);
  const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
  assert.equal(guest?.id,Number(privateSaved.sourceId));
  const reverted=await changeRoomVisibility(
