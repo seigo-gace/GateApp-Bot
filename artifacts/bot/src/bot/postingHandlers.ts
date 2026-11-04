@@ -11,6 +11,7 @@ import type { PostPurpose } from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
+import {makeApplicationLink} from "../services/applicationLinks.js";
 
 type Module="profile"|"room"|"announcement"|"link";
 const LABELS:Record<Module,string>={profile:"プロフィール",room:"ROOM",announcement:"告知・募集",link:"リンクボタン"};
@@ -330,6 +331,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
        purposeCodes,placeCodes);
      sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,
        kind,text:value,eventAt,purposeCodes,placeCodes});
+     if(kind==="recruitment"){
+      const link=await makeApplicationLink(ctx.from.id,Number(sourceId));
+      buttons=[[{text:"📨 応募する（Bot DM）",url:link}]];
+     }
     }
    }
    const result=await publishPost(ctx.telegram,{
