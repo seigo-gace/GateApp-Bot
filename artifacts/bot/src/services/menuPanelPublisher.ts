@@ -46,8 +46,14 @@ async function buildLinks(panel:PanelRow):Promise<{
   links.push(...other.rows.map(r=>({label:r.label,url:r.destination_url,verified:true})));
   return {links,entries:[]};
  }
- const configured=process.env.GAYBBS_READY_FEATURES||"";
- const ready=new Set(configured.split(",").map(x=>x.trim()).filter(Boolean));
+ const gates=await pool.query(
+  `SELECT feature FROM gaybbs_feature_release_gates
+   WHERE enabled=TRUE AND length(source_commit)=40
+     AND length(trim(ci_evidence))>0
+     AND length(trim(gserver_runtime_evidence))>0
+     AND length(trim(telegram_e2e_evidence))>0
+     AND approved_by IS NOT NULL`);
+ const ready=new Set(gates.rows.map(x=>String(x.feature)));
  const permitted:MenuFeature[]=["profile","announcement","room","link","search"];
  const features=permitted.filter(x=>ready.has(x));
  if(!features.length)throw new Error("NO_VERIFIED_POSTING_FEATURES");
