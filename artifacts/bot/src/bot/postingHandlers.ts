@@ -333,7 +333,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }
    }
    const result=await publishPost(ctx.telegram,{
-    sourceType:module==="room"?"announcement":module,
+    sourceType:module,
     destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,
     buttons,approved:true,
    });
