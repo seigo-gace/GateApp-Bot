@@ -4,6 +4,28 @@ export async function runMigrations(): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query(`
+      CREATE TABLE IF NOT EXISTS profiles (
+        owner_user_id BIGINT PRIMARY KEY,
+        nickname TEXT,
+        username TEXT,
+        height_cm SMALLINT NOT NULL CHECK (height_cm BETWEEN 90 AND 250),
+        weight_kg SMALLINT NOT NULL CHECK (weight_kg BETWEEN 25 AND 300),
+        age SMALLINT NOT NULL CHECK (age BETWEEN 20 AND 120),
+        position TEXT NOT NULL CHECK (position IN ('タチ','タチリバ','リバ','ウケリバ','ウケ')),
+        hair TEXT, body TEXT, region TEXT, area TEXT, pr TEXT,
+        status TEXT NOT NULL DEFAULT 'private'
+          CHECK (status IN ('private','published','hidden')),
+        revision INTEGER NOT NULL DEFAULT 1,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS profile_drafts (
+        owner_user_id BIGINT PRIMARY KEY,
+        step TEXT NOT NULL,
+        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        revision INTEGER NOT NULL DEFAULT 1,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS owners (
         owner_user_id BIGINT PRIMARY KEY,
         display_name TEXT NOT NULL,
