@@ -23,4 +23,4 @@ jobs:
       - name: Typecheck existing Bot plus profile
         run: pnpm --dir artifacts/bot run typecheck
       - name: Test profile parsing and private DM registration
-        run: pnpm --dir artifacts/bot exec tsx --test tests/profileBasic.test.ts tests/profileHandlers.test.ts
+        run: pnpm --dir artifacts/bot exec tsx --test tests/*.test.ts
