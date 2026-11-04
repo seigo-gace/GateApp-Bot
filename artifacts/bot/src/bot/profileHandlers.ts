@@ -16,7 +16,7 @@ const selectPosition = (revision: number) => Markup.inlineKeyboard(
   PROFILE_POSITIONS.map((p, i) => [Markup.button.callback(p, `pf:pos:${revision}:${i}`)])
 );
 
-const requestBasic = "🪪 プロフィールの基本情報\n身長 体重 年齢を半角スペースで区切って送信してください。\n例：175 80 39\nニックネームを付ける場合は、1行目に名前、2行目に数値を入力してください。";
+const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\nニックネームを1行目、身長 体重 年齢を半角スペース区切りで2行目に入力してください。\n例：ゼロ\n175 80 39\nポジションは次の5択から選びます。";
 
 function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}}): boolean {
   return ctx.chat?.type === "private" && !!ctx.from?.username;
