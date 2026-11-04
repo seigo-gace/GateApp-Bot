@@ -1,0 +1,27 @@
+name: Legacy group guard tests
+
+on:
+  pull_request:
+    paths:
+      - 'operations/legacy-group-guard/**'
+      - '.github/workflows/legacy-group-guard-tests.yml'
+  push:
+    branches:
+      - 'chat/legacy-group-guard-bot-20261104'
+    paths:
+      - 'operations/legacy-group-guard/**'
+      - '.github/workflows/legacy-group-guard-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax and offline regressions
+        run: |
+          python3 -m py_compile operations/legacy-group-guard/guard.py operations/legacy-group-guard/test_guard.py
+          python3 -m unittest discover -s operations/legacy-group-guard -p 'test_*.py' -v
