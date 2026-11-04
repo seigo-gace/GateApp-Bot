@@ -295,6 +295,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
    let sourceId:string;let text:string;
+   let buttons:ReadonlyArray<ReadonlyArray<{text:string;url:string}>>|undefined;
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
     if(!p||p.revision!==revision)throw new Error("プロフィールが更新されています。");
@@ -303,7 +304,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const draft=await getDraft(ctx.from.id,module);
     if(!draft||draft.step!=="preview"||draft.revision!==revision)
      throw new Error("投稿下書きが変更されています。");
-    if(module==="room"){
+    if(module==="link"){
+     const payload=draft.data as LinkDraft;
+     const link=await createLinkButton(ctx.from.id,revision,payload);
+     sourceId=link.sourceId;
+     text=renderLinkCard(payload);
+     buttons=buttonGrid(payload).map(row=>row.map(b=>({text:b.label,url:b.url})));
+    }else if(module==="room"){
      const name=String(draft.data.title);
      const url=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
      const room=await createRoom(ctx.from.id,revision,name,url);
@@ -327,7 +334,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    const result=await publishPost(ctx.telegram,{
     sourceType:module==="room"?"announcement":module,
-    destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,approved:true,
+    destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,
+    buttons,approved:true,
    });
    try{
     if(module==="profile")
