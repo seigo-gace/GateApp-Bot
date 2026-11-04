@@ -5,6 +5,7 @@ import { Markup,type Telegraf } from "telegraf";
 import {pool} from "../db/index.js";
 import {updateRoomState,reportRoomParticipation,type RoomAction} from "../services/roomLifecycle.js";
 import {parseJstDateTime} from "../services/postingDomain.js";
+import {getAuthorizedRoom,listAuthorizedRooms} from "../services/roomAccess.js";
 function actions(roomId:number,revision:number,status:string){
  const allowed:Record<string,RoomAction[]>={
   draft:["schedule","prepare","cancel"],
@@ -19,6 +20,31 @@ function actions(roomId:number,revision:number,status:string){
   Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`)]));
 }
 export function registerRoomHandlers(bot:Telegraf):void{
+ bot.command("joinrooms",async ctx=>{
+  if(ctx.chat.type!=="private")return;
+  const rooms=await listAuthorizedRooms(ctx.from.id);
+  if(!rooms.length){
+   await ctx.reply("参加許可のあるROOMはありません。募集の承認後に表示されます。");
+   return;
+  }
+  for(const room of rooms){
+   await ctx.reply("🎬 "+room.title+" / "+room.status,
+    Markup.inlineKeyboard([[Markup.button.callback(
+      "🔗 このROOMの参加リンクを表示","room:join:"+room.id)]]));
+  }
+ });
+ bot.action(/^room:join:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const room=await getAuthorizedRoom(ctx.from.id,Number(ctx.match[1]));
+  if(!room){
+   await ctx.answerCbQuery("参加権限がないかROOMが終了しています");
+   return;
+  }
+  await ctx.answerCbQuery();
+  // Return only in the requesting user's private chat; never reply in a group.
+  await ctx.reply("🎬 "+room.title+"\n準備完了・開催中のROOMだけ参加できます。",
+   Markup.inlineKeyboard([[Markup.button.url("🔗 ROOMへ参加",room.joinUrl)]]));
+ });
  bot.command("myrooms",async ctx=>{
   if(ctx.chat.type!=="private")return;
   const r=await pool.query(
