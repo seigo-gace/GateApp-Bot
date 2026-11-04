@@ -168,8 +168,16 @@ def handle_update(token, chat_id, bot_id, update):
             continue
         # Membership service messages also contain new_chat_members; use both
         # this fallback and chat_member updates with idempotent status checking.
-        for user in msg.get("new_chat_members") or []:
-            actions.append(kick_new_member(token, chat_id, user, bot_id))
+        if fresh_join_event(msg.get("date")):
+            for user in msg.get("new_chat_members") or []:
+                actions.append(kick_new_member(token, chat_id, user, bot_id))
+        # Deletion is bounded by Telegram Bot API age limits; avoid a
+        # permanently stuck cursor when processing a stale webhook backlog.
+        event_date = msg.get("date") or msg.get("edit_date")
+        if (isinstance(event_date, int) and not isinstance(event_date, bool)
+                and time.time() - event_date > MESSAGE_DELETE_MAX_AGE_SECONDS):
+            actions.append("EXPIRED_MESSAGE_SKIPPED")
+            continue
         if msg.get("message_id"):
             api(token, "deleteMessage", {
                 "chat_id": chat_id, "message_id": int(msg["message_id"])
