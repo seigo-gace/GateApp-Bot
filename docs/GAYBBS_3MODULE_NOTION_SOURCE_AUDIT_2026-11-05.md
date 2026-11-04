@@ -49,3 +49,13 @@
 - MPBの `PublishRequest` に配信先用途と業務Source型の分離を追加。
 - ROOMの初期公開処理をROOM→Announcementレコード→MPBへ修正（旧ROOM→MPB直接依存を廃止）。延期・中止・終了のイベント追随や利用者通知は未完成。
 - 各変更にCIと静的検証を実施・照合し、結果は最終HEADのCIと区別する。Gserver本番・Telegram実操作は未実行。
+
+## 2026-11-05 追補｜総合案内を含めた原設計再照合（Master差戻し）
+- 原設計の現行移管先 [Notion 14相当](https://app.notion.com/p/40dcdcf128e4810fb0a2d64e9788bdd3) を全文取得した。従来の別名「3モジュール完了」は誤り。**同一 @GayBBS_bot の初期公開6つの利用体験**は、①プロフィール、②プロフィール+募集+ROOM、③プロフィール+募集、④総合案内M1、⑤各Topic投稿メニューM2、⑥リンクボタン投稿。6独立システムには分離しない。
+- M1：3グループの総合案内への常設InlineKeyboard、既存規約/ルール/Privacy/安全ガイド/使い方・お知らせ・エリアボード・プロフ・検索・ROOM・相互リンク・投稿メニューの導線。正規の各文書の公開先実message_idを維持し、合法性・公開認可未確定の文書やCloudflare Pages仮URLを勝手に公開しない。
+- M2：対象の既存Topicごとに原則1枚を固定・更新し、Bot DMへ起点group_id/topic_idを**改ざん不能な短いstart token**で引き継ぐ。一般ユーザーが任意chat/threadを入力できないこと、投稿先を誤らないこと、DMから元の位置へ戻れることが受入条件。
+- [現行案内UI](https://app.notion.com/p/40ecdcf128e481918cd1c4957ae1d3a5) はTypeScriptコードフェンス0件で、**運用/版/文書IDの仕様正本**。逆にNotionプロフィールのTS/SQL7件、Notion02のTS/SQL12件はコード参考実装。内容を「すべてNotionに実装コードがある」と一括断定せず、正本種別を分ける。
+- 既存GitHub GateApp-Botの `bot/menuHandlers.ts`（47KB）/`bot/keyboards.ts`/`bot/startHandler.ts`/`bot/textHandlers.ts` は**GATE管理者用の実装資産**。そのまま新しい利用者Botへ登録すると管理者権限や参加承認フローが混線するため、既存ロジックは参照し、安全な共通部品だけAdapter化する。
+- 旧 `seigo-gace/-AdminSystem/server/modules/multipost/{core,renderer,dispatcher,event-router}.ts`、`room/jitsi-builder.ts`、`bbs-recruit/store.ts` のコード内容をGitHubから直接取得した。送信・編集・削除、button-grid、callback codec、Jitsi設定、募集storeが存在し、新規簡易MPBの重複作成は避ける。旧設計にあるAIタグ/周期投稿/課金等は新採用対象ではない。
+- 直前の `generalGuideHandlers.ts` は接続コマンドと単発メニュー返信だけで、**M1固定一投稿更新・M2固定パネル・起点token・リンクボタン投稿の完了ではない**。Docker本番・実Topic ID・文書本文の公開は一切未実行。
+- 同一Gserverで稼働する単一新Bot、共有投稿コア、Profile/Announcement/ROOM/案内/リンクの分離されたOwner、Gserver独立アプリ受入が最終完成条件。原設計より機能を勝手に縮小しない。
