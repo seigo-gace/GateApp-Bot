@@ -10,6 +10,7 @@ import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
+import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 
 function readToken():string{
  const path=process.env.GAYBBS_TOKEN_FILE||
@@ -33,6 +34,18 @@ async function main():Promise<void>{
  await runMigrations();
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  if(ctx.startPayload?.startsWith("m_")){
+   try{
+    const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
+    const cmd={profile:"/profile",announcement:"/announce",room:"/room",
+      link:"/link",search:"/search"}[origin.feature];
+    await ctx.reply("✅ 元のトピックを確認しました。投稿先を保持しています。\\n次の操作："+cmd+
+      "\\n公開時には宛先と内容を確認します。");
+   }catch{
+    await ctx.reply("この投稿メニューのリンクは期限切れ、または未登録です。元のトピックの新しい固定メニューを利用してください。");
+   }
+   return;
+  }
   await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開\n/room — ROOM作成\n/announce — 告知・予告・募集作成\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
  });
  registerProfileHandlers(bot);
