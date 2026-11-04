@@ -8,6 +8,7 @@ import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,
  createAnnouncement,markDraftPublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
+import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 
 type Module="profile"|"room"|"announcement";
 const LABELS:Record<Module,string>={profile:"プロフィール",room:"ROOM",announcement:"告知・募集"};
@@ -22,7 +23,9 @@ function preview(module:Module,draft:EditorDraft):string {
  const kind=draft.data.kind as AnnouncementKind;
  return buildAnnouncementCard(validateAnnouncement({ownerId:1,kind,
   text:String(draft.data.text||""),
-  eventAt:draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined}));
+  eventAt:draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined,
+  purposeCodes:Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[],
+  placeCodes:Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[]}));
 }
 async function destinationMenu(ctx:{reply:Function},module:Module,revision:number):Promise<void>{
  const options=await listVerifiedTopics(module as PostPurpose);
@@ -34,6 +37,22 @@ async function destinationMenu(ctx:{reply:Function},module:Module,revision:numbe
   Markup.inlineKeyboard(options.slice(0,30).map(t=>[
    Markup.button.callback(t.title+" / "+t.board,
     `post:choose:${module}:${revision}:${t.id}`)])));
+}
+function tagPanel(draft:EditorDraft) {
+ const purposes=Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[];
+ const places=Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[];
+ const rows=PURPOSE_TAGS.map((tag,i)=>[
+  Markup.button.callback((purposes.includes(tag)?"✅ ":"▫️ ")+tag,
+    "post:tag:"+draft.revision+":"+i)]);
+ rows.push([Markup.button.callback((places.includes("場所あり")?"✅ ":"▫️ ")+"場所あり",
+   "post:place:"+draft.revision+":0")]);
+ rows.push([Markup.button.callback((places.includes("場所なし")?"✅ ":"▫️ ")+"場所なし",
+   "post:place:"+draft.revision+":1")]);
+ rows.push([Markup.button.callback((places.includes("足あり")?"✅ ":"▫️ ")+"足あり（独立）",
+   "post:place:"+draft.revision+":2")]);
+ rows.push([Markup.button.callback("✅ タグ選択を確定",
+   "post:tagsdone:"+draft.revision)]);
+ return Markup.inlineKeyboard(rows);
 }
 export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("publishprofile",async ctx=>{
@@ -70,6 +89,63 @@ export function registerPostingHandlers(bot:Telegraf):void{
    "予告文を送ってください。開催日時は公開前に別途必要です。":
    "本文を1通で送ってください。公開前に内容と投稿先を確認します。");
  });
+ bot.action(/^post:tag:(\\d+):(\\d{1,2})$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]), i=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!d||d.step!=="awaiting_tags"||d.revision!==rev||i>=PURPOSE_TAGS.length){
+   await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
+  }
+  const tag=PURPOSE_TAGS[i]!;
+  const values=Array.isArray(d.data.purposeCodes)?d.data.purposeCodes as string[]:[];
+  const selected=values.includes(tag)?values.filter(x=>x!==tag):[...values,tag];
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",
+   {...d.data,purposeCodes:selected});
+  await ctx.answerCbQuery();
+  await ctx.editMessageText("🎯 募集目的・📍場所/移動を選択してください（足ありは独立）",
+   tagPanel(next));
+ });
+ bot.action(/^post:place:(\\d+):([012])$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]),index=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!d||d.step!=="awaiting_tags"||d.revision!==rev){
+   await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
+  }
+  const current=Array.isArray(d.data.placeCodes)?d.data.placeCodes as string[]:[];
+  const place=index===0?"場所あり":index===1?"場所なし":null;
+  const previous=current.includes("場所あり")?"場所あり":
+    current.includes("場所なし")?"場所なし":null;
+  const selected=place?(previous===place?null:place):previous;
+  const transport=index===2?!current.includes("足あり"):current.includes("足あり");
+  const placeCodes=normalizePlaceCodes(selected,transport);
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",
+   {...d.data,placeCodes});
+  await ctx.answerCbQuery();
+  await ctx.editMessageText("🎯 募集目的・📍場所/移動を選択してください（足ありは独立）",
+   tagPanel(next));
+ });
+ bot.action(/^post:tagsdone:(\\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!d||d.step!=="awaiting_tags"||d.revision!==rev){
+   await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
+  }
+  const purposeCodes=Array.isArray(d.data.purposeCodes)?d.data.purposeCodes as string[]:[];
+  const placeCodes=Array.isArray(d.data.placeCodes)?d.data.placeCodes as string[]:[];
+  try{
+   validateAnnouncementTags({purposeCodes,placeCodes});
+   validateAnnouncement({ownerId:ctx.from.id,kind:"recruitment",
+    text:String(d.data.text),purposeCodes,placeCodes});
+   const updated=await updateDraft(ctx.from.id,"announcement",rev,"preview",d.data);
+   await ctx.answerCbQuery();
+   await ctx.editMessageText("プレビュー（まだ投稿していません）\\n"+preview("announcement",updated));
+   await destinationMenu(ctx,"announcement",updated.revision);
+  }catch(e){
+   await ctx.answerCbQuery(e instanceof Error?e.message:"タグ内容を確認してください。");
+  }
+ });
  bot.on("text",async(ctx,next)=>{
   if(!privateDM(ctx)||ctx.message.text.startsWith("/"))return next();
   const current=await getWaitingDraft(ctx.from.id);
@@ -102,6 +178,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
      await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_datetime",
        {...current.data,text:input});
      await ctx.reply("開催日時を1通で入力してください（日本時間）。例：2026/11/20 20:00");
+     return;
+    }
+    if(kind==="recruitment"){
+     const next=await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_tags",
+       {...current.data,text:input,purposeCodes:[],placeCodes:[]});
+     await ctx.reply("🎯 募集目的と📍場所/移動を選択してください。",tagPanel(next));
      return;
     }
     validateAnnouncement({ownerId:ctx.from.id,kind,text:input});
@@ -171,8 +253,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const kind=draft.data.kind as AnnouncementKind;
      const value=String(draft.data.text);
      const eventAt=draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined;
-     const ann=await createAnnouncement(ctx.from.id,revision,kind,value,eventAt);
-     sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,kind,text:value,eventAt});
+     const purposeCodes=Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[];
+     const placeCodes=Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[];
+     const ann=await createAnnouncement(ctx.from.id,revision,kind,value,eventAt,
+       purposeCodes,placeCodes);
+     sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,
+       kind,text:value,eventAt,purposeCodes,placeCodes});
     }
    }
    const result=await publishPost(ctx.telegram,{
