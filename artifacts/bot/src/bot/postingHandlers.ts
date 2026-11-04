@@ -6,7 +6,7 @@ import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,createLinkButton,
- createAnnouncement,markDraftPublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
+ createAnnouncement,markDraftPublished,markPostSourcePublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
@@ -340,7 +340,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
    try{
     if(module==="profile")
      await recordProfilePublication(ctx.from.id,revision,result.chatId,result.threadId,result.messageId);
-    else await markDraftPublished(ctx.from.id,module,revision);
+    else{
+     await markPostSourcePublished(ctx.from.id,module,sourceId);
+     await markDraftPublished(ctx.from.id,module,revision);
+    }
    }catch{
     throw new Error("POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE");
    }
