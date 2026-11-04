@@ -3,7 +3,7 @@ import { createJitsiJoinUrl, type AnnouncementKind } from "./postingDomain.js";
 
 export type PostModule="room"|"announcement";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_datetime"|"preview"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_datetime"|"awaiting_tags"|"preview"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
@@ -61,15 +61,15 @@ export async function createRoom(id:number,revision:number,title:string,external
  );
  return {sourceId:String(r.rows[0].room_id),joinUrl:String(r.rows[0].join_url)};
 }
-export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string,eventAt?:Date):
+export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string,eventAt?:Date,purposeCodes:string[]=[],placeCodes:string[]=[]):
  Promise<{sourceId:string}>{
  const key="announcement:"+validOwner(id)+":"+revision;
  const r=await pool.query(
-  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,event_at,status)
-   VALUES($1,$2,$3,$4,$5,'draft')
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,status)
+   VALUES($1,$2,$3,$4,$5,$6,$7,'draft')
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
-  [key,id,kind,text,eventAt||null]
+  [key,id,kind,text,eventAt||null,purposeCodes,placeCodes]
  );
  return {sourceId:String(r.rows[0].announcement_id)};
 }
