@@ -103,6 +103,8 @@ def restore(token, chat_id, title, about, photo, state, state_path):
             "chat_id": chat_id, "permissions": LOCKED,
             "use_independent_chat_permissions": "true"
         })
+        state["permissions_locked"] = True
+        save_state(state_path, state)
         LOG.warning("Restored members' read-only permissions")
     current_photo = (chat.get("photo") or {}).get("small_file_unique_id")
     expected_photo = state.get("canonical_photo_id")
