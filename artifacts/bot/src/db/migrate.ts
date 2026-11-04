@@ -196,6 +196,14 @@ export async function runMigrations(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS room_host_sessions (
+        owner_user_id BIGINT PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
+        expected_revision INTEGER NOT NULL CHECK(expected_revision > 0),
+        requested_action TEXT NOT NULL CHECK(requested_action IN ('schedule','postpone')),
+        expires_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS room_source_events (
         event_id BIGSERIAL PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
