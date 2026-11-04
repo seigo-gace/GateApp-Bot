@@ -18,6 +18,43 @@ export async function runMigrations(): Promise<void> {
         revision INTEGER NOT NULL DEFAULT 1,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS general_guide_topics (
+        chat_id BIGINT PRIMARY KEY CHECK(chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE
+      );
+      CREATE TABLE IF NOT EXISTS general_guide_documents (
+        chat_id BIGINT NOT NULL REFERENCES general_guide_topics(chat_id),
+        document_type TEXT NOT NULL CHECK(document_type IN
+          ('terms','rules','safety','howto','search','menu')),
+        message_id BIGINT CHECK(message_id > 0),
+        content TEXT,
+        version TEXT,
+        approved_by BIGINT,
+        approved_at TIMESTAMPTZ,
+        synced_at TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK(status IN ('draft','approved','publishing','published','needs_reconcile','retired')),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(chat_id,document_type),
+        CHECK(status NOT IN ('approved','publishing','published') OR
+          (approved_by IS NOT NULL AND approved_at IS NOT NULL AND version IS NOT NULL)),
+        CHECK(status <> 'published' OR message_id IS NOT NULL)
+      );
+      CREATE TABLE IF NOT EXISTS general_guide_links (
+        chat_id BIGINT NOT NULL REFERENCES general_guide_topics(chat_id),
+        link_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        destination_url TEXT NOT NULL,
+        source TEXT NOT NULL,
+        verified_by BIGINT,
+        verified_at TIMESTAMPTZ,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        PRIMARY KEY(chat_id,link_key),
+        CHECK(NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
+      );
       CREATE TABLE IF NOT EXISTS posting_topics (
         topic_id BIGSERIAL PRIMARY KEY,
         board_key TEXT NOT NULL CHECK (board_key IN ('area_bbs','video_chat','gay_board')),
