@@ -10,6 +10,14 @@ This is a **standalone** Bot API application, not the active GateApp-Bot deploym
 - Preserve all existing administrator roles: never demote, kick, ban, or edit the blacklist.
 - Failure retries with bounded backoff; state file stores update offset and permission-restored flag. A single dedicated bot token must not be used by a second polling/webhook runtime.
 
+## Delivery mode: Long Polling (confirmed approach)
+- This standalone guard uses Telegram Bot API `getUpdates` Long Polling. No public HTTP endpoint or G-ACE Webhook Gateway is needed.
+- Existing `@ShowTimeLIVE_Bot` (Bot ID `8086265383`) is the original BAN bot; Master refreshed its token, and the old group administrator rights were verified. Do not request a new Bot identity.
+- **Verified 2026-11-04:** `getWebhookInfo` reported an existing webhook to `ssh.inkognit.org`, `pending_update_count=199` and a recent TLS delivery error. The stale webhook blocks polling even though the guard code is correct.
+- The guard **refuses startup while any webhook is configured**. It never changes the Telegram delivery mode itself and never calls `drop_pending_updates`.
+- Migration procedure: verify the one polling runtime and persistence, then explicitly call `deleteWebhook` with `drop_pending_updates=false`; immediately verify `getWebhookInfo.url` is empty and start the sole polling runtime. Handle the accumulated queue with caution: updates can be old, stale joins should not trigger arbitrary new bans, and a Telegram API queue is not a durable historical archive. Do not claim queue retention without observing it.
+- Do not use G-ACE Webhook Gateway for this bot unless Master explicitly changes the delivery-mode decision.
+
 ## Before deployment (not yet satisfied)
 1. Master must create or select a **working Telegram Bot API bot** in BotFather (the retired .env token returned HTTP 401). Configure Bot-to-Bot Communication Mode and test receipt of posts from other bots, particularly administrator bots.
 2. Master must add that bot to G-JUMP with `can_delete_messages`, `can_restrict_members`, `can_change_info`. Other admins' ability to remove it, revert settings or send updates cannot be eliminated by Bot API.
