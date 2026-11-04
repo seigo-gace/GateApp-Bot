@@ -188,11 +188,34 @@ export async function runMigrations(): Promise<void> {
         mode TEXT NOT NULL CHECK (mode IN ('jitsi','external')),
         join_url TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'draft'
-          CHECK (status IN ('draft','scheduled','ready','cancelled','finished')),
+          CHECK (status IN ('draft','scheduled','ready','live','postponed','cancelled','finished')),
+        join_visibility TEXT NOT NULL DEFAULT 'approved_only'
+          CHECK(join_visibility IN ('approved_only','public')),
         start_at TIMESTAMPTZ,
         revision INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS room_source_events (
+        event_id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
+        source_revision INTEGER NOT NULL CHECK(source_revision > 0),
+        kind TEXT NOT NULL CHECK(kind IN
+          ('scheduled','prepared','started','postponed','cancelled','finished')),
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','processing','applied','needs_reconcile')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(room_id,source_revision)
+      );
+      CREATE TABLE IF NOT EXISTS room_participation_reports (
+        report_id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
+        reporter_user_id BIGINT NOT NULL,
+        report_type TEXT NOT NULL CHECK(report_type IN ('join_failed','left')),
+        description TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS announcement_posts (
         announcement_id BIGSERIAL PRIMARY KEY,
