@@ -134,7 +134,7 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS posting_topics (
         topic_id BIGSERIAL PRIMARY KEY,
         board_key TEXT NOT NULL CHECK (board_key IN ('area_bbs','video_chat','gay_board')),
-        purpose TEXT NOT NULL CHECK (purpose IN ('profile','room','announcement')),
+        purpose TEXT NOT NULL CHECK (purpose IN ('profile','room','announcement','link')),
         chat_id BIGINT NOT NULL CHECK (chat_id < 0),
         message_thread_id BIGINT NOT NULL CHECK (message_thread_id > 0),
         title TEXT NOT NULL,
@@ -146,7 +146,7 @@ export async function runMigrations(): Promise<void> {
       );
       CREATE TABLE IF NOT EXISTS posting_deliveries (
         delivery_id BIGSERIAL PRIMARY KEY,
-        source_type TEXT NOT NULL CHECK (source_type IN ('profile','room','announcement')),
+        source_type TEXT NOT NULL CHECK (source_type IN ('profile','room','announcement','link')),
         source_id TEXT NOT NULL,
         owner_user_id BIGINT NOT NULL,
         source_revision INTEGER NOT NULL CHECK (source_revision > 0),
@@ -160,12 +160,25 @@ export async function runMigrations(): Promise<void> {
 
       CREATE TABLE IF NOT EXISTS public_post_drafts (
         owner_user_id BIGINT NOT NULL,
-        module TEXT NOT NULL CHECK (module IN ('room','announcement')),
+        module TEXT NOT NULL CHECK (module IN ('room','announcement','link')),
         step TEXT NOT NULL,
         data JSONB NOT NULL DEFAULT '{}'::jsonb,
         revision INTEGER NOT NULL DEFAULT 1,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (owner_user_id,module)
+      );
+      CREATE TABLE IF NOT EXISTS link_button_posts (
+        link_post_id BIGSERIAL PRIMARY KEY,
+        request_key TEXT NOT NULL UNIQUE,
+        owner_user_id BIGINT NOT NULL,
+        content TEXT NOT NULL,
+        buttons JSONB NOT NULL DEFAULT '[]'::jsonb,
+        columns INTEGER NOT NULL CHECK(columns BETWEEN 1 AND 3),
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK(status IN ('draft','published','hidden','deleted')),
+        revision INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS room_posts (
         room_id BIGSERIAL PRIMARY KEY,
