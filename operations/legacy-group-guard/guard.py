@@ -106,19 +106,9 @@ def restore(token, chat_id, title, about, photo, state, state_path):
         state["permissions_locked"] = True
         save_state(state_path, state)
         LOG.warning("Restored members' read-only permissions")
-    current_photo = (chat.get("photo") or {}).get("small_file_unique_id")
-    expected_photo = state.get("canonical_photo_id")
-    digest = hashlib.sha256(photo).hexdigest()
-    if state.get("canonical_photo_sha256") != digest or not expected_photo or current_photo != expected_photo:
-        api(token, "setChatPhoto", {"chat_id": chat_id}, photo=photo)
-        updated = api(token, "getChat", {"chat_id": chat_id})
-        new_photo_id = (updated.get("photo") or {}).get("small_file_unique_id")
-        if not new_photo_id:
-            raise TelegramError("Photo upload did not yield a verifiable photo ID")
-        state["canonical_photo_id"] = new_photo_id
-        state["canonical_photo_sha256"] = digest
-        save_state(state_path, state)
-        LOG.warning("Restored canonical group photo")
+    if chat.get("photo"):
+        api(token, "deleteChatPhoto", {"chat_id": chat_id})
+        LOG.warning("Restored no-photo group state")
 
 
 def kick_new_member(token, chat_id, user, self_bot_id):
