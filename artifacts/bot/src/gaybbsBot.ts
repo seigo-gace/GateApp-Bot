@@ -8,6 +8,7 @@ import { registerProfileHandlers } from "./bot/profileHandlers.js";
 import { registerPostingHandlers } from "./bot/postingHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
+import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
@@ -56,6 +57,7 @@ async function main():Promise<void>{
  registerPostingHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
+ registerMenuPanelHandlers(bot);
  bot.catch((error,ctx)=>{
   console.error("[GAYBBS_ERROR]",ctx.updateType,
     error instanceof Error?error.name:"unknown");
