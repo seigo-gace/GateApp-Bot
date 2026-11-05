@@ -49,6 +49,15 @@ export async function runMigrations(): Promise<void> {
         public_allowed BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE profile_media ADD COLUMN IF NOT EXISTS item_id BIGINT;
+      WITH numbered AS (
+        SELECT id,ROW_NUMBER() OVER (PARTITION BY owner_user_id ORDER BY id) AS ordinal
+        FROM profile_media
+      )
+      UPDATE profile_media AS pm SET item_id=numbered.ordinal
+      FROM numbered WHERE pm.id=numbered.id AND pm.item_id IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS profile_media_item_unique
+        ON profile_media(owner_user_id,item_id) WHERE item_id IS NOT NULL;
       ALTER TABLE profile_media ADD COLUMN IF NOT EXISTS source_message_id BIGINT;
       ALTER TABLE profile_media ADD COLUMN IF NOT EXISTS media_group_id TEXT;
       CREATE UNIQUE INDEX IF NOT EXISTS profile_media_source_message_unique
