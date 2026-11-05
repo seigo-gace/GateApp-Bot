@@ -4,7 +4,7 @@
  */
 import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {getProfile} from "../services/profileRepository.js";
-import {PROFILE_POSITIONS,escapeProfileHtml} from "../services/profileCore.js";
+import {PROFILE_POSITIONS,escapeProfileHtml,isProfilePosition} from "../services/profileCore.js";
 import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js";
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
@@ -122,12 +122,13 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   }
  }
  const profile=await getProfile(userId);
+ const linked=!!profile&&isProfilePosition(profile.position??"");
  const d=await beginDraft(userId,"announcement","awaiting_text",{
   kind:"recruitment",recruitmentFlow:"compact",
-  recruitmentMode:profile?"linked":"manual",
-  mode:profile?"linked":"manual",purposeCodes:[],placeCodes:[],
+  recruitmentMode:linked?"linked":"manual",
+  mode:linked?"linked":"manual",purposeCodes:[],placeCodes:[],
  });
- await show(telegram,userId,d,inputInstructions(!!profile),
+ await show(telegram,userId,d,inputInstructions(linked),
   Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]));
 }
 async function publishRecruitment(
