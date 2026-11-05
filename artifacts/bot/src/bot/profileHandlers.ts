@@ -74,6 +74,9 @@ const appearanceText=(data:ProfileDraft["data"])=>[
   "髪型："+(data.hair||"未設定"),
   "体型："+(data.body||"未設定"),
   "エリア："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
+  "",
+  "髪型・体型・エリアは任意です。変更したい項目を選んでください。",
+  "［戻る］でプロフィール一覧へ戻れます。ほかの選択は保持されます。",
 ].join("\n");
 const choiceKeyboard=(kind:"h"|"b",revision:number,data:ProfileDraft["data"])=>{
  const rows=kind==="h"
@@ -95,7 +98,8 @@ const choiceText=(kind:"h"|"b",data:ProfileDraft["data"])=>
   [
     kind==="h"?"💈 髪型を選択してください":"💪 体型を選択してください",
     "現在："+(kind==="h"?(data.hair||"未設定"):(data.body||"未設定")),
-    "1つ選択。同じ候補を押すと解除できます。",
+    "任意で1つ選択。✅選択中／▫️未選択。同じ候補で解除できます。",
+    "［↩ 戻る］で容姿/エリアの一覧へ戻ります。ほかの選択は保持されます。",
   ].join("\n");
 
 /** Region IDs are independent of any Telegram topic IDs or deep links. */
@@ -112,7 +116,9 @@ const areaBlocksKeyboard=(revision:number,data:ProfileDraft["data"])=>{
 const areaBlocksText=(data:ProfileDraft["data"])=>[
  "📍 エリアを選択してください",
  "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
- "13ブロックから選択。北海道・沖縄は直接選択されます。",
+ "全国13ブロックから地域を選び、その中のエリアを1つ選択してください。",
+ "北海道・沖縄は直接選択・解除できます。別の地域を見るだけでは現在の選択は消えません。",
+ "✅選択中／▫️未選択。［↩ 戻る］で容姿/エリアの一覧へ戻ります。",
 ].join("\n");
 const areaChildrenKeyboard=(revision:number,data:ProfileDraft["data"])=>{
  const block=data.pendingRegion;
@@ -128,7 +134,8 @@ const areaChildrenKeyboard=(revision:number,data:ProfileDraft["data"])=>{
 const areaChildrenText=(data:ProfileDraft["data"])=>[
  "📍 "+data.pendingRegion+"｜エリアを選択",
  "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
- "同じエリアを再度押すと未設定に戻せます。",
+ "エリアを1つ選択してください。✅選択中／▫️未選択。同じエリアの再押下で解除、別候補で変更できます。",
+ "［↩ 戻る］で全国13ブロックへ戻ります。",
 ].join("\n");
 
 const profileTagPurpose=(data:ProfileDraft["data"]):ProfileTagPurpose=>data.tagPurpose==="love"?"love":"like";
@@ -145,6 +152,7 @@ const tagCategoryText=(data:ProfileDraft["data"])=>[
  tagPurposeDescription(profileTagPurpose(data)),
  "複数選択。カテゴリー間・ページ間も選択は保持されます。",
  "選択中："+tagValues(data).length+"件",
+ "［↩ 戻る］でプロフィール一覧へ。［保存］は非公開保存です。",
 ].join("\n");
 const tagItemText=(data:ProfileDraft["data"])=>{
  const cat=LIKE_CATEGORIES[data.likeCategory!];
@@ -154,6 +162,8 @@ const tagItemText=(data:ProfileDraft["data"])=>{
   "ページ "+((data.likePage??0)+1)+"/"+Math.ceil(cat.items.length/12),
   "複数選択：✅選択中／▫️未選択。同じ項目を押すと解除。",
   "この分類："+tagValues(data).filter(t=>t.category===cat.name).length+"件",
+  "［この分類を解除］はこの分類の選択だけを解除します。",
+  "［↩ 戻る］でカテゴリー一覧へ。［保存］は全カテゴリーの選択を非公開保存します。",
  ].join("\n");
 };
 const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`)]]);
@@ -163,10 +173,13 @@ const mediaText=(data:ProfileDraft["data"])=>{
  const page=Math.min(Math.max(data.mediaPage??1,1),pages);
  return [
   "🪪 プロフィール｜画像・動画・自己PR",
-  "画像・動画：Telegramの添付から送信",
-  "自己PR：通常の入力欄へ送信（全文差し替え）",
-  "画像・動画の操作：削除 番号／差替 番号 と送信",
-  "自己PRの消去：PR削除 と送信",
+  "画像・動画はTelegramの添付機能からこのBot DMへ送信してください（登録は任意）。",
+  "自己PRは通常の入力欄へ送信。再送信すると全文差し替えです。",
+  "画像・動画は「削除 番号」「差替 番号」で操作します（例：差替 1）。",
+  "自己PRの消去は「PR削除」、差し替え中止は「差替取消」と送信します。",
+  "複数ページの一覧は「一覧 ページ番号」（例：一覧 2）で表示します。",
+  "入力メッセージはBotが削除を試みます。失敗した場合は手動で削除してください。",
+  "［↩ 戻る］でプロフィール一覧へ。確定保存は一覧の［保存］から行います。",
   ...(data.replaceMediaId?["","🔁 No."+data.replaceMediaId+" の差替画像・動画を送信してください。中止は 差替取消 と送信。"]:[]),
   "",
   ...mediaStatus(media,data.pr),
@@ -178,8 +191,10 @@ const overviewText=(profile:SavedProfile,username:string)=>[
   "🪪 プロフィールプレビュー",
   renderProfileBasicPreview(profile,username),
   "",
-  "ほかにも任意で登録できる項目があります。",
-  "登録したい項目を下のボタンから選んでください。",
+  "基本情報以外の項目は任意です。登録したい項目を下のボタンから選んでください。",
+  "容姿/エリア、画像・動画/自己PR、#Like（自分の特徴・好み）、#Love（相手に求めること）を編集できます。",
+  "［プレビュー］で内容を確認し、［保存］で非公開保存します。保存だけではグループへ投稿されません。",
+  "［キャンセル］は未保存の変更だけを取り消し、投稿メニューへ戻ります。保存済み内容は削除しません。",
 ].join("\n");
 
 function basicPrompt(position?: string): string {
@@ -275,7 +290,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      return;
    }
    // A published original must not be silently made editable without synchronizing posts.
-   await ctx.reply(renderProfileBasicPreview(existing,ctx.from.username!),{
+   await ctx.reply("🪪 公開済みプロフィール\n公開先との同期が未接続のため、ここからの直接編集・上書き保存はできません。\n\n"+renderProfileBasicPreview(existing,ctx.from.username!),{
      parse_mode:"HTML",...Markup.inlineKeyboard([
        [Markup.button.callback("📝 基本情報を編集","pf:edit:basic")],
      ]),
@@ -328,7 +343,7 @@ export function registerProfileHandlers(
     const existing = await repo.getProfile(ctx.from.id);
     if (existing) {
       await ctx.answerCbQuery("保存済みプロフィールがあります");
-      await ctx.editMessageText(renderProfileBasicPreview(existing, ctx.from.username!), {
+      await ctx.editMessageText("🪪 保存済みプロフィール\n基本情報の編集は下のボタンから行えます。\n\n"+renderProfileBasicPreview(existing, ctx.from.username!), {
         parse_mode:"HTML",
         ...Markup.inlineKeyboard([[Markup.button.callback("📝 基本情報を編集","pf:edit:basic")]]),
       });
@@ -449,9 +464,9 @@ export function registerProfileHandlers(
     if(action==="preview"){
       await ctx.answerCbQuery();
       await ctx.editMessageText(
-        "🪪 プロフィール公開前プレビュー（まだ非公開）\n"+
+        "🪪 プロフィール確認用プレビュー（まだ非公開）\n"+
         renderProfileBasicPreview(draft.data as SavedProfile,ctx.from.username!)+
-        "\n\nこれは確認画面です。保存だけでは公開されません。",
+        "\n\nここは確認用画面です。［↩ プロフィール編集に戻る］で項目の修正へ戻れます。\n非公開保存してもグループには投稿されません。",
         {parse_mode:"HTML",...Markup.inlineKeyboard([
           [Markup.button.callback("↩ プロフィール編集に戻る",
             "pf:overview:"+draft.revision+":return")]
