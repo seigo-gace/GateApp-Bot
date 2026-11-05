@@ -7,10 +7,10 @@ import {storeProfilePr,readProfilePr} from "./profilePrStorage.js";
 
 export type ProfileDraft = {
   step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "cancelled";
-  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number };
+  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number;mediaNextId?:number };
   revision: number;
 };
-export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[]} & {
+export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number} & {
   position: ProfilePosition;
   username: string | null;
   status: string;
@@ -91,7 +91,7 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
 }
 export async function getProfile(id: number): Promise<SavedProfile | null> {
   const r = await pool.query(
-    "SELECT nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,status,revision FROM profiles WHERE owner_user_id=$1",
+    "SELECT nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,status,revision FROM profiles WHERE owner_user_id=$1",
     [ownerId(id)]
   );
   if (!r.rows.length) return null;
@@ -103,7 +103,7 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
   }));
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
     weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,
-    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,status:p.status,revision:p.revision};
+    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId:Number(p.media_next_id),status:p.status,revision:p.revision};
 }
 export async function savePrivateDraft(id: number, revision: number,
     username: string | null): Promise<SavedProfile> {
@@ -116,25 +116,27 @@ export async function savePrivateDraft(id: number, revision: number,
       "SELECT step,data,revision FROM profile_drafts WHERE owner_user_id=$1 FOR UPDATE",[id]);
     if (!draft.rows.length || draft.rows[0].revision !== revision ||
         draft.rows[0].step !== "preview") throw new Error("PROFILE_DRAFT_STALE");
-    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[]};
+    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number};
     if (!p || !p.position) throw new Error("PROFILE_INCOMPLETE");
     validateAppearance(p);
     validateProfileArea(p);
     validateProfileMedia(p.media);
     const numberedMedia=numberProfileMedia(p.media);
+    const nextMediaId=Math.max(p.mediaNextId??1,...numberedMedia.map(item=>(item.itemId??0)+1),1);
+    if(!Number.isSafeInteger(nextMediaId))throw Error("PROFILE_MEDIA_ID_INVALID");
     const saved = await client.query(
-      `INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,$12,'private')
+      `INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,$12,$13,'private')
        ON CONFLICT (owner_user_id) DO UPDATE SET
          nickname=EXCLUDED.nickname,username=EXCLUDED.username,
          height_cm=EXCLUDED.height_cm,weight_kg=EXCLUDED.weight_kg,
          age=EXCLUDED.age,position=EXCLUDED.position,
          hair=EXCLUDED.hair,body=EXCLUDED.body,
-         region=EXCLUDED.region,area=EXCLUDED.area,pr=EXCLUDED.pr,pr_ref=EXCLUDED.pr_ref,
+         region=EXCLUDED.region,area=EXCLUDED.area,pr=EXCLUDED.pr,pr_ref=EXCLUDED.pr_ref,media_next_id=EXCLUDED.media_next_id,
          revision=profiles.revision+1,updated_at=NOW()
        WHERE profiles.status='private'
-       RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,status,revision`,
-      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null]
+       RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,status,revision`,
+      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId]
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
     if(p.media!==undefined){
@@ -148,7 +150,7 @@ export async function savePrivateDraft(id: number, revision: number,
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
-      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,status:x.status,revision:x.revision};
+      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");
     throw e;
