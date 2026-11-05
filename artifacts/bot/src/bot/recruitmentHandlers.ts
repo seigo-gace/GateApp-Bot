@@ -22,9 +22,9 @@ const asInput=(d:EditorDraft)=>d.data as RecruitmentInput;
 const active=(d:EditorDraft|null,rev:number,step?:string):d is EditorDraft=>
  !!d&&d.data.recruitmentFlow==="compact"&&d.revision===rev&&
  (!step||d.step===step);
-async function show(telegram:Telegram,id:number,d:EditorDraft,text:string,keyboard?:any){
+async function show(telegram:Telegram,id:number,d:EditorDraft,text:string,keyboard?:any,html=false){
  const old=typeof d.data.screenMessageId==="number"?d.data.screenMessageId:undefined;
- const res=await showWizardScreen(telegram,id,old,text,keyboard);
+ const res=await showWizardScreen(telegram,id,old,text,html?{...keyboard,parse_mode:"HTML"}:keyboard);
  if(res.messageId!==old)await bindDraftScreen(id,"announcement",d.revision,res.messageId);
 }
 function b(text:string,id:string,style?:"primary"|"success"|"danger"){
@@ -70,7 +70,7 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  await show(telegram,id,d,"📢 公開前プレビュー（未投稿）\n"+
   renderRecruitmentPreview(asInput(d),profile)+"\n\n"+destText+
   "\n\n📝各項目を変更しても他の入力は保持します。"+
-  (warning?"\n"+warning:""),keyboard(d));
+  (warning?"\n"+escapeProfileHtml(warning):""),keyboard(d),true);
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number){
  const profile=await getProfile(userId);
