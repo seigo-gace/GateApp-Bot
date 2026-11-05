@@ -204,7 +204,8 @@ const overviewText=(profile:SavedProfile,username:string)=>[
   "",
   "基本情報以外の項目は任意です。登録したい項目を下のボタンから選んでください。",
   "容姿/エリア、画像・動画/自己PR、#Like（自分の特徴・好み）、#Love（相手に求めること）を編集できます。",
-  "［プレビュー］で内容を確認し、［保存］で非公開保存します。保存だけではグループへ投稿されません。",
+  "［プレビュー］で内容を確認し、［保存］で全項目を保存します。公開中の投稿は自動更新されません。",
+  "既に公開している場合、更新には別途 /publishprofile で投稿先と内容の確認が必要です。",
   "［キャンセル］は未保存の変更だけを取り消し、投稿メニューへ戻ります。保存済み内容は削除しません。",
 ].join("\n");
 
@@ -286,7 +287,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  }
  const lastId=await repo.getLastScreenMessageId(ctx.from.id);
  if(existing){
-   if(existing.status==="private"){
+   if(existing.status==="private"||existing.status==="published"){
      const draft=await repo.putDraft(ctx.from.id,"preview",{
        nickname:existing.nickname,heightCm:existing.heightCm,
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
@@ -377,8 +378,8 @@ export function registerProfileHandlers(
     await ctx.answerCbQuery();
     if (!canUseProfile(ctx)) return;
     const existing = await repo.getProfile(ctx.from.id);
-    if (!existing || existing.status !== "private") {
-      await ctx.reply("公開済みのプロフィール編集は公開先の同期機能から行ってください。");
+    if (!existing || !["private","published"].includes(existing.status)) {
+      await ctx.reply("このプロフィールは現在編集できません。");
       return;
     }
     const draft = await repo.putDraft(ctx.from.id, "awaiting_basic", {
