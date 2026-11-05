@@ -12,6 +12,14 @@ export async function deleteNextTerminalAnnouncementMessage(
 ):Promise<{deliveryId:number;outcome:"deleted"|"needs_reconcile"}|null>{
  if(process.env.GAYBBS_TELEGRAM_DELETE_WORKER_ENABLED!=="enabled")
   throw new Error("TELEGRAM_DELETE_NOT_RELEASED");
+ const gate=await pool.query(
+  `SELECT 1 FROM gaybbs_feature_release_gates
+   WHERE feature='announcement' AND enabled=TRUE
+     AND length(source_commit)=40
+     AND length(trim(ci_evidence))>0
+     AND length(trim(gserver_runtime_evidence))>0
+     AND length(trim(telegram_e2e_evidence))>0`);
+ if(gate.rows.length!==1)throw new Error("ANNOUNCEMENT_RELEASE_NOT_VERIFIED");
  const client=await pool.connect();
  let entry:{deliveryId:number;chatId:number;messageId:number}|null=null;
  try{
