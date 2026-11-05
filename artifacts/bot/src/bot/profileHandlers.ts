@@ -12,6 +12,7 @@ type ProfileRepo = {
   getProfile: typeof profileRepo.getProfile;
   savePrivateDraft: typeof profileRepo.savePrivateDraft;
   discardDraft: typeof profileRepo.discardDraft;
+  bindScreenMessage: typeof profileRepo.bindScreenMessage;
 };
 
 const selectPosition = (revision: number) => Markup.inlineKeyboard([
@@ -50,6 +51,32 @@ function basicPrompt(position?: string): string {
   return requestBasic + (position ? "\n\n✅ 選択中：" + position + "（基本情報も送信してください）" : "");
 }
 
+/** Telegram private messages are the only source of wizard text input. */
+async function updateWizardScreen(ctx: Context, repo: ProfileRepo, draft: ProfileDraft,
+ text: string, markup: ReturnType<typeof Markup.inlineKeyboard>, parseMode?: "HTML"
+): Promise<void> {
+ const chatId = ctx.chat?.id;
+ if (chatId === undefined || !ctx.from) throw new Error("PROFILE_CHAT_MISSING");
+ const opts = {...markup, ...(parseMode ? {parse_mode: parseMode} : {})};
+ const oldId = draft.data.screenMessageId;
+ if (oldId) {
+   try {
+     await ctx.telegram.editMessageText(chatId, oldId, undefined, text, opts);
+     return;
+   } catch (error) {
+     // A deleted/expired screen can be replaced without abandoning the draft.
+     // Do not log the user's profile text or reveal it to other chats.
+     console.warn("[PROFILE_SCREEN_EDIT_FAILED]", error instanceof Error ? error.message : "unknown");
+   }
+ }
+ const sent = await ctx.reply(text, opts);
+ await repo.bindScreenMessage(ctx.from.id, draft.revision, sent.message_id);
+ if (oldId && oldId !== sent.message_id) {
+   try { await ctx.telegram.deleteMessage(chatId, oldId); }
+   catch { console.warn("[PROFILE_OLD_SCREEN_DELETE_FAILED]"); }
+ }
+}
+
 function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}}): boolean {
   return ctx.chat?.type === "private" && !!ctx.from?.username;
 }
@@ -70,8 +97,14 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
   });
   return;
  }
+ const previous = await repo.getDraft(ctx.from.id);
  const draft = await repo.putDraft(ctx.from.id,"awaiting_basic",{});
- await ctx.reply(basicPrompt(), selectPosition(draft.revision));
+ const sent = await ctx.reply(basicPrompt(), selectPosition(draft.revision));
+ await repo.bindScreenMessage(ctx.from.id, draft.revision, sent.message_id);
+ if (previous?.data.screenMessageId && previous.data.screenMessageId !== sent.message_id) {
+   try { await ctx.telegram.deleteMessage(ctx.chat.id, previous.data.screenMessageId); }
+   catch { console.warn("[PROFILE_OLD_SCREEN_DELETE_FAILED]"); }
+ }
 }
 
 export function registerProfileHandlers(
@@ -117,13 +150,14 @@ export function registerProfileHandlers(
       return;
     }
     const draft = await repo.putDraft(ctx.from.id, "awaiting_basic", {
+      screenMessageId: ctx.callbackQuery.message && "message_id" in ctx.callbackQuery.message ? ctx.callbackQuery.message.message_id : undefined,
       nickname: existing.nickname,
       heightCm: existing.heightCm,
       weightKg: existing.weightKg,
       age: existing.age,
       position: existing.position,
     });
-    await ctx.reply(basicPrompt(existing.position), selectPosition(draft.revision));
+    await ctx.editMessageText(basicPrompt(existing.position), selectPosition(draft.revision));
   });
 
   bot.action(/^pf:pos:(\d+):([0-6])$/, async (ctx) => {
@@ -184,27 +218,44 @@ export function registerProfileHandlers(
     if(await activeDmOwner(ctx.from.id)!=="profile")return next();
     const draft = await repo.getDraft(ctx.from.id);
     if (!draft || draft.step !== "awaiting_basic") return next();
+    // Delete each user-sent input (valid or invalid) from the private chat.
+    // Telegram may reject deletion (e.g. a message older than 48 hours).
+    let removed = false;
+    try { await ctx.deleteMessage(); removed = true; }
+    catch { console.warn("[PROFILE_INPUT_DELETE_FAILED]"); }
+    const deletionWarning = removed ? "" : "\n⚠️ 入力メッセージを削除できませんでした。手動で削除してください。";
     try {
       const basic = parseProfileBasic(ctx.message.text);
       const hasPosition = !!draft.data.position;
       const updated = await repo.putDraft(ctx.from.id,
         hasPosition ? "preview" : "awaiting_position", {...draft.data, ...basic}, draft.revision);
       if (hasPosition) {
-        await ctx.reply("🪪 プレビュー（まだ非公開）\n"+renderProfileBasicPreview(
-          updated.data as SavedProfile, ctx.from.username!), {
-          parse_mode:"HTML", ...Markup.inlineKeyboard([
+        await updateWizardScreen(ctx, repo, updated,
+          "🪪 プレビュー（まだ非公開）\n" +
+          renderProfileBasicPreview(updated.data as SavedProfile, ctx.from.username!) + deletionWarning,
+          Markup.inlineKeyboard([
             [Markup.button.callback("💾 非公開で保存", `pf:save:${updated.revision}`)],
             [Markup.button.callback("📝 基本情報を修正", "pf:edit:basic")],
-          ]),
-        });
+          ]), "HTML");
       } else {
-        await ctx.reply("✅ 基本情報を受け付けました。ポジションを選択してください。",
+        await updateWizardScreen(ctx, repo, updated,
+          "✅ 基本情報を受け付けました。ポジションを選択してください。" + deletionWarning,
           selectPosition(updated.revision));
       }
     } catch (err) {
-      await ctx.reply("⚠️ 入力を確認してください。\n"+
-        (err instanceof Error ? err.message : "入力内容が正しくありません")+
-        "\n\n内容を修正して、もう一度テキストを送信してください。", selectPosition(draft.revision));
+      if (err instanceof Error && ![
+        "ニックネームと3数値を2行で入力してください",
+        "ニックネームは40文字以内で入力してください",
+        "2行目は",
+        "身長は",
+        "体重は",
+        "年齢は",
+      ].some(prefix => err.message.startsWith(prefix))) throw err;
+      await updateWizardScreen(ctx, repo, draft,
+        "⚠️ 入力を確認してください。\n" +
+        (err instanceof Error ? err.message : "入力内容が正しくありません") +
+        "\n\n内容を修正して、もう一度テキストを送信してください。" + deletionWarning,
+        selectPosition(draft.revision));
     }
   });
 }
