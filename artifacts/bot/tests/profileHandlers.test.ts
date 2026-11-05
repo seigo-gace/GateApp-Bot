@@ -725,3 +725,34 @@ for(const purpose of ["like","love"] as const){
   assert.match(String(f.sent.at(-1)[1]),/古い/);
  });
 }
+
+test("profile overview explains optional fields, save/cancel and non-public status",async()=>{
+ const f=fixture();await f.start();await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ const body=String(f.sent.at(-1)[1]);
+ for(const phrase of ["任意","#Like（自分","#Love（相手","［プレビュー］","［保存］","［キャンセル］","投稿されません"]){
+  assert.ok(body.includes(phrase),phrase);
+ }
+});
+test("all profile child displays explain operation and destination while leaving markup unchanged",async()=>{
+ const f=fixture();await f.start();await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"appearance"]);
+ assert.match(f.sent.at(-1)[1],/髪型・体型・エリアは任意/);
+ await f.action(appearanceOpen,[String(f.draft.revision),"h"]);
+ assert.match(f.sent.at(-1)[1],/✅選択中／▫️未選択/);
+ await f.action(appearanceBack,[String(f.draft.revision)]);
+ await f.action(areaOpen,[String(f.draft.revision)]);
+ assert.match(f.sent.at(-1)[1],/全国13ブロック/);
+ await f.action(regionAction,[String(f.draft.revision),"5"]);
+ assert.match(f.sent.at(-1)[1],/同じエリアの再押下で解除/);
+ await f.action(areaBack,[String(f.draft.revision)]);
+ await f.action(areaBack,[String(f.draft.revision)]);
+ await f.action(appearanceBack,[String(f.draft.revision)]);
+ await f.action(overviewAction,[String(f.draft.revision),"media"]);
+ assert.match(f.sent.at(-1)[1],/入力メッセージはBotが削除を試みます/);
+ assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),[["↩ 戻る"]]);
+ await f.action(String.raw`^pf:media:(\d+):back$`,[String(f.draft.revision)]);
+ await f.action(overviewAction,[String(f.draft.revision),"preview"]);
+ assert.match(f.sent.at(-1)[1],/確認用画面/);
+});
