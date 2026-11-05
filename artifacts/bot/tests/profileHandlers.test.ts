@@ -36,7 +36,7 @@ function fixture() {
     async getProfile() { return profile; },
     async savePrivateDraft(_id: number, revision: number, username: string) {
       assert.equal(draft?.revision, revision);
-      assert.ok(["preview","like-categories","like-items"].includes(draft?.step));
+      assert.ok(["preview","like-categories","like-items","appearance","hair","body","area-blocks","area-children","media"].includes(draft?.step));
       saves++;
       lastScreenId=draft.data.screenMessageId ?? lastScreenId;
       profile = {...draft.data, username, status: "private", revision: 1};
@@ -419,18 +419,18 @@ test("hair is its own blue 10-choice screen, and body its own green 13-choice sc
  await f.action(appearanceOpen,[String(f.draft.revision),"h"]);
  assert.equal(f.draft.step,"hair");
  const hair=f.sent.at(-1)[2].reply_markup.inline_keyboard;
- assert.deepEqual(hair.map((r:any[])=>r.length),[3,3,3,2]);
- assert.equal(hair.slice(0,3).flat().length+hair[3].length-1,10);
- assert.ok(hair.flat().slice(0,-1).every((b:any)=>b.style==="primary"));
+ assert.deepEqual(hair.map((r:any[])=>r.length),[3,3,3,2,1]);
+ assert.equal(hair.slice(0,4).flat().length-1,10);
+ assert.ok(hair.slice(0,3).flat().every((b:any)=>b.style==="primary"));
  assert.ok(hair[3][1].text.includes("戻る"));
  await f.action(appearanceBack,[String(f.draft.revision)]);
  assert.equal(f.draft.step,"appearance");
  await f.action(appearanceOpen,[String(f.draft.revision),"b"]);
  assert.equal(f.draft.step,"body");
  const body=f.sent.at(-1)[2].reply_markup.inline_keyboard;
- assert.deepEqual(body.map((r:any[])=>r.length),[3,3,3,3,2]);
- assert.equal(body.flat().length-1,13);
- assert.ok(body.flat().slice(0,-1).every((b:any)=>b.style==="success"));
+ assert.deepEqual(body.map((r:any[])=>r.length),[3,3,3,3,2,1]);
+ assert.equal(body.slice(0,5).flat().length-1,13);
+ assert.ok(body.slice(0,4).flat().every((b:any)=>b.style==="success"));
  assert.ok(body[4][1].text.includes("戻る"));
 });
 test("separate hair and body optional toggles retain both selections and return to A",async()=>{
@@ -491,7 +491,7 @@ test("area blocks render 13 actual names and return, no fake rows",async()=>{
  await f.action(areaOpen,[String(f.draft.revision)]);
  assert.equal(f.draft.step,"area-blocks");
  const rows=f.sent.at(-1)[2].reply_markup.inline_keyboard;
- assert.deepEqual(rows.map((r:any[])=>r.length),[3,3,3,3,2]);
+ assert.deepEqual(rows.map((r:any[])=>r.length),[3,3,3,3,2,1]);
  assert.equal(rows.flat().length,14);
  assert.ok(rows[4][0].text.includes("沖縄"));
  assert.ok(rows[4][1].text.includes("戻る"));
@@ -505,7 +505,7 @@ test("Tokyo child choice and change to Kansai never mixes region and area",async
  await f.action(areaOpen,[String(f.draft.revision)]);
  await f.action(regionAction,[String(f.draft.revision),"5"]);
  assert.equal(f.draft.step,"area-children");
- assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((r:any[])=>r.length),[3,3,2]);
+ assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((r:any[])=>r.length),[3,3,2,1]);
  await f.action(subAreaAction,[String(f.draft.revision),"1"]);
  assert.equal(f.draft.data.region,"東京");
  assert.equal(f.draft.data.area,"新宿");
@@ -575,7 +575,7 @@ test("③ one Back button accepts PR and Telegram-only photo/video file refs",as
  await f.action(positionAction,[String(f.draft.revision),"0"]);
  await f.action(overviewAction,[String(f.draft.revision),"media"]);
  assert.equal(f.draft.step,"media");
- assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),[["↩ 戻る"]]);
+ assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),[["↩ 戻る","保存"]]);
  await f.send("自由な自己紹介");
  assert.equal(f.draft.data.pr,"自由な自己紹介");
  const photo=f.ctx();
@@ -609,7 +609,7 @@ test("③ new PR replaces the old text and PR削除 clears both body and externa
  assert.equal(f.draft.data.pr,null);
  assert.equal(f.draft.data.prRef,null);
  assert.match(f.sent.at(-1)[4],/未登録/);
- assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る"]]);
+ assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る","保存"]]);
 });
 
 test("③ photo/video item replacement and deletion preserve other item numbers and one-screen UI",async()=>{
@@ -680,7 +680,7 @@ test("③ large media lists remain viewable via text pagination without extra bu
  await f.send("一覧 99");
  assert.equal(f.draft.data.mediaPage,2);
  assert.match(f.sent.at(-1)[4],/存在しない一覧ページ/);
- assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る"]]);
+ assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る","保存"]]);
 });
 
 const tagOverview=String.raw`^pf:overview:(\d+):(basic|appearance|media|like|love|preview|save|cancel)$`;
@@ -751,8 +751,45 @@ test("all profile child displays explain operation and destination while leaving
  await f.action(appearanceBack,[String(f.draft.revision)]);
  await f.action(overviewAction,[String(f.draft.revision),"media"]);
  assert.match(f.sent.at(-1)[1],/入力メッセージはBotが削除を試みます/);
- assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),[["↩ 戻る"]]);
+ assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),[["↩ 戻る","保存"]]);
  await f.action(String.raw`^pf:media:(\d+):back$`,[String(f.draft.revision)]);
  await f.action(overviewAction,[String(f.draft.revision),"preview"]);
  assert.match(f.sent.at(-1)[1],/確認用画面/);
+});
+
+const anySectionSave=String.raw`^pf:section:(\d+):save$`;
+test("every ②/③ sub-screen has a Save callback and preserves the entire existing profile",async()=>{
+ const expectedSteps=["appearance","hair","body","area-blocks","area-children","media"] as const;
+ for(const step of expectedSteps){
+  const f=fixture();await f.start();await f.send("ゼロ\n175 80 40");
+  await f.action(positionAction,[String(f.draft.revision),"0"]);
+  // All fields are a single profile draft, regardless of the active section.
+  const all={
+   ...f.draft.data,hair:"短髪",body:"ガチムチ",region:"東京",area:"新宿",
+   pr:"全文の紹介",media:[{type:"photo",itemId:1,fileId:"media-ref",sourceMessageId:501}],mediaNextId:2,
+   likeTags:[{category:"パーツ",tag:"乳首"}],loveTags:[{category:"性感帯",tag:"耳"}],
+  };
+  await f.repo.putDraft(4321,"preview",all,f.draft.revision);
+  if(step==="appearance"||step==="hair"||step==="body"||step==="area-blocks"||step==="area-children"){
+   await f.action(overviewAction,[String(f.draft.revision),"appearance"]);
+   if(step==="hair"||step==="body")
+     await f.action(appearanceOpen,[String(f.draft.revision),step==="hair"?"h":"b"]);
+   if(step==="area-blocks"||step==="area-children"){
+     await f.action(areaOpen,[String(f.draft.revision)]);
+     if(step==="area-children")await f.action(regionAction,[String(f.draft.revision),"5"]);
+   }
+  }else{
+   await f.action(overviewAction,[String(f.draft.revision),"media"]);
+  }
+  const rev=String(f.draft.revision);
+  await f.action(anySectionSave,[rev]);
+  assert.equal(f.saves,1,step);
+  assert.equal(f.draft.step,"preview",step);
+  for(const key of ["nickname","heightCm","weightKg","age","position","hair","body","region","area","pr","mediaNextId","likeTags","loveTags"]){
+   assert.deepEqual(f.profile[key],all[key],step+":"+key);
+  }
+  assert.deepEqual(f.profile.media,all.media);
+  await f.action(anySectionSave,[rev]);
+  assert.equal(f.saves,1,"stale callback cannot save twice:"+step);
+ }
 });
