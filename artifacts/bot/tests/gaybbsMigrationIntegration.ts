@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {runMigrations} from "../src/db/migrate.js";
 import {pool,closePool} from "../src/db/index.js";
 import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
-import {updateRoomState,changeRoomVisibility} from "../src/services/roomLifecycle.js";
+import {updateRoomState,updateRoomDetails,changeRoomVisibility} from "../src/services/roomLifecycle.js";
 import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
@@ -547,6 +547,34 @@ try{
  assert.equal(fullEdit.rows.length,1,
   "filled Announcement must queue existing message edit");
  console.log("GAYBBS_DB_FILLED_RECRUITMENT_ROOM_STATUS=PASS");
+ // Only the title and description change. Linked Announcement and public
+ // message edits are projected without a new post or a duplicate DM.
+ await makeRoomJoinLink(777001,fullRoomId);
+ const changedDetails=await updateRoomDetails(777001,fullRoomId,
+  fullStarted.revision,"修正タイトル","修正後の説明文\n改行も維持");
+ let detailsProjected=false;
+ for(let attempt=0;attempt<40;attempt++){
+  const projected=await projectNextRoomEvent();
+  if(!projected)break;
+  if(projected.eventId===changedDetails.eventId){detailsProjected=true;break;}
+ }
+ assert.equal(detailsProjected,true);
+ const updated=await pool.query(
+  "SELECT title,description FROM room_posts WHERE room_id=$1",[fullRoomId]);
+ assert.equal(updated.rows[0].title,"修正タイトル");
+ assert.equal(updated.rows[0].description,"修正後の説明文\n改行も維持");
+ const updatedAnnouncement=await pool.query(
+  "SELECT text FROM announcement_posts WHERE announcement_id=$1",[fullAnnouncementId]);
+ assert.equal(updatedAnnouncement.rows[0].text,"修正タイトル\n修正後の説明文\n改行も維持");
+ const queuedEdit=await pool.query(
+  "SELECT state FROM room_status_message_edits WHERE room_event_id=$1",
+  [changedDetails.eventId]);
+ assert.equal(queuedEdit.rows.length,1);
+ const redundantNotice=await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key LIKE $1",
+  ["room-event:"+changedDetails.eventId+":owner:%"]);
+ assert.equal(redundantNotice.rows[0].n,0);
+ console.log("GAYBBS_DB_ROOM_DETAILS_ONLY_SOURCE_PROJECTION=PASS");
  // Six-function shared DM: one text input has exactly one most-recent owner.
  // Older drafts are retained for explicit resume, but cannot steal a reply.
  await pool.query(
