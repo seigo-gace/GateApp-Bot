@@ -340,7 +340,7 @@ try{
  const receipt=await archiveNextTerminalAnnouncement(archiveBot);
  assert.equal(receipt?.status,"archived");
  assert.deepEqual(announcedEdits.map(x=>x.messageId),[5678]);
- assert.match(announcedEdits[0]!.text,/📌 掲載終了/);
+ assert.match(announcedEdits[0]!.text,/✅ 募集終了/);
  assert.equal(await archiveNextTerminalAnnouncement(archiveBot),null);
  delete process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED;
  const removed=await purgeDisposableAnnouncements();
