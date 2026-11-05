@@ -29,20 +29,11 @@ export async function purgeDisposableAnnouncements(limit=20):Promise<number>{
       FROM announcement_posts
      WHERE room_id IS NULL
        AND (status IN ('closed','cancelled','finished')
-         OR (expires_at IS NOT NULL AND expires_at<=NOW())
-         OR (expires_at IS NULL AND created_at<NOW()-INTERVAL '7 days'
-            AND (event_at IS NULL OR event_at<NOW())
-            AND (deadline_at IS NULL OR deadline_at<NOW())
-            AND (scheduled_at IS NULL OR scheduled_at<NOW())
-            AND (publish_at IS NULL OR publish_at<NOW())))
+         OR (expires_at IS NOT NULL AND expires_at<=NOW()))
      ORDER BY announcement_id
      LIMIT $1 FOR UPDATE SKIP LOCKED`,[limit]);
   const ids=candidates.rows.filter(x=>
-   shouldPurgeAnnouncement(String(x.status),x.room_id!==null,x.expires_at,cutoff)||
-   (x.room_id===null&&x.expires_at===null&&
-    x.created_at instanceof Date&&x.created_at.getTime()<cutoff.getTime()-7*86400000&&
-    [x.event_at,x.deadline_at,x.scheduled_at,x.publish_at].every(
-     (date:Date|null)=>date===null||date.getTime()<cutoff.getTime()))
+   shouldPurgeAnnouncement(String(x.status),x.room_id!==null,x.expires_at,cutoff)
   ).map(x=>Number(x.announcement_id));
   if(!ids.length){
    await client.query("COMMIT");
