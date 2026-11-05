@@ -17,8 +17,13 @@ function ownerId(id: number): number {
   return id;
 }
 /** Cancel only the active draft; never delete the saved profile. */
-export async function discardDraft(id: number): Promise<void> {
-  await pool.query("DELETE FROM profile_drafts WHERE owner_user_id=$1", [ownerId(id)]);
+export async function discardDraft(id: number, expectedRevision: number): Promise<boolean> {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) throw new Error("PROFILE_DRAFT_STALE");
+  const r = await pool.query(
+    "DELETE FROM profile_drafts WHERE owner_user_id=$1 AND revision=$2 RETURNING owner_user_id",
+    [ownerId(id), expectedRevision],
+  );
+  return r.rows.length === 1;
 }
 export async function getDraft(id: number): Promise<ProfileDraft | null> {
   const r = await pool.query(
