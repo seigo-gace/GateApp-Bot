@@ -1,6 +1,7 @@
 import { Telegraf, Markup, type Context } from "telegraf";
 import type { ProfileDraft, SavedProfile } from "../services/profileRepository.js";
 import * as profileRepo from "../services/profileRepository.js";
+import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {
   PROFILE_POSITIONS, parseProfileBasic, renderProfileBasicPreview,
 } from "../services/profileCore.js";
@@ -114,6 +115,7 @@ export function registerProfileHandlers(
   bot.on("text", async (ctx, next) => {
     if (ctx.chat.type !== "private" || !ctx.from?.username ||
         ctx.message.text.startsWith("/")) return next();
+    if(await currentDmTextOwner(ctx.from.id)!=="profile")return next();
     const draft = await repo.getDraft(ctx.from.id);
     if (!draft || draft.step !== "awaiting_basic") return next();
     try {
