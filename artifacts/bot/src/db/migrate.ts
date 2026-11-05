@@ -11,13 +11,15 @@ export async function runMigrations(): Promise<void> {
         height_cm SMALLINT NOT NULL CHECK (height_cm BETWEEN 90 AND 250),
         weight_kg SMALLINT NOT NULL CHECK (weight_kg BETWEEN 25 AND 300),
         age SMALLINT NOT NULL CHECK (age BETWEEN 20 AND 120),
-        position TEXT NOT NULL CHECK (position IN ('タチ','タチリバ','リバ','ウケリバ','ウケ')),
+        position TEXT NOT NULL CONSTRAINT profiles_position_check CHECK (position IN ('タチ','タチリバ','リバ','ウケリバ','ウケ','S','M')),
         hair TEXT, body TEXT, region TEXT, area TEXT, pr TEXT,
         status TEXT NOT NULL DEFAULT 'private'
           CHECK (status IN ('private','published','hidden')),
         revision INTEGER NOT NULL DEFAULT 1,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_position_check;
+      ALTER TABLE profiles ADD CONSTRAINT profiles_position_check CHECK (position IN ('タチ','タチリバ','リバ','ウケリバ','ウケ','S','M'));
       CREATE TABLE IF NOT EXISTS profile_tag_catalog (
         category TEXT NOT NULL,
         tag TEXT NOT NULL,
