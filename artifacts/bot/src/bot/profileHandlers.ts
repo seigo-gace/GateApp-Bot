@@ -7,7 +7,7 @@ import {nextSelection,selectionRows} from "../services/inlineSelection.js";
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
-import {appendProfileMedia,mediaStatus,type ProfileMediaItem} from "../services/profileMedia.js";
+import {appendProfileMedia,mediaStatus,numberProfileMedia,replaceProfileMedia,deleteProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {
   PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
 } from "../services/profileCore.js";
@@ -131,14 +131,21 @@ const areaChildrenText=(data:ProfileDraft["data"])=>[
 ].join("\n");
 
 const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`)]]);
-const mediaText=(data:ProfileDraft["data"])=>[
- "🪪 プロフィール｜画像・動画・自己PR",
- "画像・動画はTelegramの添付から送信してください。",
- "自己PRは通常の入力欄から文章で送信してください。",
- "どちらも任意で、文章は新しい入力で更新します。",
- "",
- ...mediaStatus(data.media,data.pr),
-].join("\n");
+const mediaText=(data:ProfileDraft["data"])=>{
+ const media=numberProfileMedia(data.media);
+ return [
+  "🪪 プロフィール｜画像・動画・自己PR",
+  "画像・動画：Telegramの添付から送信",
+  "自己PR：通常の入力欄へ送信（全文差し替え）",
+  "画像・動画の操作：削除 番号／差替 番号 と送信",
+  "自己PRの消去：PR削除 と送信",
+  ...(data.replaceMediaId?["","🔁 No."+data.replaceMediaId+" の差替画像・動画を送信してください。中止は 差替取消 と送信。"]:[]),
+  "",
+  ...mediaStatus(media,data.pr),
+  ...media.slice(0,40).map(item=>"No."+item.itemId+" "+(item.type==="photo"?"🖼️画像":"🎬動画")),
+  ...(media.length>40?["ほか "+(media.length-40)+" 件。番号を指定して差し替え・削除できます。"]:[]),
+ ].join("\n");
+};
 const overviewText=(profile:SavedProfile,username:string)=>[
   "🪪 プロフィールプレビュー",
   renderProfileBasicPreview(profile,username),
@@ -621,14 +628,34 @@ export function registerProfileHandlers(
     const draft = await repo.getDraft(ctx.from.id);
     if (!draft)return next();
     if(draft.step==="media"){
-      const value=ctx.message.text;
-      if(value.length>10000){
-        await updateWizardScreen(ctx,repo,draft,"⚠️ 自己PRは10000文字以内で送信してください。",mediaKeyboard(draft.revision));
-        return;
+      const value=ctx.message.text.trim();
+      const match=/^(削除|差替)\\s*(\\d+)$/.exec(value);
+      let next= draft.data;
+      let warning="";
+      if(match){
+        const itemId=Number(match[2]);
+        const current=numberProfileMedia(draft.data.media);
+        if(!Number.isSafeInteger(itemId)||!current.some(item=>item.itemId===itemId)){
+          warning="⚠️ 指定した番号は登録されていません。";
+        }else if(match[1]==="削除"){
+          next={...draft.data,media:deleteProfileMedia(current,itemId),replaceMediaId:undefined};
+        }else{
+          next={...draft.data,media:current,replaceMediaId:itemId};
+        }
+      }else if(value==="PR削除"){
+        next={...draft.data,pr:null,prRef:null};
+      }else if(value==="差替取消"){
+        next={...draft.data,replaceMediaId:undefined};
+      }else if(draft.data.replaceMediaId){
+        warning="⚠️ 差し替える画像・動画を送信してください。中止する場合は 差替取消 と送信してください。";
+      }else if(ctx.message.text.length>10000){
+        warning="⚠️ 自己PRは10000文字以内で送信してください。";
+      }else{
+        next={...draft.data,pr:ctx.message.text};
       }
-      const updated=await repo.putDraft(ctx.from.id,"media",{...draft.data,pr:value},draft.revision);
-      try{await ctx.deleteMessage();}catch{console.warn("[PROFILE_PR_DELETE_FAILED]");}
-      await updateWizardScreen(ctx,repo,updated,mediaText(updated.data),mediaKeyboard(updated.revision));
+      const updated=next===draft.data?draft:await repo.putDraft(ctx.from.id,"media",next,draft.revision);
+      try{await ctx.deleteMessage();}catch{warning+="\\n⚠️ 入力を削除できませんでした。手動で削除してください。";}
+      await updateWizardScreen(ctx,repo,updated,(warning?warning+"\\n\\n":"")+mediaText(updated.data),mediaKeyboard(updated.revision));
       return;
     }
     if(draft.step!=="awaiting_basic")return next();
@@ -683,10 +710,15 @@ export function registerProfileHandlers(
     const entry:ProfileMediaItem={type:kind,fileId,sourceMessageId:message.message_id,
       ...("media_group_id" in message&&typeof message.media_group_id==="string"
         ?{mediaGroupId:message.media_group_id}:{})};
-    const items=appendProfileMedia(draft.data.media,entry);
-    const updated=await repo.putDraft(ctx.from.id,"media",{...draft.data,media:items},draft.revision);
-    try{await ctx.deleteMessage();}catch{console.warn("[PROFILE_MEDIA_DELETE_FAILED]");}
-    await updateWizardScreen(ctx,repo,updated,mediaText(updated.data),mediaKeyboard(updated.revision));
+    const oldMedia=numberProfileMedia(draft.data.media);
+    const items=draft.data.replaceMediaId
+      ?replaceProfileMedia(oldMedia,draft.data.replaceMediaId,entry)
+      :numberProfileMedia(appendProfileMedia(oldMedia,entry));
+    const updated=await repo.putDraft(ctx.from.id,"media",
+      {...draft.data,media:items,replaceMediaId:undefined},draft.revision);
+    let warning="";
+    try{await ctx.deleteMessage();}catch{warning="⚠️ 送信した媒体メッセージを削除できませんでした。手動で削除してください。\\n";}
+    await updateWizardScreen(ctx,repo,updated,warning+mediaText(updated.data),mediaKeyboard(updated.revision));
     return;
   };
   bot.on("photo",async(ctx,next)=>receiveMedia(ctx,next,"photo"));
