@@ -8,7 +8,9 @@ test("ROOM host transitions follow adopted v2 with no automatic Jitsi controls",
  assert.equal(roomTransition("live","finish").state,"finished");
  assert.equal(roomTransition("live","cancel").state,"cancelled");
  assert.throws(()=>roomTransition("finished","start"),/INVALID/);
- assert.throws(()=>roomTransition("draft","start"),/INVALID/);
+ assert.equal(roomTransition("draft","start").state,"live");
+ assert.equal(roomTransition("scheduled","start").state,"live");
+ assert.equal(roomTransition("postponed","start").state,"live");
  assert.throws(()=>roomTransition("cancelled","prepare"),/INVALID/);
 });
 test("postponement and schedule require a valid future time",()=>{
