@@ -127,9 +127,10 @@ export async function saveIssuedInvites(a:GateAttempt,links:readonly IssuedBoard
   const registered=await c.query(
    `SELECT target_id,chat_id FROM targets WHERE target_type='entry_group'
       AND target_id=ANY($1::int[])`,[links.map(i=>i.targetId)]);
-  if(registered.rows.length!==3||
-   !ADMISSION_BOARD_CHAT_IDS.every(chatId=>
-    registered.rows.some(row=>Number(row.chat_id)===chatId))){
+  const matches=ADMISSION_BOARD_CHAT_IDS.map(chatId=>
+   registered.rows.filter(row=>Number(row.chat_id)===chatId));
+  if(registered.rows.length!==3||matches.some(found=>found.length!==1) ||
+   Number(matches[0]![0]!.target_id)!==a.target_id){
    await c.query("ROLLBACK");return false;
   }
   const session=await c.query(`UPDATE gate_sessions SET step='approved',updated_at=NOW()
