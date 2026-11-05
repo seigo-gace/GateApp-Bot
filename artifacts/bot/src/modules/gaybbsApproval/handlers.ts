@@ -136,6 +136,8 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
  }catch(e){
   const message=e instanceof Error && e.message==="GATE_ANOTHER_TARGET_ACTIVE"
    ?"別のグループへの参加審査が進行中です。先にその審査を終えてください。"
+   :e instanceof Error && e.message==="GATE_COOLDOWN"
+   ?"連続申請は制限されています。一定時間後に改めて申請してください。"
    :"申請処理を続行できません。後ほど同じ審査リンクから再開してください。";
   await ctx.reply(message);
  }
