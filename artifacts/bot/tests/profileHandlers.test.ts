@@ -12,6 +12,7 @@ function fixture() {
   let screenId = 98;
   const sent: any[] = [];
   let deleteInputFails = false;
+  let postingMenuUrl:string|null="https://t.me/c/3847210571/501";
   const repo = {
     async getDraft() { return draft; },
     async bindScreenMessage(_id:number,revision:number,messageId:number) {
@@ -44,7 +45,8 @@ function fixture() {
     action(k: any, fn: Function) { handlers.set(k instanceof RegExp ? "action:" + k.source : "action:" + k, fn); },
     on(k: string, fn: Function) { handlers.set("on:" + k, fn); },
   };
-  registerProfileHandlers(bot as any, repo as any, async () => draft ? "profile" : null);
+  registerProfileHandlers(bot as any, repo as any, async () => draft ? "profile" : null,
+    async()=>postingMenuUrl);
   function ctx(message = "") {
     return {
       chat: {type: "private", id: 4321}, from: {id: 4321, username: "valid_user"},
@@ -69,6 +71,7 @@ function fixture() {
   const start = () => handlers.get("command:profile")!(ctx());
   return {handlers, repo, ctx, sent, action, send, start,
     failDelete() {deleteInputFails=true;},
+    withoutMenu(){postingMenuUrl=null;},
     get draft() {return draft;},
     get profile() {return profile;},
     get saves() {return saves;},
@@ -154,8 +157,8 @@ test("cancel is revision-bound: clears active draft only and returns to profile 
   await f.action(cancelAction,[previous]);
   assert.equal(f.draft,null);
   assert.equal(f.discards,1);
-  assert.ok(f.sent.at(-1)[1].includes("キャンセルしました"));
-  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].text,"🪪 プロフ作成");
+  assert.ok(f.sent.at(-1)[1].includes("投稿メニュー"));
+  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].url,"https://t.me/c/3847210571/501");
   await f.action("pf:restart");
   assert.equal(f.draft.step,"awaiting_basic");
   await f.action(cancelAction,[previous]);
@@ -241,4 +244,66 @@ test("overview A has safe basic edit, pending sections do not create posts, save
  assert.equal(f.saves,1);
  assert.equal(f.profile.status,"private");
  assert.equal(f.profile.age,41);
+});
+
+const overviewReturnAction=String.raw`^pf:overview:(\d+):return$`;
+
+test("A preview replaces same Bot screen and returns to exact 3/3/2 editor without a second Bot message",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"2"]);
+ const revision=String(f.draft.revision);
+ await f.action(overviewAction,[revision,"preview"]);
+ const preview=f.sent.at(-1);
+ assert.equal(preview[0],"edit");
+ assert.match(preview[1],/公開前プレビュー/);
+ assert.match(preview[1],/保存だけでは公開されません/);
+ assert.equal(preview[2].reply_markup.inline_keyboard[0][0].callback_data,
+  "pf:overview:"+revision+":return");
+ await f.action(overviewReturnAction,[revision]);
+ const back=f.sent.at(-1);
+ assert.equal(back[0],"edit");
+ assert.deepEqual(back[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),layout);
+ assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+});
+
+test("A cancel returns through verified original posting menu without deleting saved profile",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"2"]);
+ await f.action(overviewAction,[String(f.draft.revision),"cancel"]);
+ assert.equal(f.draft,null);
+ const result=f.sent.at(-1);
+ assert.equal(result[0],"edit");
+ assert.match(result[1],/投稿メニュー/);
+ assert.equal(result[2].reply_markup.inline_keyboard[0][0].url,"https://t.me/c/3847210571/501");
+ assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+});
+
+test("A cancel with no verified origin shows no guessed URL",async()=>{
+ const f=fixture();
+ f.withoutMenu();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"2"]);
+ await f.action(overviewAction,[String(f.draft.revision),"cancel"]);
+ const result=f.sent.at(-1);
+ assert.match(result[1],/確認できない/);
+ assert.equal(result[2],undefined);
+});
+
+test("A old navigation and saved old callbacks cannot corrupt new draft",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"2"]);
+ const old=String(f.draft.revision);
+ await f.action(overviewAction,[old,"basic"]);
+ const fresh=String(f.draft.revision);
+ await f.action(overviewAction,[old,"cancel"]);
+ assert.equal(String(f.draft.revision),fresh);
+ assert.equal(f.draft.step,"awaiting_basic");
+ assert.match(String(f.sent.at(-1)[1]),/古い画面/);
 });
