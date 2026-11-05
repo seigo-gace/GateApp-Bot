@@ -6,6 +6,7 @@ import {pool} from "../db/index.js";
 import {updateRoomState,changeRoomVisibility,reportRoomParticipation,type RoomAction} from "../services/roomLifecycle.js";
 import {parseJstDateTime} from "../services/postingDomain.js";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../services/roomAccess.js";
+import {currentDmTextOwner} from "../services/dmInputOwner.js";
 function actions(roomId:number,revision:number,status:string,visibility?:string){
  const allowed:Record<string,RoomAction[]>={
   draft:["schedule","prepare","cancel"],
@@ -110,6 +111,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
  });
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||ctx.message.text.startsWith("/"))return next();
+  if(await currentDmTextOwner(ctx.from.id)!=="room_host")return next();
   const d=await pool.query(
    `SELECT room_id,expected_revision,requested_action FROM room_host_sessions
      WHERE owner_user_id=$1 AND expires_at>NOW()`,[ctx.from.id]);
