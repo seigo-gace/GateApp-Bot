@@ -9,8 +9,15 @@ function fixture() {
   let saves = 0;
   let discards = 0;
   let revisionCounter = 0;
+  let screenId = 98;
+  const sent: any[] = [];
+  let deleteInputFails = false;
   const repo = {
     async getDraft() { return draft; },
+    async bindScreenMessage(_id:number,revision:number,messageId:number) {
+      assert.equal(draft?.revision,revision);
+      draft.data.screenMessageId=messageId;
+    },
     async discardDraft(_id: number, expectedRevision: number) {
       if (!draft || draft.revision !== expectedRevision) return false;
       draft = null;
@@ -38,12 +45,17 @@ function fixture() {
     on(k: string, fn: Function) { handlers.set("on:" + k, fn); },
   };
   registerProfileHandlers(bot as any, repo as any, async () => draft ? "profile" : null);
-  const sent: any[] = [];
   function ctx(message = "") {
     return {
       chat: {type: "private"}, from: {id: 4321, username: "valid_user"},
-      message: {text: message}, match: [] as string[],
-      reply: async (...args: any[]) => { sent.push(["reply", ...args]); return {message_id: 99}; },
+      message: {text: message, message_id: 123}, match: [] as string[],
+      callbackQuery: {message: {message_id: 99}},
+      telegram: {
+        editMessageText: async (...args:any[])=>{sent.push(["screen-edit",...args]);},
+        deleteMessage: async (...args:any[])=>{sent.push(["screen-delete",...args]);},
+      },
+      deleteMessage: async ()=>{sent.push(["input-delete",123]);if(deleteInputFails)throw Error("Telegram rejected deletion");},
+      reply: async (...args: any[]) => { sent.push(["reply", ...args]); return {message_id: ++screenId}; },
       editMessageText: async (...args: any[]) => { sent.push(["edit", ...args]); },
       answerCbQuery: async (...args: any[]) => { sent.push(["answer", ...args]); },
     };
@@ -56,6 +68,7 @@ function fixture() {
   const send = (text: string) => handlers.get("on:text")!(ctx(text), async () => { throw Error("text leaked to unrelated handler"); });
   const start = () => handlers.get("command:profile")!(ctx());
   return {handlers, repo, ctx, sent, action, send, start,
+    failDelete() {deleteInputFails=true;},
     get draft() {return draft;},
     get profile() {return profile;},
     get saves() {return saves;},
@@ -88,8 +101,8 @@ test("text first then position: preview, private save and no public post", async
   await f.send("ゼロ\n175/80/40");
   assert.equal(f.draft.step,"awaiting_position");
   const pos = f.sent.at(-1);
-  assert.equal(pos[0],"reply");
-  assert.deepEqual(pos[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
+  assert.equal(pos[0],"screen-edit");
+  assert.deepEqual(pos[5].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
   await f.action(positionAction, [String(f.draft.revision),"6"]);
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.position,"M");
@@ -113,7 +126,7 @@ test("position first then text: selection persists and preview contains selected
   await f.send("ゼロ\n175#80#40");
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.position,"S");
-  assert.ok(f.sent.at(-1)[1].includes("S"));
+  assert.ok(f.sent.at(-1)[4].includes("S"));
 });
 
 test("invalid numeric text can be retried and keeps position already chosen", async () => {
@@ -126,8 +139,8 @@ test("invalid numeric text can be retried and keeps position already chosen", as
   assert.equal(f.draft.revision,rev);
   assert.equal(f.draft.data.position,"S");
   const err=f.sent.at(-1);
-  assert.ok(err[1].includes("もう一度テキストを送信"));
-  assert.deepEqual(err[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
+  assert.ok(err[4].includes("もう一度テキストを送信"));
+  assert.deepEqual(err[5].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
   await f.send("ゼロ\n175-80-18");
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.age,18);
@@ -173,4 +186,25 @@ test("old callback, missing username and unrelated text are handled safely",asyn
   await f.start();
   await f.action(positionAction,["999","2"]);
   assert.equal(f.draft.step,"awaiting_basic");
+});
+
+test("wizard edits the same original screen and deletes both valid and invalid input messages",async()=>{
+  const f=fixture();
+  await f.start();
+  const initial=f.draft.data.screenMessageId;
+  await f.send("ゼロ\n300/80/40");
+  await f.send("ゼロ\n175/80/40");
+  assert.equal(f.sent.filter(x=>x[0]==="input-delete").length,2);
+  const edits=f.sent.filter(x=>x[0]==="screen-edit");
+  assert.equal(edits.length,2);
+  assert.ok(edits.every(x=>x[2]===initial));
+  assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+});
+test("delete API failure does not claim cleanup and shows manual-delete warning",async()=>{
+  const f=fixture();
+  await f.start();
+  f.failDelete();
+  await f.send("ゼロ\n175/80/40");
+  const edit=f.sent.find(x=>x[0]==="screen-edit");
+  assert.ok(edit[4].includes("手動で削除してください"));
 });
