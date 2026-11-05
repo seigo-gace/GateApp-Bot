@@ -38,6 +38,10 @@ export async function openAttempt(userId:number,targetId:number,token:string):Pr
    await c.query("COMMIT");
    return {attempt:old,existing:true};
   }
+  const cooldownSeconds=Math.max(0,Number.parseInt(process.env.COOLDOWN_SECONDS??"300",10)||300);
+  if(old?.step==="rejected" && old.last_attempt &&
+     (Date.now()-old.last_attempt.getTime())/1000<cooldownSeconds)
+   throw new Error("GATE_COOLDOWN");
   const attemptId=randomUUID();
   await c.query(`INSERT INTO approvals
    (target_id,tg_user_id,status,attempt_id,document_version)
@@ -49,7 +53,7 @@ export async function openAttempt(userId:number,targetId:number,token:string):Pr
    target_id=EXCLUDED.target_id,step='intro',step_token=EXCLUDED.step_token,
    attempt_id=EXCLUDED.attempt_id,document_version=EXCLUDED.document_version,
    challenge_fails=0,challenge_data=NULL,last_message_id=NULL,
-   last_attempt=NOW(),updated_at=NOW() RETURNING *`,
+   last_attempt=NOW(),created_at=NOW(),updated_at=NOW() RETURNING *`,
    [userId,targetId,token,attemptId,ADMISSION_VERSION]);
   await c.query("COMMIT");
   return {attempt:r.rows[0]!,existing:false};
