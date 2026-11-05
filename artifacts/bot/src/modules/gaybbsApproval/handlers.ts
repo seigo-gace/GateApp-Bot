@@ -87,7 +87,7 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
   });
   if(!remaining.length){
    const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
-    "審査済みの参加リンクは使用済み、または期限切れです。利用可能な参加リンクはありません。一定時間後に審査リンクから改めて申請してください。");
+    "3グループ共通の参加資格、または参加リンクの有効性を確認できません。いずれかで拒否されている場合は3グループとも参加できません。");
    await rememberScreen(a,out.messageId);
    return;
   }
