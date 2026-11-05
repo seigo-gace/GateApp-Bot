@@ -20,10 +20,10 @@ export function validateAppearance(v:AppearanceValues):void{
 /** Compact full-screen rows, no empty cells or inert filler buttons. */
 export const HAIR_ROWS=[
   [...HAIR_CHOICES.slice(0,3)],[...HAIR_CHOICES.slice(3,6)],
-  [...HAIR_CHOICES.slice(6,8)],[...HAIR_CHOICES.slice(8,10)],
+  [...HAIR_CHOICES.slice(6,9)],[HAIR_CHOICES[9]],
 ] as const;
 export const BODY_ROWS=[
   [...BODY_CHOICES.slice(0,3)],[...BODY_CHOICES.slice(3,6)],
-  [...BODY_CHOICES.slice(6,9)],[...BODY_CHOICES.slice(9,11)],
-  [...BODY_CHOICES.slice(11,13)],
+  [...BODY_CHOICES.slice(6,9)],[...BODY_CHOICES.slice(9,12)],
+  [BODY_CHOICES[12]],
 ] as const;
