@@ -3,7 +3,7 @@ import type { ProfileBasicDraft, ProfilePosition } from "./profileCore.js";
 
 export type ProfileDraft = {
   step: "awaiting_basic" | "awaiting_position" | "preview" | "cancelled";
-  data: Partial<ProfileBasicDraft>;
+  data: Partial<ProfileBasicDraft> & { screenMessageId?: number };
   revision: number;
 };
 export type SavedProfile = ProfileBasicDraft & {
@@ -26,6 +26,17 @@ export async function discardDraft(id: number, expectedRevision: number): Promis
     [ownerId(id), expectedRevision],
   );
   return r.rows.length === 1;
+}
+/** Track the single Bot-owned wizard screen, without changing the callback revision. */
+export async function bindScreenMessage(id: number, revision: number, messageId: number): Promise<void> {
+  ownerId(id);
+  if (!Number.isSafeInteger(revision) || revision < 1 ||
+      !Number.isSafeInteger(messageId) || messageId < 1) throw new Error("PROFILE_SCREEN_INVALID");
+  const r = await pool.query(
+    "UPDATE profile_drafts SET data=jsonb_set(data,'{screenMessageId}',to_jsonb($3::integer),true) WHERE owner_user_id=$1 AND revision=$2 AND step <> 'cancelled' RETURNING owner_user_id",
+    [id, revision, messageId]
+  );
+  if (!r.rows.length) throw new Error("PROFILE_DRAFT_STALE");
 }
 export async function getDraft(id: number): Promise<ProfileDraft | null> {
   const r = await pool.query(
