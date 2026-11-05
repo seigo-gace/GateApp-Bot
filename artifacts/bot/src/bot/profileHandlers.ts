@@ -11,14 +11,17 @@ type ProfileRepo = {
   putDraft: typeof profileRepo.putDraft;
   getProfile: typeof profileRepo.getProfile;
   savePrivateDraft: typeof profileRepo.savePrivateDraft;
+  discardDraft: typeof profileRepo.discardDraft;
 };
 
-const selectPosition = (revision: number) => Markup.inlineKeyboard(
-  [[0, 1, 2], [3, 4, 5, 6]].map(indices => indices.map(i =>
-    Markup.button.callback(PROFILE_POSITIONS[i], `pf:pos:${revision}:${i}`)))
-);
+const cancelButton = () => Markup.inlineKeyboard([[Markup.button.callback("キャンセルして戻る", "pf:cancel")]]);
+const selectPosition = (revision: number) => Markup.inlineKeyboard([
+  ...[[0, 1, 2], [3, 4, 5, 6]].map(indices => indices.map(i =>
+    Markup.button.callback(PROFILE_POSITIONS[i], `pf:pos:${revision}:${i}`))),
+  [Markup.button.callback("キャンセルして戻る", "pf:cancel")],
+]);
 
-const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\nニックネームを1行目、身長 体重 年齢を半角スペース区切りで2行目に入力してください。\n例：ゼロ\n175 80 39\nポジションを選んでください。";
+const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\n1行目：ニックネーム\n2行目：身長 体重 年齢（半角スペース・/・#・- で区切る）\n例：ゼロ\n175 80 39\n範囲：身長100〜250cm／体重50〜250kg／年齢19〜89歳\nテキストを送信し、次にポジションを選んでください。";
 
 function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}}): boolean {
   return ctx.chat?.type === "private" && !!ctx.from?.username;
@@ -41,7 +44,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
   return;
  }
  await repo.putDraft(ctx.from.id,"awaiting_basic",{});
- await ctx.reply(requestBasic);
+ await ctx.reply(requestBasic, cancelButton());
 }
 
 export function registerProfileHandlers(
@@ -50,6 +53,13 @@ export function registerProfileHandlers(
   activeDmOwner:typeof currentDmTextOwner=currentDmTextOwner,
 ): void {
   bot.command("profile", async ctx => startProfileEditor(ctx,repo));
+
+  bot.action("pf:cancel", async (ctx) => {
+    if (!canUseProfile(ctx)) return;
+    await repo.discardDraft(ctx.from.id);
+    await ctx.answerCbQuery("キャンセルしました");
+    await ctx.editMessageText("🪪 プロフィール入力をキャンセルしました。\n元の投稿メニューから再度選択できます。");
+  });
 
   bot.action("pf:edit:basic", async (ctx) => {
     await ctx.answerCbQuery();
@@ -66,7 +76,7 @@ export function registerProfileHandlers(
       age: existing.age,
       position: existing.position,
     });
-    await ctx.reply(requestBasic);
+    await ctx.reply(requestBasic, cancelButton());
   });
 
   bot.action(/^pf:pos:(\d+):([0-6])$/, async (ctx) => {
@@ -123,13 +133,15 @@ export function registerProfileHandlers(
     try {
       const basic = parseProfileBasic(ctx.message.text);
       const updated = await repo.putDraft(ctx.from.id,
-        "awaiting_position", basic, draft.revision);
+        "awaiting_position", {...draft.data, ...basic}, draft.revision);
       await ctx.reply(
         "基本情報を受け付けました。ポジションを選択してください。",
         selectPosition(updated.revision)
       );
     } catch (err) {
-      await ctx.reply(err instanceof Error ? err.message : "入力を確認してください");
+      await ctx.reply("⚠️ 入力を確認してください。\n"+
+        (err instanceof Error ? err.message : "入力内容が正しくありません")+
+        "\n\n内容を修正して、もう一度テキストを送信してください。", cancelButton());
     }
   });
 }
