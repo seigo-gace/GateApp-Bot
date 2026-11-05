@@ -254,17 +254,20 @@ export async function runMigrations(): Promise<void> {
         owner_user_id BIGINT PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
         expected_revision INTEGER NOT NULL CHECK(expected_revision > 0),
-        requested_action TEXT NOT NULL CHECK(requested_action IN ('schedule','postpone')),
+        requested_action TEXT NOT NULL CHECK(requested_action IN ('schedule','postpone','edit_details')),
         expires_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE room_host_sessions DROP CONSTRAINT IF EXISTS room_host_sessions_requested_action_check;
+      ALTER TABLE room_host_sessions ADD CONSTRAINT room_host_sessions_requested_action_check
+        CHECK(requested_action IN ('schedule','postpone','edit_details'));
       ALTER TABLE room_host_sessions ADD COLUMN IF NOT EXISTS screen_message_id INTEGER;
       CREATE TABLE IF NOT EXISTS room_source_events (
         event_id BIGSERIAL PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
         source_revision INTEGER NOT NULL CHECK(source_revision > 0),
         kind TEXT NOT NULL CHECK(kind IN
-          ('scheduled','prepared','started','postponed','cancelled','finished','visibility_changed')),
+          ('scheduled','prepared','started','postponed','cancelled','finished','visibility_changed,'details_changed')),
         payload JSONB NOT NULL DEFAULT '{}'::jsonb,
         state TEXT NOT NULL DEFAULT 'pending'
           CHECK(state IN ('pending','processing','applied','needs_reconcile')),
@@ -272,6 +275,10 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(room_id,source_revision)
       );
+      ALTER TABLE room_source_events DROP CONSTRAINT IF EXISTS room_source_events_kind_check;
+      ALTER TABLE room_source_events ADD CONSTRAINT room_source_events_kind_check
+        CHECK(kind IN ('scheduled','prepared','started','postponed','cancelled',
+          'finished','visibility_changed','details_changed'));
       CREATE TABLE IF NOT EXISTS room_participation_reports (
         report_id BIGSERIAL PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
