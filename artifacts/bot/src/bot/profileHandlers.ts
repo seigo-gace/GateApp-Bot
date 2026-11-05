@@ -126,19 +126,23 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  }
  const lastId=await repo.getLastScreenMessageId(ctx.from.id);
  if(existing){
-   const text=renderProfileBasicPreview(existing,ctx.from.username!);
-   const options={parse_mode:"HTML" as const,...Markup.inlineKeyboard([
-    [Markup.button.callback("📝 基本情報を編集","pf:edit:basic")],
-   ])};
-   if(lastId){
-     try{
-       await ctx.telegram.editMessageText(ctx.chat.id,lastId,undefined,text,options);
-       return;
-     }catch{
-       console.warn("[PROFILE_SAVED_SCREEN_EDIT_FAILED]");
-     }
+   if(existing.status==="private"){
+     const draft=await repo.putDraft(ctx.from.id,"preview",{
+       nickname:existing.nickname,heightCm:existing.heightCm,
+       weightKg:existing.weightKg,age:existing.age,position:existing.position,
+       ...(lastId?{screenMessageId:lastId}:{}),
+     });
+     await updateWizardScreen(ctx,repo,draft,
+       overviewText(existing,ctx.from.username!),
+       overviewKeyboard(draft.revision),"HTML");
+     return;
    }
-   await ctx.reply(text,options);
+   // A published original must not be silently made editable without synchronizing posts.
+   await ctx.reply(renderProfileBasicPreview(existing,ctx.from.username!),{
+     parse_mode:"HTML",...Markup.inlineKeyboard([
+       [Markup.button.callback("📝 基本情報を編集","pf:edit:basic")],
+     ]),
+   });
    return;
  }
  const draft=await repo.putDraft(ctx.from.id,"awaiting_basic",
@@ -295,10 +299,15 @@ export function registerProfileHandlers(
     }
     if(action==="save"){
       const saved=await repo.savePrivateDraft(ctx.from.id,draft.revision,ctx.from.username!);
+      // New revision invalidates pre-save callbacks while preserving this screen.
+      const next=await repo.putDraft(ctx.from.id,"preview",{
+        nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
+        age:saved.age,position:saved.position,
+        screenMessageId:draft.data.screenMessageId,
+      });
       await ctx.answerCbQuery("非公開で保存しました");
-      await ctx.editMessageText("✅ プロフィールを非公開保存しました。\n"+
-        renderProfileBasicPreview(saved,ctx.from.username!),{parse_mode:"HTML",
-        ...Markup.inlineKeyboard([[Markup.button.callback("📝 基本情報を編集","pf:edit:basic")]])});
+      await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
+        overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
       return;
     }
     if(action==="cancel"){
@@ -324,23 +333,24 @@ export function registerProfileHandlers(
       {parse_mode:"HTML",...overviewKeyboard(draft.revision)});
   });
 
-  bot.action(/^pf:save:(\d+)$/, async (ctx) => {
-    if (!canUseProfile(ctx)) return;
-    const revision = Number(ctx.match[1]);
-    const draft = await repo.getDraft(ctx.from.id);
-    if (!draft || draft.revision !== revision || draft.step !== "preview") {
-      await ctx.answerCbQuery("以前の保存ボタンです。プロフィールを開き直してください。");
+  // Legacy callback from the original basic form; keep compatible with
+  // already issued buttons, but render the adopted 3/3/2 screen afterward.
+  bot.action(/^pf:save:(\d+)$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const rev=Number(ctx.match[1]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.step!=="preview"||draft.revision!==rev){
+      await ctx.answerCbQuery("古い保存ボタンです");
       return;
     }
-    const profile = await repo.savePrivateDraft(ctx.from.id, revision, ctx.from.username!);
+    const saved=await repo.savePrivateDraft(ctx.from.id,rev,ctx.from.username!);
+    const next=await repo.putDraft(ctx.from.id,"preview",{
+      nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
+      age:saved.age,position:saved.position,screenMessageId:draft.data.screenMessageId,
+    });
     await ctx.answerCbQuery("非公開で保存しました");
-    await ctx.editMessageText(
-      "✅ 非公開プロフィールを保存しました。\nグループには投稿していません。\n"+
-      renderProfileBasicPreview(profile, ctx.from.username!),
-      {parse_mode:"HTML", ...Markup.inlineKeyboard([
-        [Markup.button.callback("📝 基本情報を編集", "pf:edit:basic")],
-      ])}
-    );
+    await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
+      overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
   });
 
   // Register BEFORE the pre-existing admin message handler. All other
