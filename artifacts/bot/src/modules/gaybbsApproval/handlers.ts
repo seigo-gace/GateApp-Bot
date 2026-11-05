@@ -15,7 +15,7 @@ import {generateChallenge, type ChallengeQuestion} from "../../services/challeng
 import {showWizardScreen} from "../../services/dmWizardScreen.js";
 import {pool} from "../../db/index.js";
 import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
- APPROVAL_SUMMARY,RULES_CONSENT_QUESTION,hasAdoptedQuestions,isSafeDocUrl} from "./contract.js";
+ APPROVAL_SUMMARY,RULES_CONSENT_QUESTION,hasAdoptedQuestions,isSafeDocUrl,admissionDocumentVersion} from "./contract.js";
 import {openAttempt,readAttempt,rememberScreen,transition,consentsComplete,
  saveIssuedInvite,currentIssuedInvite,verifiedApprovalDocumentLinks,getRequestEligibility,
  withAdmissionClient,type GateAttempt} from "./store.js";
@@ -27,6 +27,7 @@ type GateConfig={
  challenge:NonNullable<Awaited<ReturnType<typeof challengeRepo.getChallengeByTarget>>>;
  rule:NonNullable<Awaited<ReturnType<typeof ruleRepo.getRuleByTarget>>>;
  links:Record<string,string>;
+ documentVersion:string;
 };
 async function configured(targetId:number):Promise<GateConfig|null>{
  const target=await targetRepo.getTargetById(targetId);
@@ -40,9 +41,11 @@ async function configured(targetId:number):Promise<GateConfig|null>{
   !APPROVAL_DOC_KEYS.every(k=>isSafeDocUrl(links[k]??"") &&
      // Private Telegram topic message links cannot be read by applicants.
      !/^https:\/\/t\.me\/c\//i.test(links[k]??"")))return null;
- return {target,challenge,rule,links};
+ return {target,challenge,rule,links,
+  documentVersion:admissionDocumentVersion(targetId,rule.rule_text,links as Record<"guideline"|"terms"|"privacy"|"rules",string>)};
 }
 async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void>{
+ if(a.document_version!==cfg.documentVersion)throw new Error("GATE_DOCUMENT_STALE");
  if(a.step==="approved"){
   const link=await currentIssuedInvite(a);
   if(!link){
@@ -110,7 +113,7 @@ async function emitAdmissionLog(telegram:Telegram,userId:number,cfg:GateConfig,
  }catch{console.warn("[GAYBBS_GATE] Admission log could not be delivered");}
 }
 async function issueInvite(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void>{
- if(a.step!=="issuing" || !await consentsComplete(a))throw new Error("GATE_CONSENTS_INCOMPLETE");
+ if(a.document_version!==cfg.documentVersion || a.step!=="issuing" || !await consentsComplete(a))throw new Error("GATE_CONSENTS_INCOMPLETE");
  // Never use member_limit with creates_join_request. Only the verified applicant
  // will be approved when Telegram sends chat_join_request.
  const expires=new Date(Date.now()+24*60*60*1000);
@@ -153,7 +156,7 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
    username:ctx.from.username,
    displayName:[ctx.from.first_name,ctx.from.last_name].filter(Boolean).join(" "),
    isPremium:(ctx.from as {is_premium?:boolean}).is_premium??false,
-  });
+  },cfg.documentVersion);
   if(result.attempt.step==="issuing"){
    await issueInvite(ctx.telegram,result.attempt,cfg);return;
   }
@@ -178,6 +181,10 @@ async function onAction(ctx:Context,step:string,choice:string,stepToken:string):
  }
  const cfg=await configured(a.target_id);
  if(!cfg){await ctx.answerCbQuery("審査設定を確認できません。");return}
+ if(a.document_version!==cfg.documentVersion){
+  await ctx.answerCbQuery("審査文書が更新されました。元の参加リンクから再申請してください。");
+  return;
+ }
  const reject=async(reason:string,consent?:{stage:"question1"|"question2"|"rules";accepted:boolean})=>{
   const changed=await transition({attempt:a,messageId,next:"rejected",newToken:token(),consent});
   if(!changed){await ctx.answerCbQuery("処理済みの操作です。");return}
@@ -232,10 +239,11 @@ export function registerGayBbsApprovalHandlers(bot:Telegraf):void{
   const mapped=await pool.query("SELECT target_id FROM targets WHERE chat_id=$1 AND target_type='entry_group'",[req.chat.id]);
   if(mapped.rowCount!==1)return; // Don't touch unowned or ambiguous groups.
   const targetId=Number(mapped.rows[0].target_id);
+  const cfg=await configured(targetId);
   const applicant=req.from.id;
   const inviteUrl=req.invite_link?.invite_link;
   const blocked=await blacklistRepo.getBlacklisted(applicant);
-  if(!req.from.username||blocked?.status==="blocked"||!inviteUrl){
+  if(!cfg||!req.from.username||blocked?.status==="blocked"||!inviteUrl){
    try{await ctx.telegram.declineChatJoinRequest(req.chat.id,applicant)}catch{}
    return;
   }
@@ -244,7 +252,8 @@ export function registerGayBbsApprovalHandlers(bot:Telegraf):void{
    await withAdmissionClient(async c=>{
     await c.query("BEGIN");
     try{
-     const check=await getRequestEligibility(c,{targetId,userId:applicant,url:inviteUrl});
+     const check=await getRequestEligibility(c,{targetId,userId:applicant,url:inviteUrl,
+      expectedDocumentVersion:cfg.documentVersion});
      if(!check.allowed||check.inviteId===null){
       await c.query("ROLLBACK");return;
      }
