@@ -162,26 +162,35 @@ export async function savePrivateDraft(id: number, revision: number,
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
     if(p.likeTags!==undefined||p.loveTags!==undefined){
-      // One shared catalog for both purposes; no duplicate dictionary or storage.
-      for(const category of LIKE_CATEGORIES){
-        for(let i=0;i<category.items.length;i++){
-          await client.query(
-            "INSERT INTO profile_tag_catalog(category,tag,ordinal) VALUES ($1,$2,$3) ON CONFLICT(category,tag) DO NOTHING",
-            [category.name,category.items[i],i+1]);
-        }
-      }
+      const catalog=LIKE_CATEGORIES.flatMap(category=>category.items.map((tag,i)=>({
+        category:category.name,tag,ordinal:i+1,
+      })));
+      const catalogCategories=catalog.map(t=>t.category);
+      const catalogTags=catalog.map(t=>t.tag);
+      await client.query(
+        `INSERT INTO profile_tag_catalog(category,tag,ordinal)
+         SELECT category,tag,ordinal FROM UNNEST($1::text[],$2::text[],$3::int[])
+         AS rows(category,tag,ordinal) ON CONFLICT(category,tag) DO NOTHING`,
+        [catalogCategories,catalogTags,catalog.map(t=>t.ordinal)]);
       for(const purpose of ["like","love"] as const){
-        const value=purpose==="like"?p.likeTags:p.loveTags;
-        if(value===undefined)continue;
-        const tags=validLikeTags(value);
-        for(const category of LIKE_CATEGORIES){
+        const selection=purpose==="like"?p.likeTags:p.loveTags;
+        if(selection===undefined)continue;
+        const tags=validLikeTags(selection);
+        // Delete only recognized keys for this purpose. Unknown historical rows
+        // and the opposite purpose are deliberately left untouched.
+        await client.query(
+          `DELETE FROM profile_tags AS p WHERE p.owner_user_id=$1 AND p.purpose=$2
+           AND (p.category,p.tag) IN (
+             SELECT category,tag FROM UNNEST($3::text[],$4::text[]) AS t(category,tag)
+           )`,
+          [id,purpose,catalogCategories,catalogTags]);
+        if(tags.length){
           await client.query(
-            "DELETE FROM profile_tags WHERE owner_user_id=$1 AND purpose=$2 AND category=$3 AND tag=ANY($4::text[])",
-            [id,purpose,category.name,[...category.items]]);
+            `INSERT INTO profile_tags(owner_user_id,purpose,category,tag)
+             SELECT $1,$2,category,tag FROM UNNEST($3::text[],$4::text[]) AS t(category,tag)
+             ON CONFLICT DO NOTHING`,
+            [id,purpose,tags.map(t=>t.category),tags.map(t=>t.tag)]);
         }
-        for(const t of tags)await client.query(
-          "INSERT INTO profile_tags(owner_user_id,purpose,category,tag) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
-          [id,purpose,t.category,t.tag]);
       }
     }
     if(p.media!==undefined){
