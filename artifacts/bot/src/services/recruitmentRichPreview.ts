@@ -4,13 +4,14 @@
  * keeps a normal keyboard with the exact same callback handlers.
  */
 import type {RecruitmentInput} from "./recruitmentCompose.js";
+import type {ProfileBasicDraft} from "./profileCore.js";
 type RichButton={type:"button";button:{text:string;callback_data:string;style:"link"}};
 const edit=(rev:number,field:"title"|"nickname"|"stats"|"body"):RichButton=>({
  type:"button",button:{text:"📝 編集",callback_data:`recruit:edit:${rev}:${field}`,style:"link"},
 });
 const paragraph=(text:unknown)=>({type:"paragraph",text});
 export function buildRecruitmentRichPreview(
- d:RecruitmentInput,revision:number,destination:string,warning?:string,
+ d:RecruitmentInput,revision:number,destination:string,warning?:string,profile?:ProfileBasicDraft|null,
 ){
  if(!Number.isSafeInteger(revision)||revision<=0)throw Error("RECRUITMENT_REVISION_INVALID");
  const blocks:unknown[]=[
@@ -26,7 +27,10 @@ export function buildRecruitmentRichPreview(
  blocks.push({type:"divider"});
  blocks.push(paragraph([{type:"bold",text:"募集内容"}," ",edit(revision,"body")]));
  blocks.push(paragraph(d.body));
- if(d.mode==="linked")blocks.push(paragraph("プロフィール：保存済みの共通原本と連動"));
+ if(d.mode==="linked"&&profile){
+  blocks.push(paragraph("🪪 "+profile.nickname));
+  blocks.push(paragraph(profile.heightCm+"cm | "+profile.weightKg+"kg | "+profile.age+"歳 | "+(profile.position??"")));
+ }
  if(d.purposeCodes.length)blocks.push(paragraph("🎯 目的："+d.purposeCodes.map(v=>"#"+v).join(" ")));
  if(d.placeCodes.length)blocks.push(paragraph("📍 場所："+d.placeCodes.map(v=>"#"+v).join(" ")));
  blocks.push(paragraph(destination));
