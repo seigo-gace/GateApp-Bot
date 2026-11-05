@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,validateRecruitmentReady} from "../src/services/recruitmentCompose.js";
+import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
 
 test("new recruitment without saved profile uses first three lines, keeps multiline tail",()=>{
  const value=parseRecruitmentMessage("今夜募集\nゼロ\n175 80 40\n1行目\n\n3行目",false);
@@ -30,4 +31,22 @@ test("HTML escaping and short/incomplete input guard",()=>{
  assert.doesNotMatch(renderRecruitmentPreview(v,{nickname:"x",heightCm:175,weightKg:80,age:40,position:"タチ"}),/<script>/);
  for(const s of ["タイトルのみ","\n本文","タイトル\n"])assert.throws(()=>parseRecruitmentMessage(s,true));
  assert.throws(()=>parseRecruitmentMessage("タイトル\n名前\n175 80 40",false));
+});
+
+test("Telegram 10.3 rich preview puts editing callbacks right beside each section",()=>{
+ const d=parseRecruitmentMessage("募集タイトル\\nゼロ\\n175 80 40\\n本文1行\\n本文2行",false);
+ const rich=buildRecruitmentRichPreview(d,7,"投稿先：確認済み");
+ const blocks=rich.blocks as any[];
+ const inline=blocks.flatMap(b=>Array.isArray(b.text)?b.text:[]).filter(
+  b=>b?.type==="button").map(x=>x.button.callback_data);
+ assert.deepEqual(inline,[
+  "recruit:edit:7:title","recruit:edit:7:nickname",
+  "recruit:edit:7:stats","recruit:edit:7:body",
+ ]);
+ assert.equal(blocks.some(b=>b.text==="本文1行\\n本文2行"),true);
+ const linked=parseRecruitmentMessage("タイトル\\n本文",true);
+ const linkedButtons=(buildRecruitmentRichPreview(linked,9,"投稿先：確認済み").blocks as any[])
+  .flatMap(b=>Array.isArray(b.text)?b.text:[])
+  .filter(x=>x?.type==="button").map(x=>x.button.callback_data);
+ assert.deepEqual(linkedButtons,["recruit:edit:9:title","recruit:edit:9:body"]);
 });
