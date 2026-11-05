@@ -598,7 +598,7 @@ test("③ one Back button accepts PR and Telegram-only photo/video file refs",as
 test("③ new PR replaces the old text and PR削除 clears both body and external reference",async()=>{
  const f=fixture();
  await f.start();
- await f.send("ゼロ\\n175 80 40");
+ await f.send("ゼロ\n175 80 40");
  await f.action(positionAction,[String(f.draft.revision),"0"]);
  await f.action(overviewAction,[String(f.draft.revision),"media"]);
  await f.send("最初の自己PR");
@@ -615,7 +615,7 @@ test("③ new PR replaces the old text and PR削除 clears both body and externa
 test("③ photo/video item replacement and deletion preserve other item numbers and one-screen UI",async()=>{
  const f=fixture();
  await f.start();
- await f.send("ゼロ\\n175 80 40");
+ await f.send("ゼロ\n175 80 40");
  await f.action(positionAction,[String(f.draft.revision),"0"]);
  await f.action(overviewAction,[String(f.draft.revision),"media"]);
  const sendMedia=async(kind:"photo"|"video",id:number,ref:string)=>{
@@ -639,7 +639,7 @@ test("③ photo/video item replacement and deletion preserve other item numbers 
  await f.send("差替 1");
  await f.send("差替取消");
  assert.equal(f.draft.data.replaceMediaId,undefined);
- await f.action(String.raw`^pf:media:(\\d+):back$`,[String(f.draft.revision)]);
+ await f.action(String.raw`^pf:media:(\d+):back$`,[String(f.draft.revision)]);
  await f.action(overviewAction,[String(f.draft.revision),"save"]);
  assert.deepEqual(f.profile.media.map((x:any)=>[x.itemId,x.fileId]),[[1,"photo-new"]]);
  assert.equal(f.sent.filter((x:any)=>x[0]==="reply").length,1);
@@ -647,7 +647,7 @@ test("③ photo/video item replacement and deletion preserve other item numbers 
 
 test("③ replacement waits for media and cannot overwrite PR with an accidental text",async()=>{
  const f=fixture();
- await f.start();await f.send("ゼロ\\n175 80 40");
+ await f.start();await f.send("ゼロ\n175 80 40");
  await f.action(positionAction,[String(f.draft.revision),"0"]);
  await f.action(overviewAction,[String(f.draft.revision),"media"]);
  await f.send("最初の自己PR");
