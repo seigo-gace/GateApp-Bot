@@ -106,7 +106,7 @@ export function approvedLayoutRows(kind:ApprovedPanel):readonly (readonly string
 export function renderApprovedLinks(kind:ApprovedPanel,
  links:readonly NavLink[]):ButtonSpec[][]{
  const expected=approvedLayoutRows(kind);
- const all=expected.flat();
+ const all:readonly string[]=expected.flat();
  const seen=new Map<string,NavLink>();
  for(const link of links){
   assertPublishedLink(link);
