@@ -18,7 +18,7 @@ export async function readAttempt(userId:number):Promise<GateAttempt|undefined>{
  const r=await pool.query<GateAttempt>("SELECT * FROM gate_sessions WHERE tg_user_id=$1",[userId]);
  return r.rows[0];
 }
-export async function openAttempt(userId:number,targetId:number,token:string):Promise<{attempt:GateAttempt;existing:boolean}>{
+export async function openAttempt(userId:number,targetId:number,token:string,applicant?:{username?:string;displayName?:string;isPremium?:boolean}):Promise<{attempt:GateAttempt;existing:boolean}>{
  const c=await pool.connect();
  try{
   await c.query("BEGIN");
@@ -45,8 +45,10 @@ export async function openAttempt(userId:number,targetId:number,token:string):Pr
    throw new Error("GATE_COOLDOWN");
   const attemptId=randomUUID();
   await c.query(`INSERT INTO approvals
-   (target_id,tg_user_id,status,attempt_id,document_version)
-   VALUES ($1,$2,'pending',$3,$4)`,[targetId,userId,attemptId,ADMISSION_VERSION]);
+   (target_id,tg_user_id,username,display_name,is_premium,status,attempt_id,document_version)
+   VALUES ($1,$2,$3,$4,$5,'pending',$6,$7)`,
+   [targetId,userId,applicant?.username??null,applicant?.displayName??null,
+    applicant?.isPremium??false,attemptId,ADMISSION_VERSION]);
   const r=await c.query<GateAttempt>(`INSERT INTO gate_sessions
    (tg_user_id,target_id,step,step_token,attempt_id,document_version,challenge_fails,challenge_data,last_message_id,last_attempt)
    VALUES ($1,$2,'intro',$3,$4,$5,0,NULL,NULL,NOW())
