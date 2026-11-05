@@ -157,3 +157,22 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - **A06の既存業務DB**：タイトル・本文・本人の今回限りの基本情報または参照プロフィールのスナップショットを`announcement_posts.conditions`と`profile_snapshot`に分けて保存。作成中画面は`public_post_drafts`で管理。別DB・別Projectは作らない。
 - **CI追加検証**：isolated PostgreSQL integrationで取消と入力所有、再開始・旧callback revision、検証済み`r_`入口の受理／別featureの拒否、募集原本とプロフィールsnapshotの読戻し。DM模擬/単体テストでプロフィール有無・行末本文・候補列・編集・必須ポジション確認。最後の送信だけは既存Verified Topic / source release gate / delivery冪等が保護。
 - **残る実機／他セクション境界**：実Telegram Rich描画と押下、実Topic ID/権限・本番Gserver・`@GayBBS_bot`配備・公開Feature Gate、既存投稿メニュー全体のURL実配線は未検証／未配備。募集への応募・承認、ROOM、検索はそれぞれ別セクションの仕事でありA06の未完成として混同しない。
+
+
+## 2026-11-06｜募集+Room 確定仕様のSource実装・共通責務マッピング（ROOM CU）
+
+**Master最終UI決定**：グループ選択名は「エリア’s BBS」「ビデオChatの掲示板」「🆕ゲイのための掲示板♂」。3グループの検証済み既存各Topicから投稿先を明示選択（実Topic ID/権限未確認なら公開拒否、無断代替なし）。1行目タイトル・2行目以降全文説明文を1通入力、両方必須。ホスト紹介・独立規約同意・録画UIは追加しない。保存済み公開プロフィールは本人が選んだ場合のみリンクを公開し、原本を改変しない。
+
+**作成・投稿画面**：［無料Jitsi／URL持込］［自由参加／応募受付］［📝 タイトル・説明を修正／プロフ連携］［▶ 開始する／📅 予告する］［下書き保存／キャンセル］。予告にだけJST日時入力。非公開テンプレは次回再利用、キャンセル時の旧保存テンプレは保護。Telegram callbackと会議URL起動は別操作なので即時投稿のACK後にホストへ外部会議リンクのボタンを出す。会議への実接続をBotが測定したとは表示しない。
+
+**公開の状態**：予告は **「📅 予告中」**＋開催日時、参加ボタン/URL非公開。開催日時到達だけでは自動LIVE化せず、既存のOpt-in Workerからホストへ1回の開始確認。本人の［開始する］で元の公開メッセージを **「🔴 LIVE中」** に編集してBot DMの認可済み参加ボタンを表示、本人の［終了する］で同じ投稿を **「✅ 終了」** とし参加ボタンを消す。会議サービス実際の開始/全員終了をBotが保証しない。開始時は事前応募のaccepted/submitted/heldに各1回だけDM通知し、acceptedだけがBot DMでROOM URLを取得可能。辞退/取消済は除外。二重タップ、Telegram送達結果不明は既存DB冪等/needs_reconcile境界を維持。ROOM公開後の業務編集はタイトルと説明文のみ。
+
+**共通責務とSource対応**：
+- Bot DM入力と画面共通: `bot/postingHandlers.ts`, `services/dmInputOwner.ts`, `services/dmWizardScreen.ts`, `services/publicPostRepository.ts`, `services/postingDomain.ts`。
+- グループ/Topic認証と公開の再利用: `services/topicRouting.ts`（正確な3グループ表示名）、`services/postingDelivery.ts`（verified Topic）、`services/publishService.ts`（feature-release gateとMPB送信）、`services/telegramDispatcher.ts`。
+- 業務状態と同一公開カード変更: `services/roomLifecycle.ts`, `services/announcementRoomEvents.ts`, `services/roomPostStatus.ts`, `bot/roomHandlers.ts`。募集申込・承認は既存 `services/announcementApplications.ts` と `bot/applicationHandlers.ts` を再利用しROOM内には複製しない。
+- 通知/開始監視: `services/announcementNotifications.ts`（1回配信の既存outbox）、`services/gaybbsWorkers.ts`（許可前OFFの既存Worker）。追加Bot画面/別DB/新サーバは作らない。
+- 秘密URLの本人判定: `services/roomJoinLinks.ts`, `services/roomAccess.ts`, `gaybbsBot.ts`; 公開投稿にJitsi/持込URLを出さず、入室のたびにLIVE/応募承認等を照合。プロフィールは `services/profilePublicView.ts` 既存公開リンクのみ。
+- 既存Postgres Migration: `db/migrate.ts`。テストは `tests/roomLifecycle.test.ts` / `tests/roomPostStatus.test.ts` / `tests/postingDomain.test.ts` / `tests/announcementNotifications.test.ts` / `tests/gaybbsMigrationIntegration.ts`。
+
+**完成境界**：Source/CIは該当HEADに紐付く成功Runで判断。実Bot配備、Gserver、3グループの本番Topic IDsと書込権限、iOS/Android等の入退室実機E2E、明示feature-release gateは別に未検証のため、Source/CI PASSだけで公開済みとは扱わない。新たなBot起動・Worker有効化・PR mergeや本番送信は行わない。直前のROOM v2にあった同グループビデオChat Topic固定や準備報告必須等の旧仕様は、今回のMaster最新決定によりROOM UIでは変更対象（履歴は保存）。
