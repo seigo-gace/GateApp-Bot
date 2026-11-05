@@ -25,10 +25,40 @@ export async function purgeRoomTerminal(
   if(found.rows.length!==1)throw new Error("ROOM_NOT_OWNED_OR_ALREADY_PURGED");
   const room=found.rows[0];
   if(Number(room.revision)!==expectedRevision)throw new Error("ROOM_REVISION_STALE");
-  if(action==="finish"&&room.status!=="live")
-   throw new Error("ROOM_NOT_LIVE");
-  if(action==="cancel"&&!["draft","scheduled","ready","live","postponed"].includes(room.status))
-   throw new Error("ROOM_NOT_CANCELLABLE");
+  // Preserve original posts: terminal state is committed first and all
+  // Telegram in-place status edits must be acknowledged before any DB purge.
+  if(room.status!==(action==="finish"?"finished":"cancelled"))
+   throw new Error("ROOM_TERMINAL_STATE_NOT_DECLARED");
+  const checks=await client.query(
+   `SELECT
+    EXISTS(SELECT 1 FROM room_source_events
+      WHERE room_id=$1 AND kind=$2 AND state='applied') AS terminal_projected,
+    EXISTS(SELECT 1 FROM room_source_events
+      WHERE room_id=$1 AND state<>'applied') AS pending_events,
+    EXISTS(SELECT 1 FROM room_status_message_edits q
+      JOIN room_source_events e ON e.event_id=q.room_event_id
+      WHERE e.room_id=$1 AND q.state<>'confirmed') AS unconfirmed_edits,
+    EXISTS(SELECT 1 FROM posting_deliveries d
+      JOIN announcement_posts a ON a.announcement_id::text=d.source_id
+      WHERE a.room_id=$1 AND d.source_type='announcement'
+      AND d.status IN ('sending','needs_reconcile')) AS unknown_deliveries,
+    EXISTS(SELECT 1 FROM posting_deliveries d
+      JOIN announcement_posts a ON a.announcement_id::text=d.source_id
+      WHERE a.room_id=$1 AND d.source_type='announcement'
+      AND d.status='sent' AND NOT EXISTS(
+        SELECT 1 FROM room_status_message_edits q
+        JOIN room_source_events e ON e.event_id=q.room_event_id
+        WHERE e.room_id=$1 AND e.kind=$2
+          AND q.delivery_id=d.delivery_id AND q.state='confirmed'
+      )) AS unmarked_posts,
+    EXISTS(SELECT 1 FROM announcement_notifications n
+      JOIN announcement_posts a ON a.announcement_id=n.announcement_id
+      WHERE a.room_id=$1 AND n.state IN ('pending','sending','needs_reconcile'))
+      AS unresolved_notifications`,[roomId,action==="finish"?"finished":"cancelled"]);
+  const gate=checks.rows[0];
+  if(!gate?.terminal_projected||gate.pending_events||gate.unconfirmed_edits||
+     gate.unknown_deliveries||gate.unmarked_posts||gate.unresolved_notifications)
+   throw new Error("ROOM_PUBLIC_STATUS_OR_NOTIFICATIONS_NOT_CONFIRMED");
   const linked=await client.query(
    "SELECT announcement_id FROM announcement_posts WHERE room_id=$1 ORDER BY announcement_id FOR UPDATE",
    [roomId]);
@@ -76,6 +106,9 @@ export async function purgeRoomTerminal(
   await client.query(
    "DELETE FROM announcement_room_dispatches WHERE room_event_id IN (SELECT event_id FROM room_source_events WHERE room_id=$1)",
    [roomId]);
+  await client.query(
+   `DELETE FROM room_status_message_edits WHERE room_event_id IN
+       (SELECT event_id FROM room_source_events WHERE room_id=$1)`,[roomId]);
   await client.query("DELETE FROM room_source_events WHERE room_id=$1",[roomId]);
   const removed=await client.query(
    "DELETE FROM room_posts WHERE room_id=$1 AND owner_user_id=$2 RETURNING room_id",
