@@ -12,7 +12,8 @@ import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
-import {deleteNextTerminalAnnouncementMessage} from "../src/services/announcementTelegramCleanup.js";
+import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
+import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -154,28 +155,14 @@ try{
   [String(linkedId),deliveryTopic.rows[0].topic_id]);
  const ended=await updateRoomState(111001,roomId,source.revision,"finish");
  assert.equal(ended.state,"finished");
- assert.equal(ended.eventId,null);
- // All ROOM-dependent DB material, even previously delivered notification
- // payloads and event logs, must disappear immediately at host finish.
- for(const [query,params] of [
-  ["SELECT * FROM room_posts WHERE room_id=$1",[roomId]],
-  ["SELECT * FROM room_source_events WHERE room_id=$1",[roomId]],
-  ["SELECT * FROM announcement_posts WHERE announcement_id=$1",[linkedId]],
-  ["SELECT * FROM announcement_notifications WHERE announcement_id=$1",[linkedId]],
-  ["SELECT * FROM announcement_room_dispatches WHERE room_event_id=$1",[source.eventId]],
-  ["SELECT * FROM room_participation_reports WHERE room_id=$1",[roomId]],
-  ["SELECT * FROM room_host_sessions WHERE room_id=$1",[roomId]],
-  ["SELECT * FROM public_post_drafts WHERE owner_user_id=$1 AND module='room'",[111001]],
-  ["SELECT * FROM announcement_application_entries WHERE announcement_id=$1",[linkedId]],
-  ["SELECT * FROM announcement_application_sessions WHERE applicant_user_id=$1",[222001]],
-  ["SELECT * FROM posting_deliveries WHERE operation_key=$1",["db-room-delivery"]],
- ] as const){
-  assert.equal((await pool.query(query,[...params])).rows.length,0,query);
- }
- assert.equal(await getAuthorizedRoom(111001,roomId),null);
- await assert.rejects(()=>updateRoomState(111001,roomId,source.revision,"finish"),
-  /ALREADY_PURGED/);
- console.log("GAYBBS_DB_ROOM_FINISH_HARD_DELETE=PASS");
+ assert.ok(ended.eventId);
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM room_posts WHERE room_id=$1",[roomId]
+ )).rows[0].n,1,"ROOM DB must remain until Telegram end badge confirmed");
+ await projectNextRoomEvent();
+ // Terminal reconciliation and actual DB disposal are verified in a
+ // separate, fully-gated scenario below.
+
  const joinRoom=await pool.query(
   `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
    VALUES('db-approved-room',111001,'承認制ROOM','jitsi',
@@ -207,11 +194,8 @@ try{
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Cancelled ROOM must remove join URL and user records");
  assert.equal((await pool.query(
-  "SELECT * FROM announcement_applications WHERE announcement_id=$1",[recruitmentId]
- )).rows.length,0);
- assert.equal((await pool.query(
-  "SELECT * FROM room_posts WHERE room_id=$1",[privateRoomId]
- )).rows.length,0);
+  "SELECT status FROM room_posts WHERE room_id=$1",[privateRoomId]
+ )).rows[0].status,"cancelled","cancelled ROOM retained only pending status/notification sync");
  console.log("GAYBBS_DB_ROOM_JOIN_AUTHORIZATION=PASS");
  // Separate private creation is idempotent and has no MPB send.
  const privateSaved=await createRoom(555001,1,"プライベート作成");
@@ -340,17 +324,14 @@ try{
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
   [obsolete])).rows[0].n,1,"sent Telegram message blocks destructive DB purge");
- const deletionCalls:number[]=[];
- const deletionBot={deleteMessage:async(_chatId:number,messageId:number)=>{
-  deletionCalls.push(messageId);
-  return true;
- }} as unknown as Telegram;
- process.env.GAYBBS_TELEGRAM_DELETE_WORKER_ENABLED="enabled";
- const acknowledged=await deleteNextTerminalAnnouncementMessage(deletionBot);
- assert.equal(acknowledged?.outcome,"deleted");
- assert.deepEqual(deletionCalls,[5678]);
- assert.equal(await deleteNextTerminalAnnouncementMessage(deletionBot),null);
- delete process.env.GAYBBS_TELEGRAM_DELETE_WORKER_ENABLED;
+ // The adopted design keeps the Telegram post; database disposal must
+ // NOT call deleteMessage or silently discard the last editing handle.
+ assert.equal((await pool.query(
+  "SELECT status FROM posting_deliveries WHERE operation_key='purge-delivery'"
+ )).rows[0].status,"sent");
+ // A separate status-edit ACK will eventually mark this post archived.
+ await pool.query(
+  "UPDATE posting_deliveries SET status='archived' WHERE operation_key='purge-delivery'");
  const removed=await purgeDisposableAnnouncements();
  assert.ok(removed>=1,"terminal entry may be purged only after simulated Telegram deletion ACK");
  for(const id of [obsolete,expiredId]){
