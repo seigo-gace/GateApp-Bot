@@ -1,4 +1,5 @@
 import { Markup, type Telegraf, type Telegram } from "telegraf";
+import {pool} from "../db/index.js";
 import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
 import {makeProfileViewerButtons,existingPublishedProfileUrl} from "../services/profilePublicView.js";
