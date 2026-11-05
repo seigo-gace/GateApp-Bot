@@ -407,7 +407,7 @@ test("appearance summary remains four buttons on a single row",async()=>{
  assert.equal(f.draft.step,"appearance");
  const rows=f.sent.at(-1)[2].reply_markup.inline_keyboard;
  assert.deepEqual(rows.map((r:any[])=>r.map((b:any)=>b.text)),[
-  ["髪型","体型","エリア","戻る"]
+  ["髪型","体型","エリア","戻る"],["保存"]
  ]);
  assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
 });
