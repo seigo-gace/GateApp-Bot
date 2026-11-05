@@ -691,6 +691,7 @@ export function registerProfileHandlers(
     const updated=await repo.putDraft(ctx.from.id,"media",{...draft.data,media:items},draft.revision);
     try{await ctx.deleteMessage();}catch{console.warn("[PROFILE_MEDIA_DELETE_FAILED]");}
     await updateWizardScreen(ctx,repo,updated,mediaText(updated.data),mediaKeyboard(updated.revision));
+    return;
   };
   bot.on("photo",async(ctx,next)=>receiveMedia(ctx,next,"photo"));
   bot.on("video",async(ctx,next)=>receiveMedia(ctx,next,"video"));
