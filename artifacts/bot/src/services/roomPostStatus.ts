@@ -71,7 +71,7 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  try{
   await c.query("BEGIN");
   const result=await c.query(
-   `SELECT q.edit_id,t.chat_id,d.telegram_message_id,a.text,e.kind,d.inline_buttons
+   `SELECT q.edit_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons
     FROM room_status_message_edits q
     JOIN room_source_events e ON e.event_id=q.room_event_id
     JOIN posting_deliveries d ON d.delivery_id=q.delivery_id
@@ -80,6 +80,18 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     WHERE q.state='pending' AND e.state='applied'
       AND d.status='sent' AND d.telegram_message_id IS NOT NULL
       AND t.enabled=TRUE AND t.purpose='announcement'
+      AND NOT EXISTS (
+        SELECT 1 FROM room_status_message_edits prev
+        JOIN room_source_events prev_event ON prev_event.event_id=prev.room_event_id
+        WHERE prev.delivery_id=q.delivery_id
+          AND prev_event.event_id<e.event_id AND prev.state<>'confirmed'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM room_status_message_edits later
+        JOIN room_source_events later_event ON later_event.event_id=later.room_event_id
+        WHERE later.delivery_id=q.delivery_id
+          AND later_event.event_id>e.event_id AND later.state='confirmed'
+      )
     ORDER BY q.room_event_id,q.edit_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED`);
   if(!result.rows.length){await c.query("COMMIT");return null;}
   const r=result.rows[0];
@@ -89,7 +101,7 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
      !Number.isSafeInteger(chatId)||chatId>=0||
      !Number.isSafeInteger(messageId)||messageId<=0)
    throw new Error("ROOM_STATUS_DELIVERY_INVALID");
-  if(r.inline_buttons===null){
+  if(r.rendered_text===null||r.inline_buttons===null){
    // A pre-migration post may have a live recruitment/menu keyboard. Never
    // silently erase it, nor spin forever on the same pending item.
    await c.query(
@@ -98,7 +110,7 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
    await c.query("COMMIT");
    return {editId,state:"needs_reconcile"};
   }
-  item={editId,chatId,messageId,original:String(r.text),
+  item={editId,chatId,messageId,original:String(r.rendered_text),
    kind:r.kind as PublicRoomStatus,
    buttons:verifyButtons(r.inline_buttons)};
   await c.query(
