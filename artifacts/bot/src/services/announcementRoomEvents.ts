@@ -97,12 +97,12 @@ export async function projectNextRoomEvent():Promise<{
     await client.query(
      `INSERT INTO announcement_notifications
        (announcement_id,recipient_user_id,event_key,payload)
-      SELECT $1,applicant_user_id,$2||applicant_user_id,
+      SELECT $1,applicant_user_id,$2::text||applicant_user_id::text,
        jsonb_build_object('source','room','kind',$3::text,
         'roomId',$4::bigint,'announcementId',$1,'applicationStatus',status)
       FROM announcement_applications
       WHERE announcement_id=$1
-        AND (status='accepted' OR ($3='started' AND status IN ('submitted','held')))
+        AND (status='accepted' OR ($3::text='started' AND status IN ('submitted','held')))
       ON CONFLICT(event_key) DO NOTHING`,
      [id,"room:"+e.room_id+":"+kind+":participant:",kind,Number(e.room_id)]);
    }
