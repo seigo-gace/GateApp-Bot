@@ -53,7 +53,11 @@ export async function startProfileViewer(ctx:Context,payload:string):Promise<voi
    {text:"#Love & Like",url:profileViewerUrl("tags",parsed.token)},
   ];
   await ctx.reply(renderPublicProfile(profile),{
-   parse_mode:"HTML",...Markup.inlineKeyboard([buttons.map(x=>Markup.button.url(x.text,x.url))]),
+   parse_mode:"HTML",...Markup.inlineKeyboard([
+    buttons.map(x=>Markup.button.url(x.text,x.url)),
+    ...(profile.pr&&profile.pr.length>180?[[Markup.button.callback("自己PR全文",
+      "pfv:pr:"+parsed.token)]]:[]),
+   ]),
   });
  }else if(parsed.purpose==="tags"){
   await ctx.reply(renderPublishedTagDetail(profile));
@@ -67,6 +71,14 @@ export async function startProfileViewer(ctx:Context,payload:string):Promise<voi
 }
 /** Media display never edits or forwards the owner's original upload. */
 export function registerProfileViewerHandlers(bot:Telegraf):void{
+ bot.action(/^pfv:pr:([A-Za-z0-9_-]{32})$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const profile=await resolvePublishedProfileView(ctx.match[1]!);
+  if(!profile){await ctx.answerCbQuery("このプロフィールは非公開です");return;}
+  if(!profile.pr){await ctx.answerCbQuery("自己PRはありません");return;}
+  await ctx.answerCbQuery();
+  await ctx.reply("📝 自己PR全文\\n"+profile.pr.slice(0,10000));
+ });
  bot.action(/^pfv:media:([A-Za-z0-9_-]{32}):page:(\d{1,3})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const token=ctx.match[1]!,page=Number(ctx.match[2]);
