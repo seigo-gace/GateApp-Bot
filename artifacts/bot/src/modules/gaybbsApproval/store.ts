@@ -38,7 +38,8 @@ export async function openAttempt(userId:number,targetId:number,token:string):Pr
    await c.query("COMMIT");
    return {attempt:old,existing:true};
   }
-  const cooldownSeconds=Math.max(0,Number.parseInt(process.env.COOLDOWN_SECONDS??"300",10)||300);
+  const configuredCooldown=Number.parseInt(process.env.COOLDOWN_SECONDS??"300",10);
+  const cooldownSeconds=Number.isFinite(configuredCooldown)&&configuredCooldown>=0?configuredCooldown:300;
   if(old?.step==="rejected" && old.last_attempt &&
      (Date.now()-old.last_attempt.getTime())/1000<cooldownSeconds)
    throw new Error("GATE_COOLDOWN");
