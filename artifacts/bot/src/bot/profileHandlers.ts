@@ -21,7 +21,7 @@ const selectPosition = (revision: number) => Markup.inlineKeyboard([
   [Markup.button.callback("キャンセルして戻る", "pf:cancel")],
 ]);
 
-const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\n1行目：ニックネーム\n2行目：身長 体重 年齢（半角スペース・/・#・- で区切る）\n例：ゼロ\n175 80 39\n範囲：身長100〜250cm／体重50〜250kg／年齢19〜89歳\nテキストを送信し、次にポジションを選んでください。";
+const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\n1行目：ニックネーム\n2行目：身長 体重 年齢（半角スペース・/・#・- で区切る）\n例：ゼロ\n175 80 39\n範囲：身長100〜250cm／体重50〜250kg／年齢18〜89歳\nテキストを送信し、次にポジションを選んでください。";
 
 function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}}): boolean {
   return ctx.chat?.type === "private" && !!ctx.from?.username;
