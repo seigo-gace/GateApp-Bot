@@ -57,7 +57,13 @@ export function renderRecruitmentPreview(
  rows.push("");
  rows.push("<b>募集内容</b>");
  rows.push(e(draft.body));
- if(draft.mode==="linked")rows.push("\nプロフィール：本人の保存済み情報を参照（公開時に確認）");
+ if(draft.mode==="linked"){
+  if(!profile)throw Error("PROFILE_REQUIRED_FOR_LINKED_RECRUITMENT");
+  rows.push("🪪 "+e(profile.nickname));
+  rows.push(profile.heightCm+"cm | "+profile.weightKg+"kg | "+profile.age+"歳"+
+    ("position" in profile && typeof profile.position==="string"?
+      " | "+e(profile.position):""));
+ }
  if(draft.purposeCodes.length)rows.push("🎯 目的："+draft.purposeCodes.map(t=>"#"+e(t)).join(" "));
  if(draft.placeCodes.length)rows.push("📍 場所："+draft.placeCodes.map(t=>"#"+e(t)).join(" "));
  return rows.join("\n");
