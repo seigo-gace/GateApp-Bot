@@ -92,7 +92,7 @@ export function isAreaBlock(value:string):value is ProfileAreaBlock{
  return Object.prototype.hasOwnProperty.call(PROFILE_AREA_CATALOG,value);
 }
 export function areaChildren(block:ProfileAreaBlock):readonly string[]{
- return PROFILE_AREA_CATALOG[block];
+ return PROFILE_AREA_CATALOG[block] as readonly string[];
 }
 export function validateProfileArea(value:ProfileAreaValues):void{
  const {region,area,pendingRegion}=value;
@@ -117,7 +117,7 @@ export function areaButtonRows(labels:readonly string[],backLabel="↩ 戻る"):
  if(!labels.length)throw Error("PROFILE_AREA_EMPTY");
  const n=labels.length+1;
  const long=labels.some(label=>[...label].length>=9);
- const cols=long?2:n%3===1&&n>=8?4:3;
+ const cols=long?2:n%3===1&&n>=7?4:3;
  const entries=[...labels,backLabel];
  const rows:string[][]=[];
  for(let i=0;i<entries.length;i+=cols)rows.push(entries.slice(i,i+cols));
