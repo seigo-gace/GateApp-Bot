@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ADMISSION_VERSION, APPROVAL_QUESTIONS, RULES_CONSENT_QUESTION,
  admissionDocumentVersion, canAdvanceAdmission, ADMISSION_BOARD_CHAT_IDS,
- sharedAdmissionDocumentVersion } from "./contract.js";
+ sharedAdmissionDocumentVersion, allThreeBoardsApproved } from "./contract.js";
 
 const links = {
  guideline: "https://example.org/guideline",
@@ -77,4 +77,21 @@ test("shared common approval accepts exactly the 3 adopted groups and one consen
   /GATE_BOARD_MAP_INVALID/);
  assert.throws(()=>sharedAdmissionDocumentVersion([...boards.slice(0,2),
   {...boards[2]!,chatId:-1005555000999}]),/GATE_BOARD_MAP_INVALID/);
+});
+
+test("global denial for every group when ANY of three approval states is rejected",()=>{
+ const all=ADMISSION_BOARD_CHAT_IDS.map(chat_id=>({chat_id,status:"approved"}));
+ assert.equal(allThreeBoardsApproved(all),true);
+ for(let index=0;index<3;index++){
+  const oneRejected=all.map((r,i)=>i===index?{...r,status:"rejected"}:r);
+  assert.equal(allThreeBoardsApproved(oneRejected),false,
+   "a rejection by board "+index+" blocks all boards");
+  assert.equal(allThreeBoardsApproved(all.filter((_,i)=>i!==index)),false,
+   "missing any of three approvals blocks all boards");
+ }
+ assert.equal(allThreeBoardsApproved([...all,all[0]!]),false,
+  "duplicate entitlements must not bypass the global decision");
+ assert.equal(allThreeBoardsApproved([
+  {...all[0]!,status:"pending"},all[1]!,all[2]!,
+ ]),false);
 });
