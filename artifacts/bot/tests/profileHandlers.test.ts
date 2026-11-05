@@ -125,7 +125,8 @@ test("position first then text: selection persists and preview contains selected
   const last=f.sent.at(-1);
   assert.equal(last[0],"edit");
   assert.ok(String(last[1]).includes("選択中：S"));
-  assert.deepEqual(last[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
+  assert.deepEqual(last[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),
+    [positions[0],["ウケリバ","ウケ","✅ S","M"],positions[2]]);
   await f.send("ゼロ\n175#80#40");
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.position,"S");
@@ -143,7 +144,8 @@ test("invalid numeric text can be retried and keeps position already chosen", as
   assert.equal(f.draft.data.position,"S");
   const err=f.sent.at(-1);
   assert.ok(err[4].includes("もう一度テキストを送信"));
-  assert.deepEqual(err[5].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
+  assert.deepEqual(err[5].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),
+    [positions[0],["ウケリバ","ウケ","✅ S","M"],positions[2]]);
   await f.send("ゼロ\n175-80-18");
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.age,18);
@@ -306,4 +308,18 @@ test("A old navigation and saved old callbacks cannot corrupt new draft",async()
  assert.equal(String(f.draft.revision),fresh);
  assert.equal(f.draft.step,"awaiting_basic");
  assert.match(String(f.sent.at(-1)[1]),/古い画面/);
+});
+
+test("required position selection is never turned off by reselect and supports a different choice",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.action(positionAction,[String(f.draft.revision),"5"]);
+ assert.equal(f.draft.data.position,"S");
+ await f.action(positionAction,[String(f.draft.revision),"5"]);
+ assert.equal(f.draft.data.position,"S");
+ assert.ok(f.sent.at(-1)[2].reply_markup.inline_keyboard[1][2].text.startsWith("✅"));
+ await f.action(positionAction,[String(f.draft.revision),"6"]);
+ assert.equal(f.draft.data.position,"M");
+ assert.ok(f.sent.at(-1)[2].reply_markup.inline_keyboard[1][3].text.startsWith("✅"));
+ assert.ok(!f.sent.at(-1)[2].reply_markup.inline_keyboard[1][2].text.startsWith("✅"));
 });
