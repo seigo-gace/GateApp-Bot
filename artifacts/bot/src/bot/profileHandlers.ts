@@ -72,18 +72,22 @@ const appearanceText=(data:ProfileDraft["data"])=>[
   "体型："+(data.body||"未設定"),
   "エリア：未設定",
 ].join("\n");
-const choiceKeyboard=(kind:"h"|"b",revision:number,data:ProfileDraft["data"])=>
-  Markup.inlineKeyboard([
-    ...(
-      kind==="h"
-      ?selectionRows(HAIR_ROWS,data.hair?[data.hair]:[],
-        v=>`pf:ap:${revision}:h:${HAIR_CHOICES.indexOf(v)}`)
-      :selectionRows(BODY_ROWS,data.body?[data.body]:[],
-        v=>`pf:ap:${revision}:b:${BODY_CHOICES.indexOf(v)}`)
-    ).map(row=>row.map(b=>({...Markup.button.callback(b.text,b.callback_data),
-      style:kind==="h"?"primary" as const:"success" as const}))),
-    [Markup.button.callback("↩ 戻る",`pf:ap:${revision}:back`)],
-  ]);
+const choiceKeyboard=(kind:"h"|"b",revision:number,data:ProfileDraft["data"])=>{
+ const rows=kind==="h"
+  ?selectionRows(HAIR_ROWS,data.hair?[data.hair]:[],
+    v=>`pf:ap:${revision}:h:${HAIR_CHOICES.indexOf(v)}`)
+  :selectionRows(BODY_ROWS,data.body?[data.body]:[],
+    v=>`pf:ap:${revision}:b:${BODY_CHOICES.indexOf(v)}`);
+ const styled=rows.map(row=>row.map(b=>({
+   ...Markup.button.callback(b.text,b.callback_data),
+   style:kind==="h"?"primary" as const:"success" as const,
+ })));
+ return Markup.inlineKeyboard([
+   ...styled.slice(0,-1),
+   [...styled[styled.length-1]!,
+    Markup.button.callback("↩ 戻る",`pf:ap:${revision}:back`)],
+ ]);
+};
 const choiceText=(kind:"h"|"b",data:ProfileDraft["data"])=>
   [
     kind==="h"?"💈 髪型を選択してください":"💪 体型を選択してください",
