@@ -148,3 +148,12 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - 既存 `announcement_posts` の `conditions` にタイトル/今回限りの入力項目、`profile_snapshot` にプロフィール利用時の本人基本情報を記録する。新テーブルは作らない。公開元のタイトル・改行入り募集文は区別して保持。予約・応募・ROOMなど未確定の別セクションは混在させない。
 - 照合対象：`recruitmentCompose.ts`／`recruitmentRichPreview.ts`／`recruitmentHandlers.ts`／`publicPostRepository.ts`／`gaybbsMigrationIntegration.ts`／`recruitmentCompose.test.ts`。登録先は既存 `gaybbsBot.ts`。投稿可否は従来のVerified Topic/feature-release gateを迂回しない。
 - **Source CIはPostgreSQL分離DBとテスト限定の成功であって、実Telegram・Gserver・公開Topicの実動作を意味しない。** 本番投稿ゲートは未解除。
+
+## 2026-11-06｜A06「相手募集」Source受入・最終差分（Master追加実装指示）
+- 既決レイアウト、プロフィール別の1通入力、末尾までの本文、Bot再構成、本文横📝編集／通常InlineKeyboard代替、3/2/4列、作成中［キャンセル］、本人［投稿］の**UI仕様は固定**。今回別仕様への変更はしない。
+- 入力管理の欠陥を是正：`dmInputOwner.ts` は取消済み／公開済み／保存済みの `public_post_drafts` を進行中DM入力の所有者として扱わない。取消後の新規作成はrevisionを更新して古いボタンを拒否。
+- **募集専用ディープリンク**：既存の署名相当の不透明メニュートークン・DB照合はそのまま使用し、`r_`で始まる募集用/startを`@GayBBS_bot`へ追加。既存`m_`の告知/予告のフローは不変。 `r_` は `board_menu_entry_tokens.feature='announcement'` で検証できる場合だけ有効。実公開メニューがこの入口のURLを正しい［相手募集］に結びつけた証拠は**まだ無い**（他セクションとの全体メニュー接続で検証）。
+- **公開プロフィールの一致確認**：保存済みプロフィールの必須ポジションまで揃っている場合のみ連動入力を使う。プレビュー表示後に本人がプロフィールを更新した場合は、更新後の内容を再プレビューして、［投稿］の再押下を必要とする。プレビューを経ない変更後プロフィールの自動公開は禁止。公開API直前にもrevisionを照合。
+- **A06の既存業務DB**：タイトル・本文・本人の今回限りの基本情報または参照プロフィールのスナップショットを`announcement_posts.conditions`と`profile_snapshot`に分けて保存。作成中画面は`public_post_drafts`で管理。別DB・別Projectは作らない。
+- **CI追加検証**：isolated PostgreSQL integrationで取消と入力所有、再開始・旧callback revision、検証済み`r_`入口の受理／別featureの拒否、募集原本とプロフィールsnapshotの読戻し。DM模擬/単体テストでプロフィール有無・行末本文・候補列・編集・必須ポジション確認。最後の送信だけは既存Verified Topic / source release gate / delivery冪等が保護。
+- **残る実機／他セクション境界**：実Telegram Rich描画と押下、実Topic ID/権限・本番Gserver・`@GayBBS_bot`配備・公開Feature Gate、既存投稿メニュー全体のURL実配線は未検証／未配備。募集への応募・承認、ROOM、検索はそれぞれ別セクションの仕事でありA06の未完成として混同しない。
