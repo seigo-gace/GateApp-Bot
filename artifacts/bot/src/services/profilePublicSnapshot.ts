@@ -9,7 +9,8 @@ import type {LikeTag} from "./profileLike.js";
 
 export type PublicProfileSnapshot = {
  nickname:string;heightCm:number;weightKg:number;age:number;position:SavedProfile["position"];
- hair?:string|null;body?:string|null;region?:string|null;area?:string|null;
+ hair?:SavedProfile["hair"];body?:SavedProfile["body"];
+ region?:SavedProfile["region"];area?:SavedProfile["area"];
  prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;
  likeTags?:LikeTag[];loveTags?:LikeTag[];
 };
