@@ -113,6 +113,28 @@ export function registerRoomHandlers(bot:Telegraf):void{
     actions(roomId,res.revision,res.state));
   }catch{await ctx.answerCbQuery("状態が変わったか権限がありません。/myrooms で確認してください。");}
  });
+ bot.action("room:host:cancel",async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const q=await pool.query(
+   "DELETE FROM room_host_sessions WHERE owner_user_id=$1 RETURNING room_id",
+   [ctx.from.id]);
+  await ctx.answerCbQuery("日時入力をキャンセルしました");
+  const roomId=Number(q.rows[0]?.room_id);
+  if(!roomId){
+   await ctx.editMessageText("古い操作です。/myrooms から開き直してください。");
+   return;
+  }
+  const room=await pool.query(
+   "SELECT status,revision,join_visibility FROM room_posts WHERE owner_user_id=$1 AND room_id=$2",
+   [ctx.from.id,roomId]);
+  const current=room.rows[0];
+  if(!current){
+   await ctx.editMessageText("ROOMを確認できません。/myrooms から開き直してください。");
+   return;
+  }
+  await ctx.editMessageText("🎬 ROOM #"+roomId+" / 状態："+String(current.status),
+   actions(roomId,Number(current.revision),String(current.status),current.join_visibility));
+ });
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||ctx.message.text.startsWith("/"))return next();
   if(await currentDmTextOwner(ctx.from.id)!=="room_host")return next();
@@ -120,17 +142,26 @@ export function registerRoomHandlers(bot:Telegraf):void{
    `SELECT room_id,expected_revision,requested_action,screen_message_id FROM room_host_sessions
      WHERE owner_user_id=$1 AND expires_at>NOW()`,[ctx.from.id]);
   if(d.rows.length!==1)return next();
+  const data=d.rows[0];
+  const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
+  const warning=deleted?"":"\n⚠️ 入力メッセージを削除できませんでした。手動で削除してください。";
   try{
-   const data=d.rows[0];
    const date=parseJstDateTime(ctx.message.text);
    const outcome=await updateRoomState(ctx.from.id,Number(data.room_id),
     Number(data.expected_revision),data.requested_action,date);
    await pool.query(
     "DELETE FROM room_host_sessions WHERE owner_user_id=$1 AND room_id=$2",
     [ctx.from.id,Number(data.room_id)]);
-   await ctx.reply("✅ 開催日時を保存しました。ROOM #"+data.room_id+
-    "\n状態："+outcome.state+"\n/myrooms から確認できます。");
-  }catch(e){await ctx.reply("日時かROOMの状態を確認できません。/myrooms から開き直してください。");}
+   await showWizardScreen(ctx.telegram,ctx.chat.id,
+    Number(data.screen_message_id)||undefined,
+    "✅ 開催日時を保存しました。ROOM #"+data.room_id+
+    "\n状態："+outcome.state+"\n/myrooms から確認できます。"+warning);
+  }catch(e){
+   await showWizardScreen(ctx.telegram,ctx.chat.id,
+    Number(data.screen_message_id)||undefined,
+    "⚠️ 日時またはROOMの状態を確認できません。\n日時を修正してもう一度入力してください。"+
+    warning,Markup.inlineKeyboard([[Markup.button.callback("キャンセルして戻る","room:host:cancel")]]));
+  }
  });
  bot.command("roomreport",async ctx=>{
   if(ctx.chat.type!=="private")return;
