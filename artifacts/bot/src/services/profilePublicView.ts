@@ -4,7 +4,8 @@
  */
 import {randomBytes} from "node:crypto";
 import {pool} from "../db/index.js";
-import {getProfile,type SavedProfile} from "./profileRepository.js";
+import type {SavedProfile} from "./profileRepository.js";
+import {restorePublishedSnapshot,type PublicProfileSnapshot} from "./profilePublicSnapshot.js";
 
 export const VIEW_TOKEN_PATTERN=/^[A-Za-z0-9_-]{32}$/;
 export type ViewerPurpose="profile"|"media"|"tags";
@@ -57,17 +58,19 @@ export function parseProfileViewerPayload(payload:string):
 export async function resolvePublishedProfileView(token:string):Promise<SavedProfile|null>{
  if(!VIEW_TOKEN_PATTERN.test(token))return null;
  const rows=await pool.query(
-  `SELECT l.owner_user_id FROM profile_view_links l
-   JOIN profiles p ON p.owner_user_id=l.owner_user_id
-      AND p.revision=l.profile_revision AND p.status='published'
+  `SELECT l.owner_user_id,l.profile_revision,pub.public_snapshot
+   FROM profile_view_links l
+   JOIN profiles p ON p.owner_user_id=l.owner_user_id AND p.status='published'
    JOIN posting_topics t ON t.topic_id=l.topic_id
       AND t.purpose='profile' AND t.enabled=TRUE
       AND t.verified_at IS NOT NULL AND t.verified_by IS NOT NULL
    JOIN profile_publications pub ON pub.owner_user_id=l.owner_user_id
       AND pub.chat_id=t.chat_id AND pub.thread_id=t.message_thread_id
       AND pub.status='published' AND pub.synced_revision=l.profile_revision
+      AND pub.public_snapshot IS NOT NULL
    WHERE l.token=$1 AND l.enabled=TRUE`,
   [token]);
  if(rows.rows.length!==1)return null;
- return getProfile(Number(rows.rows[0].owner_user_id));
+ return restorePublishedSnapshot(Number(rows.rows[0].owner_user_id),
+   rows.rows[0].public_snapshot as PublicProfileSnapshot,Number(rows.rows[0].profile_revision));
 }
