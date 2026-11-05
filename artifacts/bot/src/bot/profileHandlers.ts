@@ -596,10 +596,6 @@ export function registerProfileHandlers(
       }
       await persistCompleteProfile(ctx,draft);
     });
-      await ctx.answerCbQuery("非公開で保存しました");
-      await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
-        overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
-    });
   }
 
   // All optional section screens share the same full-profile private save.
@@ -614,12 +610,6 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("古い保存ボタンです");return;
     }
     await persistCompleteProfile(ctx,draft);
-  });
-    await ctx.answerCbQuery("①〜⑤を非公開保存しました");
-    await ctx.editMessageText(
-      "✅ プロフィール①〜⑤の入力済み内容を非公開保存しました。グループには投稿していません。\n"+
-       overviewText(saved,ctx.from.username!),
-       {parse_mode:"HTML",...overviewKeyboard(next.revision)});
   });
 
   bot.action(/^pf:ap:(\d+):open:([hb])$/,async ctx=>{
@@ -791,10 +781,6 @@ export function registerProfileHandlers(
       return;
     }
     await persistCompleteProfile(ctx,draft);
-  });
-    await ctx.answerCbQuery("非公開で保存しました");
-    await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
-      overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
   });
 
   // Register BEFORE the pre-existing admin message handler. All other
