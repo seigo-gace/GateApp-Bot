@@ -590,6 +590,7 @@ try{
   [scheduledAnnId]);
  const applied=await submitApplication(scheduledAnnId,777004,null);
  await decideApplication(777003,scheduledAnnId,applied.applicationId,"accepted");
+ await submitApplication(scheduledAnnId,777005,null);
  assert.equal(await getAuthorizedRoom(777004,scheduledRoomId),null);
  const scheduledStarted=await updateRoomState(777003,scheduledRoomId,1,"start");
  let startProjected=false;
@@ -604,6 +605,13 @@ try{
   "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key=$1",
   ["room:"+scheduledRoomId+":started:participant:777004"]);
  assert.equal(deliveryNotice.rows[0].n,1);
+ const waitingNotice=await pool.query(
+  "SELECT payload->>'applicationStatus' AS status FROM announcement_notifications WHERE event_key=$1",
+  ["room:"+scheduledRoomId+":started:participant:777005"]);
+ assert.equal(waitingNotice.rows.length,1);
+ assert.equal(waitingNotice.rows[0].status,"submitted");
+ assert.equal(await getAuthorizedRoom(777005,scheduledRoomId),null,
+  "Unapproved applicant must not get meeting link after host starts");
  assert.equal(await projectNextRoomEvent(),null);
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key=$1",
