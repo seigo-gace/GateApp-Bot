@@ -140,8 +140,9 @@ async function roomBoardMenu(telegram:Telegram,userId:number,d:EditorDraft):Prom
 export async function startRoomEditor(telegram:Telegram,userId:number):Promise<void>{
  const existing=await getDraft(userId,"room");
  if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
+  const {savedTemplate:_unused,...template}=existing.data;
   const resumed=await updateDraft(userId,"room",existing.revision,"preview",
-   {...existing.data,startAt:null});
+   {...template,savedTemplate:template,startAt:null});
   await roomPreviewScreen(telegram,userId,resumed);
   return;
  }
@@ -232,9 +233,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery();
     await destinationMenu(ctx,"room",rev,BOARD_KEYS[boardIndex]);
    }else if(op==="cancel"){
-    await updateDraft(ctx.from.id,"room",rev,"cancelled",d.data);
+    const template=d.data.savedTemplate;
+    const previous=template&&typeof template==="object"&&!Array.isArray(template)?
+     template as Record<string,unknown>:null;
+    await updateDraft(ctx.from.id,"room",rev,previous?"saved":"cancelled",
+     previous??{cancelled:true});
     await ctx.answerCbQuery("ROOMの作成を中止しました");
-    await ctx.editMessageText("ROOM作成をキャンセルしました。公開済みROOMは変更していません。");
+    await ctx.editMessageText("ROOM作成をキャンセルしました。"+
+     (previous?"\n以前に保存した下書きは保持されています。/room から再開できます。":""));
    }
   }catch{
    await ctx.answerCbQuery("操作できません。/room から確認してください。");
