@@ -99,7 +99,7 @@ test("position selector renders 3 then 4 buttons with S and M at positions 3 and
   assert.ok(prompt);
   const keyboard=prompt[2]?.reply_markup?.inline_keyboard;
   assert.deepEqual(keyboard?.map((row:any[])=>row.map((b:any)=>b.text)),[
-    ["タチ","タチリバ","リバ"],["ウケリバ","ウケ","S","M"]
+    ["タチ","タチリバ","リバ"],["ウケリバ","ウケ","S","M"],[ "キャンセルして戻る" ]
   ]);
   const choose=f.ctx(); choose.match=["","2","6"];
   await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
