@@ -594,3 +594,67 @@ test("③ one Back button accepts PR and Telegram-only photo/video file refs",as
  assert.equal(f.profile.pr,"自由な自己紹介");
  assert.equal(f.profile.media.length,2);
 });
+
+test("③ new PR replaces the old text and PR削除 clears both body and external reference",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"media"]);
+ await f.send("最初の自己PR");
+ assert.equal(f.draft.data.pr,"最初の自己PR");
+ await f.send("新しい自己PR");
+ assert.equal(f.draft.data.pr,"新しい自己PR");
+ await f.send("PR削除");
+ assert.equal(f.draft.data.pr,null);
+ assert.equal(f.draft.data.prRef,null);
+ assert.match(f.sent.at(-1)[4],/未登録/);
+ assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る"]]);
+});
+
+test("③ photo/video item replacement and deletion preserve other item numbers and one-screen UI",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"media"]);
+ const sendMedia=async(kind:"photo"|"video",id:number,ref:string)=>{
+  const c=f.ctx();
+  c.message={message_id:id,...(kind==="photo"?{photo:[{file_id:ref}]}:{video:{file_id:ref}})} as any;
+  await f.handlers.get("on:"+kind)!(c,async()=>{throw Error("media leaked");});
+ };
+ await sendMedia("photo",500,"photo-1");
+ await sendMedia("video",501,"video-2");
+ assert.deepEqual(f.draft.data.media.map((x:any)=>x.itemId),[1,2]);
+ await f.send("差替 1");
+ assert.equal(f.draft.data.replaceMediaId,1);
+ await sendMedia("photo",502,"photo-new");
+ assert.equal(f.draft.data.replaceMediaId,undefined);
+ assert.deepEqual(f.draft.data.media.map((x:any)=>[x.itemId,x.fileId]),[[1,"photo-new"],[2,"video-2"]]);
+ await f.send("削除 2");
+ assert.deepEqual(f.draft.data.media.map((x:any)=>x.itemId),[1]);
+ await f.send("削除 2");
+ assert.deepEqual(f.draft.data.media.map((x:any)=>x.itemId),[1]);
+ assert.match(f.sent.at(-1)[4],/登録されていません/);
+ await f.send("差替 1");
+ await f.send("差替取消");
+ assert.equal(f.draft.data.replaceMediaId,undefined);
+ await f.action(String.raw`^pf:media:(\\d+):back$`,[String(f.draft.revision)]);
+ await f.action(overviewAction,[String(f.draft.revision),"save"]);
+ assert.deepEqual(f.profile.media.map((x:any)=>[x.itemId,x.fileId]),[[1,"photo-new"]]);
+ assert.equal(f.sent.filter((x:any)=>x[0]==="reply").length,1);
+});
+
+test("③ replacement waits for media and cannot overwrite PR with an accidental text",async()=>{
+ const f=fixture();
+ await f.start();await f.send("ゼロ\\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"media"]);
+ await f.send("最初の自己PR");
+ const c=f.ctx();c.message={message_id:600,photo:[{file_id:"original"}]} as any;
+ await f.handlers.get("on:photo")!(c,async()=>{throw Error("media leaked");});
+ await f.send("差替 1");
+ await f.send("間違った文章");
+ assert.equal(f.draft.data.pr,"最初の自己PR");
+ assert.equal(f.draft.data.replaceMediaId,1);
+});
