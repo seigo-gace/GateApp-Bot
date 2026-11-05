@@ -22,6 +22,16 @@ export async function beginDraft(id:number,module:PostModule,step:EditorDraft["s
  );
  return {module,step:r.rows[0].step,data:r.rows[0].data,revision:r.rows[0].revision};
 }
+/** Persist only the current private Bot wizard message; do not bump action revision. */
+export async function bindDraftScreen(id:number,module:PostModule,revision:number,
+ messageId:number):Promise<void>{
+ if(!Number.isSafeInteger(messageId)||messageId<=0||
+    !Number.isSafeInteger(revision)||revision<=0)throw new Error("POST_SCREEN_INVALID");
+ const r=await pool.query(
+  "UPDATE public_post_drafts SET data=jsonb_set(data,'{screenMessageId}',to_jsonb($4::integer),true) WHERE owner_user_id=$1 AND module=$2 AND revision=$3 RETURNING owner_user_id",
+  [validOwner(id),module,revision,messageId]);
+ if(r.rows.length!==1)throw new Error("POST_DRAFT_STALE");
+}
 export async function getDraft(id:number,module:PostModule):Promise<EditorDraft|null>{
  const r=await pool.query(
   "SELECT step,data,revision FROM public_post_drafts WHERE owner_user_id=$1 AND module=$2",
