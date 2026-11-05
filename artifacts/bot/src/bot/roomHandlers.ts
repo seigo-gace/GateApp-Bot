@@ -66,6 +66,14 @@ export function registerRoomHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const roomId=Number(ctx.match[1]),expectedRevision=Number(ctx.match[2]);
   const visibility=ctx.match[3] as "public"|"approved_only";
+  // Old buttons can still arrive; after publication only title/description
+  // are user-editable under the current adopted ROOM interface.
+  const phase=await pool.query(
+   "SELECT status FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
+   [roomId,ctx.from.id]);
+  if(phase.rows.length!==1||phase.rows[0].status!=="draft"){
+   await ctx.answerCbQuery("公開後の参加方式変更はこの画面からできません。");return;
+  }
   try{
    const update=await changeRoomVisibility(
     ctx.from.id,roomId,expectedRevision,visibility);
