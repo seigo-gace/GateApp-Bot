@@ -73,7 +73,7 @@ function displayProfileLines(p:ProfileBasicDraft & ProfileDisplayExtras,displayN
  const compact=(v:string|null|undefined)=>escapeProfileHtml(v??"");
  const tags=(v:readonly {category:string;tag:string}[]|undefined)=>
   (v??[]).slice(0,3).map(x=>"#"+compact(x.tag)).join(" ");
- const pr=p.pr?.trim().replace(/\\s+/g," ").slice(0,180)??"";
+ const pr=p.pr?.trim().replace(/\s+/g," ").slice(0,180)??"";
  return [
   "🪪 "+displayName,
   p.heightCm+"cm | "+p.weightKg+"kg | "+p.age+"歳 | "+compact(p.position||"未選択"),
@@ -90,7 +90,7 @@ export function renderProfileBasicPreview(
  if(!/^[A-Za-z0-9_]{5,32}$/.test(username))throw new Error("Telegram usernameが必要です");
  const label=p.nickname?.trim()||"@"+username;
  const who='<a href="https://t.me/'+username+'">'+escapeProfileHtml(label)+'</a>';
- return displayProfileLines(p,who).join("\\n");
+ return displayProfileLines(p,who).join("\n");
 }
 
 /** Public card is derived from the approved saved original. It contains no
@@ -100,5 +100,5 @@ export function renderProfileBasicPreview(
 export function renderPublicProfile(p:ProfileBasicDraft & ProfileDisplayExtras):string{
  if(!p.nickname?.trim()||!p.position||!isProfilePosition(p.position))
   throw new Error("PROFILE_INCOMPLETE");
- return displayProfileLines(p,escapeProfileHtml(p.nickname.trim())).join("\\n");
+ return displayProfileLines(p,escapeProfileHtml(p.nickname.trim())).join("\n");
 }
