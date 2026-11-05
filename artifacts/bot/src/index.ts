@@ -3,6 +3,7 @@ import { Telegraf } from "telegraf";
 import { BOT_TOKEN } from "./config/env.js";
 import { registerStartHandler } from "./bot/startHandler.js";
 import { registerMenuHandlers } from "./bot/menuHandlers.js";
+import { registerApprovedMenuHandlers } from "./bot/approvedMenuHandlers.js";
 import { registerGateHandlers } from "./bot/gateHandlers.js";
 import { registerTextHandlers } from "./bot/textHandlers.js";
 import { runMigrations } from "./db/migrate.js";
@@ -22,6 +23,7 @@ async function main() {
   registerStartHandler(bot);
   registerGateHandlers(bot);
   registerMenuHandlers(bot);
+  registerApprovedMenuHandlers(bot);
   registerTextHandlers(bot);
 
   bot.catch((err: unknown, ctx) => {
