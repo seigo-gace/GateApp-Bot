@@ -16,6 +16,8 @@ test("approved exact two questions and separate group rule remain unchanged", ()
  assert.match(APPROVAL_QUESTIONS[0]!.text, /18歳以上/);
  assert.match(APPROVAL_QUESTIONS[1]!.text, /Privacy Policy/);
  assert.match(RULES_CONSENT_QUESTION, /グループルール/);
+ assert.match(RULES_CONSENT_QUESTION, /過激な表現/);
+ assert.match(RULES_CONSENT_QUESTION, /「変態」という言葉に置き換える/);
 });
 
 test("consent stage cannot be skipped, falsified or replayed in another stage", () => {
