@@ -14,10 +14,11 @@ type ProfileRepo = {
 };
 
 const selectPosition = (revision: number) => Markup.inlineKeyboard(
-  PROFILE_POSITIONS.map((p, i) => [Markup.button.callback(p, `pf:pos:${revision}:${i}`)])
+  [[0, 1, 2], [3, 4, 5, 6]].map(indices => indices.map(i =>
+    Markup.button.callback(PROFILE_POSITIONS[i], `pf:pos:${revision}:${i}`)))
 );
 
-const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\nニックネームを1行目、身長 体重 年齢を半角スペース区切りで2行目に入力してください。\n例：ゼロ\n175 80 39\nポジションは次の5択から選びます。";
+const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\nニックネームを1行目、身長 体重 年齢を半角スペース区切りで2行目に入力してください。\n例：ゼロ\n175 80 39\nポジションを選んでください。";
 
 function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}}): boolean {
   return ctx.chat?.type === "private" && !!ctx.from?.username;
@@ -68,7 +69,7 @@ export function registerProfileHandlers(
     await ctx.reply(requestBasic);
   });
 
-  bot.action(/^pf:pos:(\d+):([0-4])$/, async (ctx) => {
+  bot.action(/^pf:pos:(\d+):([0-6])$/, async (ctx) => {
     if (!canUseProfile(ctx)) return;
     const callbackRevision = Number(ctx.match[1]);
     const index = Number(ctx.match[2]);
