@@ -23,6 +23,10 @@ export async function openAttempt(userId:number,targetId:number,token:string):Pr
  try{
   await c.query("BEGIN");
   const old=(await c.query<GateAttempt>("SELECT * FROM gate_sessions WHERE tg_user_id=$1 FOR UPDATE",[userId])).rows[0];
+  if(old && (active.has(old.step) || old.step==="approved") &&
+     old.updated_at.getTime()>Date.now()-24*3600_000 &&
+     (!old.attempt_id || !old.step_token || !old.document_version))
+   throw new Error("GATE_LEGACY_SESSION_CONFLICT");
   if(old && active.has(old.step) && old.updated_at.getTime()>Date.now()-24*3600_000){
    if(old.target_id!==targetId)throw new Error("GATE_ANOTHER_TARGET_ACTIVE");
    await c.query("COMMIT");
