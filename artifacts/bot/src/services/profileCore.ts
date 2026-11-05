@@ -2,7 +2,7 @@
  * Adopted latest spec: nickname is mandatory; three numbers share line 2.
  * Saving a profile never publishes it to a group.
  */
-export const PROFILE_POSITIONS = ["タチ", "タチリバ", "リバ", "ウケリバ", "ウケ"] as const;
+export const PROFILE_POSITIONS = ["タチ", "タチリバ", "リバ", "ウケリバ", "ウケ", "S", "M"] as const;
 export type ProfilePosition = typeof PROFILE_POSITIONS[number];
 export type ProfileBasic = {
   nickname: string;
