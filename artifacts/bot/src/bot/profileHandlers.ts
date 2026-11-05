@@ -145,7 +145,7 @@ const tagCategoryText=(data:ProfileDraft["data"])=>[
  tagPurposeDescription(profileTagPurpose(data)),
  "複数選択。カテゴリー間・ページ間も選択は保持されます。",
  "選択中："+tagValues(data).length+"件",
-].join("\\n");
+].join("\n");
 const tagItemText=(data:ProfileDraft["data"])=>{
  const cat=LIKE_CATEGORIES[data.likeCategory!];
  return [
@@ -154,7 +154,7 @@ const tagItemText=(data:ProfileDraft["data"])=>{
   "ページ "+((data.likePage??0)+1)+"/"+Math.ceil(cat.items.length/12),
   "複数選択：✅選択中／▫️未選択。同じ項目を押すと解除。",
   "この分類："+tagValues(data).filter(t=>t.category===cat.name).length+"件",
- ].join("\\n");
+ ].join("\n");
 };
 const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`)]]);
 const mediaText=(data:ProfileDraft["data"])=>{
@@ -485,7 +485,7 @@ export function registerProfileHandlers(
   const tagActions:ProfileTagPurpose[]=["like","love"];
   for(const purpose of tagActions){
     const prefix="pf:"+purpose+":";
-    bot.action(new RegExp("^"+prefix+"(\\d+):open:([0-5])$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\\d+):open:([0-5])$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]);
       if(!draft||draft.step!=="like-categories"||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose){
@@ -495,7 +495,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery();
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\d+):tag:([0-5]):(\\d{1,2})$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\\d+):tag:([0-5]):(\\\d{1,2})$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]),tag=Number(ctx.match[3]);
       if(!draft||draft.step!=="like-items"||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
@@ -509,7 +509,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery();
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\d+):page:([0-5]):(-?\\d{1,2})$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\\d+):page:([0-5]):(-?\\\d{1,2})$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]),page=Number(ctx.match[3]);
       if(!draft||draft.step!=="like-items"||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
@@ -521,7 +521,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery();
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\d+):clear:([0-5])$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\\d+):clear:([0-5])$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]);
       if(!draft||draft.step!=="like-items"||draft.revision!==rev||
@@ -534,7 +534,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("この分類を解除しました");
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\d+):back$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\\d+):back$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]);
       if(!draft||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
@@ -548,7 +548,7 @@ export function registerProfileHandlers(
       else await ctx.editMessageText(overviewText(updated.data as SavedProfile,ctx.from.username!),{
         parse_mode:"HTML",...overviewKeyboard(updated.revision)});
     });
-    bot.action(new RegExp("^"+prefix+"(\\d+):save$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\\d+):save$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]);
       if(!draft||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
@@ -560,7 +560,7 @@ export function registerProfileHandlers(
         ...draft.data,...saved,screenMessageId:draft.data.screenMessageId,
       });
       await ctx.answerCbQuery("非公開で保存しました");
-      await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\\n"+
+      await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
         overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
     });
   }
