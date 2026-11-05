@@ -2,7 +2,7 @@
  * The final input field consumes ALL remaining lines, including newlines.
  */
 import {parseProfileBasic,escapeProfileHtml,isProfilePosition} from "./profileCore.js";
-import type {ProfileBasic} from "./profileCore.js";
+import type {ProfileBasicDraft} from "./profileCore.js";
 import {validateAnnouncementTags} from "./announcementTags.js";
 export type RecruitmentInput={
  title:string;body:string;mode:"linked"|"manual";
@@ -45,7 +45,7 @@ export function changeRecruitmentField(
  return {...current,heightCm:basic.heightCm,weightKg:basic.weightKg,age:basic.age};
 }
 export function renderRecruitmentPreview(
- draft:RecruitmentInput,profile?:ProfileBasic|null,
+ draft:RecruitmentInput,profile?:ProfileBasicDraft|null,
 ):string{
  const e=escapeProfileHtml;
  const rows=["📢 <b>"+e(draft.title)+"</b>"];
@@ -68,12 +68,13 @@ export function renderRecruitmentPreview(
  if(draft.placeCodes.length)rows.push("📍 場所："+draft.placeCodes.map(t=>"#"+e(t)).join(" "));
  return rows.join("\n");
 }
-export function validateRecruitmentReady(d:RecruitmentInput,profile?:ProfileBasic|null){
+export function validateRecruitmentReady(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
  if(!d.title?.trim()||!d.body?.trim())throw Error("RECRUITMENT_INPUT_INCOMPLETE");
  if(d.mode==="manual"){
   if(!d.nickname||!d.heightCm||!d.weightKg||!d.age||!isProfilePosition(d.position??""))
    throw Error("ポジションを選択してください。");
- }else if(!profile)throw Error("保存済みプロフィールがありません。");
+ }else if(!profile||!isProfilePosition(profile.position??""))
+  throw Error("必須項目が揃った保存済みプロフィールが必要です。");
  validateAnnouncementTags({purposeCodes:d.purposeCodes,placeCodes:d.placeCodes});
  if(d.purposeCodes.length===0)throw Error("目的を1つ以上選択してください。");
 }
