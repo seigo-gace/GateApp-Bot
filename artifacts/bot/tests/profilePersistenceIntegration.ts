@@ -4,6 +4,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {pool} from "../src/db/index.js";
 import {putDraft,getDraft,getProfile,savePrivateDraft} from "../src/services/profileRepository.js";
+import {makeProfileViewerButtons,resolvePublishedProfileView} from "../src/services/profilePublicView.js";
 
 const id=900000000093;
 const prior=process.env.PROFILE_PR_STORAGE_DIR;
@@ -98,6 +99,36 @@ try{
   assert.deepEqual(actual.loveTags,full.loveTags,step+":love");
  }
  process.stdout.write("PROFILE_ALL_SECTION_SQL_ROUNDTRIP=PASS\\n");
+ // Public deep-links are stable for a single publication and invisible before
+ // actual published state + revision + verified Topic publication evidence.
+ const current=await getProfile(id);
+ assert.ok(current);
+ const topic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled)
+   VALUES('area_bbs','profile',-1009876543210,110,'プロフィール検証',1,NOW(),TRUE)
+   RETURNING topic_id`);
+ const topicId=Number(topic.rows[0].topic_id);
+ try{
+  const buttons=await makeProfileViewerButtons(id,current.revision,topicId);
+  const again=await makeProfileViewerButtons(id,current.revision,topicId);
+  assert.deepEqual(again,buttons,"publication retry must reuse stable URLs");
+  const token=buttons[0][0].url.split("pv_")[1];
+  assert.match(token,/^[A-Za-z0-9_-]{32}$/);
+  assert.equal(await resolvePublishedProfileView(token),null,"private profile must not be viewable");
+  await pool.query(
+   "UPDATE profiles SET status='published' WHERE owner_user_id=$1",[id]);
+  assert.equal(await resolvePublishedProfileView(token),null,"publication receipt required");
+  await pool.query(
+   `INSERT INTO profile_publications(owner_user_id,chat_id,thread_id,message_id,status,synced_revision)
+    VALUES($1,-1009876543210,110,777,'published',$2)`,[id,current.revision]);
+  assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
+  await pool.query(
+   "UPDATE profiles SET status='private' WHERE owner_user_id=$1",[id]);
+  assert.equal(await resolvePublishedProfileView(token),null,"hidden owner cannot be viewed");
+ }finally{
+  await pool.query("DELETE FROM posting_topics WHERE topic_id=$1",[topicId]);
+ }
+ process.stdout.write("PROFILE_PUBLIC_VIEW_SQL_GUARD=PASS\\n");
  process.stdout.write("PROFILE_III_SQL_OBJECT_ROUNDTRIP=PASS\n");
 }finally{
  await pool.query("DELETE FROM profile_drafts WHERE owner_user_id=$1",[id]);
