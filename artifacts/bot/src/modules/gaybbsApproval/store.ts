@@ -111,10 +111,28 @@ export async function consentsComplete(a:GateAttempt):Promise<boolean>{
   [a.target_id,a.tg_user_id,a.attempt_id,a.document_version]);
  return r.rows[0]?.n===3;
 }
-export async function saveIssuedInvite(a:GateAttempt,link:string,expires:Date):Promise<boolean>{
+/** Finalize one accepted questionnaire with three independent Telegram join links.
+ * All three receipts and the single canonical approval are saved atomically.
+ */
+export type IssuedBoardInvite = {targetId:number;link:string;expires:Date};
+export async function saveIssuedInvites(a:GateAttempt,links:readonly IssuedBoardInvite[]):Promise<boolean>{
+ if(links.length!==3||new Set(links.map(i=>i.targetId)).size!==3||
+  links.some(i=>!Number.isSafeInteger(i.targetId)||i.targetId<=0||
+   !i.link.startsWith("https://t.me/")||!Number.isFinite(i.expires.getTime())||
+   i.expires.getTime()<=Date.now()))return false;
  const c=await pool.connect();
  try{
   await c.query("BEGIN");
+  // Only the three pre-existing, mapped TGtumbler groups may receive an invite.
+  const registered=await c.query(
+   `SELECT target_id,chat_id FROM targets WHERE target_type='entry_group'
+      AND target_id=ANY($1::int[])`,[links.map(i=>i.targetId)]);
+  const {ADMISSION_BOARD_CHAT_IDS}=await import("./contract.js");
+  if(registered.rows.length!==3||
+   !ADMISSION_BOARD_CHAT_IDS.every(chatId=>
+    registered.rows.some(row=>Number(row.chat_id)===chatId))){
+   await c.query("ROLLBACK");return false;
+  }
   const session=await c.query(`UPDATE gate_sessions SET step='approved',updated_at=NOW()
    WHERE tg_user_id=$1 AND target_id=$2 AND attempt_id=$3 AND step='issuing'
      AND step_token=$4 AND document_version=$5
@@ -126,23 +144,25 @@ export async function saveIssuedInvite(a:GateAttempt,link:string,expires:Date):P
       AND stage IN ('question1','question2','rules')`,
     [a.target_id,a.tg_user_id,a.attempt_id,a.document_version]);
   if(check.rows[0]?.n!==3){await c.query("ROLLBACK");return false}
-  await c.query(`INSERT INTO invite_links
-   (target_id,tg_user_id,invite_link,expire_at,attempt_id)
-   VALUES ($1,$2,$3,$4,$5)`,
-   [a.target_id,a.tg_user_id,link,expires,a.attempt_id]);
   const approval=await c.query(`UPDATE approvals SET status='approved',approved_at=NOW(),updated_at=NOW()
    WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3 AND status='pending'`,
    [a.target_id,a.tg_user_id,a.attempt_id]);
   if(approval.rowCount!==1){await c.query("ROLLBACK");return false}
+  for(const i of links){
+   await c.query(`INSERT INTO invite_links
+    (target_id,tg_user_id,invite_link,expire_at,attempt_id)
+    VALUES($1,$2,$3,$4,$5)`,
+    [i.targetId,a.tg_user_id,i.link,i.expires,a.attempt_id]);
+  }
   await c.query("COMMIT");return true;
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }
-export async function currentIssuedInvite(a:GateAttempt):Promise<string|null>{
- const r=await pool.query(`SELECT invite_link FROM invite_links
-  WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3
-    AND used_at IS NULL AND revoked_at IS NULL AND expire_at>NOW()
-  ORDER BY created_at DESC LIMIT 1`,[a.target_id,a.tg_user_id,a.attempt_id]);
- return r.rows[0]?.invite_link??null;
+export async function currentIssuedInvites(a:GateAttempt):Promise<{targetId:number;link:string}[]>{
+ const r=await pool.query(`SELECT target_id,invite_link FROM invite_links
+  WHERE tg_user_id=$1 AND attempt_id=$2
+   AND used_at IS NULL AND revoked_at IS NULL AND expire_at>NOW()
+  ORDER BY target_id`,[a.tg_user_id,a.attempt_id]);
+ return r.rows.map(row=>({targetId:Number(row.target_id),link:String(row.invite_link)}));
 }
 export async function verifiedApprovalDocumentLinks(chatId:number):Promise<Record<string,string>|null>{
  // Existing verified-link registry only: don't fabricate URLs or silently publish draft policies.
@@ -162,9 +182,10 @@ export async function getRequestEligibility(client:PoolClient,args:{
    a.status, a.document_version,
    s.step AS session_step,s.attempt_id AS session_attempt,s.document_version AS session_version
    FROM invite_links i
-   JOIN approvals a ON a.target_id=i.target_id AND a.tg_user_id=i.tg_user_id
-     AND a.attempt_id=i.attempt_id
-   LEFT JOIN gate_sessions s ON s.tg_user_id=i.tg_user_id AND s.target_id=i.target_id
+   JOIN gate_sessions s ON s.tg_user_id=i.tg_user_id
+     AND s.attempt_id=i.attempt_id
+   JOIN approvals a ON a.target_id=s.target_id AND a.tg_user_id=s.tg_user_id
+     AND a.attempt_id=s.attempt_id AND a.document_version=s.document_version
    WHERE i.target_id=$1 AND i.tg_user_id=$2 AND i.invite_link=$3
    FOR UPDATE OF i`,[args.targetId,args.userId,args.url]);
  if(r.rowCount!==1)return {allowed:false,inviteId:null,reason:"invite_mismatch"};
