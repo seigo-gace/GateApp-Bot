@@ -320,9 +320,9 @@ try{
     'published',NOW()-INTERVAL '8 days',NOW()+INTERVAL '10 days')
    RETURNING announcement_id`);
  const futureId=Number(future.rows[0].announcement_id);
- // A published Telegram post must be removed there before deleting its
- // last message ID. This source test only simulates an external deletion ACK;
- // real Telegram deletion is NOT represented by this CI mock.
+ // The actual Telegram post must first show a terminal status. The DB
+ // may be deleted only after both the post edit and recipient notices finish.
+ // The fake API below never sends a real Telegram message.
  const deferred=await purgeDisposableAnnouncements();
  assert.ok(deferred>=1,"independent expired item may still be purged");
  assert.equal((await pool.query(
@@ -347,8 +347,18 @@ try{
  assert.match(announcedEdits[0]!.text,/元の募集投稿/);
  assert.equal(await archiveNextTerminalAnnouncement(archiveBot),null);
  delete process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED;
+ await purgeDisposableAnnouncements();
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [obsolete])).rows[0].n,1,
+  "Do not delete applicant notification content just because Telegram archive succeeded");
+ // Simulate a confirmed notification delivery ACK in this disposable fixture.
+ // Real Telegram notification delivery is tested separately.
+ await pool.query(
+  "UPDATE announcement_notifications SET state='sent' WHERE announcement_id=$1",
+  [obsolete]);
  const removed=await purgeDisposableAnnouncements();
- assert.ok(removed>=1,"terminal entry may be purged only after simulated Telegram deletion ACK");
+ assert.ok(removed>=1,"terminal entry may be purged only after Telegram edit and notification ACK");
  for(const id of [obsolete,expiredId]){
   assert.equal((await pool.query(
    "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
