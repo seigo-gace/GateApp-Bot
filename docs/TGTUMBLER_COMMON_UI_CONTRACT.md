@@ -89,7 +89,7 @@ Current code fixes the row layout and initial actions. Cancel-to-posting-menu fu
 - 実装: src/services/profileArea.ts / src/bot/profileHandlers.ts / src/services/profileRepository.ts。テスト: tests/profileArea.test.ts / tests/profileHandlers.test.ts。プロフィール内エリア選択だけで、エリアボード/Topic運用機能を拡張しない。
 
 ## プロフィール③｜媒体本体をDBに保存しない
-Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送る。画面のボタンは「↩ 戻る」だけ。媒体本体はDBに保存せず、file_idなどの参照メタデータとPR本文のみ保存する。登録・保存の実装とCIと実機検証は区別する。個別削除操作は今後の確定対象。
+Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送る。画面のボタンは「↩ 戻る」だけ。画像・動画の実体はTelegram側にあり、DBにはfile_idと本人・固定項目番号等の参照情報だけ保存。自己PR本文はDB外の永続ファイルに保存し、DBにはpr_refだけを保持する。自己PRは全文差し替えとPR削除に対応。画像・動画はNo.番号による「差替 番号」「削除 番号」、差替取消、一覧ページ番号によるページ移動を通常テキスト入力で受け付ける。番号は一度削除しても使い回さない。入力メッセージは成功／失敗を問わずBotが削除を試み、削除できなければ手動削除案内を表示する。本人以外の項目編集は不可。登録・保存のCI合格と実Telegram検証は区別する。
 
 ## 2026-11-06 自己PR DB外保存｜Bot再構成方式
 - Master確定：画像・動画・自己PRの実体はプロフィールDBへ格納しない。画像・動画の実体はTelegram、DBには既存の小さなfile_id/所有者/メッセージ参照を保持する。
@@ -97,3 +97,8 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - 実装 profilePrStorage.ts は各本人別、SHA256識別、原子的書き込み、読み戻し検証、失敗時の閉塞を備える。PROFILE_PR_STORAGE_DIRは絶対パスの専用永続マウントを要求。マウント・バックアップ・復旧の実機確認前に公開可と扱わない。
 - 保存対象はBotが受領して管理するもの。ユーザー投稿そのものは公開プロフィールの原本ではない。公開カードの差し替えはBot自身の既存投稿編集を原則とし、削除API48時間制限を編集APIへ混同しない。公開後同期・削除失敗・部分障害のE2Eは未完了。
 - 既存profiles.pr列は過去データ保護のため残置。新しい自己PR本文はSQLへ書かない。旧文のDB外移行完了とreadbackまでは既存データを消さない。
+
+## 2026-11-06 プロフィール③ Source完成判定（実機除外）
+- ③画像/動画：本人が送信した媒体file_idをDBへ参照登録。項目ごとに不変のitem_idを発行し、差し替え/削除で別項目を保持。media_next_idは保存済みプロフィールまで永続化。再起動後のBIGINT値を安全な数値へ復元。削除済み番号は再利用しない。ボタンは「↩ 戻る」一つのまま。
+- ③自己PR：DB外永続テキスト（参照IDだけSQLへ保存）、全文上書き、PR削除、保存後の再読込。旧PRがDBにある場合の明示移行用スクリプトは保持し、本人データの実機移行成功前に自動削除・無断移行しない。
+- 単体/DM模擬テストとPostgreSQL実DB保存・読込テストをCIで検証。CI実績はGitHub Issue #4の最新コメントを参照。実Telegram、本番永続ストレージ設定、公開投稿・同期、他セクションUIは別受入であり③のSource PASSから本番完成を推測しない。
