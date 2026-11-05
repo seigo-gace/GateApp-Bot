@@ -466,7 +466,7 @@ export function registerProfileHandlers(
       await ctx.editMessageText(
         "🪪 プロフィール公開前プレビュー（まだ非公開）\n"+
         renderProfileBasicPreview(draft.data as SavedProfile,ctx.from.username!)+
-        "\n\nここは確認用画面です。［↩ プロフィール編集に戻る］で項目の修正へ戻れます。\n非公開保存してもグループには投稿されません。",
+        "\n\nここは確認用画面です。［↩ プロフィール編集に戻る］で項目の修正へ戻れます。\n保存だけでは公開されません。グループへの投稿も行いません。",
         {parse_mode:"HTML",...Markup.inlineKeyboard([
           [Markup.button.callback("↩ プロフィール編集に戻る",
             "pf:overview:"+draft.revision+":return")]
