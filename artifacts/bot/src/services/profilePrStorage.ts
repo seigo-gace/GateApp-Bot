@@ -1,5 +1,5 @@
-import {createHash} from "node:crypto";
-import {mkdir,open,readFile} from "node:fs/promises";
+import {createHash,randomUUID} from "node:crypto";
+import {mkdir,open,readFile,rename,unlink} from "node:fs/promises";
 import {join,resolve} from "node:path";
 
 /** Immutable PR text objects outside PostgreSQL. A durable, backed-up mounted
@@ -24,11 +24,15 @@ export async function storeProfilePr(id:number,body:string):Promise<string>{
  const dir=join(storageRoot(),owner(id));
  await mkdir(dir,{recursive:true,mode:0o700});
  const filename=pathFor(id,digest);
+ const staging=join(dir,"."+digest+"."+randomUUID()+".tmp");
  try{
-  const file=await open(filename,"wx",0o600);
+  const file=await open(staging,"wx",0o600);
   try{await file.writeFile(body,"utf8");await file.sync();}finally{await file.close();}
- }catch(error){
-  if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;
+  await rename(staging,filename);
+ }finally{
+  await unlink(staging).catch(error=>{
+   if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;
+  });
  }
  const actual=await readProfilePr(id,digest);
  if(actual!==body)throw Error("PROFILE_PR_STORAGE_MISMATCH");
