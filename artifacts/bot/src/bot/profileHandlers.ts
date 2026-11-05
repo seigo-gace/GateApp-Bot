@@ -133,6 +133,8 @@ const areaChildrenText=(data:ProfileDraft["data"])=>[
 const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`)]]);
 const mediaText=(data:ProfileDraft["data"])=>{
  const media=numberProfileMedia(data.media);
+ const pages=Math.max(1,Math.ceil(media.length/40));
+ const page=Math.min(Math.max(data.mediaPage??1,1),pages);
  return [
   "🪪 プロフィール｜画像・動画・自己PR",
   "画像・動画：Telegramの添付から送信",
@@ -142,8 +144,8 @@ const mediaText=(data:ProfileDraft["data"])=>{
   ...(data.replaceMediaId?["","🔁 No."+data.replaceMediaId+" の差替画像・動画を送信してください。中止は 差替取消 と送信。"]:[]),
   "",
   ...mediaStatus(media,data.pr),
-  ...media.slice(0,40).map(item=>"No."+item.itemId+" "+(item.type==="photo"?"🖼️画像":"🎬動画")),
-  ...(media.length>40?["ほか "+(media.length-40)+" 件。番号を指定して差し替え・削除できます。"]:[]),
+  ...media.slice((page-1)*40,page*40).map(item=>"No."+item.itemId+" "+(item.type==="photo"?"🖼️画像":"🎬動画")),
+  ...(pages>1?["一覧 "+page+"/"+pages+"ページ。ほかは 一覧 ページ番号 と送信。"]:[]),
  ].join("\n");
 };
 const overviewText=(profile:SavedProfile,username:string)=>[
@@ -641,6 +643,14 @@ export function registerProfileHandlers(
           next={...draft.data,media:deleteProfileMedia(current,itemId),replaceMediaId:undefined};
         }else{
           next={...draft.data,media:current,replaceMediaId:itemId};
+        }
+      }else if(/^一覧\s*\d+$/.test(value)){
+        const page=Number(value.replace(/^一覧\s*/,""));
+        const pages=Math.max(1,Math.ceil((draft.data.media?.length??0)/40));
+        if(!Number.isSafeInteger(page)||page<1||page>pages){
+          warning="⚠️ 存在しない一覧ページです。";
+        }else{
+          next={...draft.data,mediaPage:page};
         }
       }else if(value==="PR削除"){
         next={...draft.data,pr:null,prRef:null};
