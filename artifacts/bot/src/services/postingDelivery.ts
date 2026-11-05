@@ -56,14 +56,15 @@ export async function claimDelivery(
    messageId:row.telegram_message_id===null?null:Number(row.telegram_message_id)}};
  }catch(e){await cx.query("ROLLBACK");throw e;}finally{cx.release();}
 }
-export async function acknowledgeDelivery(id:number,messageId:number):Promise<void>{
+export async function acknowledgeDelivery(id:number,messageId:number,renderedText:string):Promise<void>{
+ if(!renderedText.trim()||renderedText.length>4096)throw new Error("MESSAGE_TEXT_INVALID");
  if(!Number.isSafeInteger(messageId)||messageId<=0)throw new Error("MESSAGE_ID_INVALID");
  const cx=await pool.connect();
  try{
   await cx.query("BEGIN");
   const update=await cx.query(
-   "UPDATE posting_deliveries SET status='sent',telegram_message_id=$2,updated_at=NOW() WHERE delivery_id=$1 AND status='sending' RETURNING delivery_id",
-   [id,messageId]
+   "UPDATE posting_deliveries SET status='sent',telegram_message_id=$2,rendered_text=$3,updated_at=NOW() WHERE delivery_id=$1 AND status='sending' RETURNING delivery_id",
+   [id,messageId,renderedText]
   );
   if(update.rows.length!==1)throw new Error("DELIVERY_STALE");
   // MPB owns delivery only. Source-specific profile/ROOM/announcement state
