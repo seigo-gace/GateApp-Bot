@@ -1,8 +1,5 @@
 /** Dedicated @GayBBS_bot user-facing runtime. NOT the existing admin/Gate bot. */
-import "dotenv/config";
-import { readFileSync, lstatSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { BOT_TOKEN } from "./config/env.js";
 import { Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
@@ -20,22 +17,9 @@ import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
 
-function readToken():string{
- const path=process.env.GAYBBS_TOKEN_FILE||
-   join(homedir(),".config","gace","tgtumbler","gaybbs-bot.env");
- const info=lstatSync(path);
- if(!info.isFile()||info.isSymbolicLink()||(info.mode&0o777)!==0o600||
-    info.uid!==process.getuid?.())throw new Error("GAYBBS_SECRET_FILE_UNSAFE");
- const text=readFileSync(path,"utf8");
- const tokens=text.split(/\r?\n/).filter(s=>s.startsWith("BOT_TOKEN="));
- if(tokens.length!==1||!/^BOT_TOKEN=[0-9]+:[A-Za-z0-9_-]+$/.test(tokens[0]!))
-  throw new Error("GAYBBS_SECRET_INVALID");
- return tokens[0]!.slice("BOT_TOKEN=".length);
-}
-
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
- const bot=new Telegraf(readToken());
+ const bot=new Telegraf(BOT_TOKEN);
  const me=await bot.telegram.getMe();
  if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
