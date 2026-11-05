@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
- createJitsiJoinUrl,assertHttpsMeetingUrl,validateRoom,buildRoomCard,
+ createJitsiJoinUrl,assertHttpsMeetingUrl,validateRoom,buildRoomCard,parseRoomDetails,
  validateAnnouncement,buildAnnouncementCard,
 } from "../src/services/postingDomain.js";
 
@@ -30,4 +30,12 @@ test("announcement text escapes HTML and types remain distinct",()=>{
  assert.throws(()=>validateAnnouncement({ownerId:42,kind:"announcement",text:"知らせ",capacity:1}));
  assert.equal(validateAnnouncement({ownerId:42,kind:"recruitment",text:"参加者",capacity:3,purposeCodes:["サシ"],placeCodes:["場所あり","足あり"]}).capacity,3);
  assert.throws(()=>validateAnnouncement({ownerId:42,kind:"recruitment",text:"参加者",purposeCodes:[]}));
+});
+
+test("ROOM requires title and multiline description with no unrelated host fields",()=>{
+ assert.deepEqual(parseRoomDetails("交流会\nこんにちは。\n歓迎します。"),
+  {title:"交流会",description:"こんにちは。\n歓迎します。"});
+ assert.throws(()=>parseRoomDetails("タイトルのみ"),/REQUIRED/);
+ assert.throws(()=>parseRoomDetails("タイトル\n  "),/REQUIRED/);
+ assert.throws(()=>parseRoomDetails("\n説明だけ"),/REQUIRED/);
 });
