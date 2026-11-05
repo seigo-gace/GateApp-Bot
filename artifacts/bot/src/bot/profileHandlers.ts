@@ -485,7 +485,7 @@ export function registerProfileHandlers(
   const tagActions:ProfileTagPurpose[]=["like","love"];
   for(const purpose of tagActions){
     const prefix="pf:"+purpose+":";
-    bot.action(new RegExp("^"+prefix+"(\\\d+):open:([0-5])$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\d+):open:([0-5])$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]);
       if(!draft||draft.step!=="like-categories"||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose){
@@ -495,7 +495,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery();
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\\d+):tag:([0-5]):(\\\d{1,2})$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\d+):tag:([0-5]):(\\d{1,2})$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]),tag=Number(ctx.match[3]);
       if(!draft||draft.step!=="like-items"||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
@@ -509,7 +509,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery();
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\\d+):page:([0-5]):(-?\\\d{1,2})$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\d+):page:([0-5]):(-?\\d{1,2})$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]),page=Number(ctx.match[3]);
       if(!draft||draft.step!=="like-items"||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
@@ -521,7 +521,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery();
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\\d+):clear:([0-5])$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\d+):clear:([0-5])$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]);
       if(!draft||draft.step!=="like-items"||draft.revision!==rev||
@@ -534,7 +534,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("この分類を解除しました");
       await ctx.editMessageText(tagItemText(updated.data),tagItemKeyboard(updated.revision,updated.data));
     });
-    bot.action(new RegExp("^"+prefix+"(\\\d+):back$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\d+):back$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]);
       if(!draft||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
@@ -548,7 +548,7 @@ export function registerProfileHandlers(
       else await ctx.editMessageText(overviewText(updated.data as SavedProfile,ctx.from.username!),{
         parse_mode:"HTML",...overviewKeyboard(updated.revision)});
     });
-    bot.action(new RegExp("^"+prefix+"(\\\d+):save$"),async ctx=>{
+    bot.action(new RegExp("^"+prefix+"(\\d+):save$"),async ctx=>{
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]);
       if(!draft||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
