@@ -491,10 +491,36 @@ export function registerPostingHandlers(bot:Telegraf):void{
      text=renderLinkCard(payload);
      buttons=buttonGrid(payload).map(row=>row.map(b=>({text:b.label,url:b.url})));
     }else if(module==="room"){
-     // ROOM v2: join_visibility=approved_only by default. Never leak a
-     // Jitsi/external URL to a public Topic before approved-only DM delivery
-     // and ROOM→Announcement→MPB crosslinks pass their acceptance gates.
-     throw new Error("ROOM_PRIVATE_JOIN_FLOW_NOT_VERIFIED");
+     const title=String(draft.data.title||"");
+     const description=String(draft.data.description||"");
+     parseRoomDetails(title+"\n"+description);
+     const externalUrl=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
+     const startAt=draft.data.startAt?new Date(String(draft.data.startAt)):undefined;
+     const visibility=draft.data.visibility==="public"?"public":"approved_only";
+     const room=await createRoom(ctx.from.id,revision,title,externalUrl,{
+      description,scheduledAt:startAt,visibility});
+     const roomId=Number(room.sourceId);
+     await makeRoomJoinLink(ctx.from.id,roomId);
+     // Announcement owns applications and public card. ROOM owns meeting state,
+     // MPB owns the only Telegram send. No duplicate business module.
+     const ann=await createAnnouncement(ctx.from.id,revision,"recruitment",
+      title+"\n"+description,startAt,[],[],roomId);
+     sourceId=ann.sourceId;
+     text=preview("room",draft);
+     const rows:{text:string;url:string}[][]=[];
+     if(startAt){
+      if(visibility==="approved_only"){
+       rows.push([{text:"📨 参加希望",url:await makeApplicationLink(ctx.from.id,Number(sourceId))}]);
+      }
+     }else{
+      rows.push([{text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)}]);
+     }
+     if(draft.data.profileLinked){
+      const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
+      if(!profileUrl)throw new Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
+      rows.push([{text:"🪪 プロフを見る",url:profileUrl}]);
+     }
+     buttons=rows;
     }else{
      const kind=draft.data.kind as AnnouncementKind;
      const value=String(draft.data.text);
@@ -512,7 +538,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }
    }
    const result=await publishPost(ctx.telegram,{
-    sourceType:module,
+    sourceType:module==="room"?"announcement":module,
     destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,
     buttons,approved:true,
    });
@@ -520,8 +546,23 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(module==="profile")
      await recordProfilePublication(ctx.from.id,revision,result.chatId,result.threadId,result.messageId);
     else{
-     await markPostSourcePublished(ctx.from.id,module,sourceId);
-     await markDraftPublished(ctx.from.id,module,revision);
+     await markPostSourcePublished(ctx.from.id,module==="room"?"announcement":module,sourceId);
+     if(module==="room"){
+      const source=await pool.query(
+       "SELECT room_id FROM announcement_posts WHERE announcement_id=$1 AND owner_user_id=$2",
+       [sourceId,ctx.from.id]);
+      if(source.rows.length!==1||!source.rows[0].room_id)
+       throw new Error("ROOM_SOURCE_NOT_LINKED");
+      const roomId=Number(source.rows[0].room_id);
+      const room=await pool.query(
+       "SELECT status,revision FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
+       [roomId,ctx.from.id]);
+      if(room.rows.length!==1)throw new Error("ROOM_SOURCE_NOT_OWNED");
+      if(room.rows[0].status==="draft")
+       await updateRoomState(ctx.from.id,roomId,Number(room.rows[0].revision),"start");
+      // Persist the template for the next ROOM rather than deleting it.
+      await saveRoomEditorDraft(ctx.from.id,revision);
+     }else await markDraftPublished(ctx.from.id,module,revision);
     }
    }catch{
     throw new Error("POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE");
