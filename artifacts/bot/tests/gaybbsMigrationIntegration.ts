@@ -62,6 +62,7 @@ try{
  const cancelledRecruitment=await updateDraft(811003,"announcement",first.revision,"cancelled",
   {recruitmentFlow:"compact",cancelled:true});
  assert.equal(cancelledRecruitment.step,"cancelled");
+ assert.notEqual(await currentDmTextOwner(811003),"announcement","cancelled draft must not capture DM input");
  assert.equal(cancelledRecruitment.data.title,undefined);
  const again=await beginDraft(811003,"announcement","awaiting_text",
   {kind:"recruitment",recruitmentFlow:"compact"});
