@@ -7,6 +7,7 @@ import {deliverNextAnnouncementNotification} from "./announcementNotifications.j
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "./announcementPurge.js";
 import {updateNextRoomStatusMessage} from "./roomPostStatus.js";
 import {finalizeNextRoom} from "./roomTerminalFinalizer.js";
+import {archiveNextTerminalAnnouncement} from "./announcementArchive.js";
 
 type Worker={name:string;enabled:boolean;busy:boolean;run:()=>Promise<unknown>};
 export function startGayBbsWorkers(telegram:Telegram):()=>void{
@@ -20,6 +21,9 @@ export function startGayBbsWorkers(telegram:Telegram):()=>void{
   {name:"room-terminal-db-finalizer",
    enabled:process.env.GAYBBS_ROOM_TERMINAL_PURGE_ENABLED==="enabled",
    busy:false,run:()=>finalizeNextRoom()},
+  {name:"announcement-archive",
+   enabled:process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED==="enabled",
+   busy:false,run:()=>archiveNextTerminalAnnouncement(telegram)},
   {name:"disposable-db-cleanup",
    enabled:process.env.GAYBBS_DISPOSABLE_CLEANUP_ENABLED==="enabled",
    busy:false,run:async()=>{
