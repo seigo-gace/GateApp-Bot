@@ -4,13 +4,14 @@ import {validateAppearance,type AppearanceValues} from "./profileAppearance.js";
 import {validateProfileArea,type ProfileAreaValues} from "./profileArea.js";
 import {validateProfileMedia,numberProfileMedia,type ProfileMediaItem} from "./profileMedia.js";
 import {storeProfilePr,readProfilePr} from "./profilePrStorage.js";
+import {validLikeTags,LIKE_CATEGORIES,type LikeTag} from "./profileLike.js";
 
 export type ProfileDraft = {
-  step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "cancelled";
-  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number;mediaNextId?:number;mediaPage?:number };
+  step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "like-categories" | "like-items" | "cancelled";
+  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number;mediaNextId?:number;mediaPage?:number;likeTags?:LikeTag[];likeCategory?:number;likePage?:number };
   revision: number;
 };
-export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number} & {
+export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[]} & {
   position: ProfilePosition;
   username: string | null;
   status: string;
@@ -57,6 +58,7 @@ export async function getDraft(id: number): Promise<ProfileDraft | null> {
   );
   if (!r.rows.length || r.rows[0].step === "cancelled") return null;
   const data=r.rows[0].data as ProfileDraft["data"];
+  if(data.likeTags!==undefined)data.likeTags=validLikeTags(data.likeTags);
   if(data.prRef){
     data.pr=await readProfilePr(id,data.prRef);
   }
@@ -68,6 +70,7 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
   // No new PR body enters the PostgreSQL JSON draft. The text is stored
   // in a separately mounted, durable, verified object store first.
   const serialized={...data};
+  if(serialized.likeTags!==undefined)serialized.likeTags=validLikeTags(serialized.likeTags);
   if(serialized.media)serialized.media=numberProfileMedia(serialized.media);
   if(typeof serialized.pr==="string"&&serialized.pr.length){
     serialized.prRef=await storeProfilePr(id,serialized.pr);
@@ -96,6 +99,10 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
   );
   if (!r.rows.length) return null;
   const p = r.rows[0];
+  const likeRows=await pool.query(
+    "SELECT category,tag FROM profile_tags WHERE owner_user_id=$1 AND purpose='like' ORDER BY category,tag",[id]);
+  const likeTags=likeRows.rows.map((x:{category:string;tag:string})=>({category:x.category,tag:x.tag}));
+  // Retain historical/unknown tags verbatim. They must never be silently deleted.
   const mediaRows=await pool.query("SELECT id,item_id,file_id,media_type,source_message_id,media_group_id FROM profile_media WHERE owner_user_id=$1 ORDER BY id",[id]);
   const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:string|number;item_id:string|number|null;file_id:string;media_type:"photo"|"video";source_message_id:string|number|null;media_group_id:string|null})=>{
     // PostgreSQL BIGINT values arrive as strings with node-postgres.
@@ -112,7 +119,7 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
     throw Error("PROFILE_MEDIA_COUNTER_INVALID");
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
     weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,
-    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId,status:p.status,revision:p.revision};
+    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId,likeTags,status:p.status,revision:p.revision};
 }
 export async function savePrivateDraft(id: number, revision: number,
     username: string | null): Promise<SavedProfile> {
@@ -125,7 +132,7 @@ export async function savePrivateDraft(id: number, revision: number,
       "SELECT step,data,revision FROM profile_drafts WHERE owner_user_id=$1 FOR UPDATE",[id]);
     if (!draft.rows.length || draft.rows[0].revision !== revision ||
         draft.rows[0].step !== "preview") throw new Error("PROFILE_DRAFT_STALE");
-    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number};
+    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[]};
     if (!p || !p.position) throw new Error("PROFILE_INCOMPLETE");
     validateAppearance(p);
     validateProfileArea(p);
@@ -148,6 +155,29 @@ export async function savePrivateDraft(id: number, revision: number,
       [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId]
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
+    if(p.likeTags!==undefined){
+      const tags=validLikeTags(p.likeTags);
+      // Do not replace older Like data not represented in the adopted dictionary.
+      // Only rows belonging to the current 140-key allowlist can be modified.
+      for(const category of LIKE_CATEGORIES){
+        for(let i=0;i<category.items.length;i++){
+          await client.query(
+            "INSERT INTO profile_tag_catalog(category,tag,ordinal) VALUES ($1,$2,$3) ON CONFLICT(category,tag) DO NOTHING",
+            [category.name,category.items[i],i+1]);
+        }
+      }
+      for(const category of LIKE_CATEGORIES){
+        const allowed=[...category.items];
+        await client.query(
+          "DELETE FROM profile_tags WHERE owner_user_id=$1 AND purpose='like' AND category=$2 AND tag=ANY($3::text[])",
+          [id,category.name,allowed]);
+      }
+      for(const t of tags){
+        await client.query(
+          "INSERT INTO profile_tags(owner_user_id,purpose,category,tag) VALUES($1,'like',$2,$3) ON CONFLICT DO NOTHING",
+          [id,t.category,t.tag]);
+      }
+    }
     if(p.media!==undefined){
       await client.query("DELETE FROM profile_media WHERE owner_user_id=$1",[id]);
       for(const item of numberedMedia){
@@ -159,7 +189,7 @@ export async function savePrivateDraft(id: number, revision: number,
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
-      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),status:x.status,revision:x.revision};
+      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");
     throw e;
