@@ -33,7 +33,7 @@ export function readBotTokenSecret(path: string): string {
 }
 
 export function readConfiguredBotToken(
-  env: Pick<NodeJS.ProcessEnv, "BOT_TOKEN" | "BOT_TOKEN_FILE"> = process.env,
+  env: { BOT_TOKEN?: string; BOT_TOKEN_FILE?: string } = process.env,
 ): string {
   if (env.BOT_TOKEN_FILE !== undefined) {
     if (env.BOT_TOKEN !== undefined) throw new Error("BOT_TOKEN_SOURCES_CONFLICT");
