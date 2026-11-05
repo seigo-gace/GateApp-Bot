@@ -74,3 +74,27 @@ export async function resolvePublishedProfileView(token:string):Promise<SavedPro
  return restorePublishedSnapshot(Number(rows.rows[0].owner_user_id),
    rows.rows[0].public_snapshot as PublicProfileSnapshot,Number(rows.rows[0].profile_revision));
 }
+
+/** ROOM only links to an already published, permission-checked profile card.
+ * Never create a new profile publication or reveal a private draft.
+ */
+export async function existingPublishedProfileUrl(ownerId:number):Promise<string|null>{
+ assertId(ownerId);
+ const r=await pool.query(
+  `SELECT l.token
+    FROM profile_view_links l
+    JOIN profile_publications pub
+      ON pub.owner_user_id=l.owner_user_id
+      AND pub.synced_revision=l.profile_revision
+      AND pub.status='published' AND pub.public_snapshot IS NOT NULL
+    JOIN posting_topics t
+      ON t.topic_id=l.topic_id AND t.chat_id=pub.chat_id
+      AND t.message_thread_id=pub.thread_id
+      AND t.purpose='profile' AND t.enabled=TRUE
+      AND t.verified_at IS NOT NULL AND t.verified_by IS NOT NULL
+    JOIN profiles p ON p.owner_user_id=l.owner_user_id
+      AND p.status='published'
+    WHERE l.owner_user_id=$1 AND l.enabled=TRUE
+    ORDER BY l.profile_revision DESC LIMIT 1`,[ownerId]);
+ return r.rows.length===1?profileViewerUrl("profile",String(r.rows[0].token)):null;
+}
