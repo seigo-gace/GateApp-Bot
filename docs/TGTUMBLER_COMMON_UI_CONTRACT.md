@@ -61,3 +61,12 @@ row2: #Like | #Love | プレビュー
 row3: 保存 | キャンセル
 No numeric section prefixes on buttons. Save means private save; cancel destination is 投稿メニュー. Internal callback only; no chat text from button clicks. The unspecified child sections are not to be invented or silently assumed complete.
 Current code fixes the row layout and initial actions. Cancel-to-posting-menu full navigation depends on the subsequently integrated posting-menu link/return handler; do not report that as connected until verified.
+
+## 2026-11-05 決定：選択ボタンのオン/オフ共通化（すべての該当セクションで必読）
+- Telegramには選択状態を自動保持する標準トグルがない。Bot側で callback_query → 本人/権限/revision照合 → DB下書き更新 → 元Botメッセージのボタンを編集、の順に実現する。通常の発言を生成しない。
+- 必須単一選択：押すと✅、別候補を押すと✅移動。同じ選択肢の再押下でも必須値は解除しない。プロフィール①ポジションはこの方式。
+- 任意単一選択：押すと✅、同じ項目の再押下で選択解除（未設定）、別候補で切替。
+- 複数選択：候補ごとに再押下でON/OFF。ほかの選択状態を維持し、カテゴリ/ページを跨いでも下書きを保つ。
+- 見た目：選択中✅、未選択▫️。Telegram本体のチェックボックスではなく同じBotメッセージに編集反映。候補が追加/削除された場合は許可リストで検証、未知値や重複・不正なcallbackを拒否。
+- 共通実装は artifacts/bot/src/services/inlineSelection.ts の nextSelection / selectionRows / selectionLabel。仕様に応じて各画面がモードを選び、確定済み候補・既存保存処理のみを接続する。本人認証、下書き保存、重複処理、古いcallback拒否、UI書換えは各業務ハンドラーの責務であり、この純粋関数だけでは完成とはしない。
+- 各下位セクションの候補と単一/複数の細部は個別のMaster確定仕様に従う。未決定機能へ勝手に候補や画面を追加しない。
