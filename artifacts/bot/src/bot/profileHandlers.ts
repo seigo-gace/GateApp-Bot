@@ -63,12 +63,16 @@ const overviewKeyboard=(revision:number)=>Markup.inlineKeyboard(
     Markup.button.callback(button.text,button.callback_data)))
 );
 /** The ② summary has exactly four adjacent buttons, with no filler. */
-const appearanceKeyboard=(revision:number)=>Markup.inlineKeyboard([[
+const saveSectionButton=(rev:number)=>Markup.button.callback("保存",`pf:section:${rev}:save`);
+const appearanceKeyboard=(revision:number)=>Markup.inlineKeyboard([
+ [
   Markup.button.callback("髪型",`pf:ap:${revision}:open:h`),
   Markup.button.callback("体型",`pf:ap:${revision}:open:b`),
   Markup.button.callback("エリア",`pf:ap:${revision}:area`),
   Markup.button.callback("戻る",`pf:ap:${revision}:back`),
-]]);
+ ],
+ [saveSectionButton(revision)],
+]);
 const appearanceText=(data:ProfileDraft["data"])=>[
   "🪪 プロフィール｜容姿/エリア",
   "髪型："+(data.hair||"未設定"),
@@ -76,7 +80,7 @@ const appearanceText=(data:ProfileDraft["data"])=>[
   "エリア："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
   "",
   "髪型・体型・エリアは任意です。変更したい項目を選んでください。",
-  "［戻る］でプロフィール一覧へ戻れます。ほかの選択は保持されます。",
+  "［戻る］でプロフィール一覧へ。［保存］は①〜⑤をまとめて非公開保存します。",
 ].join("\n");
 const choiceKeyboard=(kind:"h"|"b",revision:number,data:ProfileDraft["data"])=>{
  const rows=kind==="h"
@@ -92,6 +96,7 @@ const choiceKeyboard=(kind:"h"|"b",revision:number,data:ProfileDraft["data"])=>{
    ...styled.slice(0,-1),
    [...styled[styled.length-1]!,
     Markup.button.callback("↩ 戻る",`pf:ap:${revision}:back`)],
+   [saveSectionButton(revision)],
  ]);
 };
 const choiceText=(kind:"h"|"b",data:ProfileDraft["data"])=>
@@ -99,43 +104,47 @@ const choiceText=(kind:"h"|"b",data:ProfileDraft["data"])=>
     kind==="h"?"💈 髪型を選択してください":"💪 体型を選択してください",
     "現在："+(kind==="h"?(data.hair||"未設定"):(data.body||"未設定")),
     "任意で1つ選択。✅選択中／▫️未選択。同じ候補で解除できます。",
-    "［↩ 戻る］で容姿/エリアの一覧へ戻ります。ほかの選択は保持されます。",
+    "［↩ 戻る］で容姿/エリアの一覧へ。［保存］は①〜⑤すべてを非公開で保存します。",
   ].join("\n");
 
 /** Region IDs are independent of any Telegram topic IDs or deep links. */
 const areaBlocksKeyboard=(revision:number,data:ProfileDraft["data"])=>{
  const rows=areaButtonRows(PROFILE_AREA_BLOCKS,"↩ 戻る");
- return Markup.inlineKeyboard(rows.map(row=>row.map(label=>{
+ return Markup.inlineKeyboard([
+ ...rows.map(row=>row.map(label=>{
   if(label==="↩ 戻る")return Markup.button.callback(label,`pf:ar:${revision}:back`);
   const index=PROFILE_AREA_BLOCKS.indexOf(label as ProfileAreaBlock);
   const checked=data.region===label&&data.area!=null;
   return Markup.button.callback((checked?"✅ ":"▫️ ")+label,
    `pf:ar:${revision}:r:${index}`);
- })));
+ })),[saveSectionButton(revision)],
+ ]);
 };
 const areaBlocksText=(data:ProfileDraft["data"])=>[
  "📍 エリアを選択してください",
  "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
  "全国13ブロックから地域を選び、その中のエリアを1つ選択してください。",
  "北海道・沖縄は直接選択・解除できます。別の地域を見るだけでは現在の選択は消えません。",
- "✅選択中／▫️未選択。［↩ 戻る］で容姿/エリアの一覧へ戻ります。",
+ "✅選択中／▫️未選択。［↩ 戻る］で容姿/エリアの一覧へ。［保存］で全項目を非公開保存します。",
 ].join("\n");
 const areaChildrenKeyboard=(revision:number,data:ProfileDraft["data"])=>{
  const block=data.pendingRegion;
  if(!block)throw Error("PROFILE_AREA_BLOCK_MISSING");
  const options=areaChildren(block);
- return Markup.inlineKeyboard(areaButtonRows(options).map(row=>row.map(label=>{
+ return Markup.inlineKeyboard([
+ ...areaButtonRows(options).map(row=>row.map(label=>{
   if(label==="↩ 戻る")return Markup.button.callback(label,`pf:ar:${revision}:back`);
   const index=options.indexOf(label);
   return Markup.button.callback((data.region===block&&data.area===label?"✅ ":"▫️ ")+label,
    `pf:ar:${revision}:a:${index}`);
- })));
+ })),[saveSectionButton(revision)],
+ ]);
 };
 const areaChildrenText=(data:ProfileDraft["data"])=>[
  "📍 "+data.pendingRegion+"｜エリアを選択",
  "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
  "エリアを1つ選択してください。✅選択中／▫️未選択。同じエリアの再押下で解除、別候補で変更できます。",
- "［↩ 戻る］で全国13ブロックへ戻ります。",
+ "［↩ 戻る］で全国13ブロックへ。［保存］で全項目を非公開保存します。",
 ].join("\n");
 
 const profileTagPurpose=(data:ProfileDraft["data"]):ProfileTagPurpose=>data.tagPurpose==="love"?"love":"like";
@@ -166,7 +175,9 @@ const tagItemText=(data:ProfileDraft["data"])=>{
   "［↩ 戻る］でカテゴリー一覧へ。［保存］は全カテゴリーの選択を非公開保存します。",
  ].join("\n");
 };
-const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`)]]);
+const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[
+ Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`),saveSectionButton(rev),
+]]);
 const mediaText=(data:ProfileDraft["data"])=>{
  const media=numberProfileMedia(data.media);
  const pages=Math.max(1,Math.ceil(media.length/40));
@@ -179,7 +190,7 @@ const mediaText=(data:ProfileDraft["data"])=>{
   "自己PRの消去は「PR削除」、差し替え中止は「差替取消」と送信します。",
   "複数ページの一覧は「一覧 ページ番号」（例：一覧 2）で表示します。",
   "入力メッセージはBotが削除を試みます。失敗した場合は手動で削除してください。",
-  "［↩ 戻る］でプロフィール一覧へ。確定保存は一覧の［保存］から行います。",
+  "［↩ 戻る］でプロフィール一覧へ。［保存］は①〜⑤すべての入力を非公開保存します。",
   ...(data.replaceMediaId?["","🔁 No."+data.replaceMediaId+" の差替画像・動画を送信してください。中止は 差替取消 と送信。"]:[]),
   "",
   ...mediaStatus(media,data.pr),
@@ -579,6 +590,28 @@ export function registerProfileHandlers(
         overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
     });
   }
+
+  // All optional section screens share the same full-profile private save.
+  // Incomplete initial basic registration never exposes this action.
+  bot.action(/^pf:section:(\d+):save$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.revision!==revision||![
+      "appearance","hair","body","area-blocks","area-children","media",
+    ].includes(draft.step)){
+      await ctx.answerCbQuery("古い保存ボタンです");return;
+    }
+    const saved=await repo.savePrivateDraft(ctx.from.id,revision,ctx.from.username!);
+    const next=await repo.putDraft(ctx.from.id,"preview",{
+      ...draft.data,...saved,screenMessageId:draft.data.screenMessageId,
+    });
+    await ctx.answerCbQuery("①〜⑤を非公開保存しました");
+    await ctx.editMessageText(
+      "✅ プロフィール①〜⑤の入力済み内容を非公開保存しました。グループには投稿していません。\n"+
+       overviewText(saved,ctx.from.username!),
+       {parse_mode:"HTML",...overviewKeyboard(next.revision)});
+  });
 
   bot.action(/^pf:ap:(\d+):open:([hb])$/,async ctx=>{
     if(!canUseProfile(ctx))return;
