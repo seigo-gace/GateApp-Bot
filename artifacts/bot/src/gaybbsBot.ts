@@ -15,6 +15,8 @@ import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
+import {resolveRoomJoinLink} from "./services/roomJoinLinks.js";
+import {Markup} from "telegraf";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
@@ -44,6 +46,13 @@ async function main():Promise<void>{
   if(ctx.chat.type!=="private")return;
   if(parseProfileViewerPayload(ctx.startPayload||"")){
    await startProfileViewer(ctx,ctx.startPayload);
+   return;
+  }
+  if(ctx.startPayload?.startsWith("j_")){
+   const room=await resolveRoomJoinLink(ctx.from.id,ctx.startPayload);
+   if(!room){await ctx.reply("このROOMはまだ開始されていないか、参加権限がありません。");return;}
+   await ctx.reply("🎬 "+room.title+"\n🔴 LIVE中",Markup.inlineKeyboard([
+    [Markup.button.url("🎥 ROOMに参加する",room.joinUrl)]]));
    return;
   }
   if(ctx.startPayload?.startsWith("a_")){
