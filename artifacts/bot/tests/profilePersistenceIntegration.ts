@@ -5,6 +5,7 @@ import {join} from "node:path";
 import {pool} from "../src/db/index.js";
 import {putDraft,getDraft,getProfile,savePrivateDraft,recordProfilePublication,claimProfileRevisionUpdate} from "../src/services/profileRepository.js";
 import {makeProfileViewerButtons,resolvePublishedProfileView} from "../src/services/profilePublicView.js";
+import {hidePublishedProfile} from "../src/services/profilePublicationControl.js";
 
 const id=900000000093;
 const prior=process.env.PROFILE_PR_STORAGE_DIR;
@@ -136,6 +137,45 @@ try{
   assert.equal(await resolvePublishedProfileView(token),null,"old revision link retired");
   await pool.query("UPDATE profiles SET status='private' WHERE owner_user_id=$1",[id]);
   assert.equal(await resolvePublishedProfileView(nextToken),null,"hidden owner cannot be viewed");
+  // The DM owner-only action redacts or deletes the original post before
+  // confirming private state. Transport is a deterministic Telegram stub.
+  let edited=0,deleted=0;
+  const fakeTelegram={
+   async editMessageText(chat:number,msg:number,_inline:unknown,text:string){
+    assert.equal(chat,-1009876543210);assert.equal(msg,777);
+    assert.match(text,/非公開/);edited++;return true;
+   },
+   async deleteMessage(chat:number,msg:number){
+    assert.equal(chat,-1009876543210);assert.equal(msg,777);
+    deleted++;return true;
+   },
+  } as any;
+  const hidden=await hidePublishedProfile(fakeTelegram,id,-1009876543210,110,"unpublish");
+  assert.equal(hidden.state,"hidden");
+  assert.equal(edited,1);assert.equal(deleted,0);
+  const state=await pool.query(
+   "SELECT status FROM profile_publications WHERE owner_user_id=$1 AND chat_id=-1009876543210",[id]);
+  assert.equal(state.rows[0].status,"hidden");
+  assert.equal((await getProfile(id))?.status,"private");
+  // A new explicit publication can be removed by its original message ID.
+  const fresh=await getProfile(id);
+  assert.ok(fresh);
+  await recordProfilePublication(id,fresh.revision,-1009876543210,110,777,fresh);
+  await hidePublishedProfile(fakeTelegram,id,-1009876543210,110,"delete");
+  assert.equal(deleted,1);
+  assert.equal((await getProfile(id))?.status,"private");
+  const failed=await getProfile(id);assert.ok(failed);
+  await recordProfilePublication(id,failed.revision,-1009876543210,110,777,failed);
+  const throwsTelegram={...fakeTelegram,async deleteMessage(){throw Error("telegram timeout")}} as any;
+  await assert.rejects(
+   ()=>hidePublishedProfile(throwsTelegram,id,-1009876543210,110,"delete"),
+   /NEEDS_RECONCILE/);
+  const ambiguous=await pool.query(
+   "SELECT status FROM profile_publications WHERE owner_user_id=$1 AND chat_id=-1009876543210",[id]);
+  assert.equal(ambiguous.rows[0].status,"delete_error");
+  assert.equal(await resolvePublishedProfileView(nextToken),null,"ambiguous deletion hidden");
+  process.stdout.write("PROFILE_PUBLICATION_CONTROL_SQL=PASS\\n");
+
  }finally{
   await pool.query("DELETE FROM posting_topics WHERE topic_id=$1",[topicId]);
  }
