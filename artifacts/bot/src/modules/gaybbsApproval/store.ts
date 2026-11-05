@@ -145,10 +145,24 @@ export async function saveIssuedInvites(a:GateAttempt,links:readonly IssuedBoard
     [a.target_id,a.tg_user_id,a.attempt_id,a.document_version]);
   if(check.rows[0]?.n!==3){await c.query("ROLLBACK");return false}
   const approval=await c.query(`UPDATE approvals SET status='approved',approved_at=NOW(),updated_at=NOW()
-   WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3 AND status='pending'`,
+   WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3 AND status='pending'
+   RETURNING username,display_name,is_premium`,
    [a.target_id,a.tg_user_id,a.attempt_id]);
   if(approval.rowCount!==1){await c.query("ROLLBACK");return false}
+  // Other existing modules read approvals by group. Derive all three group
+  // entitlements from the ONE verified questionnaire and its consent receipts.
+  // This does not run the questions again or create new credentials.
+  const person=approval.rows[0]!;
   for(const i of links){
+   if(i.targetId!==a.target_id){
+    const reflected=await c.query(`INSERT INTO approvals
+      (target_id,tg_user_id,username,display_name,is_premium,status,
+       attempt_id,document_version,approved_at)
+      VALUES($1,$2,$3,$4,$5,'approved',$6,$7,NOW())`,
+     [i.targetId,a.tg_user_id,person.username,person.display_name,
+      person.is_premium,a.attempt_id,a.document_version]);
+    if(reflected.rowCount!==1)throw new Error("GATE_SHARED_APPROVAL_REFLECTION_FAILED");
+   }
    await c.query(`INSERT INTO invite_links
     (target_id,tg_user_id,invite_link,expire_at,attempt_id)
     VALUES($1,$2,$3,$4,$5)`,
