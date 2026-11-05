@@ -5,6 +5,7 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {nextSelection,selectionRows} from "../services/inlineSelection.js";
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
+import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {
   PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
@@ -70,7 +71,7 @@ const appearanceText=(data:ProfileDraft["data"])=>[
   "🪪 プロフィール｜容姿/エリア",
   "髪型："+(data.hair||"未設定"),
   "体型："+(data.body||"未設定"),
-  "エリア：未設定",
+  "エリア："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
 ].join("\n");
 const choiceKeyboard=(kind:"h"|"b",revision:number,data:ProfileDraft["data"])=>{
  const rows=kind==="h"
@@ -94,6 +95,39 @@ const choiceText=(kind:"h"|"b",data:ProfileDraft["data"])=>
     "現在："+(kind==="h"?(data.hair||"未設定"):(data.body||"未設定")),
     "1つ選択。同じ候補を押すと解除できます。",
   ].join("\n");
+
+/** Region IDs are independent of any Telegram topic IDs or deep links. */
+const areaBlocksKeyboard=(revision:number,data:ProfileDraft["data"])=>{
+ const rows=areaButtonRows(PROFILE_AREA_BLOCKS,"↩ 戻る");
+ return Markup.inlineKeyboard(rows.map(row=>row.map(label=>{
+  if(label==="↩ 戻る")return Markup.button.callback(label,`pf:ar:${revision}:back`);
+  const index=PROFILE_AREA_BLOCKS.indexOf(label as ProfileAreaBlock);
+  const checked=data.region===label&&data.area!=null;
+  return Markup.button.callback((checked?"✅ ":"▫️ ")+label,
+   `pf:ar:${revision}:r:${index}`);
+ })));
+};
+const areaBlocksText=(data:ProfileDraft["data"])=>[
+ "📍 エリアを選択してください",
+ "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
+ "13ブロックから選択。北海道・沖縄は直接選択されます。",
+].join("\n");
+const areaChildrenKeyboard=(revision:number,data:ProfileDraft["data"])=>{
+ const block=data.pendingRegion;
+ if(!block)throw Error("PROFILE_AREA_BLOCK_MISSING");
+ const options=areaChildren(block);
+ return Markup.inlineKeyboard(areaButtonRows(options).map(row=>row.map(label=>{
+  if(label==="↩ 戻る")return Markup.button.callback(label,`pf:ar:${revision}:back`);
+  const index=options.indexOf(label);
+  return Markup.button.callback((data.region===block&&data.area===label?"✅ ":"▫️ ")+label,
+   `pf:ar:${revision}:a:${index}`);
+ })));
+};
+const areaChildrenText=(data:ProfileDraft["data"])=>[
+ "📍 "+data.pendingRegion+"｜エリアを選択",
+ "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
+ "同じエリアを再度押すと未設定に戻せます。",
+].join("\n");
 
 const overviewText=(profile:SavedProfile,username:string)=>[
   "🪪 プロフィールプレビュー",
@@ -149,7 +183,9 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  // Preserve the active profile draft when a start link is reopened, including
  // after a Bot restart. Never reset an in-progress wizard on /profile.
  if(previous){
-   const text=previous.step==="hair"||previous.step==="body"
+   const text=previous.step==="area-blocks"?areaBlocksText(previous.data)
+     :previous.step==="area-children"?areaChildrenText(previous.data)
+     :previous.step==="hair"||previous.step==="body"
      ?choiceText(previous.step==="hair"?"h":"b",previous.data)
      :previous.step==="appearance"
        ?appearanceText(previous.data)
@@ -158,7 +194,9 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      :previous.step==="awaiting_position"
        ?"✅ 基本情報を受け付けました。ポジションを選択してください。"
        :basicPrompt(previous.data.position);
-   const markup=previous.step==="hair"||previous.step==="body"
+   const markup=previous.step==="area-blocks"?areaBlocksKeyboard(previous.revision,previous.data)
+     :previous.step==="area-children"?areaChildrenKeyboard(previous.revision,previous.data)
+     :previous.step==="hair"||previous.step==="body"
      ?choiceKeyboard(previous.step==="hair"?"h":"b",previous.revision,previous.data)
      :previous.step==="appearance"
        ?appearanceKeyboard(previous.revision)
@@ -175,7 +213,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      const draft=await repo.putDraft(ctx.from.id,"preview",{
        nickname:existing.nickname,heightCm:existing.heightCm,
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
-       hair:existing.hair,body:existing.body,
+       hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,region:existing.region,area:existing.area,
        ...(lastId?{screenMessageId:lastId}:{}),
      });
      await updateWizardScreen(ctx,repo,draft,
@@ -357,6 +395,7 @@ export function registerProfileHandlers(
       const next=await repo.putDraft(ctx.from.id,"preview",{
         nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
         age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
+        region:saved.region,area:saved.area,
         screenMessageId:draft.data.screenMessageId,
       });
       await ctx.answerCbQuery("非公開で保存しました");
@@ -389,15 +428,76 @@ export function registerProfileHandlers(
     await ctx.editMessageText(choiceText(kind,updated.data),
       choiceKeyboard(kind,updated.revision,updated.data));
   });
-  // Area is intentionally not connected until its separate design is approved.
   bot.action(/^pf:ap:(\d+):area$/,async ctx=>{
     if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]);
     const draft=await repo.getDraft(ctx.from.id);
-    if(!draft||draft.step!=="appearance"||draft.revision!==Number(ctx.match[1])){
-      await ctx.answerCbQuery("古い画面です");
-      return;
+    if(!draft||draft.step!=="appearance"||draft.revision!==revision){
+      await ctx.answerCbQuery("古い画面です");return;
     }
-    await ctx.answerCbQuery("エリアの選択構成は次の決定後に接続します");
+    const updated=await repo.putDraft(ctx.from.id,"area-blocks",
+      draft.data,draft.revision);
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(areaBlocksText(updated.data),
+      areaBlocksKeyboard(updated.revision,updated.data));
+  });
+  bot.action(/^pf:ar:(\d+):r:(\d{1,2})$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]),index=Number(ctx.match[2]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.step!=="area-blocks"||draft.revision!==revision){
+      await ctx.answerCbQuery("古い画面です");return;
+    }
+    const block=PROFILE_AREA_BLOCKS[index];
+    if(!block){await ctx.answerCbQuery("地域が見つかりません");return;}
+    const options=areaChildren(block);
+    if(options.length===1){
+      const values=toggleProfileArea(draft.data,block,options[0]!);
+      const updated=await repo.putDraft(ctx.from.id,"area-blocks",
+       {...draft.data,...values},draft.revision);
+      await ctx.answerCbQuery(values.area?"エリアを選択しました":"選択を解除しました");
+      await ctx.editMessageText(areaBlocksText(updated.data),
+        areaBlocksKeyboard(updated.revision,updated.data));
+    }else{
+      // Previewing a different block cannot leave a mismatched region-child pair.
+      // The old pair stays intact until a new child is explicitly committed.
+      const updated=await repo.putDraft(ctx.from.id,"area-children",
+       {...draft.data,pendingRegion:block},draft.revision);
+      await ctx.answerCbQuery();
+      await ctx.editMessageText(areaChildrenText(updated.data),
+        areaChildrenKeyboard(updated.revision,updated.data));
+    }
+  });
+  bot.action(/^pf:ar:(\d+):a:(\d{1,2})$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]),index=Number(ctx.match[2]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.step!=="area-children"||draft.revision!==revision||
+       !draft.data.pendingRegion){
+      await ctx.answerCbQuery("古い画面です");return;
+    }
+    const block=draft.data.pendingRegion;
+    const child=areaChildren(block)[index];
+    if(!child){await ctx.answerCbQuery("エリアが見つかりません");return;}
+    const values=toggleProfileArea(draft.data,block,child);
+    const updated=await repo.putDraft(ctx.from.id,"area-children",
+       {...draft.data,...values,pendingRegion:block},draft.revision);
+    await ctx.answerCbQuery(values.area?"エリアを選択しました":"選択を解除しました");
+    await ctx.editMessageText(areaChildrenText(updated.data),
+      areaChildrenKeyboard(updated.revision,updated.data));
+  });
+  bot.action(/^pf:ar:(\d+):back$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||!["area-blocks","area-children"].includes(draft.step)||
+       draft.revision!==revision){await ctx.answerCbQuery("古い画面です");return;}
+    const toBlocks=draft.step==="area-children";
+    const updated=await repo.putDraft(ctx.from.id,toBlocks?"area-blocks":"appearance",
+      {...draft.data,pendingRegion:null},draft.revision);
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(toBlocks?areaBlocksText(updated.data):appearanceText(updated.data),
+      toBlocks?areaBlocksKeyboard(updated.revision,updated.data):appearanceKeyboard(updated.revision));
   });
   bot.action(/^pf:ap:(\d+):([hb]):(\d{1,2})$/,async ctx=>{
     if(!canUseProfile(ctx))return;
@@ -476,7 +576,8 @@ export function registerProfileHandlers(
     const saved=await repo.savePrivateDraft(ctx.from.id,rev,ctx.from.username!);
     const next=await repo.putDraft(ctx.from.id,"preview",{
       nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
-      age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,screenMessageId:draft.data.screenMessageId,
+      age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
+      region:saved.region,area:saved.area,screenMessageId:draft.data.screenMessageId,
     });
     await ctx.answerCbQuery("非公開で保存しました");
     await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
