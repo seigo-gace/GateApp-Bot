@@ -48,3 +48,29 @@ export async function currentMenuOrigin(userId:number):Promise<MenuOrigin|null>{
  assertMenuOrigin(origin);
  return origin;
 }
+
+/** Return to the exact existing posting menu that opened this Bot DM.
+ * Fail closed when origin or published message is absent; never invent a URL.
+ */
+export async function verifiedPostingMenuReturnUrl(userId:number):Promise<string|null>{
+ if(!Number.isSafeInteger(userId)||userId<=0)throw new Error("MENU_ACTOR_INVALID");
+ const r=await pool.query(
+  `SELECT p.chat_id,p.message_thread_id,p.message_id
+   FROM board_menu_sessions s
+   JOIN board_menu_entry_tokens t ON t.token_hash=s.token_hash
+   JOIN board_menu_panels p ON p.panel_id=t.panel_id
+   WHERE s.owner_user_id=$1 AND s.expires_at>NOW()
+     AND t.enabled=TRUE AND t.expires_at>NOW()
+     AND p.panel_type='posting' AND p.state='published'
+     AND p.message_id IS NOT NULL AND p.pinned=TRUE
+     AND p.verified_at IS NOT NULL`,[userId]);
+ if(r.rows.length!==1)return null;
+ const row=r.rows[0];
+ const chatId=String(row.chat_id);
+ const messageId=Number(row.message_id);
+ const threadId=Number(row.message_thread_id);
+ if(!/^-100[1-9]\d+$/.test(chatId)||
+    !Number.isSafeInteger(messageId)||messageId<1||
+    !Number.isSafeInteger(threadId)||threadId<1)return null;
+ return "https://t.me/c/"+chatId.slice(4)+"/"+messageId;
+}
