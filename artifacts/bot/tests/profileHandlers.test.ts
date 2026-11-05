@@ -8,6 +8,7 @@ function fixture() {
   let profile: any = null;
   let saves = 0;
   let discards = 0;
+  let revisionCounter = 0;
   const repo = {
     async getDraft() { return draft; },
     async discardDraft(_id: number, expectedRevision: number) {
@@ -18,7 +19,7 @@ function fixture() {
     },
     async putDraft(_id: number, step: string, data: any, expected?: number) {
       if (expected !== undefined && draft?.revision !== expected) throw Error("PROFILE_DRAFT_STALE");
-      draft = {step, data, revision: (draft?.revision ?? 0) + 1};
+      draft = {step, data, revision: ++revisionCounter};
       return draft;
     },
     async getProfile() { return profile; },
