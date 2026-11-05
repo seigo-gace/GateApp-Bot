@@ -59,3 +59,21 @@
 - 旧 `seigo-gace/-AdminSystem/server/modules/multipost/{core,renderer,dispatcher,event-router}.ts`、`room/jitsi-builder.ts`、`bbs-recruit/store.ts` のコード内容をGitHubから直接取得した。送信・編集・削除、button-grid、callback codec、Jitsi設定、募集storeが存在し、新規簡易MPBの重複作成は避ける。旧設計にあるAIタグ/周期投稿/課金等は新採用対象ではない。
 - 直前の `generalGuideHandlers.ts` は接続コマンドと単発メニュー返信だけで、**M1固定一投稿更新・M2固定パネル・起点token・リンクボタン投稿の完了ではない**。Docker本番・実Topic ID・文書本文の公開は一切未実行。
 - 同一Gserverで稼働する単一新Bot、共有投稿コア、Profile/Announcement/ROOM/案内/リンクの分離されたOwner、Gserver独立アプリ受入が最終完成条件。原設計より機能を勝手に縮小しない。
+
+## 2026-11-05｜開発前の横断整合レビューと実装修正（旧評価は時点情報として保持）
+
+### 今回の設計判定（Notion02 + N14最新原設計 + Masterの投稿/DB最新決定）
+1. **投稿履歴とDBは別**。Telegramの既存投稿は活動記録として保持。ROOM LIVE→終了・中止、募集/告知の終了は同じ `chat_id/message_id` を更新。既存ボタンを保存し、受付終了時は無効化。**更新成否不明なら唯一の投稿IDを消さず、再照合**。全公開先が終了表示に変わって通知完了した後だけ、使い捨てのMeeting/Announcement関連DBを削除する。
+2. **MPBは配信と宛先別receiptの所有者**。ROOM/告知の業務状態は各Owner。発信時の最終公開本文（HTMLエスケープ済）とInlineKeyboardをMPB送信ACKでmessage_idと一緒に保存してから、同じ本文を編集する。原本 `announcement_posts.text` は公開用カードと同値とは限らないので、履歴編集の元本文として使わない。旧postは本文スナップショット不在時に**照合待ち**、推測で編集しない。
+3. **ROOM→Announcement→MPB**。募集が定員到達 `filled` でもROOMは開始/終了する。満員を理由にROOM状態更新をスキップしない。終了の既存募集を勝手に再開しない。
+4. **DMテキストの所有者は一つ**。プロフィール①、告知/募集、ROOM作成/開催日時、リンクボタンの各下書きを保持しつつ、最後に操作した機能だけが入力を受け取る。再開時に他の下書きを削除しない。
+5. **M1/M2に加えL0/L1/L2階層**。Notion14のエリアL1ブロックは案内のみ（独立投稿エディター設置禁止）、L2地域Topicは起点付き投稿メニュー。現行 `menuPanelHandlers.ts` は `general_guide|posting` だけでL1ブロックの契約と親Topic/戻る導線が未実装。3グループの実Topic台帳・権限未検証につき、現物なしに公開/自動ピンしない。
+6. **プロフィール・応募・リンクボタンの全仕様を維持**。プロフィール②〜⑤/本人4操作/メディア・検索/予約/複数宛先部分失敗、ROOM参加権限、Gserver実配備は残る。CI PASSと6機能受入は別。
+
+### 今回の実変更と受入条件
+- `posting_deliveries.rendered_text` を追加し、`publishService`→`acknowledgeDelivery` で実送信した本文とmessage_idを同じ更新で記録。ROOM/告知終了表示はこの本文を参照し、未知の旧postは `needs_reconcile` に止める。回帰テストで元投稿HTML本文とMessageIDを維持。
+- `roomPostStatus.ts` は投稿先ごとの未確認先行イベントがある場合に次イベントを実行せず、同一投稿のLIVE/終了編集順序を保証。失敗時は自動再送せず照合情報を保持。
+- `announcementRoomEvents.ts` は `filled` のROOMイベントを処理。隔離PostgreSQLで満員募集でも既存Telegram投稿へのLIVE更新要求が作られることを検証。
+- `dmInputOwner.ts` は既存の `profile_drafts/public_post_drafts/room_host_sessions` の更新日時を比較。Profile/Announcement/ROOMの3テキストハンドラで古い下書きによる入力横取りを拒否。隔離DBで複数同時下書きの所有者を検証。
+- **次の開発単位**：N14 L0/L1/L2と現在のM1/M2コード差分、既存プロフィール②〜⑤/本人操作、MPB編集/予約/媒体/複数宛先、Gserver所有契約を一緒に評価し、既存部品の移植と実E2Eを継続。Gserver本番・Telegram実操作は未実施。リリースGateは引き続き閉鎖。
+
