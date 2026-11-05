@@ -80,14 +80,16 @@ export async function projectNextRoomEvent():Promise<{
         AND d.status='sent' AND d.telegram_message_id IS NOT NULL
      ON CONFLICT(room_event_id,delivery_id) DO NOTHING`,
     [e.event_id,String(id)]);
-   await client.query(
-    `INSERT INTO announcement_notifications
-       (announcement_id,recipient_user_id,event_key,payload)
-     VALUES($1,$2,$3,$4::jsonb)
-     ON CONFLICT(event_key) DO NOTHING`,
-    [id,a.owner_user_id,"room-event:"+e.event_id+":owner:"+id,
-     JSON.stringify({source:"room",kind,roomId:Number(e.room_id),
-      announcementId:id,revision})]);
+   if(kind!=="details_changed"){
+    await client.query(
+     `INSERT INTO announcement_notifications
+        (announcement_id,recipient_user_id,event_key,payload)
+      VALUES($1,$2,$3,$4::jsonb)
+      ON CONFLICT(event_key) DO NOTHING`,
+     [id,a.owner_user_id,"room-event:"+e.event_id+":owner:"+id,
+      JSON.stringify({source:"room",kind,roomId:Number(e.room_id),
+       announcementId:id,revision})]);
+   }
    // Reuse the Announcement notification outbox. A participant receives
    // a start message at most once for this ROOM across all linked posts,
    // even if the host retries a callback or an event is projected again.
