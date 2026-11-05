@@ -130,7 +130,7 @@ export async function saveIssuedInvites(a:GateAttempt,links:readonly IssuedBoard
   const matches=ADMISSION_BOARD_CHAT_IDS.map(chatId=>
    registered.rows.filter(row=>Number(row.chat_id)===chatId));
   if(registered.rows.length!==3||matches.some(found=>found.length!==1) ||
-   Number(matches[0]![0]!.target_id)!==a.target_id){
+   !matches.some(found=>Number(found[0]?.target_id)===a.target_id)){
    await c.query("ROLLBACK");return false;
   }
   const session=await c.query(`UPDATE gate_sessions SET step='approved',updated_at=NOW()
