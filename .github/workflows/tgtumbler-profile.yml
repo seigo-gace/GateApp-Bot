@@ -40,6 +40,8 @@ jobs:
         run: pnpm --dir artifacts/bot exec tsx tests/gaybbsMigrationIntegration.ts
       - name: Validate legacy PR migration in dry-run mode
         run: pnpm --dir artifacts/bot exec tsx scripts/migrateLegacyProfilePr.ts --dry-run
+      - name: Verify profile external PR and numbered media SQL roundtrip
+        run: pnpm --dir artifacts/bot exec tsx tests/profilePersistenceIntegration.ts
       - name: Build GayBBS dedicated bot
         run: pnpm --dir artifacts/bot run build:gaybbs
       - name: Test profile parsing and private DM registration
