@@ -122,6 +122,17 @@ export async function markRoomDraftSaved(id:number,revision:number,roomId:number
  if(r.rows.length!==1)throw new Error("ROOM_DRAFT_STALE");
 }
 
+/** A saved ROOM editor is private text/selection data, not a published room.
+ * Reopening /room can restore it without creating a duplicate room record.
+ */
+export async function saveRoomEditorDraft(id:number,revision:number):Promise<void>{
+ const q=await pool.query(
+  `UPDATE public_post_drafts SET step='saved',updated_at=NOW()
+   WHERE owner_user_id=$1 AND module='room' AND revision=$2 AND step='preview'
+   RETURNING owner_user_id`,[validOwner(id),revision]);
+ if(q.rows.length!==1)throw new Error("ROOM_DRAFT_STALE");
+}
+
 /** Idempotent LinkButton source. MPB stores Telegram message IDs separately. */
 export async function createLinkButton(id:number,revision:number,draft:LinkDraft):
  Promise<{sourceId:string}>{
