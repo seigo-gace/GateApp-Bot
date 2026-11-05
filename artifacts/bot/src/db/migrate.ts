@@ -217,6 +217,7 @@ export async function runMigrations(): Promise<void> {
         expires_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE room_host_sessions ADD COLUMN IF NOT EXISTS screen_message_id INTEGER;
       CREATE TABLE IF NOT EXISTS room_source_events (
         event_id BIGSERIAL PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
