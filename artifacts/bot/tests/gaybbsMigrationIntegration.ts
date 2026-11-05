@@ -14,6 +14,7 @@ import {createRoom,createAnnouncement} from "../src/services/publicPostRepositor
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
+import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -324,14 +325,24 @@ try{
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
   [obsolete])).rows[0].n,1,"sent Telegram message blocks destructive DB purge");
- // The adopted design keeps the Telegram post; database disposal must
- // NOT call deleteMessage or silently discard the last editing handle.
- assert.equal((await pool.query(
-  "SELECT status FROM posting_deliveries WHERE operation_key='purge-delivery'"
- )).rows[0].status,"sent");
- // A separate status-edit ACK will eventually mark this post archived.
- await pool.query(
-  "UPDATE posting_deliveries SET status='archived' WHERE operation_key='purge-delivery'");
+ // Keep the historical Telegram announcement and visibly mark its end.
+ // A *fake* Telegram edit proves the exact transport request without touching
+ // any real group (deleteMessage and sendMessage remain forbidden).
+ const announcedEdits:Array<{messageId:number;text:string}>=[];
+ const archiveBot={
+  editMessageText:async(_chat:number,messageId:number,_inline:unknown,text:string)=>{
+   announcedEdits.push({messageId,text});return {message_id:messageId};
+  },
+  deleteMessage:async()=>{throw new Error("HISTORY_POST_DELETE_FORBIDDEN")},
+  sendMessage:async()=>{throw new Error("DUPLICATE_POST_FORBIDDEN")},
+ } as unknown as Telegram;
+ process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED="enabled";
+ const receipt=await archiveNextTerminalAnnouncement(archiveBot);
+ assert.equal(receipt?.status,"archived");
+ assert.deepEqual(announcedEdits.map(x=>x.messageId),[5678]);
+ assert.match(announcedEdits[0]!.text,/📌 掲載終了/);
+ assert.equal(await archiveNextTerminalAnnouncement(archiveBot),null);
+ delete process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED;
  const removed=await purgeDisposableAnnouncements();
  assert.ok(removed>=1,"terminal entry may be purged only after simulated Telegram deletion ACK");
  for(const id of [obsolete,expiredId]){
