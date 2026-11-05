@@ -84,6 +84,7 @@ async function main():Promise<void>{
  registerMenuPanelHandlers(bot);
  registerApplicationHandlers(bot);
  registerRoomHandlers(bot);
+ registerGayBbsApprovalHandlers(bot);
  bot.catch((error,ctx)=>{
   console.error("[GAYBBS_ERROR]",ctx.updateType,
     error instanceof Error?error.name:"unknown");
