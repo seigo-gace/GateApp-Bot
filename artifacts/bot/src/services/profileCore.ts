@@ -59,28 +59,46 @@ export function escapeProfileHtml(v: string): string {
   return v.replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
-export function renderProfileBasicPreview(p: ProfileBasicDraft & {hair?:string|null;body?:string|null;region?:string|null;area?:string|null;pr?:string|null}, username: string): string {
-  if (!/^[A-Za-z0-9_]{5,32}$/.test(username)) throw new Error("Telegram usernameが必要です");
-  const label = p.nickname?.trim() || "@"+username;
-  const who = '<a href="https://t.me/'+username+'">'+escapeProfileHtml(label)+'</a>';
-  return [
-    "🪪 "+who,
-    p.heightCm+"cm | "+p.weightKg+"kg | "+p.age+"歳 | "+(p.position || "未選択"),
-    "髪型："+escapeProfileHtml(p.hair??"")+" | 体型："+escapeProfileHtml(p.body??""),
-    "✈️ エリア："+(p.region&&p.area?escapeProfileHtml(p.region)+" ＞ "+escapeProfileHtml(p.area):""),
-    "💖 #Like | ",
-    "💘 #Love | ",
-    "PR："+(p.pr?escapeProfileHtml(p.pr.trim().split(/\r?\n/).slice(0,3).join(" ").slice(0,180)):""),
-  ].join("\n");
+export type ProfileDisplayExtras = {
+ hair?:string|null;body?:string|null;region?:string|null;area?:string|null;
+ pr?:string|null;likeTags?:readonly {category:string;tag:string}[];
+ loveTags?:readonly {category:string;tag:string}[];
+ media?:readonly {type:string;fileId:string}[];
+};
+/** Fixed-profile card body. Show headings with blank values, never "未登録".
+ * Only the first three tags of each purpose appear on the card; detailed
+ * viewing and Telegram media reveal are separate, explicitly selected flows.
+ */
+function displayProfileLines(p:ProfileBasicDraft & ProfileDisplayExtras,displayName:string):string[]{
+ const compact=(v:string|null|undefined)=>escapeProfileHtml(v??"");
+ const tags=(v:readonly {category:string;tag:string}[]|undefined)=>
+  (v??[]).slice(0,3).map(x=>"#"+compact(x.tag)).join(" ");
+ const pr=p.pr?.trim().replace(/\\s+/g," ").slice(0,180)??"";
+ return [
+  "🪪 "+displayName,
+  p.heightCm+"cm | "+p.weightKg+"kg | "+p.age+"歳 | "+compact(p.position||"未選択"),
+  "髪型："+compact(p.hair)+" | 体型："+compact(p.body),
+  "✈️ エリア："+(p.region&&p.area?compact(p.region)+" ＞ "+compact(p.area):""),
+  "💖 #Like | "+tags(p.likeTags),
+  "💘 #Love | "+tags(p.loveTags),
+  "PR："+compact(pr),
+ ];
+}
+export function renderProfileBasicPreview(
+ p:ProfileBasicDraft & ProfileDisplayExtras,username:string,
+):string{
+ if(!/^[A-Za-z0-9_]{5,32}$/.test(username))throw new Error("Telegram usernameが必要です");
+ const label=p.nickname?.trim()||"@"+username;
+ const who='<a href="https://t.me/'+username+'">'+escapeProfileHtml(label)+'</a>';
+ return displayProfileLines(p,who).join("\\n");
 }
 
-/** Public profile contains only explicitly collected profile fields.
- * Telegram username and account URL are NEVER added automatically.
+/** Public card is derived from the approved saved original. It contains no
+ * automatic account handle or raw Telegram media. Any public exposure must
+ * first pass the verified Topic + explicit consent release gate.
  */
-export function renderPublicProfile(p: ProfileBasicDraft): string {
-  if (!p.nickname?.trim() || !p.position || !isProfilePosition(p.position)) throw new Error("PROFILE_INCOMPLETE");
-  return [
-    "🪪 " + escapeProfileHtml(p.nickname?.trim() || "匿名ユーザー"),
-    p.heightCm + "cm | " + p.weightKg + "kg | " + p.age + "歳 | " + escapeProfileHtml(p.position),
-  ].join("\n");
+export function renderPublicProfile(p:ProfileBasicDraft & ProfileDisplayExtras):string{
+ if(!p.nickname?.trim()||!p.position||!isProfilePosition(p.position))
+  throw new Error("PROFILE_INCOMPLETE");
+ return displayProfileLines(p,escapeProfileHtml(p.nickname.trim())).join("\\n");
 }
