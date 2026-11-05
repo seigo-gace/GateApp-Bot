@@ -343,7 +343,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await ctx.reply("投稿を確認できませんでした。送信状態が不明な場合は再送せず照合してください。");
   }
  });
- bot.action(/^recruit:cancel:(\\d+)$/,async ctx=>{
+ bot.action(/^recruit:cancel:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
   if(!active(d,Number(ctx.match[1]))||
@@ -358,7 +358,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   await ctx.answerCbQuery("募集の作成をキャンセルしました");
   const url=await verifiedPostingMenuReturnUrl(ctx.from.id);
   await ctx.editMessageText("募集の作成をキャンセルしました。今回の入力は破棄しました。"+
-   "\\n保存済みプロフィールや公開済み投稿には影響しません。",
+   "\n保存済みプロフィールや公開済み投稿には影響しません。",
    url?Markup.inlineKeyboard([[Markup.button.url("投稿メニューへ",url)]]):undefined);
  });
 }
