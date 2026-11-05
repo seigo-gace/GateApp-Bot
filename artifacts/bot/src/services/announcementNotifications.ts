@@ -16,7 +16,7 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
   cancelled:"❌ ROOM開催が中止されました。/myapplications または /myrooms で確認できます。",
   finished:"■ ROOMの終了が申告されました。",
   postponed:"⏸ ROOMの延期が申告されました。",
-  started:"▶ ROOMの開始が申告されました。",
+  started:"🔴 ROOMはLIVE中です。事前応募したROOMが始まりました。承認済みの場合は /joinrooms から参加できます。",
   prepared:"✅ ROOMホストの準備が完了しました。",
   scheduled:"📅 ROOMの開催予定が更新されました。",
   visibility_changed:"🔐 ROOMの参加方式が変更されました。/myrooms で確認できます。",
