@@ -219,12 +219,16 @@ export function likeItemRows(revision:number,category:number,page:number,tags:re
  const chunks: string[][]=[];
  for(let i=0;i<values.length;i+=3)chunks.push([...values.slice(i,i+3)]);
  const rows=selectionRows(chunks,selected,
-   v=>`pf:${purpose}:${revision}:tag:${category}:${c.items.indexOf(v)}`);
+   v=>`pf:${purpose}:${revision}:tag:${category}:${(c.items as readonly string[]).indexOf(v)}`);
  const total=Math.ceil(c.items.length/LIKE_PAGE_SIZE);
- if(total>1)rows.push([
-  {text:"◀ 前へ",callback_data:`pf:${purpose}:${revision}:page:${category}:${page-1}`},
-  {text:"次へ ▶",callback_data:`pf:${purpose}:${revision}:page:${category}:${page+1}`},
- ]);
+ if(total>1){
+  const navigation:{text:string;callback_data:string}[]=[];
+  if(page>0)navigation.push(
+    {text:"◀ 前へ",callback_data:`pf:${purpose}:${revision}:page:${category}:${page-1}`});
+  if(page+1<total)navigation.push(
+    {text:"次へ ▶",callback_data:`pf:${purpose}:${revision}:page:${category}:${page+1}`});
+  if(navigation.length)rows.push(navigation);
+ }
  rows.push([
   {text:"↩ 戻る",callback_data:`pf:${purpose}:${revision}:back`},
   {text:"この分類を解除",callback_data:`pf:${purpose}:${revision}:clear:${category}`},
