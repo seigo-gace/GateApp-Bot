@@ -3,6 +3,7 @@ import type { ProfileDraft, SavedProfile } from "../services/profileRepository.j
 import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
+import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {
   PROFILE_POSITIONS, parseProfileBasic, renderProfileBasicPreview,
 } from "../services/profileCore.js";
@@ -124,8 +125,25 @@ export function registerProfileHandlers(
   bot: Telegraf,
   repo: ProfileRepo = profileRepo,
   activeDmOwner:typeof currentDmTextOwner=currentDmTextOwner,
+  getPostingMenuUrl:typeof verifiedPostingMenuReturnUrl=verifiedPostingMenuReturnUrl,
 ): void {
   bot.command("profile", async ctx => startProfileEditor(ctx,repo));
+
+  /** Editing one Bot-owned screen, never a synthetic posting-menu URL. */
+  const returnToPostingMenu=async(ctx:Context):Promise<void>=>{
+    if(!ctx.from)return;
+    let url:string|null=null;
+    try { url=await getPostingMenuUrl(ctx.from.id); }
+    catch { console.warn("[PROFILE_POSTING_MENU_LOOKUP_FAILED]"); }
+    if(url){
+      await ctx.editMessageText("📝 投稿メニューへ戻ります。グループの固定メニューを開いてください。",
+        Markup.inlineKeyboard([[Markup.button.url("↩ 投稿メニューに戻る",url)]]));
+    }else{
+      await ctx.editMessageText(
+        "📝 投稿メニューに戻るには、元のグループの固定投稿メニューを開いてください。\\n"+
+        "このチャットの起点メニューが確認できないため、リンクは表示していません。");
+    }
+  };
 
   bot.action(/^pf:cancel:(\d+)$/, async (ctx) => {
     if (!canUseProfile(ctx)) return;
@@ -136,16 +154,7 @@ export function registerProfileHandlers(
       return;
     }
     await ctx.answerCbQuery("キャンセルしました");
-    const existing = await repo.getProfile(ctx.from.id);
-    if (existing) {
-      await ctx.editMessageText(renderProfileBasicPreview(existing, ctx.from.username!), {
-        parse_mode: "HTML",
-        ...Markup.inlineKeyboard([[Markup.button.callback("📝 基本情報を編集", "pf:edit:basic")]]),
-      });
-      return;
-    }
-    await ctx.editMessageText("🪪 プロフィールの入力をキャンセルしました。", 
-      Markup.inlineKeyboard([[Markup.button.callback("🪪 プロフ作成", "pf:restart")]]));
+    await returnToPostingMenu(ctx);
   });
 
   bot.action("pf:restart", async (ctx) => {
@@ -232,7 +241,15 @@ export function registerProfileHandlers(
       return;
     }
     if(action==="preview"){
-      await ctx.answerCbQuery("プレビューを表示しています");
+      await ctx.answerCbQuery();
+      await ctx.editMessageText(
+        "🪪 プロフィール公開前プレビュー（まだ非公開）\\n"+
+        renderProfileBasicPreview(draft.data as SavedProfile,ctx.from.username!)+
+        "\\n\\nこれは確認画面です。保存だけでは公開されません。",
+        {parse_mode:"HTML",...Markup.inlineKeyboard([
+          [Markup.button.callback("↩ プロフィール編集に戻る",
+            "pf:overview:"+draft.revision+":return")]
+        ])});
       return;
     }
     if(action==="save"){
@@ -247,10 +264,23 @@ export function registerProfileHandlers(
       const cancelled=await repo.discardDraft(ctx.from.id,draft.revision);
       if(!cancelled){await ctx.answerCbQuery("古い操作です");return;}
       await ctx.answerCbQuery("キャンセルしました");
-      await ctx.editMessageText("プロフィールの入力をキャンセルしました。投稿メニューへの復帰は公開メニュー接続後に有効になります。");
+      await returnToPostingMenu(ctx);
       return;
     }
     await ctx.answerCbQuery("この項目の設定画面は次に実装します。");
+  });
+
+  bot.action(/^pf:overview:(\\d+):return$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.revision!==revision||draft.step!=="preview"){
+      await ctx.answerCbQuery("この画面は古くなっています");
+      return;
+    }
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(overviewText(draft.data as SavedProfile,ctx.from.username!),
+      {parse_mode:"HTML",...overviewKeyboard(draft.revision)});
   });
 
   bot.action(/^pf:save:(\d+)$/, async (ctx) => {
