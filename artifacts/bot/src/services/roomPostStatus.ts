@@ -5,6 +5,7 @@
 import type {Telegram} from "telegraf";
 import {Markup} from "telegraf";
 import {pool} from "../db/index.js";
+import {roomJoinUrl} from "./roomJoinLinks.js";
 
 export type PublicRoomStatus="scheduled"|"prepared"|"started"|"postponed"|
  "cancelled"|"finished"|"visibility_changed";
@@ -67,19 +68,20 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  if(gate.rows.length!==1)throw new Error("ROOM_STATUS_FEATURES_NOT_VERIFIED");
  const c=await pool.connect();
  let item:null|{editId:number;chatId:number;messageId:number;
-  original:string;kind:PublicRoomStatus;buttons:Button[][]}=null;
+  original:string;kind:PublicRoomStatus;buttons:Button[][];joinToken:string|null}=null;
  try{
   await c.query("BEGIN");
   const result=await c.query(
-   `SELECT q.edit_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons
+   `SELECT q.edit_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,jl.token AS join_token
     FROM room_status_message_edits q
     JOIN room_source_events e ON e.event_id=q.room_event_id
     JOIN posting_deliveries d ON d.delivery_id=q.delivery_id
     JOIN posting_topics t ON t.topic_id=d.posting_topic_id
     JOIN announcement_posts a ON a.announcement_id::text=d.source_id
+    LEFT JOIN room_join_links jl ON jl.room_id=a.room_id
     WHERE q.state='pending' AND e.state='applied'
       AND d.status='sent' AND d.telegram_message_id IS NOT NULL
-      AND t.enabled=TRUE AND t.purpose='announcement'
+      AND t.enabled=TRUE AND t.purpose IN ('announcement','room')
       AND NOT EXISTS (
         SELECT 1 FROM room_status_message_edits prev
         JOIN room_source_events prev_event ON prev_event.event_id=prev.room_event_id
@@ -112,7 +114,8 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
   }
   item={editId,chatId,messageId,original:String(r.rendered_text),
    kind:r.kind as PublicRoomStatus,
-   buttons:verifyButtons(r.inline_buttons)};
+   buttons:verifyButtons(r.inline_buttons),
+   joinToken:typeof r.join_token==="string"?r.join_token:null};
   await c.query(
    `UPDATE room_status_message_edits SET state='sending',updated_at=NOW()
     WHERE edit_id=$1 AND state='pending'`,[editId]);
@@ -122,7 +125,10 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  if(!item)return null;
  try{
   const terminal=["finished","cancelled"].includes(item.kind);
-  const buttons=terminal?[]:item.kind==="started"?item.buttons:
+  if(item.kind==="started"&&!item.joinToken)throw new Error("ROOM_JOIN_TOKEN_MISSING");
+  const buttons=terminal?[]:item.kind==="started"?
+   [...item.buttons.filter(row=>row.every(button=>!/(参加する|ROOMへ参加|参加リンク)/u.test(button.text))),
+    [{text:"🎥 参加する",url:roomJoinUrl(item.joinToken!)}]]:
    item.buttons.filter(row=>row.every(button=>!/(参加する|ROOMへ参加|参加リンク)/u.test(button.text)));
   const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>
    Markup.button.url(b.text,b.url))));
