@@ -17,9 +17,9 @@ type ProfileRepo = {
   bindScreenMessage: typeof profileRepo.bindScreenMessage;
 };
 
-const selectPosition = (revision: number) => Markup.inlineKeyboard([
+const selectPosition = (revision: number, selected?: string) => Markup.inlineKeyboard([
   ...[[0, 1, 2], [3, 4, 5, 6]].map(indices => indices.map(i =>
-    Markup.button.callback(PROFILE_POSITIONS[i], `pf:pos:${revision}:${i}`))),
+    Markup.button.callback((selected===PROFILE_POSITIONS[i]?"✅ ":"")+PROFILE_POSITIONS[i], `pf:pos:${revision}:${i}`))),
   [Markup.button.callback("キャンセルして戻る", `pf:cancel:${revision}`)],
 ]);
 
@@ -197,7 +197,7 @@ export function registerProfileHandlers(
       age: existing.age,
       position: existing.position,
     });
-    await ctx.editMessageText(basicPrompt(existing.position), selectPosition(draft.revision));
+    await ctx.editMessageText(basicPrompt(existing.position), selectPosition(draft.revision,existing.position));
   });
 
   bot.action(/^pf:pos:(\d+):([0-6])$/, async (ctx) => {
@@ -211,11 +211,25 @@ export function registerProfileHandlers(
       return;
     }
     const position = PROFILE_POSITIONS[index];
+    // A complete required profile can change ONLY its position and return
+    // to overview without forcing the nickname/three numeric fields again.
+    const basicComplete=typeof draft.data.nickname==="string"&&
+      draft.data.nickname.trim().length>0&&
+      [draft.data.heightCm,draft.data.weightKg,draft.data.age].every(
+        n=>typeof n==="number"&&Number.isFinite(n));
+    if(draft.step==="awaiting_basic"&&basicComplete){
+      const updated=await repo.putDraft(ctx.from.id,"preview",
+        {...draft.data,position},draft.revision);
+      await ctx.answerCbQuery("ポジションを更新しました");
+      await ctx.editMessageText(overviewText(updated.data as SavedProfile,ctx.from.username!),
+        {parse_mode:"HTML",...overviewKeyboard(updated.revision)});
+      return;
+    }
     if (draft.step === "awaiting_basic") {
       const updated = await repo.putDraft(ctx.from.id, "awaiting_basic",
         {...draft.data, position}, draft.revision);
       await ctx.answerCbQuery("ポジションを選択しました");
-      await ctx.editMessageText(basicPrompt(position), selectPosition(updated.revision));
+      await ctx.editMessageText(basicPrompt(position), selectPosition(updated.revision,position));
       return;
     }
     const updated = await repo.putDraft(ctx.from.id, "preview",
@@ -237,7 +251,7 @@ export function registerProfileHandlers(
     if(action==="basic"){
       const updated=await repo.putDraft(ctx.from.id,"awaiting_basic",draft.data,draft.revision);
       await ctx.answerCbQuery();
-      await ctx.editMessageText(basicPrompt(draft.data.position),selectPosition(updated.revision));
+      await ctx.editMessageText(basicPrompt(draft.data.position),selectPosition(updated.revision,draft.data.position));
       return;
     }
     if(action==="preview"){
@@ -328,7 +342,7 @@ export function registerProfileHandlers(
       } else {
         await updateWizardScreen(ctx, repo, updated,
           "✅ 基本情報を受け付けました。ポジションを選択してください。" + deletionWarning,
-          selectPosition(updated.revision));
+          selectPosition(updated.revision,updated.data.position));
       }
     } catch (err) {
       if (err instanceof Error && ![
@@ -343,7 +357,7 @@ export function registerProfileHandlers(
         "⚠️ 入力を確認してください。\n" +
         (err instanceof Error ? err.message : "入力内容が正しくありません") +
         "\n\n内容を修正して、もう一度テキストを送信してください。" + deletionWarning,
-        selectPosition(draft.revision));
+        selectPosition(draft.revision,draft.data.position));
     }
   });
 }
