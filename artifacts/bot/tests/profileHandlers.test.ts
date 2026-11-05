@@ -54,7 +54,7 @@ test("real user profile DM: input, position, private save", async () => {
   assert.equal(f.draft.step,"awaiting_position");
   const choose=f.ctx();
   choose.match=["","2","1"];
-  await f.handlers.get("action:^pf:pos:(\\d+):([0-4])$")!(choose);
+  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.position,"タチリバ");
   const save=f.ctx();
