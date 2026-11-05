@@ -206,6 +206,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(owner!=="room"&&owner!=="announcement"&&owner!=="link")return next();
   const current=await getWaitingDraft(ctx.from.id);
   if(!current||current.module!==owner)return next();
+  const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
+  const warning=deleted?"":"\n⚠️ 入力メッセージを削除できませんでした。手動で削除してください。";
+  const render=(d:EditorDraft,text:string,keyboard?:WizardKeyboard)=>
+    showPostScreen(ctx.telegram,ctx.from.id,d,text+warning,keyboard);
   const input=ctx.message.text.trim();
   try{
    let data:Record<string,unknown>;
@@ -215,18 +219,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
     validateAnnouncement({ownerId:ctx.from.id,
       kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
-    await ctx.reply("プレビュー（まだ投稿していません）\n"+preview(current.module,updated));
     await destinationMenu(ctx,current.module,updated.revision);
     return;
    }
    if(current.module==="link"){
     const parsed=parseLinkInput(input);
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
-      {...parsed,columns:1});
-    await ctx.reply("プレビュー（まだ投稿していません）\n"+preview("link",updated));
-    await ctx.reply("ボタンの表示列数を選択してください。",
+      {...current.data,...parsed,columns:1});
+    await render(updated,"公開前プレビュー\n"+preview("link",updated)+
+      "\n\nボタンの表示列数を選択してください。",
       Markup.inlineKeyboard([[1,2,3].map(i=>Markup.button.callback(
-        i+"列",`post:linkcols:${updated.revision}:${i}`))]));
+        i+"列","post:linkcols:"+updated.revision+":"+i))]));
     return;
    }
    if(current.module==="room"){
@@ -236,36 +239,38 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const externalUrl=parts.length===2?assertHttpsMeetingUrl(parts[1]!):undefined;
     validateRoom({ownerId:ctx.from.id,name,mode:externalUrl?"external":"jitsi",
      externalUrl,status:"ready"});
-    data={title:name,externalUrl:externalUrl||null};
+    data={...current.data,title:name,externalUrl:externalUrl||null};
    }else{
     if(!current.data.kind)throw new Error("投稿種別が未選択です。");
     const kind=current.data.kind as AnnouncementKind;
     if(kind==="preview"){
-     await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_datetime",
+     const next=await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_datetime",
        {...current.data,text:input});
-     await ctx.reply("開催日時を1通で入力してください（日本時間）。例：2026/11/20 20:00");
+     await render(next,"開催日時を1通で入力してください（日本時間）。例：2026/11/20 20:00");
      return;
     }
     if(kind==="recruitment"){
      const next=await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_tags",
        {...current.data,text:input,purposeCodes:[],placeCodes:[]});
-     await ctx.reply("🎯 募集目的と📍場所/移動を選択してください。",tagPanel(next));
+     await render(next,"🎯 募集目的と📍場所/移動を選択してください。",tagPanel(next));
      return;
     }
     validateAnnouncement({ownerId:ctx.from.id,kind,text:input});
     data={...current.data,text:input};
    }
    const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
-   await ctx.reply("プレビュー（まだ投稿していません）\n"+preview(current.module,updated));
    if(current.module==="room"){
-    await ctx.reply("ROOMはまだ公開されていません。内容を確認して非公開保存してください。",
+    await render(updated,"プレビュー（まだ投稿していません）\n"+preview(current.module,updated)+
+      "\n\nROOMはまだ公開されていません。内容を確認して非公開保存してください。",
       Markup.inlineKeyboard([[Markup.button.callback("✅ 非公開ROOMとして保存",
         "room:save:"+updated.revision)]]));
    }else{
     await destinationMenu(ctx,current.module,updated.revision);
    }
   }catch(e){
-   await ctx.reply(e instanceof Error?e.message:"入力内容を確認してください。");
+   if(e instanceof Error&&e.message==="POST_DRAFT_STALE")throw e;
+   await render(current,(e instanceof Error?e.message:"入力内容を確認してください。")+
+     "\n内容を修正して、もう一度送信してください。");
   }
  });
  bot.action(/^room:save:(\d+)$/,async ctx=>{
