@@ -41,6 +41,10 @@ async function main():Promise<void>{
  await runMigrations();
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  if(ctx.startPayload?.startsWith("gate_")){
+   await startGayBbsAdmission(ctx,ctx.startPayload);
+   return;
+  }
   if(parseProfileViewerPayload(ctx.startPayload||"")){
    await startProfileViewer(ctx,ctx.startPayload);
    return;
