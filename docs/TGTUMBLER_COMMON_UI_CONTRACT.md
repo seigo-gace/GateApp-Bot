@@ -87,3 +87,6 @@ Current code fixes the row layout and initial actions. Cancel-to-posting-menu fu
 - 戻る経路：配下エリア→13ブロック→②親→画面A。選択状態を下書きに保持し、同一Botメッセージの編集・保存・再開・revisionによる古いボタン拒否に接続。
 - エリアは表示上の地域IDであり、Telegram Topic ID/message ID/URLとは別に扱う。実Topic URLへ自動変換しない。端末実機テスト未完了のまま「本番公開済み」と宣言しない。
 - 実装: src/services/profileArea.ts / src/bot/profileHandlers.ts / src/services/profileRepository.ts。テスト: tests/profileArea.test.ts / tests/profileHandlers.test.ts。プロフィール内エリア選択だけで、エリアボード/Topic運用機能を拡張しない。
+
+## プロフィール③｜媒体本体をDBに保存しない
+Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送る。画面のボタンは「↩ 戻る」だけ。媒体本体はDBに保存せず、file_idなどの参照メタデータとPR本文のみ保存する。登録・保存の実装とCIと実機検証は区別する。個別削除操作は今後の確定対象。
