@@ -9,6 +9,8 @@ import * as questionRepo from "../../repositories/questionRepo.js";
 import * as ruleRepo from "../../repositories/ruleRepo.js";
 import * as challengeRepo from "../../repositories/challengeRepo.js";
 import * as blacklistRepo from "../../repositories/blacklistRepo.js";
+import * as approvalRepo from "../../repositories/approvalRepo.js";
+import {sendLog} from "../../services/loggingService.js";
 import {generateChallenge, type ChallengeQuestion} from "../../services/challengeService.js";
 import {showWizardScreen} from "../../services/dmWizardScreen.js";
 import {pool} from "../../db/index.js";
@@ -89,6 +91,19 @@ async function denyScreen(telegram:Telegram,a:GateAttempt,reason:string):Promise
   `今回は参加できません。理由：${reason}\n必要な場合は、条件を確認して改めて申請してください。`);
  await rememberScreen(a,msg.messageId);
 }
+async function emitAdmissionLog(telegram:Telegram,userId:number,cfg:GateConfig,
+ type:"approved"|"rejected"|"bot_failed",reason?:string):Promise<void>{
+ try{
+  const p=await approvalRepo.getLatestApproval(cfg.target.target_id,userId);
+  await sendLog({telegram} as unknown as Telegraf,{
+   type,targetTitle:cfg.target.title,userId,
+   displayName:p?.display_name??String(userId),username:p?.username??undefined,
+   isPremium:p?.is_premium??false,reason,
+   logChatId:cfg.target.log_chat_id?Number(cfg.target.log_chat_id):null,
+   logThreadId:cfg.target.log_thread_id?Number(cfg.target.log_thread_id):null,
+  });
+ }catch{console.warn("[GAYBBS_GATE] Admission log could not be delivered");}
+}
 async function issueInvite(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void>{
  if(a.step!=="issuing" || !await consentsComplete(a))throw new Error("GATE_CONSENTS_INCOMPLETE");
  // Never use member_limit with creates_join_request. Only the verified applicant
@@ -107,6 +122,7 @@ async function issueInvite(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promi
   }
  }
  if(!saved)throw new Error("GATE_INVITE_PERSIST_FAILED");
+ await emitAdmissionLog(telegram,Number(a.tg_user_id),cfg,"approved");
  const next=await readAttempt(Number(a.tg_user_id));
  if(next)await show(telegram,next,cfg);
 }
@@ -128,7 +144,11 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
   await ctx.reply("参加できません。");return;
  }
  try{
-  const result=await openAttempt(ctx.from.id,target.target_id,token());
+  const result=await openAttempt(ctx.from.id,target.target_id,token(),{
+   username:ctx.from.username,
+   displayName:[ctx.from.first_name,ctx.from.last_name].filter(Boolean).join(" "),
+   isPremium:(ctx.from as {is_premium?:boolean}).is_premium??false,
+  });
   if(result.attempt.step==="issuing"){
    await issueInvite(ctx.telegram,result.attempt,cfg);return;
   }
@@ -157,6 +177,7 @@ async function onAction(ctx:Context,step:string,choice:string,stepToken:string):
   const changed=await transition({attempt:a,messageId,next:"rejected",newToken:token(),consent});
   if(!changed){await ctx.answerCbQuery("処理済みの操作です。");return}
   await ctx.answerCbQuery("参加申請を終了しました");
+  await emitAdmissionLog(ctx.telegram,ctx.from!.id,cfg,step==="challenge"?"bot_failed":"rejected",reason);
   const updated=await readAttempt(ctx.from!.id);
   if(updated)await denyScreen(ctx.telegram,updated,reason);
  };
