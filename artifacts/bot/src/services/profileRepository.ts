@@ -2,12 +2,12 @@ import { pool } from "../db/index.js";
 import type { ProfileBasicDraft, ProfilePosition } from "./profileCore.js";
 import {validateAppearance,type AppearanceValues} from "./profileAppearance.js";
 import {validateProfileArea,type ProfileAreaValues} from "./profileArea.js";
-import {validateProfileMedia,type ProfileMediaItem} from "./profileMedia.js";
+import {validateProfileMedia,numberProfileMedia,type ProfileMediaItem} from "./profileMedia.js";
 import {storeProfilePr,readProfilePr} from "./profilePrStorage.js";
 
 export type ProfileDraft = {
   step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "cancelled";
-  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[] };
+  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number };
   revision: number;
 };
 export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[]} & {
@@ -68,6 +68,7 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
   // No new PR body enters the PostgreSQL JSON draft. The text is stored
   // in a separately mounted, durable, verified object store first.
   const serialized={...data};
+  if(serialized.media)serialized.media=numberProfileMedia(serialized.media);
   if(typeof serialized.pr==="string"&&serialized.pr.length){
     serialized.prRef=await storeProfilePr(id,serialized.pr);
   }else if(serialized.pr===null){
@@ -95,9 +96,9 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
   );
   if (!r.rows.length) return null;
   const p = r.rows[0];
-  const mediaRows=await pool.query("SELECT id,file_id,media_type,source_message_id,media_group_id FROM profile_media WHERE owner_user_id=$1 ORDER BY id",[id]);
-  const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:number;file_id:string;media_type:"photo"|"video";source_message_id:number|null;media_group_id:string|null})=>({
-    type:m.media_type,fileId:m.file_id,sourceMessageId:m.source_message_id??m.id+2147483647,
+  const mediaRows=await pool.query("SELECT id,item_id,file_id,media_type,source_message_id,media_group_id FROM profile_media WHERE owner_user_id=$1 ORDER BY id",[id]);
+  const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:number;item_id:number|null;file_id:string;media_type:"photo"|"video";source_message_id:number|null;media_group_id:string|null})=>({
+    type:m.media_type,itemId:m.item_id??m.id,fileId:m.file_id,sourceMessageId:m.source_message_id??m.id+2147483647,
     ...(m.media_group_id?{mediaGroupId:m.media_group_id}:{}),
   }));
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
@@ -120,6 +121,7 @@ export async function savePrivateDraft(id: number, revision: number,
     validateAppearance(p);
     validateProfileArea(p);
     validateProfileMedia(p.media);
+    const numberedMedia=numberProfileMedia(p.media);
     const saved = await client.query(
       `INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,$12,'private')
@@ -137,16 +139,16 @@ export async function savePrivateDraft(id: number, revision: number,
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
     if(p.media!==undefined){
       await client.query("DELETE FROM profile_media WHERE owner_user_id=$1",[id]);
-      for(const item of p.media){
-        await client.query("INSERT INTO profile_media (owner_user_id,file_id,media_type,source_message_id,media_group_id,public_allowed) VALUES ($1,$2,$3,$4,$5,FALSE)",
-         [id,item.fileId,item.type,item.sourceMessageId,item.mediaGroupId??null]);
+      for(const item of numberedMedia){
+        await client.query("INSERT INTO profile_media (owner_user_id,item_id,file_id,media_type,source_message_id,media_group_id,public_allowed) VALUES ($1,$2,$3,$4,$5,$6,FALSE)",
+         [id,item.itemId,item.fileId,item.type,item.sourceMessageId,item.mediaGroupId??null]);
       }
     }
     await client.query("UPDATE profile_drafts SET step='cancelled',data=jsonb_build_object('screenMessageId',data->'screenMessageId'),revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
-      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:p.media,status:x.status,revision:x.revision};
+      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");
     throw e;
