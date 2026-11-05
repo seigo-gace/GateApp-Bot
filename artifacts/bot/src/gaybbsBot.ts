@@ -91,7 +91,7 @@ async function main():Promise<void>{
  });
  await bot.launch({
   dropPendingUpdates:false,
-  allowedUpdates:["message","callback_query"],
+  allowedUpdates:["message","callback_query","chat_join_request"],
  });
  console.log("GAYBBS_BOT_READY bot_id="+me.id);
  const stopWorkers=startGayBbsWorkers(bot.telegram);
