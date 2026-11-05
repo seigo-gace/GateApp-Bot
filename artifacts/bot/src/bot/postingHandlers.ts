@@ -2,6 +2,7 @@ import { Markup, type Telegraf, type Telegram } from "telegraf";
 import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
 import {makeProfileViewerButtons} from "../services/profilePublicView.js";
+import {revisePublishedProfile} from "../services/profilePublicationUpdate.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
@@ -354,6 +355,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
     if(!p||p.revision!==revision)throw new Error("プロフィールが更新されています。");
+    // Existing destination: update the same Telegram message instead of
+    // creating a duplicate. A stale or ambiguous state fails closed.
+    const prior=await revisePublishedProfile(ctx.telegram,ctx.from.id,p,topicId);
+    if(prior){
+     await ctx.editMessageText((prior.updated?"✅ 公開元の投稿を更新しました。":"✅ この内容は公開元に反映済みです。")+
+      "\\n投稿先："+prior.chatId+" / Topic "+prior.threadId+"\\n投稿ID："+prior.messageId);
+     return;
+    }
     sourceId=String(ctx.from.id);text=renderPublicProfile(p);
     buttons=await makeProfileViewerButtons(ctx.from.id,revision,topicId);
    }else{
