@@ -359,3 +359,38 @@ test("saved profile reopens using the same last Bot message instead of stacking 
  assert.equal(f.sent.at(-1)[2],initialId);
  assert.equal(f.profile.status,"private");
 });
+
+test("private save retains the agreed eight buttons and rejects the previous revision",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"3"]);
+ const oldRevision=String(f.draft.revision);
+ await f.action(overviewAction,[oldRevision,"save"]);
+ assert.equal(f.profile.status,"private");
+ assert.equal(f.draft.step,"preview");
+ assert.notEqual(String(f.draft.revision),oldRevision);
+ const rendered=f.sent.at(-1);
+ assert.equal(rendered[0],"edit");
+ assert.match(rendered[1],/非公開保存/);
+ assert.deepEqual(rendered[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),layout);
+ await f.action(overviewAction,[oldRevision,"cancel"]);
+ assert.equal(f.draft.step,"preview");
+ assert.ok(f.profile);
+});
+test("saved profile keeps all overview buttons after reopening",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"3"]);
+ await f.action(overviewAction,[String(f.draft.revision),"save"]);
+ const savedId=f.draft.data.screenMessageId;
+ const previous=f.draft.revision;
+ await f.start();
+ assert.equal(f.draft.revision,previous);
+ assert.equal(f.draft.data.screenMessageId,savedId);
+ assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+ const rendered=f.sent.at(-1);
+ assert.equal(rendered[0],"screen-edit");
+ assert.deepEqual(rendered[5].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),layout);
+});
