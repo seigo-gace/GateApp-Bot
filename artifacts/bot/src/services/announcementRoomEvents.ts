@@ -40,7 +40,11 @@ export async function projectNextRoomEvent():Promise<{
   for(const a of notices.rows){
    const id=Number(a.announcement_id);
    // Keep terminal announcements terminal: never resurrect closed postings.
-   if(["cancelled","finished","closed","filled"].includes(a.status)){
+   // A filled recruitment still represents an active ROOM and must
+   // receive LIVE/end updates. Closed recruitment receives a final ROOM
+   // terminal marker, but must not be reopened by an intermediate event.
+   if(["cancelled","finished"].includes(a.status)||
+      (a.status==="closed"&&!projected.close)){
      await client.query(
       `INSERT INTO announcement_room_dispatches
          (announcement_id,room_event_id,source_revision,state)
