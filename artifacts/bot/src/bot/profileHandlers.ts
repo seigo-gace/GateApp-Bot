@@ -362,15 +362,25 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("古い画面です。最新の画面から操作してください。");
       return;
     }
-    const options=kind==="h"?HAIR_CHOICES:BODY_CHOICES;
-    const clicked=options[index];
-    if(!clicked){await ctx.answerCbQuery("選択肢がありません");return;}
-    const current=kind==="h"?(draft.data.hair?[draft.data.hair]:[])
-       :(draft.data.body?[draft.data.body]:[]);
-    const next=nextSelection("single-optional",current,clicked,options)[0]??null;
-    const updated=await repo.putDraft(ctx.from.id,"appearance",
-       {...draft.data,...(kind==="h"?{hair:next}:{body:next})},draft.revision);
-    await ctx.answerCbQuery(next?"選択しました":"選択を解除しました");
+    let changed:ProfileDraft["data"];
+    let chosen:boolean;
+    if(kind==="h"){
+      const clicked=HAIR_CHOICES[index];
+      if(!clicked){await ctx.answerCbQuery("選択肢がありません");return;}
+      const hair=nextSelection("single-optional",
+        draft.data.hair?[draft.data.hair]:[],clicked,HAIR_CHOICES)[0]??null;
+      changed={...draft.data,hair};
+      chosen=!!hair;
+    }else{
+      const clicked=BODY_CHOICES[index];
+      if(!clicked){await ctx.answerCbQuery("選択肢がありません");return;}
+      const body=nextSelection("single-optional",
+        draft.data.body?[draft.data.body]:[],clicked,BODY_CHOICES)[0]??null;
+      changed={...draft.data,body};
+      chosen=!!body;
+    }
+    const updated=await repo.putDraft(ctx.from.id,"appearance",changed,draft.revision);
+    await ctx.answerCbQuery(chosen?"選択しました":"選択を解除しました");
     await ctx.editMessageText(appearanceText(updated.data),
        appearanceKeyboard(updated.revision,updated.data));
   });
