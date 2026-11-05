@@ -11,7 +11,7 @@ export function shouldPurgeAnnouncement(
  status:string,roomLinked:boolean,expiresAt:Date|null,now:Date
 ):boolean{
  if(roomLinked)return false;
- if(["closed","cancelled","finished","filled"].includes(status))return true;
+ if(["closed","cancelled","finished"].includes(status))return true;
  return expiresAt instanceof Date&&Number.isFinite(expiresAt.getTime())&&
    expiresAt.getTime()<=now.getTime();
 }
@@ -30,18 +30,13 @@ export async function purgeDisposableAnnouncements(limit=20):Promise<number>{
       event_at,deadline_at,scheduled_at,publish_at
       FROM announcement_posts a
      WHERE a.room_id IS NULL
-       AND (a.status IN ('closed','cancelled','finished','filled')
+       AND (a.status IN ('closed','cancelled','finished')
          OR (a.expires_at IS NOT NULL AND a.expires_at<=NOW()))
        AND NOT EXISTS (
          SELECT 1 FROM posting_deliveries d
          WHERE d.source_type='announcement'
            AND d.source_id=a.announcement_id::text
            AND d.status NOT IN ('archived','deleted')
-       )
-       AND NOT EXISTS (
-         SELECT 1 FROM announcement_notifications n
-         WHERE n.announcement_id=a.announcement_id
-           AND n.state IN ('pending','sending','needs_reconcile')
        )
      ORDER BY announcement_id
      LIMIT $1 FOR UPDATE SKIP LOCKED`,[limit]);
