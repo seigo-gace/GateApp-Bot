@@ -3,6 +3,7 @@ import type { ProfileDraft, SavedProfile } from "../services/profileRepository.j
 import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
+import {nextSelection,selectionRows} from "../services/inlineSelection.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {
   PROFILE_POSITIONS, parseProfileBasic, renderProfileBasicPreview,
@@ -18,8 +19,11 @@ type ProfileRepo = {
 };
 
 const selectPosition = (revision: number, selected?: string) => Markup.inlineKeyboard([
-  ...[[0, 1, 2], [3, 4, 5, 6]].map(indices => indices.map(i =>
-    Markup.button.callback((selected===PROFILE_POSITIONS[i]?"✅ ":"")+PROFILE_POSITIONS[i], `pf:pos:${revision}:${i}`))),
+  ...selectionRows(
+    [[...PROFILE_POSITIONS.slice(0,3)],[...PROFILE_POSITIONS.slice(3)]],
+    selected?[selected]:[],
+    value=>`pf:pos:${revision}:${PROFILE_POSITIONS.indexOf(value)}`,
+  ).map(row=>row.map(button=>Markup.button.callback(button.text,button.callback_data))),
   [Markup.button.callback("キャンセルして戻る", `pf:cancel:${revision}`)],
 ]);
 
@@ -210,7 +214,9 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("前の操作です。プロフィールを開き直してください。");
       return;
     }
-    const position = PROFILE_POSITIONS[index];
+    const position = nextSelection("single-required",
+      draft.data.position?[draft.data.position]:[],PROFILE_POSITIONS[index],PROFILE_POSITIONS)[0]!;
+
     // A complete required profile can change ONLY its position and return
     // to overview without forcing the nickname/three numeric fields again.
     const basicComplete=typeof draft.data.nickname==="string"&&
