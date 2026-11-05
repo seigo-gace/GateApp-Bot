@@ -619,7 +619,19 @@ export function registerProfileHandlers(
         ctx.message.text.startsWith("/")) return next();
     if(await activeDmOwner(ctx.from.id)!=="profile")return next();
     const draft = await repo.getDraft(ctx.from.id);
-    if (!draft || draft.step !== "awaiting_basic") return next();
+    if (!draft)return next();
+    if(draft.step==="media"){
+      const value=ctx.message.text;
+      if(value.length>10000){
+        await updateWizardScreen(ctx,repo,draft,"⚠️ 自己PRは10000文字以内で送信してください。",mediaKeyboard(draft.revision));
+        return;
+      }
+      const updated=await repo.putDraft(ctx.from.id,"media",{...draft.data,pr:value},draft.revision);
+      try{await ctx.deleteMessage();}catch{console.warn("[PROFILE_PR_DELETE_FAILED]");}
+      await updateWizardScreen(ctx,repo,updated,mediaText(updated.data),mediaKeyboard(updated.revision));
+      return;
+    }
+    if(draft.step!=="awaiting_basic")return next();
     // Delete each user-sent input (valid or invalid) from the private chat.
     // Telegram may reject deletion (e.g. a message older than 48 hours).
     let removed = false;
