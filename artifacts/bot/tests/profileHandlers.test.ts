@@ -77,7 +77,7 @@ function fixture() {
     get saves() {return saves;},
     get discards() {return discards;}};
 }
-const positions = [["タチ","タチリバ","リバ"],["ウケリバ","ウケ","S","M"],["キャンセルして戻る"]];
+const positions = [["▫️ タチ","▫️ タチリバ","▫️ リバ"],["▫️ ウケリバ","▫️ ウケ","▫️ S","▫️ M"],["キャンセルして戻る"]];
 const positionAction = String.raw`^pf:pos:(\d+):([0-6])$`;
 const cancelAction = String.raw`^pf:cancel:(\d+)$`;
 const saveAction = String.raw`^pf:save:(\d+)$`;
@@ -126,7 +126,7 @@ test("position first then text: selection persists and preview contains selected
   assert.equal(last[0],"edit");
   assert.ok(String(last[1]).includes("選択中：S"));
   assert.deepEqual(last[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),
-    [positions[0],["ウケリバ","ウケ","✅ S","M"],positions[2]]);
+    [positions[0],["▫️ ウケリバ","▫️ ウケ","✅ S","▫️ M"],positions[2]]);
   await f.send("ゼロ\n175#80#40");
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.position,"S");
@@ -145,7 +145,7 @@ test("invalid numeric text can be retried and keeps position already chosen", as
   const err=f.sent.at(-1);
   assert.ok(err[4].includes("もう一度テキストを送信"));
   assert.deepEqual(err[5].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),
-    [positions[0],["ウケリバ","ウケ","✅ S","M"],positions[2]]);
+    [positions[0],["▫️ ウケリバ","▫️ ウケ","✅ S","▫️ M"],positions[2]]);
   await f.send("ゼロ\n175-80-18");
   assert.equal(f.draft.step,"preview");
   assert.equal(f.draft.data.age,18);
