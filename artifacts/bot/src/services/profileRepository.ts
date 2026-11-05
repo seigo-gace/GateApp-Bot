@@ -22,7 +22,7 @@ export async function discardDraft(id: number, expectedRevision: number): Promis
   // Keep a versioned tombstone. Deleting the row would reset revision to 1
   // on restart, allowing a stale mobile callback to cancel the new draft.
   const r = await pool.query(
-    "UPDATE profile_drafts SET step='cancelled',data='{}'::jsonb,revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1 AND revision=$2 AND step <> 'cancelled' RETURNING owner_user_id",
+    "UPDATE profile_drafts SET step='cancelled',data=jsonb_build_object('screenMessageId',data->'screenMessageId'),revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1 AND revision=$2 AND step <> 'cancelled' RETURNING owner_user_id",
     [ownerId(id), expectedRevision],
   );
   return r.rows.length === 1;
@@ -37,6 +37,14 @@ export async function bindScreenMessage(id: number, revision: number, messageId:
     [id, revision, messageId]
   );
   if (!r.rows.length) throw new Error("PROFILE_DRAFT_STALE");
+}
+/** Only the prior Bot screen ID survives completion/cancel, never profile text. */
+export async function getLastScreenMessageId(id:number):Promise<number|null>{
+ const r=await pool.query(
+  "SELECT data->>'screenMessageId' AS screen_id FROM profile_drafts WHERE owner_user_id=$1",
+  [ownerId(id)]);
+ const value=Number(r.rows[0]?.screen_id);
+ return Number.isSafeInteger(value)&&value>0?value:null;
 }
 export async function getDraft(id: number): Promise<ProfileDraft | null> {
   const r = await pool.query(
@@ -89,7 +97,7 @@ export async function savePrivateDraft(id: number, revision: number,
       [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position]
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
-    await client.query("UPDATE profile_drafts SET step='cancelled',data='{}'::jsonb,revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
+    await client.query("UPDATE profile_drafts SET step='cancelled',data=jsonb_build_object('screenMessageId',data->'screenMessageId'),revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
