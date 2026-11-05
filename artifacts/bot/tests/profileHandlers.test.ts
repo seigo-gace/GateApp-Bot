@@ -208,3 +208,37 @@ test("delete API failure does not claim cleanup and shows manual-delete warning"
   const edit=f.sent.find(x=>x[0]==="screen-edit");
   assert.ok(edit[4].includes("手動で削除してください"));
 });
+
+const overviewAction=String.raw`^pf:overview:(\\d+):(basic|appearance|media|like|love|preview|save|cancel)$`;
+const layout=[["基本情報","容姿/エリア","🖼️画像🎬動画/自己PR"],["#Like","#Love","プレビュー"],["保存","キャンセル"]];
+
+test("profile ① completes into approved overview A 3/3/2 within same Bot message",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"2"]);
+ assert.equal(f.draft.step,"preview");
+ const edit=f.sent.at(-1);
+ assert.equal(edit[0],"edit");
+ assert.deepEqual(edit[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),layout);
+ assert.ok(edit[2].reply_markup.inline_keyboard.flat().every((b:any)=>b.callback_data));
+ assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+});
+
+test("overview A has safe basic edit, pending sections do not create posts, save private",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"appearance"]);
+ assert.equal(f.draft.step,"preview");
+ assert.equal(f.sent.at(-1)[0],"answer");
+ await f.action(overviewAction,[String(f.draft.revision),"basic"]);
+ assert.equal(f.draft.step,"awaiting_basic");
+ await f.send("ゼロ\n175 80 41");
+ assert.equal(f.draft.step,"preview");
+ await f.action(overviewAction,[String(f.draft.revision),"save"]);
+ assert.equal(f.saves,1);
+ assert.equal(f.profile.status,"private");
+ assert.equal(f.profile.age,41);
+});
