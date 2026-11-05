@@ -105,6 +105,20 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number){
+ const previous=await getDraft(userId,"announcement");
+ if(previous?.data.recruitmentFlow==="compact"){
+  if(previous.step==="preview"){
+   await showPreview(telegram,userId,previous);return;
+  }
+  if(["awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)){
+   const restored=await updateDraft(userId,"announcement",previous.revision,"preview",
+    {...previous.data,recruitPanel:null,editField:null});
+   await showPreview(telegram,userId,restored);return;
+  }
+  if(previous.step==="awaiting_text"){
+   await show(telegram,userId,previous,inputInstructions(previous.data.mode==="linked"));return;
+  }
+ }
  const profile=await getProfile(userId);
  const d=await beginDraft(userId,"announcement","awaiting_text",{
   kind:"recruitment",recruitmentFlow:"compact",
