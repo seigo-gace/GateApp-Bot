@@ -18,6 +18,8 @@ export const approvals = pgTable("approvals", {
   status: text("status").notNull().default("pending"), // pending | approved | rejected | kicked
   rejected_reason: text("rejected_reason"),
   approved_at: timestamp("approved_at"),
+  attempt_id: text("attempt_id"),
+  document_version: text("document_version"),
   created_at: timestamp("created_at").notNull().defaultNow(),
   updated_at: timestamp("updated_at").notNull().defaultNow(),
 });
