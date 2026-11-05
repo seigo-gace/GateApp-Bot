@@ -273,13 +273,13 @@ export async function claimProfileRevisionUpdate(
  if(![revision,threadId].every(x=>Number.isSafeInteger(x)&&x>0)||
     !Number.isSafeInteger(chatId)||chatId>=0)throw Error("PROFILE_PUBLICATION_INVALID");
  const r=await pool.query(
-  `UPDATE profile_publications SET status='sync_error',pending_revision=$5,
+  `UPDATE profile_publications SET status='sync_error',pending_revision=$4,
    last_error='RECONCILE_REQUIRED_IF_AMBIGUOUS',updated_at=NOW()
    WHERE owner_user_id=$1 AND chat_id=$2 AND thread_id=$3 AND status='published'
-     AND synced_revision<$5 AND message_id IS NOT NULL
-     AND EXISTS(SELECT 1 FROM profiles WHERE owner_user_id=$1 AND revision=$5)
+     AND synced_revision<$4 AND message_id IS NOT NULL
+     AND EXISTS(SELECT 1 FROM profiles WHERE owner_user_id=$1 AND revision=$4)
    RETURNING message_id`,
-  [id,chatId,threadId,0,revision]);
+  [id,chatId,threadId,revision]);
  if(r.rows.length!==1)throw Error("PROFILE_PUBLICATION_UPDATE_NEEDS_RECONCILE");
  return Number(r.rows[0].message_id);
 }
