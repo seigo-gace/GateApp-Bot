@@ -567,3 +567,30 @@ test("selected region is restored after leaving and reopening area wizard",async
  assert.equal(f.profile.region,"東京");
  assert.equal(f.profile.area,"新宿");
 });
+
+test("③ one Back button accepts PR and Telegram-only photo/video file refs",async()=>{
+ const f=fixture();
+ await f.start();
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"media"]);
+ assert.equal(f.draft.step,"media");
+ assert.deepEqual(f.sent.at(-1)[2].reply_markup.inline_keyboard.map((row:any[])=>row.map((b:any)=>b.text)),[["↩ 戻る"]]);
+ await f.send("自由な自己紹介");
+ assert.equal(f.draft.data.pr,"自由な自己紹介");
+ const photo=f.ctx();
+ photo.message={message_id:500,photo:[{file_id:"telegram-photo-ref"}]} as any;
+ await f.handlers.get("on:photo")!(photo,async()=>{throw Error("photo leaked");});
+ const video=f.ctx();
+ video.message={message_id:501,video:{file_id:"telegram-video-ref"}} as any;
+ await f.handlers.get("on:video")!(video,async()=>{throw Error("video leaked");});
+ assert.deepEqual(f.draft.data.media.map((x:any)=>[x.type,x.fileId,x.sourceMessageId]),[
+  ["photo","telegram-photo-ref",500],["video","telegram-video-ref",501],
+ ]);
+ assert.equal(f.sent.filter((x:any)=>x[0]==="reply").length,1);
+ await f.action(String.raw`^pf:media:(\d+):back$`,[String(f.draft.revision)]);
+ assert.equal(f.draft.step,"preview");
+ await f.action(overviewAction,[String(f.draft.revision),"save"]);
+ assert.equal(f.profile.pr,"自由な自己紹介");
+ assert.equal(f.profile.media.length,2);
+});
