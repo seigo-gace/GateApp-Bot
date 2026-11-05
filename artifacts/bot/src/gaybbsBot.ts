@@ -50,7 +50,7 @@ async function main():Promise<void>{
    await startApplicationEditor(ctx,ctx.startPayload);
    return;
   }
-  if(ctx.startPayload?.startsWith("m_")){
+  if(ctx.startPayload && /^(?:m|r)_/.test(ctx.startPayload)){
    try{
     const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
     // N14 requires the Topic menu button itself to open the shared DM editor,
