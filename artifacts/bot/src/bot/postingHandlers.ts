@@ -332,11 +332,24 @@ export function registerPostingHandlers(bot:Telegraf):void{
    let data:Record<string,unknown>;
    if(current.step==="awaiting_datetime"){
     const date=parseJstDateTime(input);
+    if(current.module==="room"){
+     const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
+      {...current.data,startAt:date.toISOString()});
+     await roomBoardMenu(ctx.telegram,ctx.from.id,updated);
+     return;
+    }
     data={...current.data,eventAt:date.toISOString()};
     validateAnnouncement({ownerId:ctx.from.id,
       kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
     await destinationMenu(ctx,current.module,updated.revision);
+    return;
+   }
+   if(current.module==="room"&&current.step==="awaiting_room_url"){
+    const externalUrl=assertHttpsMeetingUrl(input);
+    const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
+     {...current.data,externalUrl});
+    await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
     return;
    }
    if(current.module==="link"){
@@ -350,13 +363,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(current.module==="room"){
-    const parts=input.split(" | ");
-    if(parts.length>2)throw new Error("ROOM名とURLは「 | 」で区切ってください。");
-    const name=parts[0]?.trim()||"";
-    const externalUrl=parts.length===2?assertHttpsMeetingUrl(parts[1]!):undefined;
-    validateRoom({ownerId:ctx.from.id,name,mode:externalUrl?"external":"jitsi",
-     externalUrl,status:"ready"});
-    data={...current.data,title:name,externalUrl:externalUrl||null};
+    const {title,description}=parseRoomDetails(input);
+    const externalUrl=current.data.externalUrl?String(current.data.externalUrl):undefined;
+    validateRoom({ownerId:ctx.from.id,name:title,mode:externalUrl?"external":"jitsi",
+     externalUrl,status:"draft"});
+    data={...current.data,title,description};
    }else{
     if(!current.data.kind)throw new Error("投稿種別が未選択です。");
     const kind=current.data.kind as AnnouncementKind;
@@ -377,10 +388,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
    if(current.module==="room"){
-    await render(updated,"プレビュー（まだ投稿していません）\n"+preview(current.module,updated)+
-      "\n\nROOMはまだ公開されていません。内容を確認して非公開保存してください。",
-      Markup.inlineKeyboard([[Markup.button.callback("✅ 非公開ROOMとして保存",
-        "room:save:"+updated.revision)]]));
+    await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
    }else{
     await destinationMenu(ctx,current.module,updated.revision);
    }
