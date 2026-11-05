@@ -9,7 +9,7 @@ import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileVie
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
 import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
-import {registerCompactRecruitmentHandlers} from "./bot/recruitmentHandlers.js";
+import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "./bot/recruitmentHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
@@ -60,7 +60,9 @@ async function main():Promise<void>{
     }else if(origin.feature==="room"){
      await startRoomEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="announcement"){
-     await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+     if(ctx.startPayload?.startsWith("r_"))
+      await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
+     else await startAnnouncementEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="link"){
      await startLinkEditor(ctx.telegram,ctx.from.id);
     }else{
