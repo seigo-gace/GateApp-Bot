@@ -33,7 +33,7 @@ export async function archiveNextTerminalAnnouncement(telegram:Telegram):Promise
  try{
   await client.query("BEGIN");
   const result=await client.query(
-   `SELECT d.delivery_id,t.chat_id,d.telegram_message_id,a.text,a.kind,
+   `SELECT d.delivery_id,t.chat_id,d.telegram_message_id,d.rendered_text,a.kind,
            a.status,a.expires_at
       FROM posting_deliveries d
       JOIN posting_topics t ON t.topic_id=d.posting_topic_id
@@ -52,7 +52,14 @@ export async function archiveNextTerminalAnnouncement(telegram:Telegram):Promise
      !Number.isSafeInteger(chatId)||chatId>=0||
      !Number.isSafeInteger(messageId)||messageId<=0)
    throw new Error("ANNOUNCEMENT_ARCHIVE_RECEIPT_INVALID");
-  job={id,chatId,messageId,text:String(row.text),kind:String(row.kind),
+  if(row.rendered_text===null){
+   await client.query(
+    "UPDATE posting_deliveries SET status='needs_reconcile',updated_at=NOW() WHERE delivery_id=$1 AND status='sent'",
+    [id]);
+   await client.query("COMMIT");
+   return {deliveryId:id,status:"needs_reconcile"};
+  }
+  job={id,chatId,messageId,text:String(row.rendered_text),kind:String(row.kind),
    state:row.status==="cancelled"?"cancelled":
     row.status==="closed"?"closed":row.status==="finished"?"finished":"expired"};
   await client.query(
