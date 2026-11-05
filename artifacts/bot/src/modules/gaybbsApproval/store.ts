@@ -5,7 +5,7 @@
 import {randomUUID} from "node:crypto";
 import {pool} from "../../db/index.js";
 import type {PoolClient} from "pg";
-import {ADMISSION_VERSION, ADMISSION_BOARD_CHAT_IDS, canAdvanceAdmission, type ConsentStage} from "./contract.js";
+import {ADMISSION_VERSION, ADMISSION_BOARD_CHAT_IDS, allThreeBoardsApproved, canAdvanceAdmission, type ConsentStage} from "./contract.js";
 
 export type GateAttempt = {
  tg_user_id:string; target_id:number; step:string; step_token:string|null;
@@ -171,7 +171,24 @@ export async function saveIssuedInvites(a:GateAttempt,links:readonly IssuedBoard
   await c.query("COMMIT");return true;
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }
+/** Read all three decisions under row locks; if ONE board rejects, no group joins.
+ * Callers that approve a Telegram request already hold a DB transaction.
+ */
+async function sharedBoardApprovalAccepted(
+ client:PoolClient,userId:string|number,attemptId:string,documentVersion:string,
+):Promise<boolean>{
+ const statuses=await client.query<{chat_id:string;status:string}>(`
+  SELECT t.chat_id,a.status FROM approvals a
+  JOIN targets t ON t.target_id=a.target_id
+  WHERE a.tg_user_id=$1 AND a.attempt_id=$2 AND a.document_version=$3
+    AND t.target_type='entry_group' AND t.chat_id=ANY($4::bigint[])
+  FOR SHARE OF a`,[userId,attemptId,documentVersion,[...ADMISSION_BOARD_CHAT_IDS]]);
+ return allThreeBoardsApproved(statuses.rows);
+}
 export async function currentIssuedInvites(a:GateAttempt):Promise<{targetId:number;link:string}[]>{
+ const allowed=await withAdmissionClient(c=>
+  sharedBoardApprovalAccepted(c,a.tg_user_id,a.attempt_id,a.document_version));
+ if(!allowed)return [];
  const r=await pool.query(`SELECT target_id,invite_link FROM invite_links
   WHERE tg_user_id=$1 AND attempt_id=$2
    AND used_at IS NULL AND revoked_at IS NULL AND expire_at>NOW()
@@ -233,6 +250,7 @@ export async function getRequestEligibility(client:PoolClient,args:{
  const r=await client.query(`SELECT i.invite_id,i.target_id,i.tg_user_id,
    i.attempt_id,i.expire_at,i.used_at,i.revoked_at,
    a.status, a.document_version,g.status AS group_status,
+   s.target_id AS consent_target_id,
    s.step AS session_step,s.attempt_id AS session_attempt,s.document_version AS session_version
    FROM invite_links i
    JOIN gate_sessions s ON s.tg_user_id=i.tg_user_id
@@ -250,10 +268,13 @@ export async function getRequestEligibility(client:PoolClient,args:{
   (args.expectedDocumentVersion!==undefined && row.document_version!==args.expectedDocumentVersion) ||
   row.session_attempt!==row.attempt_id || row.session_version!==row.document_version)
   return {allowed:false,inviteId:null,reason:"approval_or_invite_expired"};
+ // A single refusal by any of the three groups rejects membership in ALL.
+ if(!await sharedBoardApprovalAccepted(client,args.userId,row.attempt_id,row.document_version))
+  return {allowed:false,inviteId:null,reason:"shared_approval_rejected"};
  const cons=await client.query(`SELECT COUNT(DISTINCT stage)::int AS n FROM gate_consents
   WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3 AND document_version=$4
    AND accepted=true AND stage IN ('question1','question2','rules')`,
-  [args.targetId,args.userId,row.attempt_id,row.document_version]);
+  [row.consent_target_id,args.userId,row.attempt_id,row.document_version]);
  if(cons.rows[0]?.n!==3)return {allowed:false,inviteId:null,reason:"consent_incomplete"};
  return {allowed:true,inviteId:Number(row.invite_id),reason:"valid"};
 }
