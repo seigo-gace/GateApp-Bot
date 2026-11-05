@@ -4,6 +4,7 @@ import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {nextSelection,selectionRows} from "../services/inlineSelection.js";
+import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {
   PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
@@ -58,6 +59,26 @@ const overviewKeyboard=(revision:number)=>Markup.inlineKeyboard(
   profileOverviewButtons(revision).map(row=>row.map(button=>
     Markup.button.callback(button.text,button.callback_data)))
 );
+/** Both catalogs are visible together; blue hair, green body, no dummy headings. */
+const appearanceKeyboard=(revision:number,data:ProfileDraft["data"])=>
+  Markup.inlineKeyboard([
+    ...selectionRows(HAIR_ROWS,data.hair?[data.hair]:[],
+      v=>`pf:ap:${revision}:h:${HAIR_CHOICES.indexOf(v)}`).map(row=>
+        row.map(b=>({...Markup.button.callback(b.text,b.callback_data),style:"primary" as const}))),
+    ...selectionRows(BODY_ROWS,data.body?[data.body]:[],
+      v=>`pf:ap:${revision}:b:${BODY_CHOICES.indexOf(v)}`).map(row=>
+        row.map(b=>({...Markup.button.callback(b.text,b.callback_data),style:"success" as const}))),
+    [Markup.button.callback("↩ 容姿/エリアを戻る",`pf:ap:${revision}:back`)],
+  ]);
+const appearanceText=(data:ProfileDraft["data"])=>[
+  "🪪 容姿/エリア｜髪型・体型",
+  "髪型（青）："+(data.hair||"未設定"),
+  "体型（緑）："+(data.body||"未設定"),
+  "",
+  "それぞれ1つ選択できます。同じ項目を再度押すと解除できます。",
+  "エリアの選択は別途確定する画面で行います。",
+].join("\n");
+
 const overviewText=(profile:SavedProfile,username:string)=>[
   "🪪 プロフィールプレビュー",
   renderProfileBasicPreview(profile,username),
@@ -112,12 +133,16 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  // Preserve the active profile draft when a start link is reopened, including
  // after a Bot restart. Never reset an in-progress wizard on /profile.
  if(previous){
-   const text=previous.step==="preview"
+   const text=previous.step==="appearance"
+     ?appearanceText(previous.data)
+     :previous.step==="preview"
      ? overviewText(previous.data as SavedProfile,ctx.from.username!)
      :previous.step==="awaiting_position"
        ?"✅ 基本情報を受け付けました。ポジションを選択してください。"
        :basicPrompt(previous.data.position);
-   const markup=previous.step==="preview"
+   const markup=previous.step==="appearance"
+     ?appearanceKeyboard(previous.revision,previous.data)
+     :previous.step==="preview"
      ?overviewKeyboard(previous.revision)
      :selectPosition(previous.revision,previous.data.position);
    await updateWizardScreen(ctx,repo,previous,text,markup,
@@ -130,6 +155,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      const draft=await repo.putDraft(ctx.from.id,"preview",{
        nickname:existing.nickname,heightCm:existing.heightCm,
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
+       hair:existing.hair,body:existing.body,
        ...(lastId?{screenMessageId:lastId}:{}),
      });
      await updateWizardScreen(ctx,repo,draft,
@@ -225,6 +251,7 @@ export function registerProfileHandlers(
       weightKg: existing.weightKg,
       age: existing.age,
       position: existing.position,
+      hair:existing.hair,body:existing.body,
     });
     await ctx.editMessageText(basicPrompt(existing.position), selectPosition(draft.revision,existing.position));
   });
@@ -285,6 +312,13 @@ export function registerProfileHandlers(
       await ctx.editMessageText(basicPrompt(draft.data.position),selectPosition(updated.revision,draft.data.position));
       return;
     }
+    if(action==="appearance"){
+      const updated=await repo.putDraft(ctx.from.id,"appearance",draft.data,draft.revision);
+      await ctx.answerCbQuery();
+      await ctx.editMessageText(appearanceText(updated.data),
+        appearanceKeyboard(updated.revision,updated.data));
+      return;
+    }
     if(action==="preview"){
       await ctx.answerCbQuery();
       await ctx.editMessageText(
@@ -302,7 +336,7 @@ export function registerProfileHandlers(
       // New revision invalidates pre-save callbacks while preserving this screen.
       const next=await repo.putDraft(ctx.from.id,"preview",{
         nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
-        age:saved.age,position:saved.position,
+        age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
         screenMessageId:draft.data.screenMessageId,
       });
       await ctx.answerCbQuery("非公開で保存しました");
@@ -318,6 +352,40 @@ export function registerProfileHandlers(
       return;
     }
     await ctx.answerCbQuery("この項目の設定画面は次に実装します。");
+  });
+
+  bot.action(/^pf:ap:(\d+):([hb]):(\d{1,2})$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]),kind=ctx.match[2],index=Number(ctx.match[3]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.step!=="appearance"||draft.revision!==revision){
+      await ctx.answerCbQuery("古い画面です。最新の画面から操作してください。");
+      return;
+    }
+    const options=kind==="h"?HAIR_CHOICES:BODY_CHOICES;
+    const clicked=options[index];
+    if(!clicked){await ctx.answerCbQuery("選択肢がありません");return;}
+    const current=kind==="h"?(draft.data.hair?[draft.data.hair]:[])
+       :(draft.data.body?[draft.data.body]:[]);
+    const next=nextSelection("single-optional",current,clicked,options)[0]??null;
+    const updated=await repo.putDraft(ctx.from.id,"appearance",
+       {...draft.data,...(kind==="h"?{hair:next}:{body:next})},draft.revision);
+    await ctx.answerCbQuery(next?"選択しました":"選択を解除しました");
+    await ctx.editMessageText(appearanceText(updated.data),
+       appearanceKeyboard(updated.revision,updated.data));
+  });
+  bot.action(/^pf:ap:(\d+):back$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]);
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.step!=="appearance"||draft.revision!==revision){
+      await ctx.answerCbQuery("古い画面です。最新の画面から操作してください。");
+      return;
+    }
+    const updated=await repo.putDraft(ctx.from.id,"preview",draft.data,draft.revision);
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(overviewText(updated.data as SavedProfile,ctx.from.username!),
+      {parse_mode:"HTML",...overviewKeyboard(updated.revision)});
   });
 
   bot.action(/^pf:overview:(\d+):return$/,async ctx=>{
@@ -346,7 +414,7 @@ export function registerProfileHandlers(
     const saved=await repo.savePrivateDraft(ctx.from.id,rev,ctx.from.username!);
     const next=await repo.putDraft(ctx.from.id,"preview",{
       nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
-      age:saved.age,position:saved.position,screenMessageId:draft.data.screenMessageId,
+      age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,screenMessageId:draft.data.screenMessageId,
     });
     await ctx.answerCbQuery("非公開で保存しました");
     await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
