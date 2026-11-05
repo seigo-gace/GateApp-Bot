@@ -9,6 +9,7 @@ import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileVie
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
 import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
+import {registerCompactRecruitmentHandlers} from "./bot/recruitmentHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
@@ -70,11 +71,12 @@ async function main():Promise<void>{
    }
    return;
   }
-  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
+  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/recruit — 相手募集\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
  });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
+ registerCompactRecruitmentHandlers(bot);
  registerPostingHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
