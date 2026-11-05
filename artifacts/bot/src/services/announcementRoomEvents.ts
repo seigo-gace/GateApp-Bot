@@ -113,3 +113,26 @@ export async function projectNextRoomEvent():Promise<{
   throw error;
  }finally{client.release();}
 }
+
+/** Schedule monitoring only prompts the host. It never starts Jitsi, publishes
+ * the join URL, or notifies participants until the real host Start action.
+ */
+export async function enqueueDueRoomStartReminders():Promise<number>{
+ const result=await pool.query(
+  `INSERT INTO announcement_notifications
+     (announcement_id,recipient_user_id,event_key,payload)
+   SELECT a.announcement_id,r.owner_user_id,
+     'room:'||r.room_id||':due:'||r.revision||':owner',
+     jsonb_build_object('source','room','action','scheduled_due','roomId',r.room_id)
+   FROM room_posts r
+   JOIN LATERAL (
+     SELECT announcement_id FROM announcement_posts
+      WHERE room_id=r.room_id AND status IN ('published','filled')
+      ORDER BY announcement_id LIMIT 1
+   ) a ON TRUE
+   WHERE r.status='scheduled' AND r.start_at IS NOT NULL
+     AND r.start_at<=NOW()
+   ON CONFLICT(event_key) DO NOTHING
+   RETURNING notification_id`);
+ return result.rows.length;
+}
