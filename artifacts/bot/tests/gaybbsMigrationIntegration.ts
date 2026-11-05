@@ -59,13 +59,13 @@ try{
  // Reopening after cancellation gets a new revision and no old private fields.
  const first=await beginDraft(811003,"announcement","awaiting_text",
   {kind:"recruitment",recruitmentFlow:"compact",title:"キャンセル対象"});
- const cancelled=await updateDraft(811003,"announcement",first.revision,"cancelled",
+ const cancelledRecruitment=await updateDraft(811003,"announcement",first.revision,"cancelled",
   {recruitmentFlow:"compact",cancelled:true});
- assert.equal(cancelled.step,"cancelled");
- assert.equal(cancelled.data.title,undefined);
+ assert.equal(cancelledRecruitment.step,"cancelled");
+ assert.equal(cancelledRecruitment.data.title,undefined);
  const again=await beginDraft(811003,"announcement","awaiting_text",
   {kind:"recruitment",recruitmentFlow:"compact"});
- assert.ok(again.revision>cancelled.revision);
+ assert.ok(again.revision>cancelledRecruitment.revision);
  assert.equal((await getDraft(811003,"announcement"))?.data.title,undefined);
  const draft=await pool.query(
   `INSERT INTO announcement_posts
