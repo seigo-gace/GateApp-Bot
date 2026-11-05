@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /** TGtumbler adopted admission questions. Scope: @GayBBS_bot only.
  * Keep old 3-question storage for admin compatibility; admission uses exactly two
  * consent questions followed by the separately configured per-group rule consent.
@@ -66,4 +68,22 @@ export function canAdvanceAdmission(
  const forward = from === "q1" ? "q2" : from === "q2" ? "rules" : "issuing";
  return (next === forward && consent.accepted === true) ||
   (next === "rejected" && consent.accepted === false);
+}
+
+/** Bind each consent attempt to the actual fixed questions, links and group rules.
+ * Any change requires a fresh attempt, even if the human-readable base version
+ * was not manually incremented. No raw document or user data leaves the module.
+ */
+export function admissionDocumentVersion(
+ targetId: number, rulesText: string, links: Readonly<Record<ApprovalDocKey, string>>,
+): string {
+ if (!Number.isSafeInteger(targetId) || targetId <= 0 || !rulesText.trim() ||
+  !APPROVAL_DOC_KEYS.every(key => isSafeDocUrl(links[key]))) {
+  throw new Error("GATE_DOCUMENT_VERSION_UNSAFE");
+ }
+ const digest = createHash("sha256").update(JSON.stringify([
+  ADMISSION_VERSION,targetId,APPROVAL_QUESTIONS,RULES_CONSENT_QUESTION,
+  rulesText,...APPROVAL_DOC_KEYS.map(key => [key,links[key]]),
+ ])).digest("hex");
+ return ADMISSION_VERSION + ":" + digest;
 }
