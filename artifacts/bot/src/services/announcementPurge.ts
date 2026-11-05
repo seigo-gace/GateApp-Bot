@@ -36,7 +36,7 @@ export async function purgeDisposableAnnouncements(limit=20):Promise<number>{
          SELECT 1 FROM posting_deliveries d
          WHERE d.source_type='announcement'
            AND d.source_id=a.announcement_id::text
-           AND d.status IN ('sent','sending','needs_reconcile')
+           AND d.status NOT IN ('archived','deleted')
        )
      ORDER BY announcement_id
      LIMIT $1 FOR UPDATE SKIP LOCKED`,[limit]);
