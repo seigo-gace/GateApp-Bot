@@ -467,6 +467,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
    let sourceId:string;let text:string;
+   let hostJoinUrl:string|null=null;
+   let isScheduledRoom=false;
    let buttons:ReadonlyArray<ReadonlyArray<{text:string;url:string}>>|undefined;
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
@@ -501,6 +503,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const room=await createRoom(ctx.from.id,revision,title,externalUrl,{
       description,scheduledAt:startAt,visibility});
      const roomId=Number(room.sourceId);
+     hostJoinUrl=room.joinUrl;
+     isScheduledRoom=Boolean(startAt);
      await makeRoomJoinLink(ctx.from.id,roomId);
      // Announcement owns applications and public card. ROOM owns meeting state,
      // MPB owns the only Telegram send. No duplicate business module.
@@ -568,7 +572,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }catch{
     throw new Error("POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE");
    }
-   await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
+   if(module==="room"){
+    await ctx.editMessageText("✅ ROOMを公開しました。\n投稿先："+result.chatId+
+     " / Topic "+result.threadId+"\n投稿ID："+result.messageId+
+     (isScheduledRoom?"\n📅 予告中です。開催時には /myrooms から［開始する］を押してください。":"\n🔴 LIVE中"),
+     hostJoinUrl&&!isScheduledRoom?Markup.inlineKeyboard([
+      [Markup.button.url("🎥 ROOMに入る",hostJoinUrl)]]):undefined);
+   }else await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
    const msg=e instanceof Error?e.message:"投稿失敗";
