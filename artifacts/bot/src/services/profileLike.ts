@@ -174,6 +174,10 @@ export const LIKE_CATEGORIES = [
   }
 ] as const;
 export type LikeTag = {category:string;tag:string};
+export type ProfileTagPurpose="like"|"love";
+export const tagPurposeDescription=(purpose:ProfileTagPurpose)=>purpose==="like"
+ ? "自分についての特徴・好み・趣味・スタイルを選択してください。"
+ : "相手に求める特徴・好み・趣味・スタイルを選択してください。";
 export const LIKE_PAGE_SIZE=12;
 export function validLikeTags(tags:readonly LikeTag[]):LikeTag[]{
  if(!Array.isArray(tags))throw Error("PROFILE_LIKE_INVALID");
@@ -195,15 +199,18 @@ export function toggleLike(tags:readonly LikeTag[],category:number,index:number)
  const next=nextSelection("multiple",current,cat.items[index],cat.items);
  return [...old.filter(t=>t.category!==cat.name),...next.map(tag=>({category:cat.name,tag}))];
 }
-export function likeCategoryRows(revision:number,tags:readonly LikeTag[]){
+export function likeCategoryRows(revision:number,tags:readonly LikeTag[],purpose:ProfileTagPurpose="like"){
  const checked=validLikeTags(tags);
  const r=LIKE_CATEGORIES.map((c,i)=>({
   text:c.name+(checked.some(t=>t.category===c.name)?" ("+checked.filter(t=>t.category===c.name).length+")":""),
-  callback_data:`pf:like:${revision}:open:${i}`,
+  callback_data:`pf:${purpose}:${revision}:open:${i}`,
  }));
- return [[...r.slice(0,3)],[...r.slice(3,6)],[{text:"↩ 戻る",callback_data:`pf:like:${revision}:back`}]];
+ return [[...r.slice(0,3)],[...r.slice(3,6)],[
+  {text:"↩ 戻る",callback_data:`pf:${purpose}:${revision}:back`},
+  {text:"保存",callback_data:`pf:${purpose}:${revision}:save`}
+ ]];
 }
-export function likeItemRows(revision:number,category:number,page:number,tags:readonly LikeTag[]){
+export function likeItemRows(revision:number,category:number,page:number,tags:readonly LikeTag[],purpose:ProfileTagPurpose="like"){
  const c=LIKE_CATEGORIES[category];
  if(!c||!Number.isInteger(page)||page<0||page>=Math.ceil(c.items.length/LIKE_PAGE_SIZE))
   throw Error("PROFILE_LIKE_PAGE_INVALID");
@@ -212,15 +219,16 @@ export function likeItemRows(revision:number,category:number,page:number,tags:re
  const chunks: string[][]=[];
  for(let i=0;i<values.length;i+=3)chunks.push([...values.slice(i,i+3)]);
  const rows=selectionRows(chunks,selected,
-   v=>`pf:like:${revision}:tag:${category}:${c.items.indexOf(v)}`);
+   v=>`pf:${purpose}:${revision}:tag:${category}:${c.items.indexOf(v)}`);
  const total=Math.ceil(c.items.length/LIKE_PAGE_SIZE);
  if(total>1)rows.push([
-  {text:"◀ 前へ",callback_data:`pf:like:${revision}:page:${category}:${page-1}`},
-  {text:"次へ ▶",callback_data:`pf:like:${revision}:page:${category}:${page+1}`},
+  {text:"◀ 前へ",callback_data:`pf:${purpose}:${revision}:page:${category}:${page-1}`},
+  {text:"次へ ▶",callback_data:`pf:${purpose}:${revision}:page:${category}:${page+1}`},
  ]);
  rows.push([
-  {text:"↩ 戻る",callback_data:`pf:like:${revision}:back`},
-  {text:"この分類を解除",callback_data:`pf:like:${revision}:clear:${category}`},
+  {text:"↩ 戻る",callback_data:`pf:${purpose}:${revision}:back`},
+  {text:"この分類を解除",callback_data:`pf:${purpose}:${revision}:clear:${category}`},
+  {text:"保存",callback_data:`pf:${purpose}:${revision}:save`},
  ]);
  return rows;
 }
