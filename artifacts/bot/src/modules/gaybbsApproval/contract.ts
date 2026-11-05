@@ -112,3 +112,14 @@ export function sharedAdmissionDocumentVersion(boards:readonly SharedAdmissionBo
  });
  return ADMISSION_VERSION+":"+createHash("sha256").update(JSON.stringify(versions)).digest("hex");
 }
+
+/** Global admission is all-or-nothing, never one entitlement per board.
+ * Rejected, missing or duplicated board status blocks ALL three joins.
+ */
+export function allThreeBoardsApproved(
+ rows:readonly {chat_id:string|number;status:string}[],
+):boolean {
+ return rows.length===ADMISSION_BOARD_CHAT_IDS.length &&
+  ADMISSION_BOARD_CHAT_IDS.every(chatId=>
+   rows.filter(row=>Number(row.chat_id)===chatId && row.status==="approved").length===1);
+}
