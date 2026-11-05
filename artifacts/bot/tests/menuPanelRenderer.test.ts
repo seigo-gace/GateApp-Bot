@@ -1,46 +1,58 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {renderMenuPanel,renderAreaBlockBoard} from "../src/services/menuPanelRenderer.js";
-test("M1 only shows previously verified permanent Telegram documents",()=>{
- const x=renderMenuPanel({type:"general_guide",board:"area_bbs",
-  links:[{label:"利用規約",url:"https://t.me/c/3847210571/123",verified:true}],
-  entryLinks:[]});
- assert.equal(x.rows.length,1);assert.ok(x.text.includes("総合案内"));
- assert.throws(()=>renderMenuPanel({type:"general_guide",board:"area_bbs",
-  links:[{label:"規約",url:"https://example.com/draft",verified:true}],entryLinks:[]}));
- assert.throws(()=>renderMenuPanel({type:"general_guide",board:"area_bbs",
-  links:[{label:"規約",url:"https://t.me/c/3847210571/123",verified:false}],entryLinks:[]}));
-});
-test("M2 contains only ready real DM entry links and never placeholder",()=>{
- const x=renderMenuPanel({type:"posting",board:"video_chat",links:[],
-  entryLinks:[{feature:"profile",url:"https://t.me/GayBBS_bot?start=m_12345678901234567890123456789012",ready:true},
-   {feature:"link",url:"https://t.me/GayBBS_bot?start=m_12345678901234567890123456789012",ready:false}]});
- assert.equal(x.rows.length,1);
- assert.match(x.rows[0]![0]!.text,/プロフ作成/);
- assert.ok(!JSON.stringify(x).includes("ボタン作成"));
-});
-test("never publish unverified menu or duplicate public labels",()=>{
- assert.throws(()=>renderMenuPanel({type:"posting",board:"gay_board",links:[],entryLinks:[]}),/EMPTY/);
- assert.throws(()=>renderMenuPanel({type:"general_guide",board:"gay_board",
-  links:[{label:"規約",url:"https://t.me/c/3770334893/9",verified:true},
-   {label:"規約",url:"https://t.me/c/3770334893/10",verified:true}],entryLinks:[]}),/DUPLICATE/);
-});
+import {
+  renderMenuPanel,renderAreaBlockBoard,renderApprovedLinks,approvedLayoutRows,
+  APPROVED_POSTING_ROWS,APPROVED_GUIDE_ROWS,APPROVED_HELP_ROWS,
+} from "../src/services/menuPanelRenderer.js";
 
-test("M1/M2 verified buttons form compact paired rows with no fake cells",()=>{
- const links=Array.from({length:3},(_,i)=>({
-  label:"案内"+i,url:"https://t.me/c/3847210571/"+(i+10),verified:true,
+const makeLinks=(labels:readonly (readonly string[])[]) =>
+ labels.flat().map((label,i)=>({
+  label,url:"https://t.me/c/3847210571/"+(i+100),verified:true
  }));
- const m1=renderMenuPanel({type:"general_guide",board:"area_bbs",
-  links,entryLinks:[]});
- assert.deepEqual(m1.rows.map(row=>row.length),[2,1]);
- const m2=renderMenuPanel({type:"posting",board:"area_bbs",links:[],
-  entryLinks:["profile","search","announcement","room","link"].map(feature=>({
-   feature:feature as "profile"|"search"|"announcement"|"room"|"link",
-   url:"https://t.me/GayBBS_bot?start=example",ready:true,
-  }))});
- assert.deepEqual(m2.rows.map(row=>row.length),[2,2,1]);
- assert.match(m2.rows[0]![0]!.text,/プロフ/);
- assert.match(m2.rows[0]![1]!.text,/検索/);
- assert.match(m2.rows[1]![0]!.text,/募集/);
- assert.match(m2.rows[1]![1]!.text,/ROOM/);
+
+test("Master-approved posting rows remain exactly 3/1/2/3, without profile or filler",()=>{
+ const result=renderMenuPanel({type:"posting",board:"area_bbs",
+  links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
+ assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_POSTING_ROWS.map(r=>[...r]));
+ assert.deepEqual(result.rows.map(r=>r.length),[3,1,2,3]);
+ assert.ok(!result.rows.flat().some(x=>x.text.includes("プロフ")));
+});
+test("Master-approved general-guide rows remain exactly six pairs",()=>{
+ const result=renderMenuPanel({type:"general_guide",board:"gay_board",
+  links:makeLinks(APPROVED_GUIDE_ROWS),entryLinks:[]});
+ assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_GUIDE_ROWS.map(r=>[...r]));
+ assert.deepEqual(result.rows.map(r=>r.length),[2,2,2,2,2,2]);
+});
+test("Master-approved help rows remain exactly two rows of three",()=>{
+ const rows=renderApprovedLinks("operation_help",makeLinks(APPROVED_HELP_ROWS));
+ assert.deepEqual(rows.map(r=>r.map(b=>b.text)),APPROVED_HELP_ROWS.map(r=>[...r]));
+ assert.deepEqual(approvedLayoutRows("operation_help"),APPROVED_HELP_ROWS);
+ assert.equal(rows[1]?.[2]?.text,"戻る");
+});
+test("publishing incomplete or unverified menu is rejected, not auto-padded",()=>{
+ const links=makeLinks(APPROVED_POSTING_ROWS);
+ assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
+  links:links.slice(0,8),entryLinks:[]}),/MISSING_VERIFIED/);
+ assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
+  links:[...links,{...links[0]!}],entryLinks:[]}),/DUPLICATE/);
+ assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
+  links:[...links.slice(0,8),{...links[8]!,verified:false}],entryLinks:[]}),/NOT_VERIFIED/);
+ assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
+  links:[],entryLinks:[{feature:"profile",url:"https://t.me/GayBBS_bot",ready:true}]}),/MUST_MATCH/);
+});
+test("guide requires published official links and rejects guessed ones",()=>{
+ const links=makeLinks(APPROVED_GUIDE_ROWS);
+ assert.throws(()=>renderMenuPanel({type:"general_guide",board:"area_bbs",
+  links:[...links.slice(0,11),{...links[11]!,url:"https://example.com"}],entryLinks:[]}),/NOT_VERIFIED/);
+ assert.throws(()=>renderMenuPanel({type:"general_guide",board:"area_bbs",
+  links,entryLinks:[{feature:"profile",url:"https://t.me/GayBBS_bot",ready:true}]}),/FORBIDDEN/);
+});
+test("area board retains search+filter and chat+back without placeholder",()=>{
+ const link=(label:string,n:number)=>({label,url:"https://t.me/c/3847210571/"+n,verified:true});
+ const result=renderAreaBlockBoard({blockTitle:"全国エリア",description:"エリアを選んでください",
+  areaLinks:[link("東京",101),link("大阪",102),link("福岡",103)],
+  searchLink:link("検索",104),filterLink:link("フィルター",105),
+  chatLink:link("雑談",106),backLink:link("戻る",107)});
+ assert.deepEqual(result.rows.map(row=>row.length),[2,1,2,2]);
+ assert.deepEqual(result.rows.at(-2)?.map(x=>x.text),["検索","フィルター"]);
 });
