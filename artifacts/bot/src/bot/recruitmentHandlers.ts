@@ -139,8 +139,20 @@ async function publishRecruitment(
  const topic=await getVerifiedTopic(topicId,"announcement");
  // The posted message is rendered exclusively by the Bot, never forwarded.
  const text=renderRecruitmentPreview(data,profile);
+ const snapshot=profile?{
+  nickname:profile.nickname,heightCm:profile.heightCm,weightKg:profile.weightKg,
+  age:profile.age,position:profile.position,
+ }:null;
+ const conditions={
+  inputMode:data.mode,title:data.title,
+  ...(data.mode==="manual"?{
+   nickname:data.nickname,heightCm:data.heightCm,weightKg:data.weightKg,
+   age:data.age,position:data.position,
+  }:{}),
+ };
  const ann=await createAnnouncement(owner,d.revision,"recruitment",data.body,
-  undefined,data.purposeCodes,data.placeCodes);
+  undefined,data.purposeCodes,data.placeCodes,undefined,
+  {profileSnapshot:snapshot,conditions});
  const link=await makeApplicationLink(owner,Number(ann.sourceId));
  const sent=await publishPost(telegram,{
   sourceType:"announcement",destinationPurpose:"announcement",sourceId:ann.sourceId,
