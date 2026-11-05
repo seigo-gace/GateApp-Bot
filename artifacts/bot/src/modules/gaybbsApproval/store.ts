@@ -232,19 +232,21 @@ export async function getRequestEligibility(client:PoolClient,args:{
 }):Promise<{allowed:boolean;inviteId:number|null;reason:string}>{
  const r=await client.query(`SELECT i.invite_id,i.target_id,i.tg_user_id,
    i.attempt_id,i.expire_at,i.used_at,i.revoked_at,
-   a.status, a.document_version,
+   a.status, a.document_version,g.status AS group_status,
    s.step AS session_step,s.attempt_id AS session_attempt,s.document_version AS session_version
    FROM invite_links i
    JOIN gate_sessions s ON s.tg_user_id=i.tg_user_id
      AND s.attempt_id=i.attempt_id
    JOIN approvals a ON a.target_id=s.target_id AND a.tg_user_id=s.tg_user_id
      AND a.attempt_id=s.attempt_id AND a.document_version=s.document_version
+   JOIN approvals g ON g.target_id=i.target_id AND g.tg_user_id=i.tg_user_id
+     AND g.attempt_id=i.attempt_id AND g.document_version=s.document_version
    WHERE i.target_id=$1 AND i.tg_user_id=$2 AND i.invite_link=$3
    FOR UPDATE OF i`,[args.targetId,args.userId,args.url]);
  if(r.rowCount!==1)return {allowed:false,inviteId:null,reason:"invite_mismatch"};
  const row=r.rows[0];
  if(row.used_at || row.revoked_at || new Date(row.expire_at).getTime()<=Date.now() ||
-  row.status!=="approved" || row.session_step!=="approved" ||
+  row.status!=="approved" || row.group_status!=="approved" || row.session_step!=="approved" ||
   (args.expectedDocumentVersion!==undefined && row.document_version!==args.expectedDocumentVersion) ||
   row.session_attempt!==row.attempt_id || row.session_version!==row.document_version)
   return {allowed:false,inviteId:null,reason:"approval_or_invite_expired"};
