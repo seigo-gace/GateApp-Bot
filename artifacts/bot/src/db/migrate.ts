@@ -19,11 +19,11 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_height_cm_check;
-      ALTER TABLE profiles ADD CONSTRAINT profiles_height_cm_check CHECK (height_cm BETWEEN 100 AND 250);
+      ALTER TABLE profiles ADD CONSTRAINT profiles_height_cm_check CHECK (height_cm BETWEEN 100 AND 250) NOT VALID;
       ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_weight_kg_check;
-      ALTER TABLE profiles ADD CONSTRAINT profiles_weight_kg_check CHECK (weight_kg BETWEEN 50 AND 250);
+      ALTER TABLE profiles ADD CONSTRAINT profiles_weight_kg_check CHECK (weight_kg BETWEEN 50 AND 250) NOT VALID;
       ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_age_check;
-      ALTER TABLE profiles ADD CONSTRAINT profiles_age_check CHECK (age BETWEEN 19 AND 89);
+      ALTER TABLE profiles ADD CONSTRAINT profiles_age_check CHECK (age BETWEEN 19 AND 89) NOT VALID;
       ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_position_check;
       ALTER TABLE profiles ADD CONSTRAINT profiles_position_check CHECK (position IN ('タチ','タチリバ','リバ','ウケリバ','ウケ','S','M'));
       CREATE TABLE IF NOT EXISTS profile_tag_catalog (
