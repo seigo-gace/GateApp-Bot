@@ -13,7 +13,7 @@ export function tokenHash(token:string):string{
  return createHash("sha256").update("GayBBS-menu-v1:").update(token).digest("hex");
 }
 export function decodeMenuStartPayload(payload:string):string{
- const match=/^m_([A-Za-z0-9_-]{32})$/.exec(payload);
+ const match=/^[mr]_([A-Za-z0-9_-]{32})$/.exec(payload);
  if(!match)throw new Error("MENU_START_INVALID");
  return match[1]!;
 }
