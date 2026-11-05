@@ -15,58 +15,92 @@ import {generateChallenge, type ChallengeQuestion} from "../../services/challeng
 import {showWizardScreen} from "../../services/dmWizardScreen.js";
 import {pool} from "../../db/index.js";
 import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
- APPROVAL_SUMMARY,RULES_CONSENT_QUESTION,hasAdoptedQuestions,isSafeDocUrl,admissionDocumentVersion} from "./contract.js";
+ APPROVAL_SUMMARY,RULES_CONSENT_QUESTION,hasAdoptedQuestions,isSafeDocUrl,
+ ADMISSION_BOARD_CHAT_IDS,sharedAdmissionDocumentVersion} from "./contract.js";
 import {openAttempt,readAttempt,rememberScreen,transition,consentsComplete,
- saveIssuedInvite,currentIssuedInvite,verifiedApprovalDocumentLinks,getRequestEligibility,
+ saveIssuedInvites,currentIssuedInvites,verifiedApprovalDocumentLinks,getRequestEligibility,
  withAdmissionClient,type GateAttempt} from "./store.js";
 
 const token=()=>randomBytes(9).toString("hex");
 const action=(a:GateAttempt,choice:string)=>`gba:${a.step_token}:${a.step}:${choice}`;
-type GateConfig={
+type BoardConfig={
  target:NonNullable<Awaited<ReturnType<typeof targetRepo.getTargetById>>>;
+ ruleText:string;
+ links:Record<"guideline"|"terms"|"privacy"|"rules",string>;
+};
+type GateConfig={
+ target:BoardConfig["target"]; // Canonical owner of ONE common questionnaire.
  challenge:NonNullable<Awaited<ReturnType<typeof challengeRepo.getChallengeByTarget>>>;
- rule:NonNullable<Awaited<ReturnType<typeof ruleRepo.getRuleByTarget>>>;
- links:Record<string,string>;
+ boards:BoardConfig[];
  documentVersion:string;
 };
 async function configured(targetId:number):Promise<GateConfig|null>{
- const target=await targetRepo.getTargetById(targetId);
- if(!target || target.target_type!=="entry_group" || !Number.isSafeInteger(target.chat_id)||target.chat_id>=0)return null;
- const [challenge,questions,rule,links]=await Promise.all([
-  challengeRepo.getChallengeByTarget(targetId),questionRepo.getQuestionsByTarget(targetId),
-  ruleRepo.getRuleByTarget(targetId),verifiedApprovalDocumentLinks(target.chat_id)
- ]);
- if(!challenge?.enabled || challenge.max_fail!==3 || !rule?.rule_text?.trim() ||
-  !hasAdoptedQuestions(questions) || !links ||
-  !APPROVAL_DOC_KEYS.every(k=>isSafeDocUrl(links[k]??"") &&
-     // Private Telegram topic message links cannot be read by applicants.
-     !/^https:\/\/t\.me\/c\//i.test(links[k]??"")))return null;
- return {target,challenge,rule,links,
-  documentVersion:admissionDocumentVersion(targetId,rule.rule_text,links as Record<"guideline"|"terms"|"privacy"|"rules",string>)};
+ // Explicit allowlist prevents an unrelated legacy entry group joining the common gate.
+ const mapped=await pool.query<{target_id:number;chat_id:string}>(`
+  SELECT target_id,chat_id FROM targets
+  WHERE target_type='entry_group' AND chat_id=ANY($1::bigint[])`,
+  [ADMISSION_BOARD_CHAT_IDS]);
+ if(mapped.rows.length!==3 || new Set(mapped.rows.map(x=>x.target_id)).size!==3 ||
+  !mapped.rows.some(x=>Number(x.target_id)===targetId))return null;
+ const boards:BoardConfig[]=[];
+ let sharedChallenge:NonNullable<Awaited<ReturnType<typeof challengeRepo.getChallengeByTarget>>>|null=null;
+ for(const chatId of ADMISSION_BOARD_CHAT_IDS){
+  const found=mapped.rows.filter(x=>Number(x.chat_id)===chatId);
+  if(found.length!==1)return null;
+  const candidate=await targetRepo.getTargetById(Number(found[0]!.target_id));
+  if(!candidate || candidate.target_type!=="entry_group" ||
+    Number(candidate.chat_id)!==chatId || !candidate.title.trim())return null;
+  const [challenge,questions,rule,links]=await Promise.all([
+   challengeRepo.getChallengeByTarget(candidate.target_id),
+   questionRepo.getQuestionsByTarget(candidate.target_id),
+   ruleRepo.getRuleByTarget(candidate.target_id),
+   verifiedApprovalDocumentLinks(candidate.chat_id)
+  ]);
+  if(!challenge?.enabled || challenge.max_fail!==3 || !rule?.rule_text?.trim() ||
+   !hasAdoptedQuestions(questions) || !links ||
+   !APPROVAL_DOC_KEYS.every(k=>isSafeDocUrl(links[k]??"") &&
+    !/^https:\/\/t\.me\/c\//i.test(links[k]??"")))return null;
+  if(!sharedChallenge)sharedChallenge=challenge;
+  boards.push({target:candidate,ruleText:rule.rule_text,
+   links:links as BoardConfig["links"]});
+ }
+ if(!sharedChallenge || boards.length!==3)return null;
+ const documentVersion=sharedAdmissionDocumentVersion(boards.map(b=>({
+  targetId:b.target.target_id,chatId:Number(b.target.chat_id),
+  title:b.target.title,rulesText:b.ruleText,links:b.links,
+ })));
+ return {target:boards[0]!.target,challenge:sharedChallenge,boards,documentVersion};
 }
 async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void>{
  if(a.document_version!==cfg.documentVersion)throw new Error("GATE_DOCUMENT_STALE");
  if(a.step==="approved"){
-  const link=await currentIssuedInvite(a);
-  if(!link){
+  const links=await currentIssuedInvites(a);
+  const remaining=cfg.boards.flatMap((board,i)=>{
+   const found=links.find(link=>link.targetId===board.target.target_id);
+   return found?[Markup.button.url(`${i+1}．${board.target.title}`,found.link)]:[];
+  });
+  if(!remaining.length){
    const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
     "審査済みの参加リンクは使用済み、または期限切れです。利用可能な参加リンクはありません。一定時間後に審査リンクから改めて申請してください。");
    await rememberScreen(a,out.messageId);
    return;
   }
   const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
-   `【${cfg.target.title}】\n✅ 審査が完了しました。下のボタンから本人が参加申請してください。`,
-   Markup.inlineKeyboard([[Markup.button.url("🎉 参加申請へ",link)]]));
+   "✅ 3グループ共通の承認が完了しました。各グループへの参加申請ボタンから進んでください。審査質問の再回答は不要です。",
+   Markup.inlineKeyboard([remaining.slice(0,2),...remaining.length>2?[remaining.slice(2)]:[]]));
   await rememberScreen(a,out.messageId);
   return;
  }
  let text="", rows:ReturnType<typeof Markup.button.callback>[][]=[];
  if(a.step==="intro"){
-  text=`【${cfg.target.title}】\n参加前に必ず①〜④の全文を確認してください。\n\n${APPROVAL_SUMMARY}\n\n全文を確認したら下のボタンから本人確認へ進んでください。`;
+  text=`【3グループ共通の参加審査】\n${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\\n")}\n\n参加前に各グループの①〜④の全文を確認してください。\n\n${APPROVAL_SUMMARY}\n\n確認後、Bot対策の問題から始まります。質問は3グループ共通で1回だけです。`;
   // URL buttons have a distinct Telegram type from callback buttons.
-  const links=Markup.inlineKeyboard([
-   [Markup.button.url("①ガイドライン",cfg.links.guideline),Markup.button.url("②規約",cfg.links.terms)],
-   [Markup.button.url("③Privacy Policy",cfg.links.privacy),Markup.button.url("④グループルール",cfg.links.rules)],
+  if(text.length>4096)throw new Error("GATE_DOCUMENT_EXCEEDS_TELEGRAM_LIMIT");
+  const docRows=cfg.boards.flatMap((board,i)=>[
+   [Markup.button.url(`${i+1}①ガイドライン`,board.links.guideline),Markup.button.url(`${i+1}②規約`,board.links.terms)],
+   [Markup.button.url(`${i+1}③Privacy Policy`,board.links.privacy),Markup.button.url(`${i+1}④グループルール`,board.links.rules)],
+  ]);
+  const links=Markup.inlineKeyboard([...docRows,
    [Markup.button.callback("✅ 確認して審査を開始",action(a,"continue"))],
   ]);
   const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,text,links);
@@ -76,15 +110,15 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
  if(a.step==="challenge"){
   const q=a.challenge_data as ChallengeQuestion|null;
   if(!q || !Array.isArray(q.options) || !Number.isInteger(q.correctIndex))throw new Error("GATE_CHALLENGE_MISSING");
-  text=`【${cfg.target.title}】\n本人確認のため、問題に答えてください。\n\n${q.text}`;
+  text=`【3グループ共通・Bot対策】\nBotによる自動参加を防ぐため、問題に答えてください。\n\n${q.text}`;
   rows=[q.options.map((o,i)=>Markup.button.callback(o,action(a,String(i))))];
  }else if(a.step==="q1"||a.step==="q2"){
   const q=APPROVAL_QUESTIONS[a.step==="q1"?0:1];
-  text=`【${cfg.target.title}】\n${q.title}\n\n${q.text}`;
+  text=`【3グループ共通】\n${q.title}\n\n${q.text}`;
   rows=[[Markup.button.callback(q.yes,action(a,"yes")),
    Markup.button.callback(q.no,action(a,"no"))]];
  }else if(a.step==="rules"){
-  text=`【${cfg.target.title}】\n最終ルール承諾\n\n${RULES_CONSENT_QUESTION}\n\n【${cfg.target.title} の固有ルール】\n${cfg.rule.rule_text}`;
+  text=`【3グループ共通・最終ルール承諾】\n${RULES_CONSENT_QUESTION}\n\n${cfg.boards.map((b,i)=>`【${i+1}．${b.target.title} のルール】\\n${b.ruleText}`).join("\\n\\n")}`;
   rows=[[Markup.button.callback("✅規則・ルールを承諾する",action(a,"yes")),
    Markup.button.callback("❌承諾しない",action(a,"no"))]];
  }else{return}
@@ -113,23 +147,32 @@ async function emitAdmissionLog(telegram:Telegram,userId:number,cfg:GateConfig,
  }catch{console.warn("[GAYBBS_GATE] Admission log could not be delivered");}
 }
 async function issueInvite(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void>{
- if(a.document_version!==cfg.documentVersion || a.step!=="issuing" || !await consentsComplete(a))throw new Error("GATE_CONSENTS_INCOMPLETE");
- // Never use member_limit with creates_join_request. Only the verified applicant
- // will be approved when Telegram sends chat_join_request.
+ if(a.document_version!==cfg.documentVersion || a.step!=="issuing" ||
+   !await consentsComplete(a))throw new Error("GATE_CONSENTS_INCOMPLETE");
+ // Telegram needs one user-confirmed join request per group. The questionnaire,
+ // acceptance and receipts are shared; nobody can be silently joined to a group.
  const expires=new Date(Date.now()+24*60*60*1000);
- const created=await telegram.createChatInviteLink(cfg.target.chat_id,{
-  name:"GayBBS admission",creates_join_request:true,
-  expire_date:Math.floor(expires.getTime()/1000),
- });
+ const created:{chatId:number;targetId:number;link:string;expires:Date}[]=[];
  let saved=false;
- try{saved=await saveIssuedInvite(a,created.invite_link,expires)}
- finally{
+ try{
+  for(const board of cfg.boards){
+   const link=await telegram.createChatInviteLink(board.target.chat_id,{
+    name:"TGtumbler common admission",creates_join_request:true,
+    expire_date:Math.floor(expires.getTime()/1000),
+   });
+   created.push({chatId:board.target.chat_id,targetId:board.target.target_id,
+    link:link.invite_link,expires});
+  }
+  saved=await saveIssuedInvites(a,created);
+  if(!saved)throw new Error("GATE_THREE_INVITES_PERSIST_FAILED");
+ }finally{
   if(!saved){
-   try{await telegram.revokeChatInviteLink(cfg.target.chat_id,created.invite_link)}
-   catch{console.error("[GAYBBS_GATE] Orphan invite requires reconciliation");}
+   for(const entry of created){
+    try{await telegram.revokeChatInviteLink(entry.chatId,entry.link)}
+    catch{console.warn("[GAYBBS_GATE] Orphan invitation requires reconciliation");}
+   }
   }
  }
- if(!saved)throw new Error("GATE_INVITE_PERSIST_FAILED");
  await emitAdmissionLog(telegram,Number(a.tg_user_id),cfg,"approved");
  const next=await readAttempt(Number(a.tg_user_id));
  if(next)await show(telegram,next,cfg);
@@ -152,7 +195,7 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
   await ctx.reply("参加できません。");return;
  }
  try{
-  const result=await openAttempt(ctx.from.id,target.target_id,token(),{
+  const result=await openAttempt(ctx.from.id,cfg.target.target_id,token(),{
    username:ctx.from.username,
    displayName:[ctx.from.first_name,ctx.from.last_name].filter(Boolean).join(" "),
    isPremium:(ctx.from as {is_premium?:boolean}).is_premium??false,
@@ -205,7 +248,7 @@ async function onAction(ctx:Context,step:string,choice:string,stepToken:string):
    await ctx.answerCbQuery("無効な操作です");return;
   }
   if(index!==q.correctIndex){
-   if(a.challenge_fails>=2){await reject("本人確認の3回の回答が不正解でした。");return}
+   if(a.challenge_fails>=2){await reject("Bot対策の問題で3回不正解でした。");return}
    const changed=await transition({attempt:a,messageId,next:"challenge",newToken:token(),
     fails:a.challenge_fails+1,challengeData:generateChallenge(cfg.challenge.difficulty)});
    if(!changed){await ctx.answerCbQuery("処理済みです");return}
@@ -240,10 +283,11 @@ export function registerGayBbsApprovalHandlers(bot:Telegraf):void{
   if(mapped.rowCount!==1)return; // Don't touch unowned or ambiguous groups.
   const targetId=Number(mapped.rows[0].target_id);
   const cfg=await configured(targetId);
+  if(!cfg)return; // Do not touch unknown/unverified groups.
   const applicant=req.from.id;
   const inviteUrl=req.invite_link?.invite_link;
   const blocked=await blacklistRepo.getBlacklisted(applicant);
-  if(!cfg||!req.from.username||blocked?.status==="blocked"||!inviteUrl){
+  if(!req.from.username||blocked?.status==="blocked"||!inviteUrl){
    try{await ctx.telegram.declineChatJoinRequest(req.chat.id,applicant)}catch{}
    return;
   }
