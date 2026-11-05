@@ -47,7 +47,7 @@ function fixture() {
   registerProfileHandlers(bot as any, repo as any, async () => draft ? "profile" : null);
   function ctx(message = "") {
     return {
-      chat: {type: "private"}, from: {id: 4321, username: "valid_user"},
+      chat: {type: "private", id: 4321}, from: {id: 4321, username: "valid_user"},
       message: {text: message, message_id: 123}, match: [] as string[],
       callbackQuery: {message: {message_id: 99}},
       telegram: {
