@@ -255,7 +255,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      :previous.step==="preview"
      ? overviewText(previous.data as SavedProfile,ctx.from.username!)
      :previous.step==="awaiting_position"
-       ?"✅ 基本情報を受け付けました。ポジションを選択してください。"
+       ?"✅ 基本情報を受け付けました。\n下の7つのボタンからポジションを1つ選択してください。\n✅が現在の選択です。別の候補を押すと選び直せます。\n選択するとプロフィール一覧に進みます。"
        :basicPrompt(previous.data.position);
    const markup=previous.step==="like-categories"?tagCategoryKeyboard(previous.revision,previous.data)
      :previous.step==="like-items"?tagItemKeyboard(previous.revision,previous.data)
@@ -824,7 +824,7 @@ export function registerProfileHandlers(
           overviewKeyboard(updated.revision), "HTML");
       } else {
         await updateWizardScreen(ctx, repo, updated,
-          "✅ 基本情報を受け付けました。ポジションを選択してください。" + deletionWarning,
+          "✅ 基本情報を受け付けました。\n下の7つのボタンからポジションを1つ選択してください。\n✅が現在の選択です。別の候補を押すと選び直せます。\n選択するとプロフィール一覧に進みます。" + deletionWarning,
           selectPosition(updated.revision,updated.data.position));
       }
     } catch (err) {
@@ -839,7 +839,7 @@ export function registerProfileHandlers(
       await updateWizardScreen(ctx, repo, draft,
         "⚠️ 入力を確認してください。\n" +
         (err instanceof Error ? err.message : "入力内容が正しくありません") +
-        "\n\n内容を修正して、もう一度テキストを送信してください。" + deletionWarning,
+        "\n\n入力例：ゼロ（1行目）／175 80 40（2行目）\n内容を修正して、もう一度テキストを送信してください。" + deletionWarning,
         selectPosition(draft.revision,draft.data.position));
     }
   });
