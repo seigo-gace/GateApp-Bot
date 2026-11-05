@@ -87,3 +87,28 @@ export function admissionDocumentVersion(
  ])).digest("hex");
  return ADMISSION_VERSION + ":" + digest;
 }
+
+/** Three adopted TGtumbler boards; live Bot membership/IDs must be verified
+ * separately before deployment. No other legacy groups can enter admission.
+ */
+export const ADMISSION_BOARD_CHAT_IDS = [
+ -1003847210571, // エリア's BBS
+ -1002373696859, // ビデオChat
+ -1003770334893, // ゲイのための掲示板
+] as const;
+export type SharedAdmissionBoard = {
+ targetId:number; chatId:number; title:string; rulesText:string;
+ links:Readonly<Record<ApprovalDocKey,string>>;
+};
+
+/** One consent revision covering the complete, ordered set of 3 boards. */
+export function sharedAdmissionDocumentVersion(boards:readonly SharedAdmissionBoard[]):string {
+ if(boards.length!==ADMISSION_BOARD_CHAT_IDS.length)throw new Error("GATE_THREE_BOARDS_REQUIRED");
+ const versions=ADMISSION_BOARD_CHAT_IDS.map(chatId=>{
+  const matches=boards.filter(b=>b.chatId===chatId);
+  if(matches.length!==1||!matches[0]!.title.trim())throw new Error("GATE_BOARD_MAP_INVALID");
+  const b=matches[0]!;
+  return [chatId,b.title,admissionDocumentVersion(b.targetId,b.rulesText,b.links)];
+ });
+ return ADMISSION_VERSION+":"+createHash("sha256").update(JSON.stringify(versions)).digest("hex");
+}
