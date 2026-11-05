@@ -154,9 +154,12 @@ export async function runMigrations(): Promise<void> {
         operation_key TEXT NOT NULL UNIQUE,
         status TEXT NOT NULL CHECK (status IN ('pending','sending','sent','needs_reconcile','failed','deleted','archived')),
         telegram_message_id BIGINT,
+        inline_buttons JSONB,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE posting_deliveries ADD COLUMN IF NOT EXISTS inline_buttons JSONB;
 
       CREATE TABLE IF NOT EXISTS public_post_drafts (
         owner_user_id BIGINT NOT NULL,
