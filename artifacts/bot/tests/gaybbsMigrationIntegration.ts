@@ -72,6 +72,17 @@ try{
    VALUES('db-room-ann-1',111001,'announcement','ROOM案内','published',$1)
    RETURNING announcement_id`,[roomId]);
  const linkedId=Number(linked.rows[0].announcement_id);
+ const deliveryTopic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,
+    title,verified_by,verified_at,enabled)
+   VALUES('video_chat','announcement',-1002373696859,987,'Room purge test',111001,NOW(),TRUE)
+   RETURNING topic_id`);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+   (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
+     operation_key,status,telegram_message_id,inline_buttons)
+   VALUES('announcement',$1,111001,1,$2,'db-room-delivery','sent',87654,'[]'::jsonb)`,
+  [String(linkedId),deliveryTopic.rows[0].topic_id]);
  const source=await updateRoomState(111001,roomId,1,"start");
  assert.equal(source.state,"live");
  const consumed=await projectNextRoomEvent();
@@ -142,17 +153,6 @@ try{
  await pool.query(
   `INSERT INTO announcement_application_sessions(applicant_user_id,token_hash,expires_at)
    VALUES(222001,'db-room-entry',NOW()+INTERVAL '1 hour')`);
- const deliveryTopic=await pool.query(
-  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,
-    title,verified_by,verified_at,enabled)
-   VALUES('video_chat','announcement',-1002373696859,987,'Room purge test',111001,NOW(),TRUE)
-   RETURNING topic_id`);
- await pool.query(
-  `INSERT INTO posting_deliveries
-   (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
-     operation_key,status,telegram_message_id)
-   VALUES('announcement',$1,111001,1,$2,'db-room-delivery','sent',87654)`,
-  [String(linkedId),deliveryTopic.rows[0].topic_id]);
  const ended=await updateRoomState(111001,roomId,source.revision,"finish");
  assert.equal(ended.state,"finished");
  assert.ok(ended.eventId);
