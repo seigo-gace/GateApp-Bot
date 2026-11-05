@@ -13,13 +13,13 @@ export type ProfileBasic = {
 export type ProfileBasicDraft = ProfileBasic & {position?: ProfilePosition};
 /** Values outside these 50-unit bands are treated as likely input mistakes,
  * not as claims about physical impossibility.
- * The 19-year minimum below is for form validation; group admission rules
+ * The 18-year minimum below is for form validation; group admission rules
  * remain a separate policy and must be checked before public participation.
  */
 export const PROFILE_INPUT_LIMITS = {
   heightCm: {min: 100, max: 250},
   weightKg: {min: 50, max: 250},
-  age: {min: 19, max: 89},
+  age: {min: 18, max: 89},
 } as const;
 
 export function parseProfileBasic(text: string): ProfileBasic {
@@ -48,7 +48,7 @@ export function parseProfileBasic(text: string): ProfileBasic {
     throw new Error("体重は50〜250kgで入力してください");
   }
   if (age < PROFILE_INPUT_LIMITS.age.min || age > PROFILE_INPUT_LIMITS.age.max) {
-    throw new Error("年齢は19〜89歳で入力してください");
+    throw new Error("年齢は18〜89歳で入力してください");
   }
   return {nickname,heightCm,weightKg,age};
 }
