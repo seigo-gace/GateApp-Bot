@@ -7,6 +7,7 @@ import {updateRoomState,changeRoomVisibility,reportRoomParticipation,type RoomAc
 import {parseJstDateTime} from "../services/postingDomain.js";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../services/roomAccess.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
+import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 function actions(roomId:number,revision:number,status:string,visibility?:string){
  const allowed:Record<string,RoomAction[]>={
   draft:["schedule","prepare","cancel"],
@@ -50,7 +51,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
   }
   await ctx.answerCbQuery();
   // Return only in the requesting user's private chat; never reply in a group.
-  await ctx.reply("🎬 "+room.title+"\n準備完了・開催中のROOMだけ参加できます。",
+  await ctx.editMessageText("🎬 "+room.title+"\n準備完了・開催中のROOMだけ参加できます。",
    Markup.inlineKeyboard([[Markup.button.url("🔗 ROOMへ参加",room.joinUrl)]]));
  });
  bot.command("myrooms",async ctx=>{
@@ -91,14 +92,17 @@ export function registerRoomHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery();
    await pool.query(
     `INSERT INTO room_host_sessions
-      (owner_user_id,room_id,expected_revision,requested_action,expires_at)
-     VALUES($1,$2,$3,$4,NOW()+INTERVAL '20 minutes')
+      (owner_user_id,room_id,expected_revision,requested_action,expires_at,screen_message_id)
+     VALUES($1,$2,$3,$4,NOW()+INTERVAL '20 minutes',$5)
      ON CONFLICT(owner_user_id) DO UPDATE SET
       room_id=EXCLUDED.room_id,expected_revision=EXCLUDED.expected_revision,
       requested_action=EXCLUDED.requested_action,expires_at=EXCLUDED.expires_at,
-      updated_at=NOW()`,
-    [ctx.from.id,roomId,rev,action]);
-   await ctx.reply("変更後の開催日時を日本時間で入力してください。例：2026/11/20 20:00");
+      screen_message_id=EXCLUDED.screen_message_id,updated_at=NOW()`,
+    [ctx.from.id,roomId,rev,action,
+      ctx.callbackQuery.message&&"message_id" in ctx.callbackQuery.message
+       ?ctx.callbackQuery.message.message_id:null]);
+   await ctx.editMessageText("変更後の開催日時を日本時間で入力してください。例：2026/11/20 20:00",
+     Markup.inlineKeyboard([[Markup.button.callback("キャンセルして戻る","room:host:cancel")]]));
    return;
   }
   try{
@@ -113,7 +117,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
   if(ctx.chat.type!=="private"||ctx.message.text.startsWith("/"))return next();
   if(await currentDmTextOwner(ctx.from.id)!=="room_host")return next();
   const d=await pool.query(
-   `SELECT room_id,expected_revision,requested_action FROM room_host_sessions
+   `SELECT room_id,expected_revision,requested_action,screen_message_id FROM room_host_sessions
      WHERE owner_user_id=$1 AND expires_at>NOW()`,[ctx.from.id]);
   if(d.rows.length!==1)return next();
   try{
