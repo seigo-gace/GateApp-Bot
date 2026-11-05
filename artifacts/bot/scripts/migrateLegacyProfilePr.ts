@@ -33,7 +33,9 @@ export async function migrateLegacyProfilePr(dryRun:boolean){
    migrated++;
   }
  }
- process.stdout.write(JSON.stringify({mode:dryRun?"dry-run":"execute",scanned,migrated})+"\n");
+ const result={mode:dryRun?"dry-run":"execute",scanned,migrated};
+ process.stdout.write(JSON.stringify(result)+"\n");
+ return result;
 }
 if(process.argv[1]?.endsWith("migrateLegacyProfilePr.ts")){
  const flags=process.argv.slice(2);
