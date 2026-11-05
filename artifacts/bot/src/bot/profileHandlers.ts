@@ -46,6 +46,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
 export function registerProfileHandlers(
   bot: Telegraf,
   repo: ProfileRepo = profileRepo,
+  activeDmOwner:typeof currentDmTextOwner=currentDmTextOwner,
 ): void {
   bot.command("profile", async ctx => startProfileEditor(ctx,repo));
 
@@ -115,7 +116,7 @@ export function registerProfileHandlers(
   bot.on("text", async (ctx, next) => {
     if (ctx.chat.type !== "private" || !ctx.from?.username ||
         ctx.message.text.startsWith("/")) return next();
-    if(await currentDmTextOwner(ctx.from.id)!=="profile")return next();
+    if(await activeDmOwner(ctx.from.id)!=="profile")return next();
     const draft = await repo.getDraft(ctx.from.id);
     if (!draft || draft.step !== "awaiting_basic") return next();
     try {
