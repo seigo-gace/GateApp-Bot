@@ -11,12 +11,12 @@ export type PublicRoomStatus="scheduled"|"prepared"|"started"|"postponed"|
 
 export function roomBadge(kind:PublicRoomStatus):string{
  const badges:Record<PublicRoomStatus,string>={
-  scheduled:"📅 開催予定",
+  scheduled:"📅 予告中",
   prepared:"🟢 準備完了",
   started:"🔴 LIVE中",
   postponed:"⏸ 延期",
   cancelled:"🚫 中止",
-  finished:"⚫ 終了しました",
+  finished:"✅ 終了",
   visibility_changed:"🔒 参加条件を更新しました",
  };
  if(!(kind in badges))throw new Error("ROOM_BADGE_UNRECOGNIZED");
@@ -122,7 +122,8 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  if(!item)return null;
  try{
   const terminal=["finished","cancelled"].includes(item.kind);
-  const buttons=terminal?[]:item.buttons;
+  const buttons=terminal?[]:item.kind==="started"?item.buttons:
+   item.buttons.filter(row=>row.every(button=>!/(参加する|ROOMへ参加|参加リンク)/u.test(button.text)));
   const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>
    Markup.button.url(b.text,b.url))));
   await telegram.editMessageText(item.chatId,item.messageId,undefined,
