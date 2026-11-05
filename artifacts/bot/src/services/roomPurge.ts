@@ -63,6 +63,9 @@ export async function purgeRoomTerminal(
    "SELECT announcement_id FROM announcement_posts WHERE room_id=$1 ORDER BY announcement_id FOR UPDATE",
    [roomId]);
   const linkedIds=linked.rows.map(x=>Number(x.announcement_id));
+  await client.query(
+   `DELETE FROM room_status_message_edits WHERE room_event_id IN
+       (SELECT event_id FROM room_source_events WHERE room_id=$1)`,[roomId]);
   // Do not retain personal application snapshots, meeting announcements,
   // Telegram delivery contents, notification payloads, event logs or URLs.
   if(linkedIds.length){
@@ -106,9 +109,6 @@ export async function purgeRoomTerminal(
   await client.query(
    "DELETE FROM announcement_room_dispatches WHERE room_event_id IN (SELECT event_id FROM room_source_events WHERE room_id=$1)",
    [roomId]);
-  await client.query(
-   `DELETE FROM room_status_message_edits WHERE room_event_id IN
-       (SELECT event_id FROM room_source_events WHERE room_id=$1)`,[roomId]);
   await client.query("DELETE FROM room_source_events WHERE room_id=$1",[roomId]);
   const removed=await client.query(
    "DELETE FROM room_posts WHERE room_id=$1 AND owner_user_id=$2 RETURNING room_id",
