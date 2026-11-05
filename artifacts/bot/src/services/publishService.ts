@@ -42,7 +42,7 @@ export async function publishPost(telegram:Telegram, req:PublishRequest):
   if(membership.status!=="administrator"&&membership.status!=="creator")
     throw new Error("PUBLISH_BOT_NOT_ADMIN");
   const claimed=await claimDelivery(
-   req.sourceType,req.sourceId,req.ownerId,req.revision,topic.id
+   req.sourceType,req.sourceId,req.ownerId,req.revision,topic.id,req.buttons||[]
   );
   if(!claimed.claimed){
    if(claimed.delivery.status==="sent"&&claimed.delivery.messageId)
