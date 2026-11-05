@@ -213,7 +213,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      const draft=await repo.putDraft(ctx.from.id,"preview",{
        nickname:existing.nickname,heightCm:existing.heightCm,
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
-       hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,region:existing.region,area:existing.area,
+       hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,
        ...(lastId?{screenMessageId:lastId}:{}),
      });
      await updateWizardScreen(ctx,repo,draft,
