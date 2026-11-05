@@ -54,3 +54,10 @@
 - Source/CIの合格とTelegram/iOS/Android実機合格を混同しない。Bot公開、PR merge、本番配備を実行したと装わない。
 
 参照：GitHub GateApp-Bot Issue #4/#7、Notion 画面設計・UI/UX正本。これはTGtumbler固有の永続的な共通UI契約であり、他Projectのルール変更ではない。
+## 2026-11-05 Profile screen A agreed replacement (Master)
+After basic profile input and selecting position, show overview A with exact 3/3/2 rows:
+row1: 基本情報 | 容姿/エリア | 🖼️画像🎬動画/自己PR
+row2: #Like | #Love | プレビュー
+row3: 保存 | キャンセル
+No numeric section prefixes on buttons. Save means private save; cancel destination is 投稿メニュー. Internal callback only; no chat text from button clicks. The unspecified child sections are not to be invented or silently assumed complete.
+Current code fixes the row layout and initial actions. Cancel-to-posting-menu full navigation depends on the subsequently integrated posting-menu link/return handler; do not report that as connected until verified.
