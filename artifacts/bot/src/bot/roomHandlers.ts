@@ -10,14 +10,14 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 function actions(roomId:number,revision:number,status:string,visibility?:string){
  const allowed:Record<string,RoomAction[]>={
-  draft:["schedule","prepare","cancel"],
-  scheduled:["prepare","postpone","cancel"],
-  ready:["start","postpone","cancel"],
-  live:["finish","postpone","cancel"],
-  postponed:["schedule","prepare","cancel"],
+  draft:["start","cancel"],
+  scheduled:["start","postpone","cancel"],
+  ready:["start","cancel"],
+  live:["finish"],
+  postponed:["start","cancel"],
  };
- const labels:Record<RoomAction,string>={schedule:"📅 予約",prepare:"✅ 準備完了",
-  start:"▶ 開始を申告",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"■ 終了を申告"};
+ const labels:Record<RoomAction,string>={schedule:"📅 予告",prepare:"✅ 準備完了",
+  start:"▶ 開始する",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"✅ 終了する"};
  const rows=(allowed[status]||[]).map(x=>[
   Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`)]);
  if(["draft","scheduled","ready"].includes(status)&&visibility){
@@ -51,7 +51,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
   }
   await ctx.answerCbQuery();
   // Return only in the requesting user's private chat; never reply in a group.
-  await ctx.editMessageText("🎬 "+room.title+"\n準備完了・開催中のROOMだけ参加できます。",
+  await ctx.editMessageText("🎬 "+room.title+"\n🔴 LIVE中：参加URLを開いてください。",
    Markup.inlineKeyboard([[Markup.button.url("🔗 ROOMへ参加",room.joinUrl)]]));
  });
  bot.command("myrooms",async ctx=>{
