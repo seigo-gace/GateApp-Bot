@@ -668,4 +668,31 @@ export function registerProfileHandlers(
         selectPosition(draft.revision,draft.data.position));
     }
   });
+  // Telegram holds the media bytes; only file_id and small metadata enter the draft.
+  const receiveMedia=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video")=>{
+    if(ctx.chat?.type!=="private"||!ctx.from?.username)return next();
+    if(await activeDmOwner(ctx.from.id)!=="profile")return next();
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.step!=="media")return next();
+    const message=ctx.message;
+    if(!message)return next();
+    const photo=kind==="photo"&&"photo" in message?message.photo.at(-1):undefined;
+    const video=kind==="video"&&"video" in message?message.video:undefined;
+    const fileId=photo?.file_id??video?.file_id;
+    if(!fileId)return next();
+    const entry:ProfileMediaItem={type:kind,fileId,sourceMessageId:message.message_id,
+      ...("media_group_id" in message&&typeof message.media_group_id==="string"
+        ?{mediaGroupId:message.media_group_id}:{})};
+    const items=appendProfileMedia(draft.data.media,entry);
+    if(items.length>100){
+      await updateWizardScreen(ctx,repo,draft,"⚠️ 登録数上限です。"+mediaText(draft.data),mediaKeyboard(draft.revision));
+      return;
+    }
+    const updated=await repo.putDraft(ctx.from.id,"media",{...draft.data,media:items},draft.revision);
+    try{await ctx.deleteMessage();}catch{console.warn("[PROFILE_MEDIA_DELETE_FAILED]");}
+    await updateWizardScreen(ctx,repo,updated,mediaText(updated.data),mediaKeyboard(updated.revision));
+  };
+  bot.on("photo",async(ctx,next)=>receiveMedia(ctx,next,"photo"));
+  bot.on("video",async(ctx,next)=>receiveMedia(ctx,next,"video"));
+
 }
