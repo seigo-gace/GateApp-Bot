@@ -52,11 +52,16 @@ export async function runMigrations(): Promise<void> {
       );
       ALTER TABLE profile_media ADD COLUMN IF NOT EXISTS item_id BIGINT;
       WITH numbered AS (
-        SELECT id,ROW_NUMBER() OVER (PARTITION BY owner_user_id ORDER BY id) AS ordinal
-        FROM profile_media
+        SELECT id,owner_user_id,
+               ROW_NUMBER() OVER (PARTITION BY owner_user_id ORDER BY id) AS ordinal
+        FROM profile_media WHERE item_id IS NULL
+      ), maxima AS (
+        SELECT owner_user_id,COALESCE(MAX(item_id),0) AS last_id
+        FROM profile_media GROUP BY owner_user_id
       )
-      UPDATE profile_media AS pm SET item_id=numbered.ordinal
-      FROM numbered WHERE pm.id=numbered.id AND pm.item_id IS NULL;
+      UPDATE profile_media AS pm SET item_id=maxima.last_id+numbered.ordinal
+      FROM numbered JOIN maxima ON maxima.owner_user_id=numbered.owner_user_id
+      WHERE pm.id=numbered.id AND pm.item_id IS NULL;
       CREATE UNIQUE INDEX IF NOT EXISTS profile_media_item_unique
         ON profile_media(owner_user_id,item_id) WHERE item_id IS NOT NULL;
       ALTER TABLE profile_media ADD COLUMN IF NOT EXISTS source_message_id BIGINT;
