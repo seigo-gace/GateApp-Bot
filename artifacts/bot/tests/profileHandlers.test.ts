@@ -636,12 +636,15 @@ test("③ photo/video item replacement and deletion preserve other item numbers 
  await f.send("削除 2");
  assert.deepEqual(f.draft.data.media.map((x:any)=>x.itemId),[1]);
  assert.match(f.sent.at(-1)[4],/登録されていません/);
+ await sendMedia("photo",503,"third-new");
+ assert.deepEqual(f.draft.data.media.map((x:any)=>x.itemId),[1,3],"deleted number must not be recycled");
  await f.send("差替 1");
  await f.send("差替取消");
  assert.equal(f.draft.data.replaceMediaId,undefined);
  await f.action(String.raw`^pf:media:(\d+):back$`,[String(f.draft.revision)]);
  await f.action(overviewAction,[String(f.draft.revision),"save"]);
- assert.deepEqual(f.profile.media.map((x:any)=>[x.itemId,x.fileId]),[[1,"photo-new"]]);
+ assert.deepEqual(f.profile.media.map((x:any)=>[x.itemId,x.fileId]),[[1,"photo-new"],[3,"third-new"]]);
+ assert.equal(f.profile.mediaNextId,4);
  assert.equal(f.sent.filter((x:any)=>x[0]==="reply").length,1);
 });
 
@@ -657,4 +660,25 @@ test("③ replacement waits for media and cannot overwrite PR with an accidental
  await f.send("間違った文章");
  assert.equal(f.draft.data.pr,"最初の自己PR");
  assert.equal(f.draft.data.replaceMediaId,1);
+});
+
+test("③ large media lists remain viewable via text pagination without extra buttons or item cap",async()=>{
+ const f=fixture();
+ await f.start();await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"media"]);
+ for(let n=0;n<41;n++){
+  const ctx=f.ctx();
+  ctx.message={message_id:1000+n,photo:[{file_id:"file-"+n}]} as any;
+  await f.handlers.get("on:photo")!(ctx,async()=>{throw Error("media leaked");});
+ }
+ assert.equal(f.draft.data.media.length,41);
+ await f.send("一覧 2");
+ assert.equal(f.draft.data.mediaPage,2);
+ assert.match(f.sent.at(-1)[4],/No.41/);
+ assert.ok(!String(f.sent.at(-1)[4]).includes("No.1 🖼️"));
+ await f.send("一覧 99");
+ assert.equal(f.draft.data.mediaPage,2);
+ assert.match(f.sent.at(-1)[4],/存在しない一覧ページ/);
+ assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る"]]);
 });
