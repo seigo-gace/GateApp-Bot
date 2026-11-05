@@ -28,7 +28,8 @@ export async function getVerifiedTopic(id:number,purpose:PostPurpose):Promise<Ve
 }
 export type DeliveryState={id:number,status:string,messageId:number|null};
 export async function claimDelivery(
- sourceType:PostPurpose,sourceId:string,ownerId:number,revision:number,topicId:number
+ sourceType:PostPurpose,sourceId:string,ownerId:number,revision:number,topicId:number,
+ buttons:readonly (readonly {text:string;url:string}[])[]=[]
 ):Promise<{claimed:boolean;delivery:DeliveryState}> {
  if(!Number.isSafeInteger(ownerId)||ownerId<=0||!Number.isSafeInteger(revision)||revision<=0)
    throw new Error("DELIVERY_INVALID");
@@ -37,8 +38,8 @@ export async function claimDelivery(
  try{
   await cx.query("BEGIN");
   const existing=await cx.query(
-   "INSERT INTO posting_deliveries (source_type,source_id,owner_user_id,source_revision,posting_topic_id,operation_key,status) VALUES ($1,$2,$3,$4,$5,$6,'pending') ON CONFLICT (operation_key) DO NOTHING RETURNING delivery_id,status,telegram_message_id",
-   [sourceType,sourceId,ownerId,revision,topicId,op]
+   "INSERT INTO posting_deliveries (source_type,source_id,owner_user_id,source_revision,posting_topic_id,operation_key,status,inline_buttons) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7::jsonb) ON CONFLICT (operation_key) DO NOTHING RETURNING delivery_id,status,telegram_message_id",
+   [sourceType,sourceId,ownerId,revision,topicId,op,JSON.stringify(buttons)]
   );
   let claimed=false;
   const claimedRow=await cx.query(
