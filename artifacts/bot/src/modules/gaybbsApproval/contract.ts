@@ -44,3 +44,26 @@ export function hasAdoptedQuestions(rows: readonly AdmissionQuestionRecord[]): b
 export function acceptedStagesComplete(stages: readonly string[]): boolean {
   return ["question1", "question2", "rules"].every(s => stages.includes(s));
 }
+
+/**
+ * Defense in depth for the two adopted questions and separate group-rule consent.
+ * A state change alone must never issue an invitation or mint consent receipts.
+ */
+export function canAdvanceAdmission(
+ from: string, next: string,
+ consent?: {stage: ConsentStage; accepted: boolean},
+): boolean {
+ if (from === "intro") return next === "challenge" && consent === undefined;
+ if (from === "challenge") {
+  return (next === "challenge" || next === "q1" || next === "rejected") &&
+   consent === undefined;
+ }
+ const required: ConsentStage | undefined =
+  from === "q1" ? "question1" :
+  from === "q2" ? "question2" :
+  from === "rules" ? "rules" : undefined;
+ if (!required || consent?.stage !== required) return false;
+ const forward = from === "q1" ? "q2" : from === "q2" ? "rules" : "issuing";
+ return (next === forward && consent.accepted === true) ||
+  (next === "rejected" && consent.accepted === false);
+}
