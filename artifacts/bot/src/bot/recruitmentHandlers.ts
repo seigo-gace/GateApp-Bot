@@ -79,7 +79,7 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  try{
   const api=telegram as unknown as {callApi:(method:string,payload:Record<string,unknown>)=>Promise<any>};
   const old=typeof d.data.screenMessageId==="number"?d.data.screenMessageId:undefined;
-  const rich=buildRecruitmentRichPreview(input,d.revision,rawDestination,warning);
+  const rich=buildRecruitmentRichPreview(input,d.revision,rawDestination,warning,profile);
   const payload={chat_id:id,rich_message:rich,
     reply_markup:{inline_keyboard:actionRows}};
   if(old){
