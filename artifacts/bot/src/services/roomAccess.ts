@@ -18,7 +18,7 @@ export async function getAuthorizedRoom(
    WHERE r.room_id=$2 AND r.status='live'
    AND (
      r.owner_user_id=$1
-     OR (r.join_visibility='public' AND EXISTS(
+     OR (r.status='live' AND r.join_visibility='public' AND EXISTS(
        SELECT 1 FROM announcement_posts public_notice
         WHERE public_notice.room_id=r.room_id
           AND public_notice.status IN ('published','filled')
@@ -31,13 +31,13 @@ export async function getAuthorizedRoom(
              AND topic.enabled=TRUE AND topic.purpose='announcement'
           )
      ))
-     OR EXISTS(
+     OR (r.status='live' AND EXISTS(
        SELECT 1 FROM announcement_posts a
          JOIN announcement_applications ap
            ON ap.announcement_id=a.announcement_id
         WHERE a.room_id=r.room_id AND a.status IN ('published','filled','closed')
           AND ap.applicant_user_id=$1 AND ap.status='accepted'
-     )
+     ))
    )`,[userId,roomId]);
  if(r.rows.length!==1)return null;
  return {id:Number(r.rows[0].room_id),title:String(r.rows[0].title),
@@ -48,9 +48,9 @@ export async function listAuthorizedRooms(userId:number):Promise<
  positive(userId);
  const r=await pool.query(
   `SELECT r.room_id,r.title,r.status FROM room_posts r
-    WHERE r.status='live' AND (
+    WHERE r.status IN ('ready','live') AND (
       r.owner_user_id=$1
-      OR (r.join_visibility='public' AND EXISTS(
+      OR (r.status='live' AND r.join_visibility='public' AND EXISTS(
         SELECT 1 FROM announcement_posts public_notice
          WHERE public_notice.room_id=r.room_id
            AND public_notice.status IN ('published','filled')
@@ -63,12 +63,12 @@ export async function listAuthorizedRooms(userId:number):Promise<
              AND topic.enabled=TRUE AND topic.purpose='announcement'
           )
       ))
-      OR EXISTS (
+      OR (r.status='live' AND EXISTS (
        SELECT 1 FROM announcement_posts a
        JOIN announcement_applications ap ON ap.announcement_id=a.announcement_id
        WHERE a.room_id=r.room_id AND a.status IN ('published','filled','closed')
          AND ap.applicant_user_id=$1 AND ap.status='accepted'
-      )
+      ))
     ) ORDER BY r.updated_at DESC LIMIT 30`,[userId]);
  return r.rows.map(row=>({id:Number(row.room_id),title:String(row.title),
    status:String(row.status)}));
