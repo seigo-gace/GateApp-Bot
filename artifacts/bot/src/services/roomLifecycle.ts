@@ -5,7 +5,7 @@
 import {pool} from "../db/index.js";
 export type RoomState="draft"|"scheduled"|"ready"|"live"|"postponed"|"cancelled"|"finished";
 export type RoomAction="schedule"|"prepare"|"start"|"postpone"|"cancel"|"finish";
-export type RoomEventKind="scheduled"|"prepared"|"started"|"postponed"|"cancelled"|"finished"|"visibility_changed";
+export type RoomEventKind="scheduled"|"prepared"|"started"|"postponed"|"cancelled"|"finished"|"visibility_changed"|"details_changed";
 const map:Record<RoomAction,{to:RoomState;event:RoomEventKind;from:readonly RoomState[]}>={
  schedule:{to:"scheduled",event:"scheduled",from:["draft","postponed"]},
  prepare:{to:"ready",event:"prepared",from:["draft","scheduled","postponed"]},
@@ -55,6 +55,41 @@ export async function updateRoomState(
    [roomId,rev,next.event,JSON.stringify({startAt:next.startAt})]);
   await c.query("COMMIT");
   return {state:next.state,revision:rev,eventId:Number(event.rows[0].event_id)};
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}
+/** Only the two Master-approved ROOM fields can be edited after publication.
+ * The ROOM owns title+description; Announcement/MPB update the public post
+ * asynchronously from this durable source event.
+ */
+export async function updateRoomDetails(hostUserId:number,roomId:number,
+ expectedRevision:number,title:string,description:string):
+ Promise<{revision:number;eventId:number}>{
+ if(![hostUserId,roomId,expectedRevision].every(n=>Number.isSafeInteger(n)&&n>0))
+  throw new Error("ROOM_OWNER_OR_REVISION_INVALID");
+ if(!title.trim()||title.length>100||!description.trim()||description.length>3500)
+  throw new Error("ROOM_TITLE_AND_DESCRIPTION_REQUIRED");
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const old=await c.query(
+   `SELECT revision,status FROM room_posts
+    WHERE room_id=$1 AND owner_user_id=$2 FOR UPDATE`,[roomId,hostUserId]);
+  if(old.rows.length!==1)throw new Error("ROOM_NOT_OWNED");
+  if(Number(old.rows[0].revision)!==expectedRevision)throw new Error("ROOM_REVISION_STALE");
+  if(["cancelled","finished"].includes(old.rows[0].status))
+   throw new Error("ROOM_TERMINAL_EDIT_FORBIDDEN");
+  const changed=await c.query(
+   `UPDATE room_posts SET title=$3,description=$4,revision=revision+1,
+     updated_at=NOW() WHERE room_id=$1 AND owner_user_id=$2 RETURNING revision`,
+   [roomId,hostUserId,title.trim(),description.trim()]);
+  const revision=Number(changed.rows[0].revision);
+  const event=await c.query(
+   `INSERT INTO room_source_events
+     (room_id,source_revision,kind,payload)
+    VALUES($1,$2,'details_changed',$3::jsonb) RETURNING event_id`,
+   [roomId,revision,JSON.stringify({title:title.trim(),description:description.trim()})]);
+  await c.query("COMMIT");
+  return {revision,eventId:Number(event.rows[0].event_id)};
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }
 /** Only the host can explicitly change free-join vs approved-only mode;
