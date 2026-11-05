@@ -2,7 +2,7 @@ import { pool } from "../db/index.js";
 import type { ProfileBasicDraft, ProfilePosition } from "./profileCore.js";
 
 export type ProfileDraft = {
-  step: "awaiting_basic" | "awaiting_position" | "preview";
+  step: "awaiting_basic" | "awaiting_position" | "preview" | "cancelled";
   data: Partial<ProfileBasicDraft>;
   revision: number;
 };
@@ -19,8 +19,10 @@ function ownerId(id: number): number {
 /** Cancel only the active draft; never delete the saved profile. */
 export async function discardDraft(id: number, expectedRevision: number): Promise<boolean> {
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) throw new Error("PROFILE_DRAFT_STALE");
+  // Keep a versioned tombstone. Deleting the row would reset revision to 1
+  // on restart, allowing a stale mobile callback to cancel the new draft.
   const r = await pool.query(
-    "DELETE FROM profile_drafts WHERE owner_user_id=$1 AND revision=$2 RETURNING owner_user_id",
+    "UPDATE profile_drafts SET step='cancelled',data='{}'::jsonb,revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1 AND revision=$2 AND step <> 'cancelled' RETURNING owner_user_id",
     [ownerId(id), expectedRevision],
   );
   return r.rows.length === 1;
@@ -30,7 +32,7 @@ export async function getDraft(id: number): Promise<ProfileDraft | null> {
     "SELECT step, data, revision FROM profile_drafts WHERE owner_user_id = $1",
     [ownerId(id)]
   );
-  if (!r.rows.length) return null;
+  if (!r.rows.length || r.rows[0].step === "cancelled") return null;
   return {step:r.rows[0].step, data:r.rows[0].data, revision:r.rows[0].revision};
 }
 export async function putDraft(id: number, step: ProfileDraft["step"],
