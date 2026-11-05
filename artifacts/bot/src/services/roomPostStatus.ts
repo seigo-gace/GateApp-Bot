@@ -130,6 +130,20 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
    [...item.buttons.filter(row=>row.every(button=>!/(参加する|ROOMへ参加|参加リンク)/u.test(button.text))),
     [{text:"🎥 参加する",url:roomJoinUrl(item.joinToken!)}]]:
    item.buttons.filter(row=>row.every(button=>!/(参加する|ROOMへ参加|参加リンク)/u.test(button.text)));
+  // Instant ROOM is published LIVE with its authorized Bot button already.
+  // Telegram rejects identical text+keyboard edits; acknowledge this exact
+  // immutable state without triggering duplicate publication/reconciliation.
+  const sameLive=item.kind==="started"&&
+   item.original.includes("状態：🔴 LIVE中")&&
+   item.buttons.some(row=>row.some(b=>
+    b.text==="🎥 参加する"&&b.url===roomJoinUrl(item.joinToken!)));
+  if(sameLive){
+   const ack=await pool.query(
+    `UPDATE room_status_message_edits SET state='confirmed',updated_at=NOW()
+      WHERE edit_id=$1 AND state='sending' RETURNING edit_id`,[item.editId]);
+   if(ack.rows.length!==1)throw new Error("ROOM_EDIT_ACK_UNCERTAIN");
+   return {editId:item.editId,state:"confirmed"};
+  }
   const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>
    Markup.button.url(b.text,b.url))));
   await telegram.editMessageText(item.chatId,item.messageId,undefined,
