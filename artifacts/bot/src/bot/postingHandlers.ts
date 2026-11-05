@@ -401,27 +401,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
  bot.action(/^room:save:(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const rev=Number(ctx.match[1]);
-  const draft=await getDraft(ctx.from.id,"room");
-  if(!draft||draft.step!=="preview"||draft.revision!==rev){
-   await ctx.answerCbQuery("下書きが更新されました。/room から再開してください。");
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.step!=="preview"||d.revision!==rev){
+   await ctx.answerCbQuery("古い操作です。/room から再開してください。");
    return;
   }
   try{
-   const title=String(draft.data.title||"");
-   const url=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
-   const saved=await createRoom(ctx.from.id,rev,title,url);
-   // ROOM is private until a separate Announcement/MPB release gate passes.
-   const announcementText=preview("room",draft);
-   await createAnnouncement(ctx.from.id,rev,"announcement",announcementText,
-     undefined,[],[],Number(saved.sourceId));
-   await markRoomDraftSaved(ctx.from.id,rev,Number(saved.sourceId));
-   await ctx.answerCbQuery("非公開保存しました");
-   await ctx.editMessageText("✅ ROOMを非公開保存しました。\nROOM #"+saved.sourceId+
-     "\n/myrooms で準備・開始・延期・終了を管理できます。"+
-     "\n募集・案内はまだ公開していません。");
-  }catch{
-   await ctx.answerCbQuery("保存状態を確認してください");
-  }
+   parseRoomDetails(String(d.data.title||"")+"\n"+String(d.data.description||""));
+   await saveRoomEditorDraft(ctx.from.id,rev);
+   await ctx.answerCbQuery("下書き保存済み");
+   await ctx.editMessageText("✅ ROOMのタイトル・説明・設定を非公開保存しました。\n/room から再利用できます。");
+  }catch{await ctx.answerCbQuery("保存に失敗しました。/room から確認してください。");}
  });
  bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
   if(!privateDM(ctx))return;
