@@ -5,6 +5,7 @@ import {validateProfileArea,type ProfileAreaValues} from "./profileArea.js";
 import {validateProfileMedia,numberProfileMedia,type ProfileMediaItem} from "./profileMedia.js";
 import {storeProfilePr,readProfilePr} from "./profilePrStorage.js";
 import {validLikeTags,LIKE_CATEGORIES,type LikeTag} from "./profileLike.js";
+import {captureProfileSnapshot} from "./profilePublicSnapshot.js";
 
 export type ProfileDraft = {
   step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "like-categories" | "like-items" | "cancelled";
@@ -157,11 +158,11 @@ export async function savePrivateDraft(id: number, revision: number,
          hair=EXCLUDED.hair,body=EXCLUDED.body,
          region=EXCLUDED.region,area=EXCLUDED.area,pr=EXCLUDED.pr,pr_ref=EXCLUDED.pr_ref,media_next_id=EXCLUDED.media_next_id,
          revision=profiles.revision+1,updated_at=NOW()
-       WHERE profiles.status='private'
+       WHERE profiles.status IN ('private','published')
        RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,status,revision`,
       [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId]
     );
-    if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
+    if (!saved.rows.length) throw new Error("PROFILE_SAVE_NOT_ALLOWED");
     if(p.likeTags!==undefined||p.loveTags!==undefined){
       const catalog=LIKE_CATEGORIES.flatMap(category=>category.items.map((tag,i)=>({
         category:category.name,tag,ordinal:i+1,
@@ -216,13 +217,27 @@ export async function savePrivateDraft(id: number, revision: number,
  * A Telegram success with a DB failure must be reconciled using delivery rows;
  * publishing again is NOT a recovery action.
  */
+export type ProfilePublicationRow={
+ chatId:number;threadId:number;messageId:number;status:string;syncedRevision:number;
+};
+export async function listProfilePublications(id:number):Promise<ProfilePublicationRow[]>{
+ const r=await pool.query(
+  "SELECT chat_id,thread_id,message_id,status,synced_revision FROM profile_publications WHERE owner_user_id=$1 ORDER BY chat_id,thread_id",
+  [ownerId(id)]);
+ return r.rows.map(x=>({chatId:Number(x.chat_id),threadId:Number(x.thread_id),
+  messageId:Number(x.message_id),status:String(x.status),syncedRevision:Number(x.synced_revision)}));
+}
 export async function recordProfilePublication(
- id:number,revision:number,chatId:number,threadId:number,messageId:number
+ id:number,revision:number,chatId:number,threadId:number,messageId:number,
+ profile?:SavedProfile
 ):Promise<void>{
  ownerId(id);
  if(![revision,threadId,messageId].every(n=>Number.isSafeInteger(n)&&n>0)||
     !Number.isSafeInteger(chatId)||chatId>=0)
   throw new Error("PROFILE_PUBLICATION_INVALID");
+ const current=profile??await getProfile(id);
+ if(!current||current.revision!==revision)throw new Error("PROFILE_REVISION_CHANGED_AFTER_SEND");
+ const snapshot=captureProfileSnapshot(current);
  const c=await pool.connect();
  try{
   await c.query("BEGIN");
@@ -231,16 +246,40 @@ export async function recordProfilePublication(
     WHERE owner_user_id=$1 AND revision=$2 AND status IN ('private','published')
     RETURNING owner_user_id`,[id,revision]);
   if(p.rows.length!==1)throw new Error("PROFILE_REVISION_CHANGED_AFTER_SEND");
-  await c.query(
+  const updated=await c.query(
    `INSERT INTO profile_publications
-      (owner_user_id,chat_id,thread_id,message_id,status,synced_revision,updated_at)
-    VALUES($1,$2,$3,$4,'published',$5,NOW())
+      (owner_user_id,chat_id,thread_id,message_id,status,synced_revision,
+       public_snapshot,pending_revision,updated_at)
+    VALUES($1,$2,$3,$4,'published',$5,$6::jsonb,NULL,NOW())
     ON CONFLICT(owner_user_id,chat_id,thread_id) DO UPDATE SET
       message_id=EXCLUDED.message_id,status='published',
-      synced_revision=EXCLUDED.synced_revision,last_error=NULL,updated_at=NOW()
+      synced_revision=EXCLUDED.synced_revision,public_snapshot=EXCLUDED.public_snapshot,
+      pending_revision=NULL,last_error=NULL,updated_at=NOW()
     WHERE profile_publications.synced_revision IS NULL OR
-      profile_publications.synced_revision<=EXCLUDED.synced_revision`,
-   [id,chatId,threadId,messageId,revision]);
+      profile_publications.synced_revision<=EXCLUDED.synced_revision
+    RETURNING owner_user_id`,
+   [id,chatId,threadId,messageId,revision,JSON.stringify(snapshot)]);
+  if(updated.rows.length!==1)throw Error("PROFILE_PUBLICATION_STALE");
   await c.query("COMMIT");
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}
+/** Reserve an existing publication for edit-in-place. A Telegram timeout
+ * leaves status sync_error; no automatic resend is permitted.
+ */
+export async function claimProfileRevisionUpdate(
+ id:number,revision:number,chatId:number,threadId:number
+):Promise<number>{
+ ownerId(id);
+ if(![revision,threadId].every(x=>Number.isSafeInteger(x)&&x>0)||
+    !Number.isSafeInteger(chatId)||chatId>=0)throw Error("PROFILE_PUBLICATION_INVALID");
+ const r=await pool.query(
+  `UPDATE profile_publications SET status='sync_error',pending_revision=$5,
+   last_error='RECONCILE_REQUIRED_IF_AMBIGUOUS',updated_at=NOW()
+   WHERE owner_user_id=$1 AND chat_id=$2 AND thread_id=$3 AND status='published'
+     AND synced_revision<$5 AND message_id IS NOT NULL
+     AND EXISTS(SELECT 1 FROM profiles WHERE owner_user_id=$1 AND revision=$5)
+   RETURNING message_id`,
+  [id,chatId,threadId,0,revision]);
+ if(r.rows.length!==1)throw Error("PROFILE_PUBLICATION_UPDATE_NEEDS_RECONCILE");
+ return Number(r.rows[0].message_id);
 }
