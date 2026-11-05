@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ADMISSION_VERSION, APPROVAL_QUESTIONS, RULES_CONSENT_QUESTION,
- admissionDocumentVersion, canAdvanceAdmission } from "./contract.js";
+ admissionDocumentVersion, canAdvanceAdmission, ADMISSION_BOARD_CHAT_IDS,
+ sharedAdmissionDocumentVersion } from "./contract.js";
 
 const links = {
  guideline: "https://example.org/guideline",
@@ -52,4 +53,28 @@ test("document version is stable until questions, links or group rules change", 
  assert.throws(() => admissionDocumentVersion(1,"現在のグループルール",{
   ...links, terms:"http://example.org/terms",
  }));
+});
+
+test("shared common approval accepts exactly the 3 adopted groups and one consent revision",()=>{
+ const boards=ADMISSION_BOARD_CHAT_IDS.map((chatId,i)=>({
+  targetId:100+i,chatId,title:"Group "+(i+1),
+  rulesText:"Board rule "+(i+1),
+  links:{...links},
+ }));
+ const version=sharedAdmissionDocumentVersion(boards);
+ assert.equal(version.startsWith(ADMISSION_VERSION+":"),true);
+ assert.equal(version,sharedAdmissionDocumentVersion([...boards].reverse()),
+  "entry group must not change common consent identity");
+ assert.notEqual(version,sharedAdmissionDocumentVersion(boards.map((b,i)=>
+  i===1?{...b,rulesText:"New group 2 rule"}:b)),
+  "any of the 3 group rules invalidates old consent");
+ assert.notEqual(version,sharedAdmissionDocumentVersion(boards.map((b,i)=>
+  i===2?{...b,links:{...b.links,terms:"https://example.org/terms-v2"}}:b)),
+  "a document link change in group 3 invalidates old consent");
+ assert.throws(()=>sharedAdmissionDocumentVersion(boards.slice(0,2)),
+  /GATE_THREE_BOARDS_REQUIRED/);
+ assert.throws(()=>sharedAdmissionDocumentVersion([...boards.slice(0,2),boards[0]!]),
+  /GATE_BOARD_MAP_INVALID/);
+ assert.throws(()=>sharedAdmissionDocumentVersion([...boards.slice(0,2),
+  {...boards[2]!,chatId:-1005555000999}]),/GATE_BOARD_MAP_INVALID/);
 });
