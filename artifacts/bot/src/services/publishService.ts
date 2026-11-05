@@ -53,7 +53,7 @@ export async function publishPost(telegram:Telegram, req:PublishRequest):
    const messageId=await createTelegramDispatcher(telegram).publish(
     {chatId:topic.chatId,threadId:topic.threadId},
     {text:req.text,parseMode:"HTML",buttons:req.buttons});
-   await acknowledgeDelivery(claimed.delivery.id,messageId);
+   await acknowledgeDelivery(claimed.delivery.id,messageId,req.text);
    return {messageId,chatId:topic.chatId,threadId:topic.threadId};
   }catch(error){
    // An API timeout may mean Telegram already accepted the message.
