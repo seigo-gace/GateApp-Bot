@@ -492,7 +492,7 @@ test("area blocks render 13 actual names and return, no fake rows",async()=>{
  assert.equal(f.draft.step,"area-blocks");
  const rows=f.sent.at(-1)[2].reply_markup.inline_keyboard;
  assert.deepEqual(rows.map((r:any[])=>r.length),[3,3,3,3,2,1]);
- assert.equal(rows.flat().length,14);
+ assert.equal(rows.flat().length,15); // 13 regions + Back + Save
  assert.ok(rows[4][0].text.includes("沖縄"));
  assert.ok(rows[4][1].text.includes("戻る"));
  assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
