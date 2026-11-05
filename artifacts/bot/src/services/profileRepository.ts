@@ -16,6 +16,10 @@ function ownerId(id: number): number {
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error("INVALID_PROFILE_OWNER");
   return id;
 }
+/** Cancel only the active draft; never delete the saved profile. */
+export async function discardDraft(id: number): Promise<void> {
+  await pool.query("DELETE FROM profile_drafts WHERE owner_user_id=$1", [ownerId(id)]);
+}
 export async function getDraft(id: number): Promise<ProfileDraft | null> {
   const r = await pool.query(
     "SELECT step, data, revision FROM profile_drafts WHERE owner_user_id = $1",
