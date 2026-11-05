@@ -32,7 +32,7 @@ export function parseProfileBasic(text: string): ProfileBasic {
   // The same separator must divide exactly three integer values.
   // Accept the agreed forms: space, slash, hash, or hyphen; no mixed separators.
   const numbers = lines[1].trim();
-  const match = numbers.match(/^(\\d{2,3})([ \/#-])(\\d{2,3})\\2(\\d{1,3})$/);
+  const match = numbers.match(/^(\d{2,3})([ \/#-])(\d{2,3})\2(\d{1,3})$/);
   if (!match) {
     throw new Error("2行目は「175 80 40」「175/80/40」「175#80#40」「175-80-40」の形式で再入力してください");
   }
