@@ -16,6 +16,8 @@ import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roo
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
 import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
+import {activateMenuOrigin} from "../src/services/menuOriginRepository.js";
+import {newMenuToken,tokenHash} from "../src/services/menuOrigin.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -57,6 +59,25 @@ try{
  assert.equal(savedLinked.rows[0].conditions.title,"食事募集");
  assert.equal(savedLinked.rows[0].profile_snapshot.nickname,"テスト");
  // Reopening after cancellation gets a new revision and no old private fields.
+ // A06: an r_ entry is authenticated against the same existing announcement
+ // token ledger; a profile token must never masquerade as recruitment.
+ const panel=await pool.query(
+  `INSERT INTO board_menu_panels
+    (chat_id,message_thread_id,panel_type,state,verified_by,verified_at)
+   VALUES(-1003847210571,712345,'posting','published',811001,NOW())
+   RETURNING panel_id`);
+ const panelId=Number(panel.rows[0].panel_id);
+ const recruitToken=newMenuToken(),profileToken=newMenuToken();
+ await pool.query(
+  `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at)
+   VALUES($1,$3,'announcement',NOW()+INTERVAL '1 day'),
+         ($2,$3,'profile',NOW()+INTERVAL '1 day')`,
+  [tokenHash(recruitToken),tokenHash(profileToken),panelId]);
+ const recruitingOrigin=await activateMenuOrigin(811004,"r_"+recruitToken);
+ assert.equal(recruitingOrigin.feature,"announcement");
+ assert.equal(recruitingOrigin.threadId,712345);
+ await assert.rejects(()=>activateMenuOrigin(811004,"r_"+profileToken),
+  /RECRUITMENT_MENU_FEATURE_NOT_VERIFIED/);
  const first=await beginDraft(811003,"announcement","awaiting_text",
   {kind:"recruitment",recruitmentFlow:"compact",title:"キャンセル対象"});
  const cancelledRecruitment=await updateDraft(811003,"announcement",first.revision,"cancelled",
