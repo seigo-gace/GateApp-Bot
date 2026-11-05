@@ -97,10 +97,18 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
   if (!r.rows.length) return null;
   const p = r.rows[0];
   const mediaRows=await pool.query("SELECT id,item_id,file_id,media_type,source_message_id,media_group_id FROM profile_media WHERE owner_user_id=$1 ORDER BY id",[id]);
-  const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:number;item_id:number|null;file_id:string;media_type:"photo"|"video";source_message_id:number|null;media_group_id:string|null})=>({
-    type:m.media_type,itemId:m.item_id??m.id,fileId:m.file_id,sourceMessageId:m.source_message_id??m.id+2147483647,
-    ...(m.media_group_id?{mediaGroupId:m.media_group_id}:{}),
-  }));
+  const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:string|number;item_id:string|number|null;file_id:string;media_type:"photo"|"video";source_message_id:string|number|null;media_group_id:string|null})=>{
+    // PostgreSQL BIGINT values arrive as strings with node-postgres.
+    const itemId=Number(m.item_id??m.id);
+    const sourceMessageId=Number(m.source_message_id??(Number(m.id)+2147483647));
+    if(!Number.isSafeInteger(itemId)||itemId<=0||
+       !Number.isSafeInteger(sourceMessageId)||sourceMessageId<=0)
+      throw Error("PROFILE_MEDIA_PERSISTED_ID_INVALID");
+    return {type:m.media_type,itemId,fileId:m.file_id,sourceMessageId,
+      ...(m.media_group_id?{mediaGroupId:m.media_group_id}:{})};
+  });
+  if(!Number.isSafeInteger(Number(p.media_next_id))||Number(p.media_next_id)<1)
+    throw Error("PROFILE_MEDIA_COUNTER_INVALID");
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
     weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,
     pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId:Number(p.media_next_id),status:p.status,revision:p.revision};
