@@ -3,7 +3,6 @@
  * and MPB only handles Telegram messages.
  */
 import {pool} from "../db/index.js";
-import {purgeRoomTerminal} from "./roomPurge.js";
 export type RoomState="draft"|"scheduled"|"ready"|"live"|"postponed"|"cancelled"|"finished";
 export type RoomAction="schedule"|"prepare"|"start"|"postpone"|"cancel"|"finish";
 export type RoomEventKind="scheduled"|"prepared"|"started"|"postponed"|"cancelled"|"finished"|"visibility_changed";
@@ -29,10 +28,9 @@ export async function updateRoomState(
 ):Promise<{state:RoomState;revision:number;eventId:number|null}>{
  if(![hostUserId,roomId,expectedRevision].every(n=>Number.isSafeInteger(n)&&n>0))
   throw new Error("ROOM_OWNER_OR_REVISION_INVALID");
- if(action==="finish"||action==="cancel"){
-  const cleaned=await purgeRoomTerminal(hostUserId,roomId,expectedRevision,action);
-  return {state:cleaned.status,revision:expectedRevision+1,eventId:null};
- }
+ // Terminal events must first update the *existing* Telegram announcement
+ // to FINISHED/CANCELLED. The room and its temporary DB rows are hard-deleted
+ // only after every destination edit is acknowledged. Do not purge here.
  const c=await pool.connect();
  try{
   await c.query("BEGIN");
