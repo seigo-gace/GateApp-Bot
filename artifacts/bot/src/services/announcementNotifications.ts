@@ -4,7 +4,7 @@
 import type {Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 
-type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number};
+type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number;applicationStatus?:string};
 export function renderAnnouncementNotification(payload:EventPayload):string{
  // Source type is informational. Only an allowlisted action is rendered.
  const action=String(payload.action||payload.kind||"");
@@ -22,6 +22,13 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
   scheduled_due:"📅 予告ROOMの開催予定時刻です。開始する場合は /myrooms で［開始する］を押してください。",
   visibility_changed:"🔐 ROOMの参加方式が変更されました。/myrooms で確認できます。",
  };
+ if(action==="started"&&payload.applicationStatus){
+  if(payload.applicationStatus==="accepted")
+   return "🔴 ROOMはLIVE中です。承認済みなので /joinrooms から参加できます。";
+  if(["submitted","held"].includes(payload.applicationStatus))
+   return "🔴 予告ROOMがLIVE中になりました。応募は承認待ちです。/myapplications で状態を確認してください。";
+  throw new Error("NOTIFICATION_APPLICATION_STATUS_INVALID");
+ }
  const value=label[action];
  if(!value)throw new Error("NOTIFICATION_ACTION_NOT_SUPPORTED");
  return value; // no room URL, full profile, Telegram ID or untrusted user text
