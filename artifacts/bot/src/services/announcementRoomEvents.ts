@@ -94,16 +94,17 @@ export async function projectNextRoomEvent():Promise<{
    // a start message at most once for this ROOM across all linked posts,
    // even if the host retries a callback or an event is projected again.
    if(kind==="started"||projected.close){
-     await client.query(
-      `INSERT INTO announcement_notifications
-        (announcement_id,recipient_user_id,event_key,payload)
-       SELECT $1,applicant_user_id,$2||applicant_user_id,$3::jsonb
-         FROM announcement_applications
-        WHERE announcement_id=$1 AND status='accepted'
-       ON CONFLICT(event_key) DO NOTHING`,
-      [id,"room:"+e.room_id+":"+kind+":participant:",
-       JSON.stringify({source:"room",kind,roomId:Number(e.room_id),
-        announcementId:id})]);
+    await client.query(
+     `INSERT INTO announcement_notifications
+       (announcement_id,recipient_user_id,event_key,payload)
+      SELECT $1,applicant_user_id,$2||applicant_user_id,
+       jsonb_build_object('source','room','kind',$3::text,
+        'roomId',$4::bigint,'announcementId',$1,'applicationStatus',status)
+      FROM announcement_applications
+      WHERE announcement_id=$1
+        AND (status='accepted' OR ($3='started' AND status IN ('submitted','held')))
+      ON CONFLICT(event_key) DO NOTHING`,
+     [id,"room:"+e.room_id+":"+kind+":participant:",kind,Number(e.room_id)]);
    }
    ids.push(id);
   }
