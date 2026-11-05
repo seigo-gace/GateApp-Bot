@@ -137,7 +137,8 @@ export async function savePrivateDraft(id: number, revision: number,
     const draft = await client.query(
       "SELECT step,data,revision FROM profile_drafts WHERE owner_user_id=$1 FOR UPDATE",[id]);
     if (!draft.rows.length || draft.rows[0].revision !== revision ||
-        !["preview","like-categories","like-items"].includes(draft.rows[0].step)) throw new Error("PROFILE_DRAFT_STALE");
+        !["preview","like-categories","like-items",
+          "appearance","hair","body","area-blocks","area-children","media"].includes(draft.rows[0].step)) throw new Error("PROFILE_DRAFT_STALE");
     const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[];loveTags?:LikeTag[]};
     if (!p || !p.position) throw new Error("PROFILE_INCOMPLETE");
     validateAppearance(p);
