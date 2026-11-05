@@ -575,6 +575,40 @@ try{
   ["room-event:"+changedDetails.eventId+":owner:%"]);
  assert.equal(redundantNotice.rows[0].n,0);
  console.log("GAYBBS_DB_ROOM_DETAILS_ONLY_SOURCE_PROJECTION=PASS");
+ // Scheduled ROOM: accepted applicant cannot obtain URL before host starts;
+ // the existing Announcement outbox contains precisely one start event.
+ const futureAt=new Date(Date.now()+3600000);
+ const scheduledRoom=await createRoom(777003,77,"予告タイトル",undefined,{
+  description:"事前応募のある予告",scheduledAt:futureAt,visibility:"approved_only"});
+ const scheduledRoomId=Number(scheduledRoom.sourceId);
+ await makeRoomJoinLink(777003,scheduledRoomId);
+ const scheduledAnn=await createAnnouncement(777003,77,"recruitment",
+  "予告タイトル\n事前応募のある予告",futureAt,[],[],scheduledRoomId);
+ const scheduledAnnId=Number(scheduledAnn.sourceId);
+ await pool.query(
+  "UPDATE announcement_posts SET status='published',accept_applications=TRUE WHERE announcement_id=$1",
+  [scheduledAnnId]);
+ const applied=await submitApplication(scheduledAnnId,777004,null);
+ await decideApplication(777003,scheduledAnnId,applied.applicationId,"accepted");
+ assert.equal(await getAuthorizedRoom(777004,scheduledRoomId),null);
+ const scheduledStarted=await updateRoomState(777003,scheduledRoomId,1,"start");
+ let startProjected=false;
+ for(let attempt=0;attempt<50;attempt++){
+  const next=await projectNextRoomEvent();
+  if(!next)break;
+  if(next.eventId===scheduledStarted.eventId){startProjected=true;break;}
+ }
+ assert.equal(startProjected,true);
+ assert.equal((await getAuthorizedRoom(777004,scheduledRoomId))?.id,scheduledRoomId);
+ const deliveryNotice=await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key=$1",
+  ["room:"+scheduledRoomId+":started:participant:777004"]);
+ assert.equal(deliveryNotice.rows[0].n,1);
+ assert.equal(await projectNextRoomEvent(),null);
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key=$1",
+  ["room:"+scheduledRoomId+":started:participant:777004"])).rows[0].n,1);
+ console.log("GAYBBS_DB_ROOM_SCHEDULED_APPROVED_ONE_START_DM=PASS");
  // Six-function shared DM: one text input has exactly one most-recent owner.
  // Older drafts are retained for explicit resume, but cannot steal a reply.
  await pool.query(
