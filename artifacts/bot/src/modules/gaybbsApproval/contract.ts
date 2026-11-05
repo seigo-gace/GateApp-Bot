@@ -24,7 +24,7 @@ export const APPROVAL_QUESTIONS = [
     no: "❌承諾しない",
   },
 ] as const;
-export const RULES_CONSENT_QUESTION = "画像・動画のスポイラー、URL直接投稿禁止、無許可販売・誘導禁止、スパム禁止、通常違反5段階、重大違反・虚偽申告の即時BANを理解し、④グループルールの全文を確認して遵守しますか？";
+export const RULES_CONSENT_QUESTION = "画像・動画のスポイラー、性的嗜好に関する過激な表現（NGワード）はそのまま使わず「変態」という言葉に置き換えること、URL直接投稿禁止、無許可販売・誘導禁止、スパム禁止、通常違反5段階、重大違反・虚偽申告の即時BANを理解し、④グループルールの全文を確認して遵守しますか？";
 export const APPROVAL_SUMMARY =
   "① ガイドライン：安全と相互尊重\n" +
   "② 規約・参加条件：参加資格と利用責任\n" +
