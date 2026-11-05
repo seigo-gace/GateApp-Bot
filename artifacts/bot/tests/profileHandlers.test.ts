@@ -31,7 +31,7 @@ function fixture() {
     },
     on(k: string, fn: Function) {handlers.set("on:"+k,fn);},
   };
-  registerProfileHandlers(bot as any,repo as any);
+  registerProfileHandlers(bot as any,repo as any,async()=>draft?"profile":null);
   const sent: any[] = [];
   function ctx(message = "") {
     return {
