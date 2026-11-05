@@ -152,7 +152,7 @@ export async function runMigrations(): Promise<void> {
         source_revision INTEGER NOT NULL CHECK (source_revision > 0),
         posting_topic_id BIGINT NOT NULL REFERENCES posting_topics(topic_id),
         operation_key TEXT NOT NULL UNIQUE,
-        status TEXT NOT NULL CHECK (status IN ('pending','sending','sent','needs_reconcile','failed','deleted')),
+        status TEXT NOT NULL CHECK (status IN ('pending','sending','sent','needs_reconcile','failed','deleted','archived')),
         telegram_message_id BIGINT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -274,6 +274,15 @@ export async function runMigrations(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(announcement_id,room_event_id)
+      );
+      CREATE TABLE IF NOT EXISTS room_status_message_edits (
+        edit_id BIGSERIAL PRIMARY KEY,
+        room_event_id BIGINT NOT NULL REFERENCES room_source_events(event_id),
+        delivery_id BIGINT NOT NULL REFERENCES posting_deliveries(delivery_id),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','sending','confirmed','needs_reconcile')),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(room_event_id,delivery_id)
       );
       CREATE TABLE IF NOT EXISTS announcement_application_entries (
         token_hash TEXT PRIMARY KEY,
