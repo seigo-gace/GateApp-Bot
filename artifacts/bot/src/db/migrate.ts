@@ -48,6 +48,11 @@ export async function runMigrations(): Promise<void> {
         public_allowed BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE profile_media ADD COLUMN IF NOT EXISTS source_message_id BIGINT;
+      ALTER TABLE profile_media ADD COLUMN IF NOT EXISTS media_group_id TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS profile_media_source_message_unique
+        ON profile_media(owner_user_id,source_message_id)
+        WHERE source_message_id IS NOT NULL;
       CREATE TABLE IF NOT EXISTS profile_publications (
         owner_user_id BIGINT NOT NULL REFERENCES profiles(owner_user_id) ON DELETE CASCADE,
         chat_id BIGINT NOT NULL CHECK(chat_id < 0),
