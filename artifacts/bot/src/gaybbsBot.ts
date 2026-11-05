@@ -17,6 +17,7 @@ import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
+import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
 
 function readToken():string{
  const path=process.env.GAYBBS_TOKEN_FILE||
