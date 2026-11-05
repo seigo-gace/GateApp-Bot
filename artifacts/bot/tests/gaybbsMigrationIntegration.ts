@@ -243,13 +243,16 @@ try{
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Pending applicant must not receive the URL");
  await decideApplication(111001,recruitmentId,accepted.applicationId,"accepted");
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Even an approved applicant must not enter a ROOM before the host starts it");
+ const acceptedLive=await updateRoomState(111001,privateRoomId,1,"start");
  assert.ok((await getAuthorizedRoom(333001,privateRoomId))?.joinUrl.includes("PRIVATE_ACCEPTED_ONLY"));
  assert.equal(await getAuthorizedRoom(333002,privateRoomId),null,
   "Another pending applicant must not gain URL access");
  assert.equal(await getAuthorizedRoom(444001,privateRoomId),null,
   "Unrelated user must never obtain ROOM URL");
  assert.equal((await listAuthorizedRooms(333001)).some(r=>r.id===privateRoomId),true);
- const cancelled=await updateRoomState(111001,privateRoomId,1,"cancel");
+ const cancelled=await updateRoomState(111001,privateRoomId,acceptedLive.revision,"cancel");
  assert.equal(cancelled.state,"cancelled");
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Cancelled ROOM must remove join URL and user records");
@@ -312,16 +315,20 @@ try{
     VALUES('announcement',$1,555001,1,$2,$3,'sent',10001)`,
   [linkedDraft.sourceId,topic.rows[0].topic_id,
    "db-test-published-room:"+linkedDraft.sourceId]);
- const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
- assert.equal(guest?.id,Number(privateSaved.sourceId));
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Prepared ROOM with a public post is still not LIVE");
  const reverted=await changeRoomVisibility(
   555001,Number(privateSaved.sourceId),prepared.revision,"approved_only");
  assert.equal(reverted.visibility,"approved_only");
- assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
-  "Switch back to approval-only must revoke public URL access");
  await assert.rejects(
   ()=>changeRoomVisibility(999999,Number(privateSaved.sourceId),
     reverted.revision,"public"),/ROOM_NOT_OWNED/);
+ const publicAgain=await changeRoomVisibility(
+  555001,Number(privateSaved.sourceId),reverted.revision,"public");
+ const live=await updateRoomState(555001,Number(privateSaved.sourceId),publicAgain.revision,"start");
+ assert.equal(live.state,"live");
+ const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
+ assert.equal(guest?.id,Number(privateSaved.sourceId));
  console.log("GAYBBS_DB_ROOM_EXPLICIT_PUBLIC_MODE_AND_REVOCATION=PASS");
 
 
