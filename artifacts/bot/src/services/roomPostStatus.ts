@@ -89,6 +89,15 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
      !Number.isSafeInteger(chatId)||chatId>=0||
      !Number.isSafeInteger(messageId)||messageId<=0)
    throw new Error("ROOM_STATUS_DELIVERY_INVALID");
+  if(r.inline_buttons===null){
+   // A pre-migration post may have a live recruitment/menu keyboard. Never
+   // silently erase it, nor spin forever on the same pending item.
+   await c.query(
+    `UPDATE room_status_message_edits SET state='needs_reconcile',
+      updated_at=NOW() WHERE edit_id=$1 AND state='pending'`,[editId]);
+   await c.query("COMMIT");
+   return {editId,state:"needs_reconcile"};
+  }
   item={editId,chatId,messageId,original:String(r.text),
    kind:r.kind as PublicRoomStatus,
    buttons:verifyButtons(r.inline_buttons)};
@@ -108,9 +117,10 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
    roomStatusMessage(item.original,item.kind),{
     parse_mode:"HTML",...keyboard,
   });
-  await pool.query(
+  const ack=await pool.query(
    `UPDATE room_status_message_edits SET state='confirmed',updated_at=NOW()
-     WHERE edit_id=$1 AND state='sending'`,[item.editId]);
+     WHERE edit_id=$1 AND state='sending' RETURNING edit_id`,[item.editId]);
+  if(ack.rows.length!==1)throw new Error("ROOM_EDIT_ACK_UNCERTAIN");
   return {editId:item.editId,state:"confirmed"};
  }catch{
   await pool.query(
