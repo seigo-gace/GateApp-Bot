@@ -53,7 +53,7 @@ export function renderRecruitmentPreview(
   rows.push("ニックネーム："+e(draft.nickname??""));
   rows.push([draft.heightCm+"cm",draft.weightKg+"kg",draft.age+"歳",
    draft.position?e(draft.position):""].filter(Boolean).join(" | "));
- }else if(!profile)throw Error("PROFILE_REQUIRED_FOR_LINKED_RECRUITMENT");
+ }
  rows.push("");
  rows.push("<b>募集内容</b>");
  rows.push(e(draft.body));
