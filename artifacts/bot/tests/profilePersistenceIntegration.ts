@@ -3,8 +3,9 @@ import {mkdtemp,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {pool} from "../src/db/index.js";
-import {putDraft,getDraft,getProfile,savePrivateDraft} from "../src/services/profileRepository.js";
+import {putDraft,getDraft,getProfile,savePrivateDraft,recordProfilePublication,claimProfileRevisionUpdate} from "../src/services/profileRepository.js";
 import {makeProfileViewerButtons,resolvePublishedProfileView} from "../src/services/profilePublicView.js";
+import {hidePublishedProfile} from "../src/services/profilePublicationControl.js";
 
 const id=900000000093;
 const prior=process.env.PROFILE_PR_STORAGE_DIR;
@@ -118,13 +119,63 @@ try{
   await pool.query(
    "UPDATE profiles SET status='published' WHERE owner_user_id=$1",[id]);
   assert.equal(await resolvePublishedProfileView(token),null,"publication receipt required");
-  await pool.query(
-   `INSERT INTO profile_publications(owner_user_id,chat_id,thread_id,message_id,status,synced_revision)
-    VALUES($1,-1009876543210,110,777,'published',$2)`,[id,current.revision]);
+  await recordProfilePublication(id,current.revision,-1009876543210,110,777,current);
   assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
-  await pool.query(
-   "UPDATE profiles SET status='private' WHERE owner_user_id=$1",[id]);
-  assert.equal(await resolvePublishedProfileView(token),null,"hidden owner cannot be viewed");
+  // Saving edits leaves the original published snapshot untouched.
+  const edit=await putDraft(id,"appearance",{...full,nickname:"改訂テスト"});
+  const updated=await savePrivateDraft(id,edit.revision,"test_user_123");
+  assert.equal(updated.status,"published");
+  assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
+  const nextLinks=await makeProfileViewerButtons(id,updated.revision,topicId);
+  const nextToken=nextLinks[0][0].url.split("pv_")[1];
+  assert.equal(await resolvePublishedProfileView(nextToken),null,"unconfirmed edit not public");
+  const messageId=await claimProfileRevisionUpdate(id,updated.revision,-1009876543210,110);
+  assert.equal(messageId,777,"original publication ID must be reused");
+  assert.equal(await resolvePublishedProfileView(token),null,"update pending must fail closed");
+  await recordProfilePublication(id,updated.revision,-1009876543210,110,777,updated);
+  assert.equal((await resolvePublishedProfileView(nextToken))?.nickname,"改訂テスト");
+  assert.equal(await resolvePublishedProfileView(token),null,"old revision link retired");
+  await pool.query("UPDATE profiles SET status='private' WHERE owner_user_id=$1",[id]);
+  assert.equal(await resolvePublishedProfileView(nextToken),null,"hidden owner cannot be viewed");
+  // The DM owner-only action redacts or deletes the original post before
+  // confirming private state. Transport is a deterministic Telegram stub.
+  let edited=0,deleted=0;
+  const fakeTelegram={
+   async editMessageText(chat:number,msg:number,_inline:unknown,text:string){
+    assert.equal(chat,-1009876543210);assert.equal(msg,777);
+    assert.match(text,/非公開/);edited++;return true;
+   },
+   async deleteMessage(chat:number,msg:number){
+    assert.equal(chat,-1009876543210);assert.equal(msg,777);
+    deleted++;return true;
+   },
+  } as any;
+  const hidden=await hidePublishedProfile(fakeTelegram,id,-1009876543210,110,"unpublish");
+  assert.equal(hidden.state,"hidden");
+  assert.equal(edited,1);assert.equal(deleted,0);
+  const state=await pool.query(
+   "SELECT status FROM profile_publications WHERE owner_user_id=$1 AND chat_id=-1009876543210",[id]);
+  assert.equal(state.rows[0].status,"hidden");
+  assert.equal((await getProfile(id))?.status,"private");
+  // A new explicit publication can be removed by its original message ID.
+  const fresh=await getProfile(id);
+  assert.ok(fresh);
+  await recordProfilePublication(id,fresh.revision,-1009876543210,110,777,fresh);
+  await hidePublishedProfile(fakeTelegram,id,-1009876543210,110,"delete");
+  assert.equal(deleted,1);
+  assert.equal((await getProfile(id))?.status,"private");
+  const failed=await getProfile(id);assert.ok(failed);
+  await recordProfilePublication(id,failed.revision,-1009876543210,110,777,failed);
+  const throwsTelegram={...fakeTelegram,async deleteMessage(){throw Error("telegram timeout")}} as any;
+  await assert.rejects(
+   ()=>hidePublishedProfile(throwsTelegram,id,-1009876543210,110,"delete"),
+   /NEEDS_RECONCILE/);
+  const ambiguous=await pool.query(
+   "SELECT status FROM profile_publications WHERE owner_user_id=$1 AND chat_id=-1009876543210",[id]);
+  assert.equal(ambiguous.rows[0].status,"delete_error");
+  assert.equal(await resolvePublishedProfileView(nextToken),null,"ambiguous deletion hidden");
+  process.stdout.write("PROFILE_PUBLICATION_CONTROL_SQL=PASS\\n");
+
  }finally{
   await pool.query("DELETE FROM posting_topics WHERE topic_id=$1",[topicId]);
  }
