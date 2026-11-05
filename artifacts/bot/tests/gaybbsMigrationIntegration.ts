@@ -11,6 +11,7 @@ import {deliverNextAnnouncementNotification} from "../src/services/announcementN
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft} from "../src/services/publicPostRepository.js";
+import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
@@ -475,6 +476,7 @@ try{
   sendMessage:async()=>{throw new Error("DUPLICATE_PUBLIC_POST_FORBIDDEN")},
  } as unknown as Telegram;
  process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED="enabled";
+ await makeRoomJoinLink(111001,roomId);
  const liveEdit=await updateNextRoomStatusMessage(historicalBot);
  assert.equal(liveEdit?.state,"confirmed");
  assert.match(edits[0]!.text,/🔴 LIVE中/);
@@ -484,7 +486,7 @@ try{
  // until the *same* existing Telegram message displays the end badge.
  const endEdit=await updateNextRoomStatusMessage(historicalBot);
  assert.equal(endEdit?.state,"confirmed");
- assert.match(edits[1]!.text,/⚫ 終了しました/);
+ assert.match(edits[1]!.text,/✅ 終了/);
  assert.equal(edits[1]!.messageId,87654);
  assert.equal(edits.length,2);
  delete process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED;
