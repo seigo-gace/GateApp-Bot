@@ -10,7 +10,7 @@ import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
-import {createRoom,createAnnouncement} from "../src/services/publicPostRepository.js";
+import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
@@ -32,6 +32,41 @@ try{
   const found=await pool.query("SELECT to_regclass($1)::text AS reg",[table]);
   assert.ok(found.rows[0]?.reg,table);
  }
+ // A06: field data and consented profile summary belong to one announcement
+ // source; no new profile record or redundant database is created.
+ const manual=await createAnnouncement(811001,11,"recruitment","本文1行\n本文2行",
+  undefined,["サシ"],["場所なし"],undefined,{
+   conditions:{inputMode:"manual",title:"募集タイトル",nickname:"ゼロ",
+    heightCm:175,weightKg:80,age:40,position:"タチ"},
+  });
+ const linkedRecruit=await createAnnouncement(811002,12,"recruitment","別の募集文",
+  undefined,["飲み/飯"],[],undefined,{
+   conditions:{inputMode:"linked",title:"食事募集"},
+   profileSnapshot:{nickname:"テスト",heightCm:170,weightKg:70,age:35,position:"リバ"},
+  });
+ const savedManual=await pool.query(
+  "SELECT text,conditions,profile_snapshot FROM announcement_posts WHERE announcement_id=$1",
+  [manual.sourceId]);
+ assert.equal(savedManual.rows[0].text,"本文1行\n本文2行");
+ assert.equal(savedManual.rows[0].conditions.title,"募集タイトル");
+ assert.equal(savedManual.rows[0].conditions.position,"タチ");
+ assert.equal(savedManual.rows[0].profile_snapshot,null);
+ const savedLinked=await pool.query(
+  "SELECT conditions,profile_snapshot FROM announcement_posts WHERE announcement_id=$1",
+  [linkedRecruit.sourceId]);
+ assert.equal(savedLinked.rows[0].conditions.title,"食事募集");
+ assert.equal(savedLinked.rows[0].profile_snapshot.nickname,"テスト");
+ // Reopening after cancellation gets a new revision and no old private fields.
+ const first=await beginDraft(811003,"announcement","awaiting_text",
+  {kind:"recruitment",recruitmentFlow:"compact",title:"キャンセル対象"});
+ const cancelled=await updateDraft(811003,"announcement",first.revision,"cancelled",
+  {recruitmentFlow:"compact",cancelled:true});
+ assert.equal(cancelled.step,"cancelled");
+ assert.equal(cancelled.data.title,undefined);
+ const again=await beginDraft(811003,"announcement","awaiting_text",
+  {kind:"recruitment",recruitmentFlow:"compact"});
+ assert.ok(again.revision>cancelled.revision);
+ assert.equal((await getDraft(811003,"announcement"))?.data.title,undefined);
  const draft=await pool.query(
   `INSERT INTO announcement_posts
     (request_key,owner_user_id,kind,text,status,capacity,accept_applications)
