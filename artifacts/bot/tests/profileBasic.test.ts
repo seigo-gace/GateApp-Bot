@@ -13,8 +13,10 @@ test("invalid format or out of range values are rejected", () => {
     assert.throws(() => parseProfileBasic(input), Error);
   }
 });
-test("position is only one of the five fixed options", () => {
+test("position is one of the seven adopted options", () => {
   assert.equal(isProfilePosition("ウケリバ"),true);
+  assert.equal(isProfilePosition("S"),true);
+  assert.equal(isProfilePosition("M"),true);
   assert.equal(isProfilePosition("その他"),false);
 });
 test("profile preview is safe HTML and preserves all section headings", () => {
