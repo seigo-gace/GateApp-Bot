@@ -10,7 +10,7 @@ export async function showWizardScreen(
  text:string, keyboard?:WizardKeyboard,
 ):Promise<{messageId:number;replaced:boolean}>{
  if(!Number.isSafeInteger(chatId)||chatId<=0)throw new Error("WIZARD_PRIVATE_CHAT_REQUIRED");
- const oldId=Number.isSafeInteger(previousMessageId)&&previousMessageId!>0?previousMessageId:undefined;
+ const oldId=Number.isSafeInteger(previousMessageId)&&Number(previousMessageId)>0?previousMessageId:undefined;
  if(oldId){
   try{
    await telegram.editMessageText(chatId,oldId,undefined,text,keyboard);
