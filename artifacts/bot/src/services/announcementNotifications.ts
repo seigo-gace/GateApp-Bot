@@ -19,6 +19,7 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
   started:"🔴 ROOMはLIVE中です。事前応募したROOMが始まりました。承認済みの場合は /joinrooms から参加できます。",
   prepared:"✅ ROOMホストの準備が完了しました。",
   scheduled:"📅 ROOMの開催予定が更新されました。",
+  scheduled_due:"📅 予告ROOMの開催予定時刻です。開始する場合は /myrooms で［開始する］を押してください。",
   visibility_changed:"🔐 ROOMの参加方式が変更されました。/myrooms で確認できます。",
  };
  const value=label[action];
