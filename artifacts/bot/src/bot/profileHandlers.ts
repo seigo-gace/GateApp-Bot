@@ -7,6 +7,7 @@ import {nextSelection,selectionRows} from "../services/inlineSelection.js";
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
+import {appendProfileMedia,mediaStatus,type ProfileMediaItem} from "../services/profileMedia.js";
 import {
   PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
 } from "../services/profileCore.js";
@@ -129,6 +130,15 @@ const areaChildrenText=(data:ProfileDraft["data"])=>[
  "同じエリアを再度押すと未設定に戻せます。",
 ].join("\n");
 
+const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`)]]);
+const mediaText=(data:ProfileDraft["data"])=>[
+ "🪪 プロフィール｜画像・動画・自己PR",
+ "画像・動画はTelegramの添付から送信してください。",
+ "自己PRは通常の入力欄から文章で送信してください。",
+ "どちらも任意で、文章は新しい入力で更新します。",
+ "",
+ ...mediaStatus(data.media,data.pr),
+].join("\n");
 const overviewText=(profile:SavedProfile,username:string)=>[
   "🪪 プロフィールプレビュー",
   renderProfileBasicPreview(profile,username),
