@@ -8,10 +8,10 @@ import {validLikeTags,LIKE_CATEGORIES,type LikeTag} from "./profileLike.js";
 
 export type ProfileDraft = {
   step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "like-categories" | "like-items" | "cancelled";
-  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number;mediaNextId?:number;mediaPage?:number;likeTags?:LikeTag[];likeCategory?:number;likePage?:number };
+  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number;mediaNextId?:number;mediaPage?:number;likeTags?:LikeTag[];likeCategory?:number;likePage?:number;loveTags?:LikeTag[];tagPurpose?:"like"|"love" };
   revision: number;
 };
-export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[]} & {
+export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[];loveTags?:LikeTag[]} & {
   position: ProfilePosition;
   username: string | null;
   status: string;
@@ -59,6 +59,7 @@ export async function getDraft(id: number): Promise<ProfileDraft | null> {
   if (!r.rows.length || r.rows[0].step === "cancelled") return null;
   const data=r.rows[0].data as ProfileDraft["data"];
   if(data.likeTags!==undefined)data.likeTags=validLikeTags(data.likeTags);
+  if(data.loveTags!==undefined)data.loveTags=validLikeTags(data.loveTags);
   if(data.prRef){
     data.pr=await readProfilePr(id,data.prRef);
   }
@@ -71,6 +72,7 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
   // in a separately mounted, durable, verified object store first.
   const serialized={...data};
   if(serialized.likeTags!==undefined)serialized.likeTags=validLikeTags(serialized.likeTags);
+  if(serialized.loveTags!==undefined)serialized.loveTags=validLikeTags(serialized.loveTags);
   if(serialized.media)serialized.media=numberProfileMedia(serialized.media);
   if(typeof serialized.pr==="string"&&serialized.pr.length){
     serialized.prRef=await storeProfilePr(id,serialized.pr);
@@ -99,10 +101,14 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
   );
   if (!r.rows.length) return null;
   const p = r.rows[0];
-  const likeRows=await pool.query(
-    "SELECT category,tag FROM profile_tags WHERE owner_user_id=$1 AND purpose='like' ORDER BY category,tag",[id]);
-  const likeTags=likeRows.rows.map((x:{category:string;tag:string})=>({category:x.category,tag:x.tag}));
-  // Retain historical/unknown tags verbatim. They must never be silently deleted.
+  const tagRows=await pool.query(
+    "SELECT purpose,category,tag FROM profile_tags WHERE owner_user_id=$1 AND purpose IN ('like','love') ORDER BY purpose,category,tag",[id]);
+  const isCurrentTag=(category:string,tag:string)=>LIKE_CATEGORIES.some(c=>c.name===category&&(c.items as readonly string[]).includes(tag));
+  // Unknown historical tags remain in SQL; the current UI only edits adopted candidates.
+  const likeTags=tagRows.rows.filter((x:{purpose:string;category:string;tag:string})=>x.purpose==="like"&&isCurrentTag(x.category,x.tag))
+    .map((x:{category:string;tag:string})=>({category:x.category,tag:x.tag}));
+  const loveTags=tagRows.rows.filter((x:{purpose:string;category:string;tag:string})=>x.purpose==="love"&&isCurrentTag(x.category,x.tag))
+    .map((x:{category:string;tag:string})=>({category:x.category,tag:x.tag}));
   const mediaRows=await pool.query("SELECT id,item_id,file_id,media_type,source_message_id,media_group_id FROM profile_media WHERE owner_user_id=$1 ORDER BY id",[id]);
   const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:string|number;item_id:string|number|null;file_id:string;media_type:"photo"|"video";source_message_id:string|number|null;media_group_id:string|null})=>{
     // PostgreSQL BIGINT values arrive as strings with node-postgres.
@@ -119,7 +125,7 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
     throw Error("PROFILE_MEDIA_COUNTER_INVALID");
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
     weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,
-    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId,likeTags,status:p.status,revision:p.revision};
+    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId,likeTags,loveTags,status:p.status,revision:p.revision};
 }
 export async function savePrivateDraft(id: number, revision: number,
     username: string | null): Promise<SavedProfile> {
@@ -131,8 +137,8 @@ export async function savePrivateDraft(id: number, revision: number,
     const draft = await client.query(
       "SELECT step,data,revision FROM profile_drafts WHERE owner_user_id=$1 FOR UPDATE",[id]);
     if (!draft.rows.length || draft.rows[0].revision !== revision ||
-        draft.rows[0].step !== "preview") throw new Error("PROFILE_DRAFT_STALE");
-    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[]};
+        !["preview","like-categories","like-items"].includes(draft.rows[0].step)) throw new Error("PROFILE_DRAFT_STALE");
+    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[];loveTags?:LikeTag[]};
     if (!p || !p.position) throw new Error("PROFILE_INCOMPLETE");
     validateAppearance(p);
     validateProfileArea(p);
@@ -155,10 +161,8 @@ export async function savePrivateDraft(id: number, revision: number,
       [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId]
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
-    if(p.likeTags!==undefined){
-      const tags=validLikeTags(p.likeTags);
-      // Do not replace older Like data not represented in the adopted dictionary.
-      // Only rows belonging to the current 140-key allowlist can be modified.
+    if(p.likeTags!==undefined||p.loveTags!==undefined){
+      // One shared catalog for both purposes; no duplicate dictionary or storage.
       for(const category of LIKE_CATEGORIES){
         for(let i=0;i<category.items.length;i++){
           await client.query(
@@ -166,16 +170,18 @@ export async function savePrivateDraft(id: number, revision: number,
             [category.name,category.items[i],i+1]);
         }
       }
-      for(const category of LIKE_CATEGORIES){
-        const allowed=[...category.items];
-        await client.query(
-          "DELETE FROM profile_tags WHERE owner_user_id=$1 AND purpose='like' AND category=$2 AND tag=ANY($3::text[])",
-          [id,category.name,allowed]);
-      }
-      for(const t of tags){
-        await client.query(
-          "INSERT INTO profile_tags(owner_user_id,purpose,category,tag) VALUES($1,'like',$2,$3) ON CONFLICT DO NOTHING",
-          [id,t.category,t.tag]);
+      for(const purpose of ["like","love"] as const){
+        const value=purpose==="like"?p.likeTags:p.loveTags;
+        if(value===undefined)continue;
+        const tags=validLikeTags(value);
+        for(const category of LIKE_CATEGORIES){
+          await client.query(
+            "DELETE FROM profile_tags WHERE owner_user_id=$1 AND purpose=$2 AND category=$3 AND tag=ANY($4::text[])",
+            [id,purpose,category.name,[...category.items]]);
+        }
+        for(const t of tags)await client.query(
+          "INSERT INTO profile_tags(owner_user_id,purpose,category,tag) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+          [id,purpose,t.category,t.tag]);
       }
     }
     if(p.media!==undefined){
@@ -189,7 +195,7 @@ export async function savePrivateDraft(id: number, revision: number,
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
-      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,status:x.status,revision:x.revision};
+      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,loveTags:p.loveTags,status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");
     throw e;
