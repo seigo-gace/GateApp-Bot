@@ -36,7 +36,7 @@ function fixture() {
     async getProfile() { return profile; },
     async savePrivateDraft(_id: number, revision: number, username: string) {
       assert.equal(draft?.revision, revision);
-      assert.equal(draft?.step, "preview");
+      assert.ok(["preview","like-categories","like-items"].includes(draft?.step));
       saves++;
       lastScreenId=draft.data.screenMessageId ?? lastScreenId;
       profile = {...draft.data, username, status: "private", revision: 1};
@@ -682,3 +682,46 @@ test("③ large media lists remain viewable via text pagination without extra bu
  assert.match(f.sent.at(-1)[4],/存在しない一覧ページ/);
  assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る"]]);
 });
+
+const tagOverview=String.raw`^pf:overview:(\\d+):(basic|appearance|media|like|love|preview|save|cancel)$`;
+for(const purpose of ["like","love"] as const){
+ const prefix="^pf:"+purpose+":";
+ test(purpose+" category-to-candidate-to-save, reopening shows persisted purpose",async()=>{
+  const f=fixture();
+  await f.start();await f.send("ゼロ\\n175 80 40");
+  await f.action(positionAction,[String(f.draft.revision),"0"]);
+  await f.action(tagOverview,[String(f.draft.revision),purpose]);
+  assert.equal(f.draft.step,"like-categories");
+  assert.match(f.sent.at(-1)[1],purpose==="like"?/自分/:/相手/);
+  const parent=f.sent.at(-1)[2].reply_markup.inline_keyboard;
+  assert.deepEqual(parent.map((r:any[])=>r.length),[3,3,2]);
+  assert.equal(parent[2][1].text,"保存");
+  await f.action(prefix+String.raw`(\\d+):open:([0-5])$`,[String(f.draft.revision),"1"]);
+  assert.equal(f.draft.step,"like-items");
+  await f.action(prefix+String.raw`(\\d+):tag:([0-5]):(\\d{1,2})$`,[String(f.draft.revision),"1","0"]);
+  assert.equal(f.draft.data[purpose+"Tags"].length,1);
+  const rev=f.draft.revision;
+  await f.action(prefix+String.raw`(\\d+):tag:([0-5]):(\\d{1,2})$`,[String(f.draft.revision),"1","0"]);
+  assert.equal(f.draft.data[purpose+"Tags"].length,0);
+  await f.action(prefix+String.raw`(\\d+):tag:([0-5]):(\\d{1,2})$`,[String(f.draft.revision),"1","0"]);
+  await f.action(prefix+String.raw`(\\d+):page:([0-5]):(-?\\d{1,2})$`,[String(f.draft.revision),"1","1"]);
+  assert.equal(f.draft.data.likePage,1);
+  assert.equal(f.draft.data[purpose+"Tags"].length,1);
+  await f.action(prefix+String.raw`(\\d+):page:([0-5]):(-?\\d{1,2})$`,[String(f.draft.revision),"1","0"]);
+  await f.action(prefix+String.raw`(\\d+):back$`,[String(f.draft.revision)]);
+  assert.equal(f.draft.step,"like-categories");
+  await f.action(prefix+String.raw`(\\d+):open:([0-5])$`,[String(f.draft.revision),"5"]);
+  await f.action(prefix+String.raw`(\\d+):tag:([0-5]):(\\d{1,2})$`,[String(f.draft.revision),"5","0"]);
+  assert.equal(f.draft.data[purpose+"Tags"].length,2);
+  await f.action(prefix+String.raw`(\\d+):clear:([0-5])$`,[String(f.draft.revision),"5"]);
+  assert.equal(f.draft.data[purpose+"Tags"].length,1);
+  const oldRev=String(f.draft.revision);
+  await f.action(prefix+String.raw`(\\d+):save$`,[String(f.draft.revision)]);
+  assert.equal(f.profile.status,"private");
+  assert.deepEqual(f.profile[purpose+"Tags"],[{category:"パーツ",tag:"乳首"}]);
+  assert.equal(f.draft.step,"preview");
+  await f.action(prefix+String.raw`(\\d+):save$`,[oldRev]);
+  assert.deepEqual(f.profile[purpose+"Tags"],[{category:"パーツ",tag:"乳首"}]);
+  assert.match(String(f.sent.at(-1)[1]),/古い/);
+ });
+}
