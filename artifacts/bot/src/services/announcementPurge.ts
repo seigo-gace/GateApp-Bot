@@ -2,6 +2,8 @@
  * This routine ONLY purges standalone postings. ROOM-linked postings remain
  * owned by roomPurge so active meeting/application state cannot be severed.
  * No Telegram sends, edits or retry attempts from housekeeping.
+ * Never erase a sent/ambiguous Telegram delivery receipt before remote
+ * deletion is confirmed; otherwise cleanup loses the only message ID.
  */
 import {pool} from "../db/index.js";
 
@@ -26,10 +28,16 @@ export async function purgeDisposableAnnouncements(limit=20):Promise<number>{
   const candidates=await client.query(
    `SELECT announcement_id,status,room_id,expires_at,created_at,
       event_at,deadline_at,scheduled_at,publish_at
-      FROM announcement_posts
-     WHERE room_id IS NULL
-       AND (status IN ('closed','cancelled','finished')
-         OR (expires_at IS NOT NULL AND expires_at<=NOW()))
+      FROM announcement_posts a
+     WHERE a.room_id IS NULL
+       AND (a.status IN ('closed','cancelled','finished')
+         OR (a.expires_at IS NOT NULL AND a.expires_at<=NOW()))
+       AND NOT EXISTS (
+         SELECT 1 FROM posting_deliveries d
+         WHERE d.source_type='announcement'
+           AND d.source_id=a.announcement_id::text
+           AND d.status IN ('sent','sending','needs_reconcile')
+       )
      ORDER BY announcement_id
      LIMIT $1 FOR UPDATE SKIP LOCKED`,[limit]);
   const ids=candidates.rows.filter(x=>
