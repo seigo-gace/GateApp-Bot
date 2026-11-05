@@ -432,5 +432,36 @@ try{
  }
  assert.equal(edits.length,2,"Telegram historical post must remain, no deletion calls");
  console.log("GAYBBS_DB_ROOM_LIVE_END_BADGES_POST_KEPT_DB_PURGED=PASS");
+ // Regression: a recruitment may be full before ROOM starts. Its public
+ // message must still receive LIVE and final status rather than being skipped.
+ const fullRoom=await pool.query(
+  `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
+   VALUES('db-room-filled',777001,'満員ROOM','jitsi',
+    'https://meet.jit.si/PRIVATE_FULL','ready') RETURNING room_id`);
+ const fullRoomId=Number(fullRoom.rows[0].room_id);
+ const fullAnnouncement=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,
+    status,room_id,capacity,accept_applications)
+   VALUES('db-room-filled-ann',777001,'recruitment','満員募集',
+     'filled',$1,1,FALSE) RETURNING announcement_id`,[fullRoomId]);
+ const fullAnnouncementId=Number(fullAnnouncement.rows[0].announcement_id);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+    (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
+    operation_key,status,telegram_message_id,inline_buttons,rendered_text)
+   VALUES('announcement',$1,777001,1,$2,'db-room-filled-message','sent',
+    34567,'[]'::jsonb,'📢 <b>満員の募集本文</b>')`,
+  [String(fullAnnouncementId),deliveryTopic.rows[0].topic_id]);
+ const fullStarted=await updateRoomState(777001,fullRoomId,1,"start");
+ const fullProjected=await projectNextRoomEvent();
+ assert.equal(fullProjected?.eventId,fullStarted.eventId);
+ assert.deepEqual(fullProjected?.announcementIds,[fullAnnouncementId],
+  "filled Announcement must still receive ROOM LIVE event");
+ const fullEdit=await pool.query(
+  `SELECT q.state FROM room_status_message_edits q
+   WHERE q.room_event_id=$1`,[fullStarted.eventId]);
+ assert.equal(fullEdit.rows.length,1,
+  "filled Announcement must queue existing message edit");
+ console.log("GAYBBS_DB_FILLED_RECRUITMENT_ROOM_STATUS=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
