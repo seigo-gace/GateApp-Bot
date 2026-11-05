@@ -9,6 +9,7 @@ import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,createLinkBu
  createAnnouncement,markDraftPublished,markPostSourcePublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
+import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
@@ -187,8 +188,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
  });
  bot.on("text",async(ctx,next)=>{
   if(!privateDM(ctx)||ctx.message.text.startsWith("/"))return next();
+  const owner=await currentDmTextOwner(ctx.from.id);
+  if(owner!=="room"&&owner!=="announcement"&&owner!=="link")return next();
   const current=await getWaitingDraft(ctx.from.id);
-  if(!current)return next();
+  if(!current||current.module!==owner)return next();
   const input=ctx.message.text.trim();
   try{
    let data:Record<string,unknown>;
