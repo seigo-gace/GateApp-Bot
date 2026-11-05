@@ -629,7 +629,7 @@ export function registerProfileHandlers(
     if (!draft)return next();
     if(draft.step==="media"){
       const value=ctx.message.text.trim();
-      const match=/^(削除|差替)\\s*(\\d+)$/.exec(value);
+      const match=/^(削除|差替)\s*(\d+)$/.exec(value);
       let next= draft.data;
       let warning="";
       if(match){
