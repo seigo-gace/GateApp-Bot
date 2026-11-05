@@ -6,7 +6,7 @@ import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {nextSelection,selectionRows} from "../services/inlineSelection.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {
-  PROFILE_POSITIONS, parseProfileBasic, renderProfileBasicPreview,
+  PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
 } from "../services/profileCore.js";
 
 type ProfileRepo = {
@@ -18,7 +18,7 @@ type ProfileRepo = {
   bindScreenMessage: typeof profileRepo.bindScreenMessage;
 };
 
-const selectPosition = (revision: number, selected?: string) => Markup.inlineKeyboard([
+const selectPosition = (revision: number, selected?: ProfilePosition) => Markup.inlineKeyboard([
   ...selectionRows(
     [[...PROFILE_POSITIONS.slice(0,3)],[...PROFILE_POSITIONS.slice(3)]],
     selected?[selected]:[],
