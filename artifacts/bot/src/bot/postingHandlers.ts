@@ -5,7 +5,7 @@ import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDeliver
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,type AnnouncementKind } from "../services/postingDomain.js";
-import { beginDraft,getDraft,getWaitingDraft,updateDraft,createRoom,createLinkButton,markRoomDraftSaved,
+import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createRoom,createLinkButton,markRoomDraftSaved,
  createAnnouncement,markDraftPublished,markPostSourcePublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import type { PostPurpose } from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
@@ -13,7 +13,16 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
+import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 
+async function showPostScreen(
+ telegram:Telegram,userId:number,draft:EditorDraft,text:string,keyboard?:WizardKeyboard,
+):Promise<void>{
+ const old=typeof draft.data.screenMessageId==="number"?draft.data.screenMessageId:undefined;
+ const shown=await showWizardScreen(telegram,userId,old,text,keyboard);
+ if(shown.messageId!==old)
+  await bindDraftScreen(userId,draft.module,draft.revision,shown.messageId);
+}
 type Module="profile"|"room"|"announcement"|"link";
 const LABELS:Record<Module,string>={profile:"プロフィール",room:"ROOM",announcement:"告知・募集",link:"リンクボタン"};
 function privateDM(ctx:{chat?:{type:string}}):boolean{return ctx.chat?.type==="private";}
@@ -37,10 +46,13 @@ function preview(module:Module,draft:EditorDraft):string {
   purposeCodes:Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[],
   placeCodes:Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[]}));
 }
-async function destinationMenu(ctx:{reply:Function;from?:{id:number}},module:Module,revision:number):Promise<void>{
+async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:number}},module:Module,revision:number):Promise<void>{
  const options=await listVerifiedTopics(module as PostPurpose);
  if(!options.length){
-  await ctx.reply("投稿先の実Topic IDがまだ確認されていません。管理者によるトピック接続後に公開できます。下書きは保持しています。");
+  const message="投稿先の実Topic IDがまだ確認されていません。管理者によるトピック接続後に公開できます。下書きは保持しています。";
+  const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
+  if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,message);
+  else await ctx.reply(message);
   return;
  }
  const origin=ctx.from?.id?await currentMenuOrigin(ctx.from.id):null;
@@ -54,10 +66,12 @@ async function destinationMenu(ctx:{reply:Function;from?:{id:number}},module:Mod
   "✅ 元のトピックを候補の先頭に表示しています。":
   "元のトピックはこの投稿種別に未登録です。別の実Topicを明示選択してください。"):
   "元のトピックが不明なため、実Topicを明示選択してください。";
- await ctx.reply(prefix+"\\n投稿先を選択してください。まだ公開しません。",
-  Markup.inlineKeyboard(sorted.slice(0,30).map(t=>[
+ const keyboard=Markup.inlineKeyboard(sorted.slice(0,30).map(t=>[
    Markup.button.callback((matched?.id===t.id?"📍 ":"")+t.title+" / "+t.board,
-    `post:choose:${module}:${revision}:${t.id}`)])));
+    `post:choose:${module}:${revision}:${t.id}`)]));
+ const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
+ if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,prefix+"\n投稿先を選択してください。まだ公開しません。",keyboard);
+ else await ctx.reply(prefix+"\n投稿先を選択してください。まだ公開しません。",keyboard);
 }
 function tagPanel(draft:EditorDraft) {
  const purposes=Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[];
@@ -77,20 +91,20 @@ function tagPanel(draft:EditorDraft) {
 }
 /** The same editor is called from /room and an authenticated M2 entry. */
 export async function startRoomEditor(telegram:Telegram,userId:number):Promise<void>{
- await beginDraft(userId,"room","awaiting_text");
- await telegram.sendMessage(userId,
+ const draft=await beginDraft(userId,"room","awaiting_text");
+ await showPostScreen(telegram,userId,draft,
   "🎬 ROOM名を入力してください。持込URLを使う場合は「ROOM名 | https://...」と1通で送れます。URL省略時はJitsiを生成します。");
 }
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
 export async function startLinkEditor(telegram:Telegram,userId:number):Promise<void>{
- await beginDraft(userId,"link","awaiting_text");
- await telegram.sendMessage(userId,
+ const draft=await beginDraft(userId,"link","awaiting_text");
+ await showPostScreen(telegram,userId,draft,
   "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。");
 }
 /** Announcement category editor shared by command and Topic deep link. */
 export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
  const draft=await beginDraft(userId,"announcement","awaiting_kind");
- await telegram.sendMessage(userId,"📢 投稿の種類を選択してください。",
+ await showPostScreen(telegram,userId,draft,"📢 投稿の種類を選択してください。",
   Markup.inlineKeyboard([
    [Markup.button.callback("告知",`post:kind:${draft.revision}:announcement`)],
    [Markup.button.callback("予告",`post:kind:${draft.revision}:preview`)],
@@ -123,9 +137,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!draft||draft.revision!==rev||draft.step!=="awaiting_kind"){
    await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
   }
-  await updateDraft(ctx.from.id,"announcement",rev,"awaiting_text",{kind});
+  const updated=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_text",{...draft.data,kind});
   await ctx.answerCbQuery();
-  await ctx.reply(kind==="preview"?
+  await showPostScreen(ctx.telegram,ctx.from.id,updated,kind==="preview"?
    "予告文を送ってください。開催日時は公開前に別途必要です。":
    "本文を1通で送ってください。公開前に内容と投稿先を確認します。");
  });
