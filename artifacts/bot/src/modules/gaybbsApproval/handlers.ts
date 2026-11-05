@@ -43,33 +43,39 @@ async function configured(targetId:number):Promise<GateConfig|null>{
  if(mapped.rows.length!==3 || new Set(mapped.rows.map(x=>x.target_id)).size!==3 ||
   !mapped.rows.some(x=>Number(x.target_id)===targetId))return null;
  const boards:BoardConfig[]=[];
- let sharedChallenge:NonNullable<Awaited<ReturnType<typeof challengeRepo.getChallengeByTarget>>>|null=null;
  for(const chatId of ADMISSION_BOARD_CHAT_IDS){
   const found=mapped.rows.filter(x=>Number(x.chat_id)===chatId);
   if(found.length!==1)return null;
   const candidate=await targetRepo.getTargetById(Number(found[0]!.target_id));
   if(!candidate || candidate.target_type!=="entry_group" ||
     Number(candidate.chat_id)!==chatId || !candidate.title.trim())return null;
-  const [challenge,questions,rule,links]=await Promise.all([
-   challengeRepo.getChallengeByTarget(candidate.target_id),
-   questionRepo.getQuestionsByTarget(candidate.target_id),
+  const [rule,links]=await Promise.all([
    ruleRepo.getRuleByTarget(candidate.target_id),
    verifiedApprovalDocumentLinks(candidate.chat_id)
   ]);
-  if(!challenge?.enabled || challenge.max_fail!==3 || !rule?.rule_text?.trim() ||
-   !hasAdoptedQuestions(questions) || !links ||
+  if(!rule?.rule_text?.trim() || !links ||
    !APPROVAL_DOC_KEYS.every(k=>isSafeDocUrl(links[k]??"") &&
     !/^https:\/\/t\.me\/c\//i.test(links[k]??"")))return null;
-  if(!sharedChallenge)sharedChallenge=challenge;
   boards.push({target:candidate,ruleText:rule.rule_text,
    links:links as BoardConfig["links"]});
  }
- if(!sharedChallenge || boards.length!==3)return null;
+ // Questions/Bot challenge are configured ONCE, not independently 3 times.
+ // Reuse the earliest already-configured group in the adopted mapping.
+ const existing=await Promise.all(boards.map(async b=>{
+  const [challenge,questions]=await Promise.all([
+   challengeRepo.getChallengeByTarget(b.target.target_id),
+   questionRepo.getQuestionsByTarget(b.target.target_id)
+  ]);
+  return challenge?.enabled && challenge.max_fail===3 &&
+   hasAdoptedQuestions(questions)?challenge:null;
+ }));
+ const canonicalIndex=existing.findIndex(Boolean);
+ if(canonicalIndex<0 || boards.length!==3)return null;
  const documentVersion=sharedAdmissionDocumentVersion(boards.map(b=>({
   targetId:b.target.target_id,chatId:Number(b.target.chat_id),
   title:b.target.title,rulesText:b.ruleText,links:b.links,
  })));
- return {target:boards[0]!.target,challenge:sharedChallenge,boards,documentVersion};
+ return {target:boards[canonicalIndex]!.target,challenge:existing[canonicalIndex]!,boards,documentVersion};
 }
 async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void>{
  if(a.document_version!==cfg.documentVersion)throw new Error("GATE_DOCUMENT_STALE");
