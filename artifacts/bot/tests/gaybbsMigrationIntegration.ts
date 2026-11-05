@@ -12,6 +12,7 @@ import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
+import {deleteNextTerminalAnnouncementMessage} from "../src/services/announcementTelegramCleanup.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -339,9 +340,17 @@ try{
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
   [obsolete])).rows[0].n,1,"sent Telegram message blocks destructive DB purge");
- await pool.query(
-  `UPDATE posting_deliveries SET status='deleted'
-   WHERE operation_key='purge-delivery' AND status='sent'`);
+ const deletionCalls:number[]=[];
+ const deletionBot={deleteMessage:async(_chatId:number,messageId:number)=>{
+  deletionCalls.push(messageId);
+  return true;
+ }} as unknown as Telegram;
+ process.env.GAYBBS_TELEGRAM_DELETE_WORKER_ENABLED="enabled";
+ const acknowledged=await deleteNextTerminalAnnouncementMessage(deletionBot);
+ assert.equal(acknowledged?.outcome,"deleted");
+ assert.deepEqual(deletionCalls,[5678]);
+ assert.equal(await deleteNextTerminalAnnouncementMessage(deletionBot),null);
+ delete process.env.GAYBBS_TELEGRAM_DELETE_WORKER_ENABLED;
  const removed=await purgeDisposableAnnouncements();
  assert.ok(removed>=1,"terminal entry may be purged only after simulated Telegram deletion ACK");
  for(const id of [obsolete,expiredId]){
