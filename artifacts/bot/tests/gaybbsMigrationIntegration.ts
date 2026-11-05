@@ -453,7 +453,14 @@ try{
     34567,'[]'::jsonb,'📢 <b>満員の募集本文</b>')`,
   [String(fullAnnouncementId),deliveryTopic.rows[0].topic_id]);
  const fullStarted=await updateRoomState(777001,fullRoomId,1,"start");
- const fullProjected=await projectNextRoomEvent();
+ // The same isolated DB holds unrelated earlier ROOM events. Process the
+ // bounded queue in order, then assert by the intended event ID.
+ let fullProjected:Awaited<ReturnType<typeof projectNextRoomEvent>>=null;
+ for(let attempt=0;attempt<30;attempt++){
+  const next=await projectNextRoomEvent();
+  if(!next)break;
+  if(next.eventId===fullStarted.eventId){fullProjected=next;break;}
+ }
  assert.equal(fullProjected?.eventId,fullStarted.eventId);
  assert.deepEqual(fullProjected?.announcementIds,[fullAnnouncementId],
   "filled Announcement must still receive ROOM LIVE event");
