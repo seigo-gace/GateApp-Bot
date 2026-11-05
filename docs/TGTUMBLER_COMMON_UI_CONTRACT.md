@@ -119,3 +119,12 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - PostgreSQL統合テストは `preview / appearance / hair / body / area-blocks / area-children / media / like-categories / like-items` の全状態で①〜⑤の入力済み値をSQLへ保存→読戻し照合する。Source CIと実Telegram動作確認は区別する。
 - 公開カードのSourceは既存`/publishprofile`→検証済みTopic選択→公開内容確認→明示同意→既存MPB公開ゲートを使う。固定カードは7行の①〜⑤見出し・タグ各3件・PR短縮・メディア初期非表示、下部［🪪プロフ］［画像/動画］［#Love & Like］の3URLボタンを採用。ボタンは公開済み元投稿のrevision/Topic/受領済み状態に紐付く不透明トークンからDM参照し、未公開／未受領は拒否する。
 - 実Telegram・本番の公開許諾/配備・公開後の編集同期・非公開/削除の端末E2EはSource CIから自動的にPASSとはしない。
+
+## 2026-11-06｜プロフィール公開・管理 Source契約（Master「Telegram実機確認以外は仕上げる」）
+- ①〜⑤共通下書き・全画面保存は `profileHandlers.ts` の単一 `persistCompleteProfile` 経路へ統合。②・③の各画面、④⑤の全候補ページ、画面Aのどの保存からでも全項目を保存し、既存項目・PR外部参照・媒体番号・Like/Loveを維持。DB実保存/読戻しは `profilePersistenceIntegration.ts` で全ステップを検証。
+- 既存 `/publishprofile` の検証済みTopic選択→本人の公開内容確認→明示同意→release gate→既存MPB deliveryを維持し、公開元Topicの選択・権限未検証時は公開しない。SourceとCIの成功は本番ゲート解除の証拠に代用しない。
+- 公開本文の全員固定7行を `profileCore.ts` で共通描画。基本情報、髪型/体型、エリア、#Like、#Love、PRの各見出しを保持し、未登録値は空欄。#Like/#Love各最大3件、PRは短縮、画像/動画はカード初期非表示。
+- 元公開カード下部は［🪪プロフ］［画像/動画］［#Love & Like］の3ボタン。不透明トークンのBot DM viewerは `profilePublicView.ts`／`profileViewerHandlers.ts` が担当。公開成功レシート・元投稿・revision・Topicとの照合ができた場合のみ閲覧可。タグは6分類の詳細、媒体はユーザーが選んだ番号のみ表示、PR全文は任意操作で表示。画像/動画の実体とPR本文はプロフィールSQLへ保存しない。
+- 公開時の内容はPR本文ではなく外部 `prRef` とタグ/媒体参照の**公開版スナップショット**として保存。保存済み本人プロフィールの修正では公開版を勝手に上書きしない。公開更新は改めて本人が対象と本文を確認し、既存元投稿の `message_id` に対する `editMessageText` を使用。成功記録とのズレ・通信断の結果不明時は `sync_error` に保持し、自動再投稿しない。
+- 本人DMの `/myprofileposts` は投稿単位で［編集］［コピー］［転送用出力］［非公開］［削除］を持つ。非公開・削除は明示確認を要求し、元投稿の処理結果不明時は `delete_error` に留め、本人原本は誤削除しない。実Telegram操作、公開済み投稿の削除制限、外部検索/募集/ROOM参照の完全同期・削除済みアカウント連動までは本Source CIで証明されない。
+- 2026-11-06 Source/CI: Draft PR #11 `chat/tgtumbler-profile-a05-20261104` の `9fa7c6c2653f8cea954c6efa218b574c61ffea48` で [Profile A05 run 42089747000](https://github.com/seigo-gace/GateApp-Bot/actions/runs/42089747000) SUCCESS／[CM run 42089747162](https://github.com/seigo-gace/GateApp-Bot/actions/runs/42089747162) SUCCESS。ここでの送信テストは模擬TelegramとCI PostgreSQLであり、実運用の公開許可・Telegram E2E実績を意味しない。
