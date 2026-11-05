@@ -267,7 +267,7 @@ export async function runMigrations(): Promise<void> {
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
         source_revision INTEGER NOT NULL CHECK(source_revision > 0),
         kind TEXT NOT NULL CHECK(kind IN
-          ('scheduled','prepared','started','postponed','cancelled','finished','visibility_changed,'details_changed')),
+          ('scheduled','prepared','started','postponed','cancelled','finished','visibility_changed','details_changed')),
         payload JSONB NOT NULL DEFAULT '{}'::jsonb,
         state TEXT NOT NULL DEFAULT 'pending'
           CHECK(state IN ('pending','processing','applied','needs_reconcile')),
