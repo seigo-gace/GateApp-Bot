@@ -331,7 +331,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
    await ctx.answerCbQuery();
    await ctx.editMessageText(
-    "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+"\nこの宛先に公開する場合だけボタンを押してください。",
+    "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+
+    (module==="profile"?"\n画像・動画の登録がある場合、公開後は閲覧者が［画像/動画］を押すと表示できます。自己PR・Like/Loveも公開内容に含まれます。":"")+
+    "\nこの宛先に公開する場合だけボタンを押してください。",
     {parse_mode:"HTML",...Markup.inlineKeyboard([
      [Markup.button.callback("✅ この内容を公開",`post:publish:${module}:${rev}:${topicId}`)],
      [Markup.button.callback("キャンセル（非公開のまま）","post:cancel")],
