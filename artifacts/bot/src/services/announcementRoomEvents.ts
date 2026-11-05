@@ -86,7 +86,10 @@ export async function projectNextRoomEvent():Promise<{
     [id,a.owner_user_id,"room-event:"+e.event_id+":owner:"+id,
      JSON.stringify({source:"room",kind,roomId:Number(e.room_id),
       announcementId:id,revision})]);
-   if(projected.close){
+   // Reuse the Announcement notification outbox. A participant receives
+   // a start message at most once for this ROOM across all linked posts,
+   // even if the host retries a callback or an event is projected again.
+   if(kind==="started"||projected.close){
      await client.query(
       `INSERT INTO announcement_notifications
         (announcement_id,recipient_user_id,event_key,payload)
@@ -94,7 +97,7 @@ export async function projectNextRoomEvent():Promise<{
          FROM announcement_applications
         WHERE announcement_id=$1 AND status='accepted'
        ON CONFLICT(event_key) DO NOTHING`,
-      [id,"room-event:"+e.event_id+":participant:",
+      [id,"room:"+e.room_id+":"+kind+":participant:",
        JSON.stringify({source:"room",kind,roomId:Number(e.room_id),
         announcementId:id})]);
    }
