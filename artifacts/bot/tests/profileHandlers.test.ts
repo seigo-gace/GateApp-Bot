@@ -9,142 +9,167 @@ function fixture() {
   let saves = 0;
   let discards = 0;
   const repo = {
-    async getDraft() {return draft;},
-    async discardDraft() { draft=null; discards++; },
+    async getDraft() { return draft; },
+    async discardDraft(_id: number, expectedRevision: number) {
+      if (!draft || draft.revision !== expectedRevision) return false;
+      draft = null;
+      discards++;
+      return true;
+    },
     async putDraft(_id: number, step: string, data: any, expected?: number) {
       if (expected !== undefined && draft?.revision !== expected) throw Error("PROFILE_DRAFT_STALE");
-      draft = {step,data,revision:(draft?.revision ?? 0)+1};
+      draft = {step, data, revision: (draft?.revision ?? 0) + 1};
       return draft;
     },
-    async getProfile() {return profile;},
+    async getProfile() { return profile; },
     async savePrivateDraft(_id: number, revision: number, username: string) {
-      assert.equal(draft?.revision,revision);
-      assert.equal(draft?.step,"preview");
+      assert.equal(draft?.revision, revision);
+      assert.equal(draft?.step, "preview");
       saves++;
-      profile = {...draft.data,username,status:"private",revision:1};
+      profile = {...draft.data, username, status: "private", revision: 1};
       draft = null;
       return profile;
     },
   };
   const bot = {
-    command(k: string, fn: Function) {handlers.set("command:"+k,fn);},
-    action(k: any, fn: Function) {
-      handlers.set(k instanceof RegExp ? "action:"+k.source : "action:"+k,fn);
-    },
-    on(k: string, fn: Function) {handlers.set("on:"+k,fn);},
+    command(k: string, fn: Function) { handlers.set("command:" + k, fn); },
+    action(k: any, fn: Function) { handlers.set(k instanceof RegExp ? "action:" + k.source : "action:" + k, fn); },
+    on(k: string, fn: Function) { handlers.set("on:" + k, fn); },
   };
-  registerProfileHandlers(bot as any,repo as any,async()=>draft?"profile":null);
+  registerProfileHandlers(bot as any, repo as any, async () => draft ? "profile" : null);
   const sent: any[] = [];
   function ctx(message = "") {
     return {
-      chat:{type:"private"},from:{id:4321,username:"valid_user"},
-      message:{text:message},match:[] as string[],
-      reply:async (...args: any[])=>{sent.push(["reply",...args]);return {message_id:99};},
-      editMessageText:async (...args: any[])=>{sent.push(["edit",...args]);},
-      answerCbQuery:async (...args: any[])=>{sent.push(["answer",...args]);},
+      chat: {type: "private"}, from: {id: 4321, username: "valid_user"},
+      message: {text: message}, match: [] as string[],
+      reply: async (...args: any[]) => { sent.push(["reply", ...args]); return {message_id: 99}; },
+      editMessageText: async (...args: any[]) => { sent.push(["edit", ...args]); },
+      answerCbQuery: async (...args: any[]) => { sent.push(["answer", ...args]); },
     };
   }
-  return {handlers,repo,ctx,sent,get draft(){return draft;},
-    get profile(){return profile;},get saves(){return saves;},get discards(){return discards;}};
+  const action = (key: string, values: string[] = []) => {
+    const cb = ctx();
+    cb.match = ["", ...values];
+    return handlers.get("action:" + key)!(cb);
+  };
+  const send = (text: string) => handlers.get("on:text")!(ctx(text), async () => { throw Error("text leaked to unrelated handler"); });
+  const start = () => handlers.get("command:profile")!(ctx());
+  return {handlers, repo, ctx, sent, action, send, start,
+    get draft() {return draft;},
+    get profile() {return profile;},
+    get saves() {return saves;},
+    get discards() {return discards;}};
 }
+const positions = [["タチ","タチリバ","リバ"],["ウケリバ","ウケ","S","M"],["キャンセルして戻る"]];
+const positionAction = String.raw`^pf:pos:(\d+):([0-6])$`;
+const cancelAction = String.raw`^pf:cancel:(\d+)$`;
+const saveAction = String.raw`^pf:save:(\d+)$`;
 
-test("real user profile DM: input, position, private save", async () => {
-  const f=fixture();
-  await f.handlers.get("command:profile")!(f.ctx());
+test("first screen explains how to send normal text and shows 3/4 button rows on iOS/Android-compatible inline markup", async () => {
+  const f = fixture();
+  await f.start();
   assert.equal(f.draft.step,"awaiting_basic");
-  await f.handlers.get("on:text")!(f.ctx("ゼロ\n175 80 39"),async()=>{throw Error("admin handler should not process profile text");});
+  const r = f.sent.find(x => x[0] === "reply");
+  const body: string = r[1];
+  for (const phrase of ["プロフィールを作成しましょう", "登録するだけではグループに公開されません",
+    "① ニックネーム", "② 下の7つ", "③ 入力内容", "ゼロ\n175 80 40",
+    "100〜250cm", "50〜250kg", "18〜89歳","通常のメッセージ"]) {
+    assert.ok(body.includes(phrase), phrase);
+  }
+  assert.deepEqual(r[2].reply_markup.inline_keyboard.map((row: any[]) => row.map(b => b.text)),positions);
+  assert.ok(!r[2].reply_markup.keyboard,"no custom reply keyboard");
+  assert.ok(!r[2].reply_markup.inline_keyboard.flat().some((b: any) => b.web_app || b.callback_game));
+});
+
+test("text first then position: preview, private save and no public post", async () => {
+  const f = fixture();
+  await f.start();
+  await f.send("ゼロ\n175/80/40");
   assert.equal(f.draft.step,"awaiting_position");
-  const choose=f.ctx();
-  choose.match=["","2","1"];
-  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
+  const pos = f.sent.at(-1);
+  assert.equal(pos[0],"reply");
+  assert.deepEqual(pos[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
+  await f.action(positionAction, [String(f.draft.revision),"6"]);
   assert.equal(f.draft.step,"preview");
-  assert.equal(f.draft.data.position,"タチリバ");
-  const save=f.ctx();
-  save.match=["","3"];
-  await f.handlers.get("action:^pf:save:(\\d+)$")!(save);
+  assert.equal(f.draft.data.position,"M");
+  await f.action(saveAction,[String(f.draft.revision)]);
   assert.equal(f.saves,1);
   assert.equal(f.profile.status,"private");
-  assert.equal(f.profile.nickname,"ゼロ");
+  assert.equal(f.profile.age,40);
   assert.ok(f.sent.some(x=>x[0]==="edit" && String(x[1]).includes("グループには投稿していません")));
 });
 
-test("an old callback cannot save a newer draft",async()=>{
+test("position first then text: selection persists and preview contains selected position", async () => {
   const f=fixture();
-  await f.handlers.get("command:profile")!(f.ctx());
-  await f.handlers.get("on:text")!(f.ctx("175 80 39"),async()=>{});
-  const callback=f.ctx(); callback.match=["","1"];
-  await f.handlers.get("action:^pf:save:(\\d+)$")!(callback);
-  assert.equal(f.saves,0);
-});
-
-test("other admin text continues to the existing handler",async()=>{
-  const f=fixture();
-  let resumed=false;
-  await f.handlers.get("on:text")!(f.ctx("admin input"),async()=>{resumed=true;});
-  assert.equal(resumed,true);
-});
-
-test("username missing never creates a profile draft",async()=>{
-  const f=fixture();
-  const c=f.ctx(); delete (c.from as any).username;
-  await f.handlers.get("command:profile")!(c);
-  assert.equal(f.draft,null);
-});
-
-test("position selector renders 3 then 4 buttons with S and M at positions 3 and 4", async () => {
-  const f=fixture();
-  await f.handlers.get("command:profile")!(f.ctx());
-  await f.handlers.get("on:text")!(f.ctx("ゼロ\n175 80 39"),async()=>{});
-  const prompt=f.sent.find(x=>x[0]==="reply" && String(x[1]).includes("ポジションを選択"));
-  assert.ok(prompt);
-  const keyboard=prompt[2]?.reply_markup?.inline_keyboard;
-  assert.deepEqual(keyboard?.map((row:any[])=>row.map((b:any)=>b.text)),[
-    ["タチ","タチリバ","リバ"],["ウケリバ","ウケ","S","M"],[ "キャンセルして戻る" ]
-  ]);
-  const choose=f.ctx(); choose.match=["","2","6"];
-  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
-  assert.equal(f.draft.data.position,"M");
-  assert.equal(f.draft.step,"preview");
-});
-
-test("invalid inputs prompt retry without erasing draft", async () => {
-  const f=fixture();
-  await f.handlers.get("command:profile")!(f.ctx());
-  const revision=f.draft.revision;
-  await f.handlers.get("on:text")!(f.ctx("ゼロ\n300/80/40"),async()=>{});
+  await f.start();
+  await f.action(positionAction,[String(f.draft.revision),"5"]);
   assert.equal(f.draft.step,"awaiting_basic");
-  assert.equal(f.draft.revision,revision);
-  const error=f.sent.find(x=>x[0]==="reply" && String(x[1]).includes("もう一度テキストを送信"));
-  assert.ok(error);
-  assert.equal(error[2]?.reply_markup?.inline_keyboard?.[0]?.[0]?.text,"キャンセルして戻る");
-  await f.handlers.get("on:text")!(f.ctx("ゼロ\n175/80/40"),async()=>{});
-  assert.equal(f.draft.step,"awaiting_position");
+  assert.equal(f.draft.data.position,"S");
+  const last=f.sent.at(-1);
+  assert.equal(last[0],"edit");
+  assert.ok(String(last[1]).includes("選択中：S"));
+  assert.deepEqual(last[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
+  await f.send("ゼロ\n175#80#40");
+  assert.equal(f.draft.step,"preview");
+  assert.equal(f.draft.data.position,"S");
+  assert.ok(f.sent.at(-1)[1].includes("S"));
 });
 
-test("cancel clears only the unfinished draft, then old callbacks are rejected", async () => {
+test("invalid numeric text can be retried and keeps position already chosen", async () => {
   const f=fixture();
-  await f.handlers.get("command:profile")!(f.ctx());
-  const first=f.sent.find(x=>x[0]==="reply" && String(x[1]).includes("基本情報"));
-  assert.equal(first[2]?.reply_markup?.inline_keyboard?.[0]?.[0]?.text,"キャンセルして戻る");
-  await f.handlers.get("action:pf:cancel")!(f.ctx());
+  await f.start();
+  await f.action(positionAction,[String(f.draft.revision),"5"]);
+  const rev=f.draft.revision;
+  await f.send("ゼロ\n300/80/40");
+  assert.equal(f.draft.step,"awaiting_basic");
+  assert.equal(f.draft.revision,rev);
+  assert.equal(f.draft.data.position,"S");
+  const err=f.sent.at(-1);
+  assert.ok(err[1].includes("もう一度テキストを送信"));
+  assert.deepEqual(err[2].reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>b.text)),positions);
+  await f.send("ゼロ\n175-80-18");
+  assert.equal(f.draft.step,"preview");
+  assert.equal(f.draft.data.age,18);
+  assert.equal(f.draft.data.position,"S");
+});
+
+test("cancel is revision-bound: clears active draft only and returns to profile entry",async()=>{
+  const f=fixture();
+  await f.start();
+  const previous=String(f.draft.revision);
+  await f.action(cancelAction,[previous]);
   assert.equal(f.draft,null);
   assert.equal(f.discards,1);
-  assert.ok(f.sent.some(x=>x[0]==="edit" && String(x[1]).includes("キャンセルしました")));
-  const stale=f.ctx();stale.match=["","2","6"];
-  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(stale);
-  assert.equal(f.saves,0);
+  assert.ok(f.sent.at(-1)[1].includes("キャンセルしました"));
+  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].text,"🪪 プロフ作成");
+  await f.action("pf:restart");
+  assert.equal(f.draft.step,"awaiting_basic");
+  await f.action(cancelAction,[previous]);
+  assert.equal(f.draft.step,"awaiting_basic","a stale mobile button must not erase newer state");
 });
 
-test("cancelling basic edit retains existing saved profile", async()=>{
+test("cancel after editing never deletes an existing private profile",async()=>{
   const f=fixture();
-  await f.handlers.get("command:profile")!(f.ctx());
-  await f.handlers.get("on:text")!(f.ctx("ゼロ\n175 80 39"),async()=>{});
-  const choose=f.ctx();choose.match=["","2","0"];
-  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
-  const save=f.ctx();save.match=["","3"];
-  await f.handlers.get("action:^pf:save:(\\d+)$")!(save);
-  const stored=f.profile;
-  await f.handlers.get("action:pf:edit:basic")!(f.ctx());
-  await f.handlers.get("action:pf:cancel")!(f.ctx());
-  assert.deepEqual(f.profile,stored);
+  await f.start();
+  await f.send("ゼロ\n175 80 39");
+  await f.action(positionAction,[String(f.draft.revision),"0"]);
+  await f.action(saveAction,[String(f.draft.revision)]);
+  const saved=f.profile;
+  await f.action("pf:edit:basic");
+  assert.ok(f.draft);
+  await f.action(cancelAction,[String(f.draft.revision)]);
+  assert.deepEqual(f.profile,saved);
+});
+
+test("old callback, missing username and unrelated text are handled safely",async()=>{
+  const f=fixture();
+  let resumed=false;
+  await f.handlers.get("on:text")!(f.ctx("unrelated"),async()=>{resumed=true;});
+  assert.equal(resumed,true);
+  const c=f.ctx();delete (c.from as any).username;
+  await f.handlers.get("command:profile")!(c);
+  assert.equal(f.draft,null);
+  await f.start();
+  await f.action(positionAction,["999","2"]);
+  assert.equal(f.draft.step,"awaiting_basic");
 });
