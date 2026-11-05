@@ -12,14 +12,13 @@ import * as blacklistRepo from "../../repositories/blacklistRepo.js";
 import {generateChallenge, type ChallengeQuestion} from "../../services/challengeService.js";
 import {showWizardScreen} from "../../services/dmWizardScreen.js";
 import {pool} from "../../db/index.js";
-import {ADMISSION_VERSION, APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
+import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
  APPROVAL_SUMMARY,RULES_CONSENT_QUESTION,hasAdoptedQuestions,isSafeDocUrl} from "./contract.js";
 import {openAttempt,readAttempt,rememberScreen,transition,consentsComplete,
  saveIssuedInvite,currentIssuedInvite,verifiedApprovalDocumentLinks,getRequestEligibility,
  withAdmissionClient,type GateAttempt} from "./store.js";
 
 const token=()=>randomBytes(9).toString("hex");
-const label=(step:string,choice:string,t:string)=>Markup.button.callback(t,`gba:${step}:${choice}`);
 const action=(a:GateAttempt,choice:string)=>`gba:${a.step_token}:${a.step}:${choice}`;
 type GateConfig={
  target:NonNullable<Awaited<ReturnType<typeof targetRepo.getTargetById>>>;
