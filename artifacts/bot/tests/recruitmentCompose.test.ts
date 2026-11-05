@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,validateRecruitmentReady} from "../src/services/recruitmentCompose.js";
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
 import {recruitmentSelectionRows} from "../src/services/recruitmentButtonLayout.js";
+import {decodeMenuStartPayload,newMenuToken,tokenHash} from "../src/services/menuOrigin.js";
 
 test("new recruitment without saved profile uses first three lines, keeps multiline tail",()=>{
  const value=parseRecruitmentMessage("今夜募集\nゼロ\n175 80 40\n1行目\n\n3行目",false);
@@ -60,4 +61,13 @@ test("selection buttons use three, two, and four columns without placeholders",(
  assert.deepEqual(recruitmentSelectionRows([1,2,3,4,5,6,7],true).map(row=>row.length),[3,4]);
  assert.deepEqual(recruitmentSelectionRows(Array.from({length:13},(_,i)=>i)).map(row=>row.length),[3,3,3,2,2]);
  assert.deepEqual(recruitmentSelectionRows([1,2,3]).map(row=>row.length),[3]);
+});
+
+test("verified menu-token shapes keep r_ recruitment separate from m_ generic announcements",()=>{
+ const token=newMenuToken();
+ assert.equal(decodeMenuStartPayload("r_"+token),token);
+ assert.equal(decodeMenuStartPayload("m_"+token),token);
+ assert.equal(tokenHash(decodeMenuStartPayload("r_"+token)),tokenHash(decodeMenuStartPayload("m_"+token)));
+ assert.throws(()=>decodeMenuStartPayload("r_"+token+"extra"));
+ assert.throws(()=>decodeMenuStartPayload("x_"+token));
 });
