@@ -14,14 +14,41 @@ type ProfileRepo = {
   discardDraft: typeof profileRepo.discardDraft;
 };
 
-const cancelButton = () => Markup.inlineKeyboard([[Markup.button.callback("キャンセルして戻る", "pf:cancel")]]);
 const selectPosition = (revision: number) => Markup.inlineKeyboard([
   ...[[0, 1, 2], [3, 4, 5, 6]].map(indices => indices.map(i =>
     Markup.button.callback(PROFILE_POSITIONS[i], `pf:pos:${revision}:${i}`))),
-  [Markup.button.callback("キャンセルして戻る", "pf:cancel")],
+  [Markup.button.callback("キャンセルして戻る", `pf:cancel:${revision}`)],
 ]);
 
-const requestBasic = "🪪 プロフィールの基本情報（5項目必須）\n1行目：ニックネーム\n2行目：身長 体重 年齢（半角スペース・/・#・- で区切る）\n例：ゼロ\n175 80 39\n範囲：身長100〜250cm／体重50〜250kg／年齢18〜89歳\nテキストを送信し、次にポジションを選んでください。";
+const requestBasic = [
+  "🪪 プロフィールを作成しましょう！",
+  "",
+  "登録したプロフィールは、相手募集やROOMなどでも利用できます。",
+  "登録するだけではグループに公開されません。",
+  "",
+  "📝 登録方法",
+  "① ニックネームと基本情報を2行で入力し、通常のメッセージとして送信します。",
+  "② 下の7つのボタンからポジションを1つ選びます。",
+  "③ 入力内容をプレビューで確認し、必要なら修正します。",
+  "",
+  "✏️ 入力例（2行まとめて送信）",
+  "ゼロ",
+  "175 80 40",
+  "",
+  "1行目：ニックネーム",
+  "2行目：身長(cm)・体重(kg)・年齢(歳)",
+  "数字の区切り：半角スペース・/・#・-",
+  "入力範囲：身長100〜250cm／体重50〜250kg／年齢18〜89歳",
+  "",
+  "入力を間違えても、もう一度送信できます。",
+  "数字入力とボタン選択はどちらが先でも大丈夫です。",
+  "",
+  "ポジションを選んでください。",
+].join("\n");
+
+function basicPrompt(position?: string): string {
+  return requestBasic + (position ? "\n\n✅ 選択中：" + position + "（基本情報も送信してください）" : "");
+}
 
 function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}}): boolean {
   return ctx.chat?.type === "private" && !!ctx.from?.username;
@@ -43,8 +70,8 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
   });
   return;
  }
- await repo.putDraft(ctx.from.id,"awaiting_basic",{});
- await ctx.reply(requestBasic, cancelButton());
+ const draft = await repo.putDraft(ctx.from.id,"awaiting_basic",{});
+ await ctx.reply(basicPrompt(), selectPosition(draft.revision));
 }
 
 export function registerProfileHandlers(
@@ -54,11 +81,31 @@ export function registerProfileHandlers(
 ): void {
   bot.command("profile", async ctx => startProfileEditor(ctx,repo));
 
-  bot.action("pf:cancel", async (ctx) => {
+  bot.action(/^pf:cancel:(\d+)$/, async (ctx) => {
     if (!canUseProfile(ctx)) return;
-    await repo.discardDraft(ctx.from.id);
+    const revision = Number(ctx.match[1]);
+    const cancelled = await repo.discardDraft(ctx.from.id, revision);
+    if (!cancelled) {
+      await ctx.answerCbQuery("古い画面です。最新の画面から操作してください。");
+      return;
+    }
     await ctx.answerCbQuery("キャンセルしました");
-    await ctx.editMessageText("🪪 プロフィール入力をキャンセルしました。\n元の投稿メニューから再度選択できます。");
+    const existing = await repo.getProfile(ctx.from.id);
+    if (existing) {
+      await ctx.editMessageText(renderProfileBasicPreview(existing, ctx.from.username!), {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([[Markup.button.callback("📝 基本情報を編集", "pf:edit:basic")]]),
+      });
+      return;
+    }
+    await ctx.editMessageText("🪪 プロフィールの入力をキャンセルしました。", 
+      Markup.inlineKeyboard([[Markup.button.callback("🪪 プロフ作成", "pf:restart")]]));
+  });
+
+  bot.action("pf:restart", async (ctx) => {
+    if (!canUseProfile(ctx)) return;
+    await ctx.answerCbQuery();
+    await startProfileEditor(ctx, repo);
   });
 
   bot.action("pf:edit:basic", async (ctx) => {
@@ -69,14 +116,14 @@ export function registerProfileHandlers(
       await ctx.reply("公開済みのプロフィール編集は公開先の同期機能から行ってください。");
       return;
     }
-    await repo.putDraft(ctx.from.id, "awaiting_basic", {
+    const draft = await repo.putDraft(ctx.from.id, "awaiting_basic", {
       nickname: existing.nickname,
       heightCm: existing.heightCm,
       weightKg: existing.weightKg,
       age: existing.age,
       position: existing.position,
     });
-    await ctx.reply(requestBasic, cancelButton());
+    await ctx.reply(basicPrompt(existing.position), selectPosition(draft.revision));
   });
 
   bot.action(/^pf:pos:(\d+):([0-6])$/, async (ctx) => {
@@ -84,12 +131,19 @@ export function registerProfileHandlers(
     const callbackRevision = Number(ctx.match[1]);
     const index = Number(ctx.match[2]);
     const draft = await repo.getDraft(ctx.from.id);
-    if (!draft || draft.step !== "awaiting_position" ||
+    if (!draft || !["awaiting_basic", "awaiting_position"].includes(draft.step) ||
         draft.revision !== callbackRevision) {
       await ctx.answerCbQuery("前の操作です。プロフィールを開き直してください。");
       return;
     }
     const position = PROFILE_POSITIONS[index];
+    if (draft.step === "awaiting_basic") {
+      const updated = await repo.putDraft(ctx.from.id, "awaiting_basic",
+        {...draft.data, position}, draft.revision);
+      await ctx.answerCbQuery("ポジションを選択しました");
+      await ctx.editMessageText(basicPrompt(position), selectPosition(updated.revision));
+      return;
+    }
     const updated = await repo.putDraft(ctx.from.id, "preview",
       {...draft.data, position}, draft.revision);
     await ctx.answerCbQuery();
@@ -132,16 +186,25 @@ export function registerProfileHandlers(
     if (!draft || draft.step !== "awaiting_basic") return next();
     try {
       const basic = parseProfileBasic(ctx.message.text);
+      const hasPosition = !!draft.data.position;
       const updated = await repo.putDraft(ctx.from.id,
-        "awaiting_position", {...draft.data, ...basic}, draft.revision);
-      await ctx.reply(
-        "基本情報を受け付けました。ポジションを選択してください。",
-        selectPosition(updated.revision)
-      );
+        hasPosition ? "preview" : "awaiting_position", {...draft.data, ...basic}, draft.revision);
+      if (hasPosition) {
+        await ctx.reply("🪪 プレビュー（まだ非公開）\n"+renderProfileBasicPreview(
+          updated.data as SavedProfile, ctx.from.username!), {
+          parse_mode:"HTML", ...Markup.inlineKeyboard([
+            [Markup.button.callback("💾 非公開で保存", `pf:save:${updated.revision}`)],
+            [Markup.button.callback("📝 基本情報を修正", "pf:edit:basic")],
+          ]),
+        });
+      } else {
+        await ctx.reply("✅ 基本情報を受け付けました。ポジションを選択してください。",
+          selectPosition(updated.revision));
+      }
     } catch (err) {
       await ctx.reply("⚠️ 入力を確認してください。\n"+
         (err instanceof Error ? err.message : "入力内容が正しくありません")+
-        "\n\n内容を修正して、もう一度テキストを送信してください。", cancelButton());
+        "\n\n内容を修正して、もう一度テキストを送信してください。", selectPosition(draft.revision));
     }
   });
 }
