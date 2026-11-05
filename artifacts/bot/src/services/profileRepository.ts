@@ -1,13 +1,14 @@
 import { pool } from "../db/index.js";
 import type { ProfileBasicDraft, ProfilePosition } from "./profileCore.js";
 import {validateAppearance,type AppearanceValues} from "./profileAppearance.js";
+import {validateProfileArea,type ProfileAreaValues} from "./profileArea.js";
 
 export type ProfileDraft = {
-  step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "cancelled";
-  data: Partial<ProfileBasicDraft> & AppearanceValues & { screenMessageId?: number };
+  step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "cancelled";
+  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number };
   revision: number;
 };
-export type SavedProfile = ProfileBasicDraft & AppearanceValues & {
+export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {
   position: ProfilePosition;
   username: string | null;
   status: string;
@@ -72,13 +73,13 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
 }
 export async function getProfile(id: number): Promise<SavedProfile | null> {
   const r = await pool.query(
-    "SELECT nickname,username,height_cm,weight_kg,age,position,hair,body,status,revision FROM profiles WHERE owner_user_id=$1",
+    "SELECT nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,status,revision FROM profiles WHERE owner_user_id=$1",
     [ownerId(id)]
   );
   if (!r.rows.length) return null;
   const p = r.rows[0];
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
-    weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,status:p.status,revision:p.revision};
+    weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,status:p.status,revision:p.revision};
 }
 export async function savePrivateDraft(id: number, revision: number,
     username: string | null): Promise<SavedProfile> {
@@ -91,28 +92,30 @@ export async function savePrivateDraft(id: number, revision: number,
       "SELECT step,data,revision FROM profile_drafts WHERE owner_user_id=$1 FOR UPDATE",[id]);
     if (!draft.rows.length || draft.rows[0].revision !== revision ||
         draft.rows[0].step !== "preview") throw new Error("PROFILE_DRAFT_STALE");
-    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues;
+    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues;
     if (!p || !p.position) throw new Error("PROFILE_INCOMPLETE");
     validateAppearance(p);
+    validateProfileArea(p);
     const saved = await client.query(
-      `INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,hair,body,status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'private')
+      `INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'private')
        ON CONFLICT (owner_user_id) DO UPDATE SET
          nickname=EXCLUDED.nickname,username=EXCLUDED.username,
          height_cm=EXCLUDED.height_cm,weight_kg=EXCLUDED.weight_kg,
          age=EXCLUDED.age,position=EXCLUDED.position,
          hair=EXCLUDED.hair,body=EXCLUDED.body,
+         region=EXCLUDED.region,area=EXCLUDED.area,
          revision=profiles.revision+1,updated_at=NOW()
        WHERE profiles.status='private'
-       RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,status,revision`,
-      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null]
+       RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,status,revision`,
+      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null]
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
     await client.query("UPDATE profile_drafts SET step='cancelled',data=jsonb_build_object('screenMessageId',data->'screenMessageId'),revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
-      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,status:x.status,revision:x.revision};
+      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");
     throw e;
