@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {renderMenuPanel} from "../src/services/menuPanelRenderer.js";
+import {renderMenuPanel,renderAreaBlockBoard} from "../src/services/menuPanelRenderer.js";
 test("M1 only shows previously verified permanent Telegram documents",()=>{
  const x=renderMenuPanel({type:"general_guide",board:"area_bbs",
   links:[{label:"利用規約",url:"https://t.me/c/3847210571/123",verified:true}],
@@ -24,4 +24,23 @@ test("never publish unverified menu or duplicate public labels",()=>{
  assert.throws(()=>renderMenuPanel({type:"general_guide",board:"gay_board",
   links:[{label:"規約",url:"https://t.me/c/3770334893/9",verified:true},
    {label:"規約",url:"https://t.me/c/3770334893/10",verified:true}],entryLinks:[]}),/DUPLICATE/);
+});
+
+test("M1/M2 verified buttons form compact paired rows with no fake cells",()=>{
+ const links=Array.from({length:3},(_,i)=>({
+  label:"案内"+i,url:"https://t.me/c/3847210571/"+(i+10),verified:true,
+ }));
+ const m1=renderMenuPanel({type:"general_guide",board:"area_bbs",
+  links,entryLinks:[]});
+ assert.deepEqual(m1.rows.map(row=>row.length),[2,1]);
+ const m2=renderMenuPanel({type:"posting",board:"area_bbs",links:[],
+  entryLinks:["profile","search","announcement","room","link"].map(feature=>({
+   feature:feature as "profile"|"search"|"announcement"|"room"|"link",
+   url:"https://t.me/GayBBS_bot?start=example",ready:true,
+  }))});
+ assert.deepEqual(m2.rows.map(row=>row.length),[2,2,1]);
+ assert.match(m2.rows[0]![0]!.text,/プロフ/);
+ assert.match(m2.rows[0]![1]!.text,/検索/);
+ assert.match(m2.rows[1]![0]!.text,/募集/);
+ assert.match(m2.rows[1]![1]!.text,/ROOM/);
 });
