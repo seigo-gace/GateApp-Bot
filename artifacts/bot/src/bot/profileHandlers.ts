@@ -233,7 +233,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
        nickname:existing.nickname,heightCm:existing.heightCm,
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
        hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,
-       pr:existing.pr,media:existing.media,
+       pr:existing.pr,media:existing.media,mediaNextId:existing.mediaNextId,
        ...(lastId?{screenMessageId:lastId}:{}),
      });
      await updateWizardScreen(ctx,repo,draft,
@@ -330,7 +330,7 @@ export function registerProfileHandlers(
       age: existing.age,
       position: existing.position,
       hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,
-      pr:existing.pr,media:existing.media,
+      pr:existing.pr,media:existing.media,mediaNextId:existing.mediaNextId,
     });
     await ctx.editMessageText(basicPrompt(existing.position), selectPosition(draft.revision,existing.position));
   });
@@ -422,7 +422,7 @@ export function registerProfileHandlers(
       const next=await repo.putDraft(ctx.from.id,"preview",{
         nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
         age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-        region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,
+        region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,
         screenMessageId:draft.data.screenMessageId,
       });
       await ctx.answerCbQuery("非公開で保存しました");
@@ -612,7 +612,7 @@ export function registerProfileHandlers(
     const next=await repo.putDraft(ctx.from.id,"preview",{
       nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
       age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-      region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,screenMessageId:draft.data.screenMessageId,
+      region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,screenMessageId:draft.data.screenMessageId,
     });
     await ctx.answerCbQuery("非公開で保存しました");
     await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
@@ -711,11 +711,14 @@ export function registerProfileHandlers(
       ...("media_group_id" in message&&typeof message.media_group_id==="string"
         ?{mediaGroupId:message.media_group_id}:{})};
     const oldMedia=numberProfileMedia(draft.data.media);
-    const items=draft.data.replaceMediaId
-      ?replaceProfileMedia(oldMedia,draft.data.replaceMediaId,entry)
-      :numberProfileMedia(appendProfileMedia(oldMedia,entry));
+    const nextId=Math.max(draft.data.mediaNextId??1,...oldMedia.map(item=>(item.itemId??0)+1),1);
+    if(!Number.isSafeInteger(nextId))throw Error("PROFILE_MEDIA_ITEM_ID_OVERFLOW");
+    const replacing=draft.data.replaceMediaId!==undefined;
+    const items=replacing
+      ?replaceProfileMedia(oldMedia,draft.data.replaceMediaId!,entry)
+      :numberProfileMedia(appendProfileMedia(oldMedia,{...entry,itemId:nextId}));
     const updated=await repo.putDraft(ctx.from.id,"media",
-      {...draft.data,media:items,replaceMediaId:undefined},draft.revision);
+      {...draft.data,media:items,mediaNextId:replacing?nextId:nextId+1,replaceMediaId:undefined},draft.revision);
     let warning="";
     try{await ctx.deleteMessage();}catch{warning="⚠️ 送信した媒体メッセージを削除できませんでした。手動で削除してください。\\n";}
     await updateWizardScreen(ctx,repo,updated,warning+mediaText(updated.data),mediaKeyboard(updated.revision));
