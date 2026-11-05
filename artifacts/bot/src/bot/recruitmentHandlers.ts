@@ -42,7 +42,7 @@ function keyboard(d:EditorDraft){
    b("📝 募集内容",`recruit:edit:${rev}:body`)]);
   rows.push([b(data.position?"✅ ポジション":"ポジション選択",`recruit:panel:${rev}:position`,"primary"),
    b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`)]);
+   b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
  }else{
   rows.push([b("📝 タイトル",`recruit:edit:${rev}:title`),
    b("📝 募集内容",`recruit:edit:${rev}:body`)]);
