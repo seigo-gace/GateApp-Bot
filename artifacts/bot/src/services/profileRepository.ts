@@ -107,11 +107,12 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
     return {type:m.media_type,itemId,fileId:m.file_id,sourceMessageId,
       ...(m.media_group_id?{mediaGroupId:m.media_group_id}:{})};
   });
-  if(!Number.isSafeInteger(Number(p.media_next_id))||Number(p.media_next_id)<1)
+  const mediaNextId=Math.max(Number(p.media_next_id),1,...media.map(item=>(item.itemId??0)+1));
+  if(!Number.isSafeInteger(mediaNextId)||mediaNextId<1)
     throw Error("PROFILE_MEDIA_COUNTER_INVALID");
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
     weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,
-    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId:Number(p.media_next_id),status:p.status,revision:p.revision};
+    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId,status:p.status,revision:p.revision};
 }
 export async function savePrivateDraft(id: number, revision: number,
     username: string | null): Promise<SavedProfile> {
