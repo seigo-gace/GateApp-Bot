@@ -2,7 +2,7 @@
  * Default is disabled; no external Telegram effects before release admission.
  */
 import type {Telegram} from "telegraf";
-import {projectNextRoomEvent} from "./announcementRoomEvents.js";
+import {projectNextRoomEvent,enqueueDueRoomStartReminders} from "./announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "./announcementNotifications.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "./announcementPurge.js";
 import {updateNextRoomStatusMessage} from "./roomPostStatus.js";
@@ -14,7 +14,7 @@ export function startGayBbsWorkers(telegram:Telegram):()=>void{
  let nextCleanupAt=0;
  const workers:Worker[]=[
   {name:"room-announcement",enabled:process.env.GAYBBS_ROOM_EVENT_WORKER_ENABLED==="enabled",
-   busy:false,run:()=>projectNextRoomEvent()},
+   busy:false,run:async()=>{await enqueueDueRoomStartReminders();return projectNextRoomEvent();}},
   {name:"room-post-status",
    enabled:process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED==="enabled",
    busy:false,run:()=>updateNextRoomStatusMessage(telegram)},
