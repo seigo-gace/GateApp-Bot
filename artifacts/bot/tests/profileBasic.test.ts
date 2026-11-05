@@ -21,13 +21,13 @@ test("invalid format or values outside the agreed limits are rejected", () => {
     "ゼロ\n175/80-40","ゼロ\n175#80","ゼロ\nabc/80/40",
     "ゼロ\n99/80/40","ゼロ\n251/80/40","ゼロ\n300/80/40",
     "ゼロ\n175/49/40","ゼロ\n175/251/40","ゼロ\n175/300/40",
-    "ゼロ\n175/80/18","ゼロ\n175/80/90",
+    "ゼロ\n175/80/17","ゼロ\n175/80/90",
     "x".repeat(41)+"\n175 80 39"
   ]) assert.throws(() => parseProfileBasic(input),Error);
 });
 
-test("new bounds include 100-250cm, 50-250kg, and age 19-89", () => {
-  assert.equal(parseProfileBasic("境界\n100/50/19").age,19);
+test("new bounds include 100-250cm, 50-250kg, and age 18-89", () => {
+  assert.equal(parseProfileBasic("境界\n100/50/18").age,18);
   assert.equal(parseProfileBasic("境界\n250-250-89").age,89);
 });
 test("position is one of the seven adopted options", () => {
