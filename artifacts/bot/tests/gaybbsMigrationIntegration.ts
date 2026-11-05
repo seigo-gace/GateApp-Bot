@@ -81,8 +81,9 @@ try{
  await pool.query(
   `INSERT INTO posting_deliveries
    (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
-     operation_key,status,telegram_message_id,inline_buttons)
-   VALUES('announcement',$1,111001,1,$2,'db-room-delivery','sent',87654,'[]'::jsonb)`,
+     operation_key,status,telegram_message_id,inline_buttons,rendered_text)
+   VALUES('announcement',$1,111001,1,$2,'db-room-delivery','sent',87654,
+     '[]'::jsonb,'🎬 <b>元の公開ROOM告知</b>・保持する詳細')`,
   [String(linkedId),deliveryTopic.rows[0].topic_id]);
  const source=await updateRoomState(111001,roomId,1,"start");
  assert.equal(source.state,"live");
@@ -301,8 +302,9 @@ try{
    VALUES(888010,'purge-application-token',NOW()+INTERVAL '1 day')`);
  await pool.query(
   `INSERT INTO posting_deliveries(source_type,source_id,owner_user_id,
-    source_revision,posting_topic_id,operation_key,status,telegram_message_id)
-   VALUES('announcement',$1,888001,1,$2,'purge-delivery','sent',5678)`,
+    source_revision,posting_topic_id,operation_key,status,telegram_message_id,rendered_text)
+   VALUES('announcement',$1,888001,1,$2,'purge-delivery','sent',5678,
+     '📣 <b>元の募集投稿</b>・公開した本文')`,
   [String(obsolete),topic.rows[0].topic_id]);
  const abandoned=await pool.query(
   `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,
@@ -341,6 +343,7 @@ try{
  assert.equal(receipt?.status,"archived");
  assert.deepEqual(announcedEdits.map(x=>x.messageId),[5678]);
  assert.match(announcedEdits[0]!.text,/✅ 募集終了/);
+ assert.match(announcedEdits[0]!.text,/元の募集投稿/);
  assert.equal(await archiveNextTerminalAnnouncement(archiveBot),null);
  delete process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED;
  const removed=await purgeDisposableAnnouncements();
@@ -400,6 +403,7 @@ try{
  const liveEdit=await updateNextRoomStatusMessage(historicalBot);
  assert.equal(liveEdit?.state,"confirmed");
  assert.match(edits[0]!.text,/🔴 LIVE中/);
+ assert.match(edits[0]!.text,/元の公開ROOM告知/);
  assert.equal(edits[0]!.messageId,87654);
  // The final ROOM event may have been projected later; no terminal DB purge
  // until the *same* existing Telegram message displays the end badge.
