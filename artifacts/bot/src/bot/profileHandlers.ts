@@ -16,6 +16,7 @@ type ProfileRepo = {
   savePrivateDraft: typeof profileRepo.savePrivateDraft;
   discardDraft: typeof profileRepo.discardDraft;
   bindScreenMessage: typeof profileRepo.bindScreenMessage;
+  getLastScreenMessageId: typeof profileRepo.getLastScreenMessageId;
 };
 
 const selectPosition = (revision: number, selected?: ProfilePosition) => Markup.inlineKeyboard([
@@ -107,22 +108,42 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
   return;
  }
  const existing=await repo.getProfile(ctx.from.id);
+ const previous=await repo.getDraft(ctx.from.id);
+ // Preserve the active profile draft when a start link is reopened, including
+ // after a Bot restart. Never reset an in-progress wizard on /profile.
+ if(previous){
+   const text=previous.step==="preview"
+     ? overviewText(previous.data as SavedProfile,ctx.from.username!)
+     :previous.step==="awaiting_position"
+       ?"✅ 基本情報を受け付けました。ポジションを選択してください。"
+       :basicPrompt(previous.data.position);
+   const markup=previous.step==="preview"
+     ?overviewKeyboard(previous.revision)
+     :selectPosition(previous.revision,previous.data.position);
+   await updateWizardScreen(ctx,repo,previous,text,markup,
+     previous.step==="preview"?"HTML":undefined);
+   return;
+ }
+ const lastId=await repo.getLastScreenMessageId(ctx.from.id);
  if(existing){
-  await ctx.reply(renderProfileBasicPreview(existing,ctx.from.username!),{
-   parse_mode:"HTML",...Markup.inlineKeyboard([
+   const text=renderProfileBasicPreview(existing,ctx.from.username!);
+   const options={parse_mode:"HTML" as const,...Markup.inlineKeyboard([
     [Markup.button.callback("📝 基本情報を編集","pf:edit:basic")],
-   ]),
-  });
-  return;
+   ])};
+   if(lastId){
+     try{
+       await ctx.telegram.editMessageText(ctx.chat.id,lastId,undefined,text,options);
+       return;
+     }catch{
+       console.warn("[PROFILE_SAVED_SCREEN_EDIT_FAILED]");
+     }
+   }
+   await ctx.reply(text,options);
+   return;
  }
- const previous = await repo.getDraft(ctx.from.id);
- const draft = await repo.putDraft(ctx.from.id,"awaiting_basic",{});
- const sent = await ctx.reply(basicPrompt(), selectPosition(draft.revision));
- await repo.bindScreenMessage(ctx.from.id, draft.revision, sent.message_id);
- if (previous?.data.screenMessageId && previous.data.screenMessageId !== sent.message_id) {
-   try { await ctx.telegram.deleteMessage(ctx.chat.id, previous.data.screenMessageId); }
-   catch { console.warn("[PROFILE_OLD_SCREEN_DELETE_FAILED]"); }
- }
+ const draft=await repo.putDraft(ctx.from.id,"awaiting_basic",
+   lastId?{screenMessageId:lastId}:{});
+ await updateWizardScreen(ctx,repo,draft,basicPrompt(),selectPosition(draft.revision));
 }
 
 export function registerProfileHandlers(
