@@ -243,6 +243,13 @@ export async function runMigrations(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE room_posts ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+      CREATE TABLE IF NOT EXISTS room_join_links (
+        room_id BIGINT PRIMARY KEY REFERENCES room_posts(room_id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE CHECK(length(token)=32),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS room_host_sessions (
         owner_user_id BIGINT PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
