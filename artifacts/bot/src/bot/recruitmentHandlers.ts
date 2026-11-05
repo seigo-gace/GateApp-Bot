@@ -14,6 +14,7 @@ import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost} from "../services/publishService.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
+import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
  renderRecruitmentPreview,validateRecruitmentReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
@@ -61,16 +62,47 @@ function inputInstructions(linked:boolean){
   "\n4行目以降：募集内容（改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
 }
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
- const profile=asInput(d).mode==="linked"?await getProfile(id):null;
+ const input=asInput(d);
+ const profile=input.mode==="linked"?await getProfile(id):null;
  const origin=await currentMenuOrigin(id);
  const destinations=await listVerifiedTopics("announcement");
  const current=origin?destinations.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
- const destText=current?"投稿先："+escapeProfileHtml(current.board)+" / "+escapeProfileHtml(current.title):
-   "投稿先：まだ確認できていません。［投稿］で選択できます。";
- await show(telegram,id,d,"📢 公開前プレビュー（未投稿）\n"+
-  renderRecruitmentPreview(asInput(d),profile)+"\n\n"+destText+
+ const rawDestination=current?"投稿先："+current.board+" / "+current.title:
+   "投稿先：未選択。［投稿］で検証済みTopicを選択できます。";
+ const fullKeyboard=keyboard(d);
+ // The Rich editor has buttons beside the field text. Keep only the shared
+ // selectors/publish/back buttons below it; plain mode uses all edit buttons.
+ const actionRows=fullKeyboard.reply_markup.inline_keyboard.filter(row=>
+  !row.some(button=>"callback_data" in button&&
+    String(button.callback_data).startsWith("recruit:edit:")));
+ try{
+  const api=telegram as unknown as {callApi:(method:string,payload:Record<string,unknown>)=>Promise<any>};
+  const old=typeof d.data.screenMessageId==="number"?d.data.screenMessageId:undefined;
+  const rich=buildRecruitmentRichPreview(input,d.revision,rawDestination,warning);
+  const payload={chat_id:id,rich_message:rich,
+    reply_markup:{inline_keyboard:actionRows}};
+  if(old){
+   try{
+    await api.callApi("editMessageText",{...payload,message_id:old});
+    return;
+   }catch(e){
+    if(e instanceof Error&&/message is not modified/i.test(e.message))return;
+    // On an unsupported edit, the regular-mode fallback retains all buttons.
+   }
+  }else{
+   const sent=await api.callApi("sendRichMessage",payload);
+   if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
+    throw Error("RICH_MESSAGE_ID_INVALID");
+   await bindDraftScreen(id,"announcement",d.revision,sent.message_id);
+   return;
+  }
+ }catch{
+  // Telegram API/SDK or device support cannot be assumed in advance.
+ }
+ await show(telegram,id,d,"📢 公開前プレビュー（未投稿)\n"+
+  renderRecruitmentPreview(input,profile)+"\n\n"+escapeProfileHtml(rawDestination)+
   "\n\n📝各項目を変更しても他の入力は保持します。"+
-  (warning?"\n"+escapeProfileHtml(warning):""),keyboard(d),true);
+  (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number){
  const profile=await getProfile(userId);
