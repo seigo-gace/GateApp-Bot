@@ -141,3 +141,10 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - 相手募集の候補ボタンは3列を基本とし、候補数・視認性に合わせ2列/4列へ調整する。ポジション7件は3+4、目的13件は3+3+3+2+2、場所3件は3。空の穴埋めボタンは追加しない。親画面と選択パネルの既存色分け・選択値保持・callback/revision方式は維持。
 - 募集作成中の親画面は［戻る］でなく［キャンセル］を採用。押下時は当該作成中の募集下書きのみキャンセル状態にし、入力中の本文・本人基本値・タグを破棄し、古いcallbackを拒否する。保存済み共通プロフィール、別の下書き、公開済み募集/ROOM、投稿レシートは変更・削除しない。既存の検証済み投稿メニューへのリンクがある場合だけ案内を出す。選択パネル内の［プレビューに戻る］は取消ではなく画面遷移であり維持。
 - 実装：recruitmentButtonLayout.ts、recruitmentHandlers.ts、publicPostRepository.ts、recruitmentCompose.test.ts。実Telegram操作は別受入。
+
+## 2026-11-06｜Master最終採用・相手募集の実装進行と原本保持
+- 「これで決定でいい。実装をはじめろ。マッピングも記録も忘れるな」を最終採用として記録。以後ここで決まった入力・表示・3/2/4列・キャンセル・プレビュー・📝項目別編集・本人のみの明示投稿を変更しない。
+- 検査したSource欠落を修正。プロフィールありの募集は「参照している」という文言だけでなく、ニックネーム・身長・体重・年齢・ポジションの本人確認用表示を整形プレビューと公開カードへ反映。プロフィールなしは今回限りの本人基本値を表示し、共通プロフィール原本には書き戻さない。
+- 既存 `announcement_posts` の `conditions` にタイトル/今回限りの入力項目、`profile_snapshot` にプロフィール利用時の本人基本情報を記録する。新テーブルは作らない。公開元のタイトル・改行入り募集文は区別して保持。予約・応募・ROOMなど未確定の別セクションは混在させない。
+- 照合対象：`recruitmentCompose.ts`／`recruitmentRichPreview.ts`／`recruitmentHandlers.ts`／`publicPostRepository.ts`／`gaybbsMigrationIntegration.ts`／`recruitmentCompose.test.ts`。登録先は既存 `gaybbsBot.ts`。投稿可否は従来のVerified Topic/feature-release gateを迂回しない。
+- **Source CIはPostgreSQL分離DBとテスト限定の成功であって、実Telegram・Gserver・公開Topicの実動作を意味しない。** 本番投稿ゲートは未解除。
