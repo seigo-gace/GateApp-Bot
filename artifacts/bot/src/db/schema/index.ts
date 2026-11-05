@@ -9,4 +9,5 @@ export * from "./blacklist";
 export * from "./log_groups";
 export * from "./log_topics";
 export * from "./sessions";
+export * from "./gate_consents";
 export * from "./admin_sessions";
