@@ -2,6 +2,7 @@ import { Markup, type Telegraf, type Telegram } from "telegraf";
 import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
 import {makeProfileViewerButtons} from "../services/profilePublicView.js";
+import {revisePublishedProfile} from "../services/profilePublicationUpdate.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
@@ -330,7 +331,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
    await ctx.answerCbQuery();
    await ctx.editMessageText(
-    "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+"\nこの宛先に公開する場合だけボタンを押してください。",
+    "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+
+    (module==="profile"?"\n画像・動画の登録がある場合、公開後は閲覧者が［画像/動画］を押すと表示できます。自己PR・Like/Loveも公開内容に含まれます。":"")+
+    "\nこの宛先に公開する場合だけボタンを押してください。",
     {parse_mode:"HTML",...Markup.inlineKeyboard([
      [Markup.button.callback("✅ この内容を公開",`post:publish:${module}:${rev}:${topicId}`)],
      [Markup.button.callback("キャンセル（非公開のまま）","post:cancel")],
@@ -354,6 +357,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
     if(!p||p.revision!==revision)throw new Error("プロフィールが更新されています。");
+    // Existing destination: update the same Telegram message instead of
+    // creating a duplicate. A stale or ambiguous state fails closed.
+    const prior=await revisePublishedProfile(ctx.telegram,ctx.from.id,p,topicId);
+    if(prior){
+     await ctx.editMessageText((prior.updated?"✅ 公開元の投稿を更新しました。":"✅ この内容は公開元に反映済みです。")+
+      "\\n投稿先："+prior.chatId+" / Topic "+prior.threadId+"\\n投稿ID："+prior.messageId);
+     return;
+    }
     sourceId=String(ctx.from.id);text=renderPublicProfile(p);
     buttons=await makeProfileViewerButtons(ctx.from.id,revision,topicId);
    }else{

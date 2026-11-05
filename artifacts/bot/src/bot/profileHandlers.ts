@@ -204,7 +204,8 @@ const overviewText=(profile:SavedProfile,username:string)=>[
   "",
   "基本情報以外の項目は任意です。登録したい項目を下のボタンから選んでください。",
   "容姿/エリア、画像・動画/自己PR、#Like（自分の特徴・好み）、#Love（相手に求めること）を編集できます。",
-  "［プレビュー］で内容を確認し、［保存］で非公開保存します。保存だけではグループへ投稿されません。",
+  "［プレビュー］で確認し、［保存］で全項目を保存します。保存だけではグループへ投稿されません。",
+  "既に公開している場合、更新には別途 /publishprofile で投稿先と内容の確認が必要です。",
   "［キャンセル］は未保存の変更だけを取り消し、投稿メニューへ戻ります。保存済み内容は削除しません。",
 ].join("\n");
 
@@ -286,7 +287,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  }
  const lastId=await repo.getLastScreenMessageId(ctx.from.id);
  if(existing){
-   if(existing.status==="private"){
+   if(existing.status==="private"||existing.status==="published"){
      const draft=await repo.putDraft(ctx.from.id,"preview",{
        nickname:existing.nickname,heightCm:existing.heightCm,
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
@@ -337,6 +338,28 @@ export function registerProfileHandlers(
     }
   };
 
+  /** Single persistence pathway for A, ②, ③, ④, ⑤ and legacy Save.
+   * All section fields are saved together, never only the selected section.
+   */
+  const persistCompleteProfile=async(ctx:Context,draft:ProfileDraft):Promise<void>=>{
+    if(!ctx.from?.username)throw Error("PROFILE_ACTOR_MISSING");
+    const saved=await repo.savePrivateDraft(ctx.from.id,draft.revision,ctx.from.username);
+    const next=await repo.putDraft(ctx.from.id,"preview",{
+      nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
+      age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
+      region:saved.region,area:saved.area,pr:saved.pr,prRef:saved.prRef,
+      media:saved.media,mediaNextId:saved.mediaNextId,
+      likeTags:saved.likeTags,loveTags:saved.loveTags,
+      screenMessageId:draft.data.screenMessageId,
+    });
+    const message=saved.status==="published"
+      ?"✅ ①〜⑤の変更を保存しました。公開中の投稿は自動更新されません。公開を更新するには /publishprofile で対象と内容を確認してください。"
+      :"✅ プロフィール①〜⑤の入力済み内容を非公開保存しました。グループには投稿していません。";
+    await ctx.answerCbQuery("①〜⑤を保存しました");
+    await ctx.editMessageText(message+"\\n"+overviewText(saved,ctx.from.username),{
+      parse_mode:"HTML",...overviewKeyboard(next.revision)});
+  };
+
   bot.action(/^pf:cancel:(\d+)$/, async (ctx) => {
     if (!canUseProfile(ctx)) return;
     const revision = Number(ctx.match[1]);
@@ -377,8 +400,8 @@ export function registerProfileHandlers(
     await ctx.answerCbQuery();
     if (!canUseProfile(ctx)) return;
     const existing = await repo.getProfile(ctx.from.id);
-    if (!existing || existing.status !== "private") {
-      await ctx.reply("公開済みのプロフィール編集は公開先の同期機能から行ってください。");
+    if (!existing || !["private","published"].includes(existing.status)) {
+      await ctx.reply("このプロフィールは現在編集できません。");
       return;
     }
     const draft = await repo.putDraft(ctx.from.id, "awaiting_basic", {
@@ -485,17 +508,7 @@ export function registerProfileHandlers(
       return;
     }
     if(action==="save"){
-      const saved=await repo.savePrivateDraft(ctx.from.id,draft.revision,ctx.from.username!);
-      // New revision invalidates pre-save callbacks while preserving this screen.
-      const next=await repo.putDraft(ctx.from.id,"preview",{
-        nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
-        age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-        region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,likeTags:saved.likeTags,loveTags:saved.loveTags,
-        screenMessageId:draft.data.screenMessageId,
-      });
-      await ctx.answerCbQuery("非公開で保存しました");
-      await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
-        overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
+      await persistCompleteProfile(ctx,draft);
       return;
     }
     if(action==="cancel"){
@@ -581,13 +594,7 @@ export function registerProfileHandlers(
          !["like-items","like-categories"].includes(draft.step)){
         await ctx.answerCbQuery("古い保存ボタンです");return;
       }
-      const saved=await repo.savePrivateDraft(ctx.from.id,rev,ctx.from.username!);
-      const next=await repo.putDraft(ctx.from.id,"preview",{
-        ...draft.data,...saved,screenMessageId:draft.data.screenMessageId,
-      });
-      await ctx.answerCbQuery("非公開で保存しました");
-      await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
-        overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
+      await persistCompleteProfile(ctx,draft);
     });
   }
 
@@ -602,15 +609,7 @@ export function registerProfileHandlers(
     ].includes(draft.step)){
       await ctx.answerCbQuery("古い保存ボタンです");return;
     }
-    const saved=await repo.savePrivateDraft(ctx.from.id,revision,ctx.from.username!);
-    const next=await repo.putDraft(ctx.from.id,"preview",{
-      ...draft.data,...saved,screenMessageId:draft.data.screenMessageId,
-    });
-    await ctx.answerCbQuery("①〜⑤を非公開保存しました");
-    await ctx.editMessageText(
-      "✅ プロフィール①〜⑤の入力済み内容を非公開保存しました。グループには投稿していません。\n"+
-       overviewText(saved,ctx.from.username!),
-       {parse_mode:"HTML",...overviewKeyboard(next.revision)});
+    await persistCompleteProfile(ctx,draft);
   });
 
   bot.action(/^pf:ap:(\d+):open:([hb])$/,async ctx=>{
@@ -781,15 +780,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("古い保存ボタンです");
       return;
     }
-    const saved=await repo.savePrivateDraft(ctx.from.id,rev,ctx.from.username!);
-    const next=await repo.putDraft(ctx.from.id,"preview",{
-      nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
-      age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-      region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,likeTags:saved.likeTags,loveTags:saved.loveTags,screenMessageId:draft.data.screenMessageId,
-    });
-    await ctx.answerCbQuery("非公開で保存しました");
-    await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
-      overviewText(saved,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(next.revision)});
+    await persistCompleteProfile(ctx,draft);
   });
 
   // Register BEFORE the pre-existing admin message handler. All other
