@@ -1,6 +1,7 @@
 import { Markup, type Telegraf, type Telegram } from "telegraf";
 import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
+import {makeProfileViewerButtons} from "../services/profilePublicView.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
@@ -354,6 +355,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const p=await getProfile(ctx.from.id);
     if(!p||p.revision!==revision)throw new Error("プロフィールが更新されています。");
     sourceId=String(ctx.from.id);text=renderPublicProfile(p);
+    buttons=await makeProfileViewerButtons(ctx.from.id,revision,topicId);
    }else{
     const draft=await getDraft(ctx.from.id,module);
     if(!draft||draft.step!=="preview"||draft.revision!==revision)
