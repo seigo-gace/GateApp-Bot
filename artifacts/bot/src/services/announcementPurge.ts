@@ -38,6 +38,11 @@ export async function purgeDisposableAnnouncements(limit=20):Promise<number>{
            AND d.source_id=a.announcement_id::text
            AND d.status NOT IN ('archived','deleted')
        )
+       AND NOT EXISTS (
+         SELECT 1 FROM announcement_notifications n
+         WHERE n.announcement_id=a.announcement_id
+           AND n.state IN ('pending','sending','needs_reconcile')
+       )
      ORDER BY announcement_id
      LIMIT $1 FOR UPDATE SKIP LOCKED`,[limit]);
   const ids=candidates.rows.filter(x=>
