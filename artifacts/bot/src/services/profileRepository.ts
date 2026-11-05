@@ -79,9 +79,10 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
   );
   if (!r.rows.length) return null;
   const p = r.rows[0];
-  const mediaRows=await pool.query("SELECT id,file_id,media_type FROM profile_media WHERE owner_user_id=$1 ORDER BY id",[id]);
-  const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:number;file_id:string;media_type:"photo"|"video"})=>({
-    type:m.media_type,fileId:m.file_id,sourceMessageId:m.id,
+  const mediaRows=await pool.query("SELECT id,file_id,media_type,source_message_id,media_group_id FROM profile_media WHERE owner_user_id=$1 ORDER BY id",[id]);
+  const media:ProfileMediaItem[]=mediaRows.rows.map((m:{id:number;file_id:string;media_type:"photo"|"video";source_message_id:number|null;media_group_id:string|null})=>({
+    type:m.media_type,fileId:m.file_id,sourceMessageId:m.source_message_id??m.id+2147483647,
+    ...(m.media_group_id?{mediaGroupId:m.media_group_id}:{}),
   }));
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
     weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,
@@ -121,8 +122,8 @@ export async function savePrivateDraft(id: number, revision: number,
     if(p.media!==undefined){
       await client.query("DELETE FROM profile_media WHERE owner_user_id=$1",[id]);
       for(const item of p.media){
-        await client.query("INSERT INTO profile_media (owner_user_id,file_id,media_type,public_allowed) VALUES ($1,$2,$3,FALSE)",
-         [id,item.fileId,item.type]);
+        await client.query("INSERT INTO profile_media (owner_user_id,file_id,media_type,source_message_id,media_group_id,public_allowed) VALUES ($1,$2,$3,$4,$5,FALSE)",
+         [id,item.fileId,item.type,item.sourceMessageId,item.mediaGroupId??null]);
       }
     }
     await client.query("UPDATE profile_drafts SET step='cancelled',data=jsonb_build_object('screenMessageId',data->'screenMessageId'),revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
