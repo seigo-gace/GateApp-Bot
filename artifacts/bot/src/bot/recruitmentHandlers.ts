@@ -15,6 +15,7 @@ import {publishPost} from "../services/publishService.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
+import {recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
  renderRecruitmentPreview,validateRecruitmentReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
@@ -50,7 +51,7 @@ function keyboard(d:EditorDraft){
    b("場所タグ",`recruit:panel:${rev}:place`,"primary")]);
  }
  rows.push([b("✅ 投稿",`recruit:post:${rev}`,"success"),
-  b("↩ 戻る",`recruit:back:${rev}`)]);
+  b("キャンセル",`recruit:cancel:${rev}`)]);
  return Markup.inlineKeyboard(rows);
 }
 function inputInstructions(linked:boolean){
@@ -116,7 +117,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    await showPreview(telegram,userId,restored);return;
   }
   if(previous.step==="awaiting_text"){
-   await show(telegram,userId,previous,inputInstructions(previous.data.mode==="linked"));return;
+   await show(telegram,userId,previous,inputInstructions(previous.data.mode==="linked"),
+    Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${previous.revision}`)]]));return;
   }
  }
  const profile=await getProfile(userId);
@@ -125,7 +127,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   recruitmentMode:profile?"linked":"manual",
   mode:profile?"linked":"manual",purposeCodes:[],placeCodes:[],
  });
- await show(telegram,userId,d,inputInstructions(!!profile));
+ await show(telegram,userId,d,inputInstructions(!!profile),
+  Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]));
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number
@@ -235,19 +238,21 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   const panel=d.data.recruitPanel as string;
   const data=asInput(d);
   let rows:any[][]=[];
-  if(panel==="position")rows=[
-   ...[PROFILE_POSITIONS.slice(0,3),PROFILE_POSITIONS.slice(3)].map(items=>
-    items.map(p=>b((data.position===p?"✅ ":"▫️ ")+p,
-     `recruit:select:${d.revision}:position:${PROFILE_POSITIONS.indexOf(p)}`,"primary")))];
-  if(panel==="purpose")for(let i=0;i<PURPOSE_TAGS.length;i+=3){
-   rows.push(PURPOSE_TAGS.slice(i,i+3).map((t,j)=>
+  if(panel==="position"){
+   rows=recruitmentSelectionRows(PROFILE_POSITIONS,true).map(group=>group.map(p=>
+    b((data.position===p?"✅ ":"▫️ ")+p,
+      `recruit:select:${d.revision}:position:${PROFILE_POSITIONS.indexOf(p)}`,"primary")));
+  }
+  if(panel==="purpose"){
+   rows=recruitmentSelectionRows(PURPOSE_TAGS).map(group=>group.map(t=>
     b((data.purposeCodes?.includes(t)?"✅ ":"▫️ ")+t,
-    `recruit:select:${d.revision}:purpose:${i+j}`,"success")));
+      `recruit:select:${d.revision}:purpose:${PURPOSE_TAGS.indexOf(t)}`,"success")));
   }
   if(panel==="place"){
    const items=["場所あり","場所なし","足あり"];
-   rows.push(items.map((p,i)=>b((data.placeCodes?.includes(p)?"✅ ":"▫️ ")+p,
-    `recruit:select:${d.revision}:place:${i}`)));
+   rows=recruitmentSelectionRows(items).map(group=>group.map(p=>
+    b((data.placeCodes?.includes(p)?"✅ ":"▫️ ")+p,
+      `recruit:select:${d.revision}:place:${items.indexOf(p)}`)));
   }
   rows.push([b("↩ プレビューに戻る",`recruit:panelback:${d.revision}`)]);
   await show(telegram,id,d,
@@ -338,15 +343,22 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await ctx.reply("投稿を確認できませんでした。送信状態が不明な場合は再送せず照合してください。");
   }
  });
- bot.action(/^recruit:back:(\d+)$/,async ctx=>{
+ bot.action(/^recruit:cancel:(\\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
-  if(!active(d,Number(ctx.match[1]),"preview")){
-   await ctx.answerCbQuery("古い画面です");return;
+  if(!active(d,Number(ctx.match[1]))||
+     !["preview","awaiting_text","awaiting_tags","awaiting_recruitment_edit"].includes(d.step)){
+   await ctx.answerCbQuery("古い操作です");return;
   }
-  await ctx.answerCbQuery();
+  // Cancel only this private recruitment, invalidating its old callbacks.
+  // Previously published content and the independent profile are untouched.
+  await updateDraft(ctx.from.id,"announcement",d.revision,"cancelled",{
+   recruitmentFlow:"compact",cancelled:true,screenMessageId:d.data.screenMessageId,
+  });
+  await ctx.answerCbQuery("募集の作成をキャンセルしました");
   const url=await verifiedPostingMenuReturnUrl(ctx.from.id);
-  await ctx.editMessageText("募集の下書きは保持しました。投稿メニューに戻れます。",
-   url?Markup.inlineKeyboard([[Markup.button.url("↩ 投稿メニューへ",url)]]):undefined);
+  await ctx.editMessageText("募集の作成をキャンセルしました。今回の入力は破棄しました。"+
+   "\\n保存済みプロフィールや公開済み投稿には影響しません。",
+   url?Markup.inlineKeyboard([[Markup.button.url("投稿メニューへ",url)]]):undefined);
  });
 }
