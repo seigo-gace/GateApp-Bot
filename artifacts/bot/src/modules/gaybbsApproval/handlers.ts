@@ -45,7 +45,12 @@ async function configured(targetId:number):Promise<GateConfig|null>{
 async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void>{
  if(a.step==="approved"){
   const link=await currentIssuedInvite(a);
-  if(!link)return;
+  if(!link){
+   const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
+    "審査済みの参加リンクは使用済み、または期限切れです。利用可能な参加リンクはありません。一定時間後に審査リンクから改めて申請してください。");
+   await rememberScreen(a,out.messageId);
+   return;
+  }
   const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
    `【${cfg.target.title}】\n✅ 審査が完了しました。下のボタンから本人が参加申請してください。`,
    Markup.inlineKeyboard([[Markup.button.url("🎉 参加申請へ",link)]]));
