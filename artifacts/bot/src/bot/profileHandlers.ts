@@ -137,8 +137,26 @@ export function registerProfileHandlers(
 
   bot.action("pf:restart", async (ctx) => {
     if (!canUseProfile(ctx)) return;
+    const existing = await repo.getProfile(ctx.from.id);
+    if (existing) {
+      await ctx.answerCbQuery("保存済みプロフィールがあります");
+      await ctx.editMessageText(renderProfileBasicPreview(existing, ctx.from.username!), {
+        parse_mode:"HTML",
+        ...Markup.inlineKeyboard([[Markup.button.callback("📝 基本情報を編集","pf:edit:basic")]]),
+      });
+      return;
+    }
+    const current = await repo.getDraft(ctx.from.id);
+    if (current) {
+      await ctx.answerCbQuery("すでに入力中です");
+      return;
+    }
+    const draft = await repo.putDraft(ctx.from.id,"awaiting_basic",{});
+    const messageId = ctx.callbackQuery.message && "message_id" in ctx.callbackQuery.message
+      ? ctx.callbackQuery.message.message_id : undefined;
+    if (messageId) await repo.bindScreenMessage(ctx.from.id,draft.revision,messageId);
     await ctx.answerCbQuery();
-    await startProfileEditor(ctx, repo);
+    await ctx.editMessageText(basicPrompt(),selectPosition(draft.revision));
   });
 
   bot.action("pf:edit:basic", async (ctx) => {
