@@ -368,5 +368,54 @@ try{
   "SELECT count(*)::int AS n FROM public_post_drafts WHERE owner_user_id=899002"
  )).rows[0].n,1);
  console.log("GAYBBS_DB_DISPOSABLE_PURGE_NO_RESIDUE_AND_ACTIVE_PROTECTION=PASS");
+ // ROOM historical post is updated twice in place; no Telegram delete
+ // call, no duplicate send, no private join URL in the message.
+ await pool.query(
+  `INSERT INTO gaybbs_feature_release_gates
+    (feature,source_commit,ci_evidence,gserver_runtime_evidence,
+     telegram_e2e_evidence,approved_by,enabled)
+   VALUES('room',repeat('a',40),'CI_TEST_ONLY','FAKE_DB_ONLY',
+     'FAKE_TELEGRAM_ONLY',111001,TRUE)`);
+ const edits:Array<{chatId:number;messageId:number;text:string}>=[];
+ const historicalBot={
+  editMessageText:async(chatId:number,messageId:number,_inline:unknown,
+    text:string,_options:unknown)=>{
+   edits.push({chatId,messageId,text});return {message_id:messageId};
+  },
+  deleteMessage:async()=>{throw new Error("HISTORY_DELETE_FORBIDDEN")},
+  sendMessage:async()=>{throw new Error("DUPLICATE_PUBLIC_POST_FORBIDDEN")},
+ } as unknown as Telegram;
+ process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED="enabled";
+ const liveEdit=await updateNextRoomStatusMessage(historicalBot);
+ assert.equal(liveEdit?.state,"confirmed");
+ assert.match(edits[0]!.text,/🔴 LIVE中/);
+ assert.equal(edits[0]!.messageId,87654);
+ // The final ROOM event may have been projected later; no terminal DB purge
+ // until the *same* existing Telegram message displays the end badge.
+ const endEdit=await updateNextRoomStatusMessage(historicalBot);
+ assert.equal(endEdit?.state,"confirmed");
+ assert.match(edits[1]!.text,/⚫ 終了しました/);
+ assert.equal(edits[1]!.messageId,87654);
+ assert.equal(edits.length,2);
+ delete process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED;
+ // An unresolved DM is explicitly reconciled here in the isolated fixture.
+ await pool.query(
+  `UPDATE announcement_notifications SET state='sent'
+   WHERE announcement_id=$1 AND state IN ('pending','needs_reconcile')`,[linkedId]);
+ process.env.GAYBBS_ROOM_TERMINAL_PURGE_ENABLED="enabled";
+ const purged=await finalizeNextRoom();
+ assert.equal(purged,roomId);
+ delete process.env.GAYBBS_ROOM_TERMINAL_PURGE_ENABLED;
+ for(const [query,params] of [
+  ["SELECT 1 FROM room_posts WHERE room_id=$1",[roomId]],
+  ["SELECT 1 FROM room_source_events WHERE room_id=$1",[roomId]],
+  ["SELECT 1 FROM room_status_message_edits WHERE edit_id=$1",[liveEdit!.editId]],
+  ["SELECT 1 FROM announcement_posts WHERE announcement_id=$1",[linkedId]],
+  ["SELECT 1 FROM posting_deliveries WHERE operation_key=$1",["db-room-delivery"]],
+ ] as const){
+  assert.equal((await pool.query(query,[...params])).rows.length,0,query);
+ }
+ assert.equal(edits.length,2,"Telegram historical post must remain, no deletion calls");
+ console.log("GAYBBS_DB_ROOM_LIVE_END_BADGES_POST_KEPT_DB_PURGED=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
