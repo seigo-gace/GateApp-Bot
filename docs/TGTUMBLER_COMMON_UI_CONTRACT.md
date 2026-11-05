@@ -136,3 +136,8 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - **プレビュー**：タイトル、ニックネーム/基本数値（プロフなし時）、募集本文を整形して表示。対象テキスト付近の［📝 編集］から特定1項目のみ修正し、ほかのセクションと目的/場所選択済み値を保持。本人が通常テキストを送信しても一度に複数項目を誤上書きしない。複数行の募集本文編集は新しい本文全文で置換し、最後の行まで改行を保持。
 - Telegram Bot API 10.3のRichMessage本文内ボタンを**優先実装**（`recruitmentRichPreview.ts`）。Bot APIの`RichTextButton`に同じ編集callbackを設定し、API側が拒否した場合だけ既存Telegraf InlineKeyboardの項目名付き編集ボタンを本文の直下へ置く**機能的フォールバック**へ切り替える。Rich本文のAPI/SDK・実端末での表示とcallbackは未E2E。単なる本文「📝」を実ボタンと扱わない。公開先の実Topicが未確定の場合は本人に選択を要求し、Verified Topic/Feature Release Gateを迂回しない。
 - 実装箇所：`src/services/recruitmentCompose.ts`（複数行解析・欄別編集・表示）、`src/bot/recruitmentHandlers.ts`（専用Bot DM操作・本人/step/revision/投稿・中断再開）、`src/gaybbsBot.ts`（既存Telegrafへの配線）、`tests/recruitmentCompose.test.ts`。既存告知・予告・ROOMの入力ロジックを変更しない。実Telegram動作、Richインラインボタンの正式受入、実Topic接続は別ゲート。
+
+## 2026-11-06｜Master確定変更：相手募集の選択列とキャンセル
+- 相手募集の候補ボタンは3列を基本とし、候補数・視認性に合わせ2列/4列へ調整する。ポジション7件は3+4、目的13件は3+3+3+2+2、場所3件は3。空の穴埋めボタンは追加しない。親画面と選択パネルの既存色分け・選択値保持・callback/revision方式は維持。
+- 募集作成中の親画面は［戻る］でなく［キャンセル］を採用。押下時は当該作成中の募集下書きのみキャンセル状態にし、入力中の本文・本人基本値・タグを破棄し、古いcallbackを拒否する。保存済み共通プロフィール、別の下書き、公開済み募集/ROOM、投稿レシートは変更・削除しない。既存の検証済み投稿メニューへのリンクがある場合だけ案内を出す。選択パネル内の［プレビューに戻る］は取消ではなく画面遷移であり維持。
+- 実装：recruitmentButtonLayout.ts、recruitmentHandlers.ts、publicPostRepository.ts、recruitmentCompose.test.ts。実Telegram操作は別受入。
