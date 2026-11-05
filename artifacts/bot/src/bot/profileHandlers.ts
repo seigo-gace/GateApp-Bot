@@ -4,6 +4,7 @@ import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {nextSelection,selectionRows} from "../services/inlineSelection.js";
+import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,toggleLike,validLikeTags} from "../services/profileLike.js";
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
@@ -130,6 +131,25 @@ const areaChildrenText=(data:ProfileDraft["data"])=>[
  "同じエリアを再度押すと未設定に戻せます。",
 ].join("\n");
 
+const likeCategoryKeyboard=(rev:number,data:ProfileDraft["data"])=>Markup.inlineKeyboard(
+ likeCategoryRows(rev,data.likeTags??[]).map(row=>row.map(b=>Markup.button.callback(b.text,b.callback_data))));
+const likeItemKeyboard=(rev:number,data:ProfileDraft["data"])=>Markup.inlineKeyboard(
+ likeItemRows(rev,data.likeCategory!,data.likePage??0,data.likeTags??[]).map(row=>row.map(b=>Markup.button.callback(b.text,b.callback_data))));
+const likeCategoryText=(data:ProfileDraft["data"])=>[
+ "🏷️ #Like｜好きなタグ",
+ "自分の特徴・好み・趣味・スタイルを選択。複数選択できます。",
+ "カテゴリー・ページを移動しても選択は保持されます。",
+ "選択中："+(data.likeTags??[]).length+"件",
+].join("\n");
+const likeItemText=(data:ProfileDraft["data"])=>{
+ const cat=LIKE_CATEGORIES[data.likeCategory!];
+ return [
+  "🏷️ #Like｜"+cat.name,
+  "ページ "+((data.likePage??0)+1)+"/"+Math.ceil(cat.items.length/12),
+  "複数選択：✅選択中／▫️未選択。同じ項目を押すと解除。",
+  "この分類："+(data.likeTags??[]).filter(t=>t.category===cat.name).length+"件",
+ ].join("\n");
+};
 const mediaKeyboard=(rev:number)=>Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`pf:media:${rev}:back`)]]);
 const mediaText=(data:ProfileDraft["data"])=>{
  const media=numberProfileMedia(data.media);
@@ -202,7 +222,9 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  // Preserve the active profile draft when a start link is reopened, including
  // after a Bot restart. Never reset an in-progress wizard on /profile.
  if(previous){
-   const text=previous.step==="media"?mediaText(previous.data)
+   const text=previous.step==="like-categories"?likeCategoryText(previous.data)
+     :previous.step==="like-items"?likeItemText(previous.data)
+     :previous.step==="media"?mediaText(previous.data)
      :previous.step==="area-blocks"?areaBlocksText(previous.data)
      :previous.step==="area-children"?areaChildrenText(previous.data)
      :previous.step==="hair"||previous.step==="body"
@@ -214,7 +236,9 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      :previous.step==="awaiting_position"
        ?"✅ 基本情報を受け付けました。ポジションを選択してください。"
        :basicPrompt(previous.data.position);
-   const markup=previous.step==="media"?mediaKeyboard(previous.revision)
+   const markup=previous.step==="like-categories"?likeCategoryKeyboard(previous.revision,previous.data)
+     :previous.step==="like-items"?likeItemKeyboard(previous.revision,previous.data)
+     :previous.step==="media"?mediaKeyboard(previous.revision)
      :previous.step==="area-blocks"?areaBlocksKeyboard(previous.revision,previous.data)
      :previous.step==="area-children"?areaChildrenKeyboard(previous.revision,previous.data)
      :previous.step==="hair"||previous.step==="body"
@@ -236,6 +260,8 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
        hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,
        pr:existing.pr,media:existing.media,mediaNextId:existing.mediaNextId,
+      likeTags:existing.likeTags,
+       likeTags:existing.likeTags,
        ...(lastId?{screenMessageId:lastId}:{}),
      });
      await updateWizardScreen(ctx,repo,draft,
@@ -406,6 +432,13 @@ export function registerProfileHandlers(
       await ctx.editMessageText(mediaText(updated.data),mediaKeyboard(updated.revision));
       return;
     }
+    if(action==="like"){
+      const updated=await repo.putDraft(ctx.from.id,"like-categories",
+        {...draft.data,likeTags:validLikeTags(draft.data.likeTags??[])},draft.revision);
+      await ctx.answerCbQuery();
+      await ctx.editMessageText(likeCategoryText(updated.data),likeCategoryKeyboard(updated.revision,updated.data));
+      return;
+    }
     if(action==="preview"){
       await ctx.answerCbQuery();
       await ctx.editMessageText(
@@ -424,7 +457,7 @@ export function registerProfileHandlers(
       const next=await repo.putDraft(ctx.from.id,"preview",{
         nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
         age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-        region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,
+        region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,likeTags:saved.likeTags,
         screenMessageId:draft.data.screenMessageId,
       });
       await ctx.answerCbQuery("非公開で保存しました");
@@ -440,6 +473,63 @@ export function registerProfileHandlers(
       return;
     }
     await ctx.answerCbQuery("この項目の設定画面は次に実装します。");
+  });
+
+  bot.action(/^pf:like:(\d+):open:([0-5])$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]);
+    if(!draft||draft.step!=="like-categories"||draft.revision!==rev){await ctx.answerCbQuery("古い画面です");return;}
+    const updated=await repo.putDraft(ctx.from.id,"like-items",{...draft.data,likeCategory:category,likePage:0},rev);
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(likeItemText(updated.data),likeItemKeyboard(updated.revision,updated.data));
+  });
+  bot.action(/^pf:like:(\d+):tag:([0-5]):(\d{1,2})$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]),tag=Number(ctx.match[3]);
+    if(!draft||draft.step!=="like-items"||draft.revision!==rev||draft.data.likeCategory!==category||
+       Math.floor(tag/12)!==(draft.data.likePage??0)||tag>=LIKE_CATEGORIES[category].items.length){
+      await ctx.answerCbQuery("古い画面または無効な項目です");return;
+    }
+    const updated=await repo.putDraft(ctx.from.id,"like-items",
+      {...draft.data,likeTags:toggleLike(draft.data.likeTags??[],category,tag)},rev);
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(likeItemText(updated.data),likeItemKeyboard(updated.revision,updated.data));
+  });
+  bot.action(/^pf:like:(\d+):page:([0-5]):(-?\d{1,2})$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]),page=Number(ctx.match[3]);
+    if(!draft||draft.step!=="like-items"||draft.revision!==rev||draft.data.likeCategory!==category||
+       Math.abs(page-(draft.data.likePage??0))!==1||page<0||
+       page>=Math.ceil(LIKE_CATEGORIES[category].items.length/12)){
+      await ctx.answerCbQuery("古い画面または無効なページです");return;
+    }
+    const updated=await repo.putDraft(ctx.from.id,"like-items",{...draft.data,likePage:page},rev);
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(likeItemText(updated.data),likeItemKeyboard(updated.revision,updated.data));
+  });
+  bot.action(/^pf:like:(\d+):clear:([0-5])$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]);
+    if(!draft||draft.step!=="like-items"||draft.revision!==rev||draft.data.likeCategory!==category){
+      await ctx.answerCbQuery("古い画面です");return;
+    }
+    const updated=await repo.putDraft(ctx.from.id,"like-items",{
+      ...draft.data,likeTags:(draft.data.likeTags??[]).filter(t=>t.category!==LIKE_CATEGORIES[category].name)
+    },rev);
+    await ctx.answerCbQuery("この分類を解除しました");
+    await ctx.editMessageText(likeItemText(updated.data),likeItemKeyboard(updated.revision,updated.data));
+  });
+  bot.action(/^pf:like:(\d+):back$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]);
+    if(!draft||draft.revision!==rev||!["like-items","like-categories"].includes(draft.step)){
+      await ctx.answerCbQuery("古い画面です");return;
+    }
+    const fromItems=draft.step==="like-items";
+    const updated=await repo.putDraft(ctx.from.id,fromItems?"like-categories":"preview",draft.data,rev);
+    await ctx.answerCbQuery();
+    if(fromItems)await ctx.editMessageText(likeCategoryText(updated.data),likeCategoryKeyboard(updated.revision,updated.data));
+    else await ctx.editMessageText(overviewText(updated.data as SavedProfile,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(updated.revision)});
   });
 
   bot.action(/^pf:ap:(\d+):open:([hb])$/,async ctx=>{
@@ -614,7 +704,7 @@ export function registerProfileHandlers(
     const next=await repo.putDraft(ctx.from.id,"preview",{
       nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
       age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-      region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,screenMessageId:draft.data.screenMessageId,
+      region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,mediaNextId:saved.mediaNextId,likeTags:saved.likeTags,screenMessageId:draft.data.screenMessageId,
     });
     await ctx.answerCbQuery("非公開で保存しました");
     await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
