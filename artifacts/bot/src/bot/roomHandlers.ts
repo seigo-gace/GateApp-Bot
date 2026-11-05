@@ -23,12 +23,6 @@ function actions(roomId:number,revision:number,status:string,visibility?:string)
  if(["draft","scheduled","ready","live","postponed"].includes(status))
   rows.unshift([Markup.button.callback("📝 タイトル・説明を修正",
    `room:host:edit:${roomId}:${revision}`)]);
- if(["draft","scheduled","ready"].includes(status)&&visibility){
-  const next=visibility==="public"?"approved_only":"public";
-  rows.push([Markup.button.callback(
-    next==="public"?"🔓 自由参加へ変更":"🔐 承認制へ変更",
-    `room:visibility:${roomId}:${revision}:${next}`)]);
- }
  return Markup.inlineKeyboard(rows);
 }
 export function registerRoomHandlers(bot:Telegraf):void{
