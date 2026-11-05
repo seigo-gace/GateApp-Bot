@@ -193,7 +193,8 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  // Preserve the active profile draft when a start link is reopened, including
  // after a Bot restart. Never reset an in-progress wizard on /profile.
  if(previous){
-   const text=previous.step==="area-blocks"?areaBlocksText(previous.data)
+   const text=previous.step==="media"?mediaText(previous.data)
+     :previous.step==="area-blocks"?areaBlocksText(previous.data)
      :previous.step==="area-children"?areaChildrenText(previous.data)
      :previous.step==="hair"||previous.step==="body"
      ?choiceText(previous.step==="hair"?"h":"b",previous.data)
@@ -204,7 +205,8 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      :previous.step==="awaiting_position"
        ?"✅ 基本情報を受け付けました。ポジションを選択してください。"
        :basicPrompt(previous.data.position);
-   const markup=previous.step==="area-blocks"?areaBlocksKeyboard(previous.revision,previous.data)
+   const markup=previous.step==="media"?mediaKeyboard(previous.revision)
+     :previous.step==="area-blocks"?areaBlocksKeyboard(previous.revision,previous.data)
      :previous.step==="area-children"?areaChildrenKeyboard(previous.revision,previous.data)
      :previous.step==="hair"||previous.step==="body"
      ?choiceKeyboard(previous.step==="hair"?"h":"b",previous.revision,previous.data)
@@ -224,6 +226,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
        nickname:existing.nickname,heightCm:existing.heightCm,
        weightKg:existing.weightKg,age:existing.age,position:existing.position,
        hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,
+       pr:existing.pr,media:existing.media,
        ...(lastId?{screenMessageId:lastId}:{}),
      });
      await updateWizardScreen(ctx,repo,draft,
@@ -319,7 +322,8 @@ export function registerProfileHandlers(
       weightKg: existing.weightKg,
       age: existing.age,
       position: existing.position,
-      hair:existing.hair,body:existing.body,
+      hair:existing.hair,body:existing.body,region:existing.region,area:existing.area,
+      pr:existing.pr,media:existing.media,
     });
     await ctx.editMessageText(basicPrompt(existing.position), selectPosition(draft.revision,existing.position));
   });
@@ -387,6 +391,12 @@ export function registerProfileHandlers(
         appearanceKeyboard(updated.revision));
       return;
     }
+    if(action==="media"){
+      const updated=await repo.putDraft(ctx.from.id,"media",draft.data,draft.revision);
+      await ctx.answerCbQuery();
+      await ctx.editMessageText(mediaText(updated.data),mediaKeyboard(updated.revision));
+      return;
+    }
     if(action==="preview"){
       await ctx.answerCbQuery();
       await ctx.editMessageText(
@@ -405,7 +415,7 @@ export function registerProfileHandlers(
       const next=await repo.putDraft(ctx.from.id,"preview",{
         nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
         age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-        region:saved.region,area:saved.area,
+        region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,
         screenMessageId:draft.data.screenMessageId,
       });
       await ctx.answerCbQuery("非公開で保存しました");
@@ -587,7 +597,7 @@ export function registerProfileHandlers(
     const next=await repo.putDraft(ctx.from.id,"preview",{
       nickname:saved.nickname,heightCm:saved.heightCm,weightKg:saved.weightKg,
       age:saved.age,position:saved.position,hair:saved.hair,body:saved.body,
-      region:saved.region,area:saved.area,screenMessageId:draft.data.screenMessageId,
+      region:saved.region,area:saved.area,pr:saved.pr,media:saved.media,screenMessageId:draft.data.screenMessageId,
     });
     await ctx.answerCbQuery("非公開で保存しました");
     await ctx.editMessageText("✅ 非公開保存しました。グループには投稿していません。\n"+
