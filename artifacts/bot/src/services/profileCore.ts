@@ -59,7 +59,7 @@ export function escapeProfileHtml(v: string): string {
   return v.replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
-export function renderProfileBasicPreview(p: ProfileBasicDraft & {hair?:string|null;body?:string|null;region?:string|null;area?:string|null}, username: string): string {
+export function renderProfileBasicPreview(p: ProfileBasicDraft & {hair?:string|null;body?:string|null;region?:string|null;area?:string|null;pr?:string|null}, username: string): string {
   if (!/^[A-Za-z0-9_]{5,32}$/.test(username)) throw new Error("Telegram usernameが必要です");
   const label = p.nickname?.trim() || "@"+username;
   const who = '<a href="https://t.me/'+username+'">'+escapeProfileHtml(label)+'</a>';
@@ -70,7 +70,7 @@ export function renderProfileBasicPreview(p: ProfileBasicDraft & {hair?:string|n
     "✈️ エリア："+(p.region&&p.area?escapeProfileHtml(p.region)+" ＞ "+escapeProfileHtml(p.area):""),
     "💖 #Like | ",
     "💘 #Love | ",
-    "PR：",
+    "PR："+(p.pr?escapeProfileHtml(p.pr.trim().split(/\r?\n/).slice(0,3).join(" ").slice(0,180)):""),
   ].join("\n");
 }
 
