@@ -25,6 +25,8 @@ test("saved-profile recruitment uses only title and remaining full body, never o
  assert.throws(()=>changeRecruitmentField(value,"nickname","変更禁止"),/READ_ONLY/);
  assert.throws(()=>validateRecruitmentReady(value),/保存済みプロフィール/);
  assert.match(renderRecruitmentPreview(value,{nickname:"ゼロ",heightCm:175,weightKg:80,age:40,position:"リバ"}),/本文続き/);
+ assert.match(renderRecruitmentPreview(value,{nickname:"ゼロ",heightCm:175,weightKg:80,age:40,position:"リバ"}),/ゼロ/);
+ assert.match(renderRecruitmentPreview(value,{nickname:"ゼロ",heightCm:175,weightKg:80,age:40,position:"リバ"}),/175cm/);
 });
 test("HTML escaping and short/incomplete input guard",()=>{
  const v=parseRecruitmentMessage("<title>\n投稿内容 <script>\n二行目",true);
@@ -50,6 +52,8 @@ test("Telegram 10.3 rich preview puts editing callbacks right beside each sectio
   .flatMap(b=>Array.isArray(b.text)?b.text:[])
   .filter(x=>x?.type==="button").map(x=>x.button.callback_data);
  assert.deepEqual(linkedButtons,["recruit:edit:9:title","recruit:edit:9:body"]);
+ const linkedRich=buildRecruitmentRichPreview(linked,9,"投稿先：確認済み",undefined,{nickname:"テスト",heightCm:180,weightKg:75,age:42,position:"タチ"});
+ assert.equal((linkedRich.blocks as any[]).some(b=>b.text==="🪪 テスト"),true);
 });
 
 test("selection buttons use three, two, and four columns without placeholders",()=>{
