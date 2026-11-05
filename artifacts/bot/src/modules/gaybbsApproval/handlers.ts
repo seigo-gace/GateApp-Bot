@@ -87,13 +87,13 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
   }
   const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
    "✅ 3グループ共通の承認が完了しました。各グループへの参加申請ボタンから進んでください。審査質問の再回答は不要です。",
-   Markup.inlineKeyboard([remaining.slice(0,2),...remaining.length>2?[remaining.slice(2)]:[]]));
+   Markup.inlineKeyboard([remaining.slice(0,2),...(remaining.length>2?[remaining.slice(2)]:[])]));
   await rememberScreen(a,out.messageId);
   return;
  }
  let text="", rows:ReturnType<typeof Markup.button.callback>[][]=[];
  if(a.step==="intro"){
-  text=`【3グループ共通の参加審査】\n${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\\n")}\n\n参加前に各グループの①〜④の全文を確認してください。\n\n${APPROVAL_SUMMARY}\n\n確認後、Bot対策の問題から始まります。質問は3グループ共通で1回だけです。`;
+  text=`【3グループ共通の参加審査】\n${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\n")}\n\n参加前に各グループの①〜④の全文を確認してください。\n\n${APPROVAL_SUMMARY}\n\n確認後、Bot対策の問題から始まります。質問は3グループ共通で1回だけです。`;
   // URL buttons have a distinct Telegram type from callback buttons.
   if(text.length>4096)throw new Error("GATE_DOCUMENT_EXCEEDS_TELEGRAM_LIMIT");
   const docRows=cfg.boards.flatMap((board,i)=>[
@@ -118,7 +118,7 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
   rows=[[Markup.button.callback(q.yes,action(a,"yes")),
    Markup.button.callback(q.no,action(a,"no"))]];
  }else if(a.step==="rules"){
-  text=`【3グループ共通・最終ルール承諾】\n${RULES_CONSENT_QUESTION}\n\n${cfg.boards.map((b,i)=>`【${i+1}．${b.target.title} のルール】\\n${b.ruleText}`).join("\\n\\n")}`;
+  text=`【3グループ共通・最終ルール承諾】\n${RULES_CONSENT_QUESTION}\n\n${cfg.boards.map((b,i)=>`【${i+1}．${b.target.title} のルール】\n${b.ruleText}`).join("\n\n")}`;
   rows=[[Markup.button.callback("✅規則・ルールを承諾する",action(a,"yes")),
    Markup.button.callback("❌承諾しない",action(a,"no"))]];
  }else{return}
