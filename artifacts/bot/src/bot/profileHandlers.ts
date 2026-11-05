@@ -140,7 +140,7 @@ export function registerProfileHandlers(
         Markup.inlineKeyboard([[Markup.button.url("↩ 投稿メニューに戻る",url)]]));
     }else{
       await ctx.editMessageText(
-        "📝 投稿メニューに戻るには、元のグループの固定投稿メニューを開いてください。\\n"+
+        "📝 投稿メニューに戻るには、元のグループの固定投稿メニューを開いてください。\n"+
         "このチャットの起点メニューが確認できないため、リンクは表示していません。");
     }
   };
@@ -243,9 +243,9 @@ export function registerProfileHandlers(
     if(action==="preview"){
       await ctx.answerCbQuery();
       await ctx.editMessageText(
-        "🪪 プロフィール公開前プレビュー（まだ非公開）\\n"+
+        "🪪 プロフィール公開前プレビュー（まだ非公開）\n"+
         renderProfileBasicPreview(draft.data as SavedProfile,ctx.from.username!)+
-        "\\n\\nこれは確認画面です。保存だけでは公開されません。",
+        "\n\nこれは確認画面です。保存だけでは公開されません。",
         {parse_mode:"HTML",...Markup.inlineKeyboard([
           [Markup.button.callback("↩ プロフィール編集に戻る",
             "pf:overview:"+draft.revision+":return")]
@@ -270,7 +270,7 @@ export function registerProfileHandlers(
     await ctx.answerCbQuery("この項目の設定画面は次に実装します。");
   });
 
-  bot.action(/^pf:overview:(\\d+):return$/,async ctx=>{
+  bot.action(/^pf:overview:(\d+):return$/,async ctx=>{
     if(!canUseProfile(ctx))return;
     const revision=Number(ctx.match[1]);
     const draft=await repo.getDraft(ctx.from.id);
