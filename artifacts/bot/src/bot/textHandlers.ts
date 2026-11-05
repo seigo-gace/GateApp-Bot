@@ -9,6 +9,7 @@ import * as ownerRepo from "../repositories/ownerRepo.js";
 import * as inviteRepo from "../repositories/inviteRepo.js";
 import { generateGateCode } from "../utils/gateCode.js";
 import { adminManageKeyboard } from "./keyboards.js";
+import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 
 export function registerTextHandlers(bot: Telegraf): void {
   bot.on("message", async (ctx) => {
@@ -26,6 +27,7 @@ export function registerTextHandlers(bot: Telegraf): void {
       const type = adminSession.awaiting_input as string;
       const chatShared = msg.chat_shared as { request_id: number; chat_id: number; title?: string; username?: string };
       const chatId = chatShared.chat_id;
+      await removeUserWizardInput(ctx.telegram,userId,msg.message_id);
       const title = chatShared.title ?? chatShared.username ?? `Chat ${chatId}`;
       const botUsername = (await ctx.telegram.getMe()).username!;
       const me = await ctx.telegram.getMe();
@@ -144,14 +146,17 @@ export function registerTextHandlers(bot: Telegraf): void {
     if (adminSession?.state === "awaiting_text" && adminSession.awaiting_input) {
       const input = adminSession.awaiting_input as string;
       const text = (msg.text as string | undefined)?.trim();
+      const deleted=await removeUserWizardInput(ctx.telegram,userId,msg.message_id);
+      const deletedWarning=deleted?"":"\n⚠️ 送信した入力を削除できませんでした。手動で削除してください。";
+      const showAdminReply=async(text:string, keyboard?:ReturnType<typeof Markup.inlineKeyboard>)=>{
+        await showWizardScreen(ctx.telegram,userId,adminSession.last_message_id??undefined,
+          text+deletedWarning,keyboard);
+      };
+
 
       if (!text) {
-        await ctx.reply("テキストを送信してください。");
+        await showAdminReply("テキストを送信してください。");
         return;
-      }
-
-      if (adminSession.last_message_id) {
-        try { await ctx.telegram.deleteMessage(userId, adminSession.last_message_id); } catch {}
       }
 
       await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null, last_message_id: null });
@@ -163,7 +168,7 @@ export function registerTextHandlers(bot: Telegraf): void {
         const orderIndex = parseInt(orderStr!);
         const q = await questionRepo.getQuestionByTargetAndOrder(targetId, orderIndex);
         if (q) await questionRepo.updateQuestion(q.question_id, { question_text: text });
-        await ctx.reply("質問文を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `q:edit:${targetId}:${orderIndex}`)]]));
+        await showAdminReply("質問文を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `q:edit:${targetId}:${orderIndex}`)]]));
         return;
       }
 
@@ -174,7 +179,7 @@ export function registerTextHandlers(bot: Telegraf): void {
         const orderIndex = parseInt(orderStr!);
         const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
         if (lines.length < 2) {
-          await ctx.reply("少なくとも2行で選択肢を送信してください。");
+          await showAdminReply("少なくとも2行で選択肢を送信してください。");
           return;
         }
         const q = await questionRepo.getQuestionByTargetAndOrder(targetId, orderIndex);
@@ -185,7 +190,7 @@ export function registerTextHandlers(bot: Telegraf): void {
             button3_label: lines[2] ?? "",
           });
         }
-        await ctx.reply("選択肢を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `q:edit:${targetId}:${orderIndex}`)]]));
+        await showAdminReply("選択肢を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `q:edit:${targetId}:${orderIndex}`)]]));
         return;
       }
 
@@ -196,7 +201,7 @@ export function registerTextHandlers(bot: Telegraf): void {
         const orderIndex = parseInt(orderStr!);
         const q = await questionRepo.getQuestionByTargetAndOrder(targetId, orderIndex);
         if (q) await questionRepo.updateQuestion(q.question_id, { next_label: text });
-        await ctx.reply("次へボタン文言を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `q:edit:${targetId}:${orderIndex}`)]]));
+        await showAdminReply("次へボタン文言を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `q:edit:${targetId}:${orderIndex}`)]]));
         return;
       }
 
@@ -205,7 +210,7 @@ export function registerTextHandlers(bot: Telegraf): void {
         const targetId = parseInt(input.split(":")[2]!);
         const rule = await ruleRepo.getRuleByTarget(targetId);
         if (rule) await ruleRepo.upsertRule({ target_id: targetId, rule_text: text, accept_label: rule.accept_label, reject_label: rule.reject_label });
-        await ctx.reply("ルール本文を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:rules:${targetId}`)]]));
+        await showAdminReply("ルール本文を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:rules:${targetId}`)]]));
         return;
       }
 
@@ -213,7 +218,7 @@ export function registerTextHandlers(bot: Telegraf): void {
         const targetId = parseInt(input.split(":")[2]!);
         const rule = await ruleRepo.getRuleByTarget(targetId);
         if (rule) await ruleRepo.upsertRule({ target_id: targetId, rule_text: rule.rule_text, accept_label: text, reject_label: rule.reject_label });
-        await ctx.reply("承諾ボタン文言を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:rules:${targetId}`)]]));
+        await showAdminReply("承諾ボタン文言を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:rules:${targetId}`)]]));
         return;
       }
 
@@ -221,18 +226,18 @@ export function registerTextHandlers(bot: Telegraf): void {
         const targetId = parseInt(input.split(":")[2]!);
         const rule = await ruleRepo.getRuleByTarget(targetId);
         if (rule) await ruleRepo.upsertRule({ target_id: targetId, rule_text: rule.rule_text, accept_label: rule.accept_label, reject_label: text });
-        await ctx.reply("拒否ボタン文言を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:rules:${targetId}`)]]));
+        await showAdminReply("拒否ボタン文言を設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:rules:${targetId}`)]]));
         return;
       }
 
       if (input.startsWith("topic:link:")) {
         const lgId = parseInt(input.split(":")[2]!);
         const lg = await logGroupRepo.getLogGroupById(lgId);
-        if (!lg) { await ctx.reply("グループが見つかりません。"); return; }
+        if (!lg) { await showAdminReply("グループが見つかりません。"); return; }
 
         const linkMatch = text.match(/https?:\/\/t\.me\/c\/(\d+)\/(\d+)/);
         if (!linkMatch) {
-          await ctx.reply(
+          await showAdminReply(
             "トピックリンクの形式が正しくありません。\n\n例: https://t.me/c/1234567890/123",
             Markup.inlineKeyboard([[Markup.button.callback("やり直す", `lg:link-topic:${lgId}`)], [Markup.button.callback("戻る", `lg:detail:${lgId}`)]])
           );
@@ -247,7 +252,7 @@ export function registerTextHandlers(bot: Telegraf): void {
           for (const target of targets) {
             await targetRepo.updateTarget(target.target_id, { log_thread_id: threadId });
           }
-          await ctx.reply(
+          await showAdminReply(
             `既に登録済みのトピック「${existing.title}」(thread_id: ${threadId}) を設定しました。`,
             Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]])
           );
@@ -258,7 +263,7 @@ export function registerTextHandlers(bot: Telegraf): void {
           const testMsg = await ctx.telegram.sendMessage(lg.chat_id, "トピック確認中…", { message_thread_id: threadId } as any);
           await ctx.telegram.deleteMessage(lg.chat_id, testMsg.message_id);
         } catch {
-          await ctx.reply(
+          await showAdminReply(
             `❌ thread_id ${threadId} へのアクセスに失敗しました。\nトピックが存在すること、Botが管理者であることを確認してください。`,
             Markup.inlineKeyboard([[Markup.button.callback("やり直す", `lg:link-topic:${lgId}`)], [Markup.button.callback("戻る", `lg:detail:${lgId}`)]])
           );
@@ -277,7 +282,7 @@ export function registerTextHandlers(bot: Telegraf): void {
           await targetRepo.updateTarget(target.target_id, { log_thread_id: threadId });
         }
 
-        await ctx.reply(
+        await showAdminReply(
           `✅ トピック「${topicName}」(thread_id: ${threadId}) を登録・設定しました。`,
           Markup.inlineKeyboard([[Markup.button.callback("詳細へ", `lg:detail:${lgId}`)]])
         );
@@ -288,7 +293,7 @@ export function registerTextHandlers(bot: Telegraf): void {
       if (input.startsWith("topic:create:")) {
         const lgId = parseInt(input.split(":")[2]!);
         const lg = await logGroupRepo.getLogGroupById(lgId);
-        if (!lg) { await ctx.reply("グループが見つかりません。"); return; }
+        if (!lg) { await showAdminReply("グループが見つかりません。"); return; }
         try {
           const result = await (ctx.telegram as any).createForumTopic(lg.chat_id, text);
           await logGroupRepo.createLogTopic({
@@ -296,9 +301,9 @@ export function registerTextHandlers(bot: Telegraf): void {
             thread_id: result.message_thread_id,
             title: text,
           });
-          await ctx.reply(`トピック「${text}」を作成しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
+          await showAdminReply(`トピック「${text}」を作成しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
         } catch (err: any) {
-          await ctx.reply(`トピック作成に失敗しました: ${err.message}`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
+          await showAdminReply(`トピック作成に失敗しました: ${err.message}`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
         }
         return;
       }
@@ -309,25 +314,25 @@ export function registerTextHandlers(bot: Telegraf): void {
         const lgId = parseInt(parts[2]!);
         const topicId = parseInt(parts[3]!);
         await logGroupRepo.updateLogTopic(topicId, { title: text });
-        await ctx.reply(`トピック名を「${text}」に変更しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
+        await showAdminReply(`トピック名を「${text}」に変更しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", `lg:topics:${lgId}`)]]));
         return;
       }
 
       // Blacklist add
       if (input === "bl:add") {
         const targetUserId = parseInt(text);
-        if (isNaN(targetUserId)) { await ctx.reply("有効なユーザーIDを送信してください。"); return; }
+        if (isNaN(targetUserId)) { await showAdminReply("有効なユーザーIDを送信してください。"); return; }
         await blacklistRepo.addToBlacklist({ user_id: targetUserId, status: "blocked", reason: "管理者により追加" });
-        await ctx.reply(`ユーザーID ${targetUserId} をブラックリストに追加しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:blacklist")]]));
+        await showAdminReply(`ユーザーID ${targetUserId} をブラックリストに追加しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:blacklist")]]));
         return;
       }
 
       // Blacklist remove
       if (input === "bl:remove") {
         const targetUserId = parseInt(text);
-        if (isNaN(targetUserId)) { await ctx.reply("有効なユーザーIDを送信してください。"); return; }
+        if (isNaN(targetUserId)) { await showAdminReply("有効なユーザーIDを送信してください。"); return; }
         await blacklistRepo.removeFromBlacklist(targetUserId);
-        await ctx.reply(`ユーザーID ${targetUserId} をブラックリストから削除しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:blacklist")]]));
+        await showAdminReply(`ユーザーID ${targetUserId} をブラックリストから削除しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:blacklist")]]));
         return;
       }
 
@@ -335,29 +340,32 @@ export function registerTextHandlers(bot: Telegraf): void {
       if (input.startsWith("media:caption:")) {
         const targetId = parseInt(input.split(":")[2]!);
         await targetRepo.updateTarget(targetId, { approval_caption: text });
-        await ctx.reply("承認テキストを設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:media:${targetId}`)]]));
+        await showAdminReply("承認テキストを設定しました。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:media:${targetId}`)]]));
         return;
       }
 
       // Add admin
       if (input === "admin:add_id") {
         const newAdminId = parseInt(text);
-        if (isNaN(newAdminId)) { await ctx.reply("有効なTelegram IDを送信してください。"); return; }
+        if (isNaN(newAdminId)) { await showAdminReply("有効なTelegram IDを送信してください。"); return; }
         await ownerRepo.addOwner(newAdminId);
-        await ctx.reply(`✅ ユーザーID ${newAdminId} を管理者として追加しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:admin_manage")]]));
+        await showAdminReply(`✅ ユーザーID ${newAdminId} を管理者として追加しました。`, Markup.inlineKeyboard([[Markup.button.callback("戻る", "menu:admin_manage")]]));
         return;
       }
 
-      await ctx.reply("入力を受け付けました。");
+      await showAdminReply("入力を受け付けました。");
       return;
     }
 
     // ─── Media upload handling ───
     if (adminSession?.state === "awaiting_media" && adminSession.awaiting_input?.startsWith("media:upload:")) {
       const targetId = parseInt(adminSession.awaiting_input.split(":")[2]!);
-      if (adminSession.last_message_id) {
-        try { await ctx.telegram.deleteMessage(userId, adminSession.last_message_id); } catch {}
-      }
+      const deleted=await removeUserWizardInput(ctx.telegram,userId,msg.message_id);
+      const deletedWarning=deleted?"":"\n⚠️ 送信した添付を削除できませんでした。手動で削除してください。";
+      const showAdminReply=async(text:string, keyboard?:ReturnType<typeof Markup.inlineKeyboard>)=>{
+        await showWizardScreen(ctx.telegram,userId,adminSession.last_message_id??undefined,
+          text+deletedWarning,keyboard);
+      };
       await sessionRepo.upsertAdminSession({ tg_user_id: userId, state: "top", awaiting_input: null, temp_data: null, last_message_id: null });
 
       let fileId: string | null = null;
@@ -378,13 +386,13 @@ export function registerTextHandlers(bot: Telegraf): void {
       }
 
       if (!fileId) {
-        await ctx.reply("動画・GIF・画像を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:media:${targetId}`)]]));
+        await showAdminReply("動画・GIF・画像を送信してください。", Markup.inlineKeyboard([[Markup.button.callback("戻る", `target:media:${targetId}`)]]));
         return;
       }
 
       await targetRepo.updateTarget(targetId, { approval_media_file_id: fileId, approval_media_type: mediaType });
       const { mediaSettingsKeyboard } = await import("./keyboards.js");
-      await ctx.reply("メディアを設定しました。", mediaSettingsKeyboard(targetId, true));
+      await showAdminReply("メディアを設定しました。", mediaSettingsKeyboard(targetId, true));
       return;
     }
 
