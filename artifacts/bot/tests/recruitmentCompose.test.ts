@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,validateRecruitmentReady} from "../src/services/recruitmentCompose.js";
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
+import {recruitmentSelectionRows} from "../src/services/recruitmentButtonLayout.js";
 
 test("new recruitment without saved profile uses first three lines, keeps multiline tail",()=>{
  const value=parseRecruitmentMessage("今夜募集\nゼロ\n175 80 40\n1行目\n\n3行目",false);
@@ -49,4 +50,10 @@ test("Telegram 10.3 rich preview puts editing callbacks right beside each sectio
   .flatMap(b=>Array.isArray(b.text)?b.text:[])
   .filter(x=>x?.type==="button").map(x=>x.button.callback_data);
  assert.deepEqual(linkedButtons,["recruit:edit:9:title","recruit:edit:9:body"]);
+});
+
+test("selection buttons use three, two, and four columns without placeholders",()=>{
+ assert.deepEqual(recruitmentSelectionRows([1,2,3,4,5,6,7],true).map(row=>row.length),[3,4]);
+ assert.deepEqual(recruitmentSelectionRows(Array.from({length:13},(_,i)=>i)).map(row=>row.length),[3,3,3,2,2]);
+ assert.deepEqual(recruitmentSelectionRows([1,2,3]).map(row=>row.length),[3]);
 });
