@@ -331,8 +331,19 @@ try{
     'published',NOW()-INTERVAL '8 days',NOW()+INTERVAL '10 days')
    RETURNING announcement_id`);
  const futureId=Number(future.rows[0].announcement_id);
+ // A published Telegram post must be removed there before deleting its
+ // last message ID. This source test only simulates an external deletion ACK;
+ // real Telegram deletion is NOT represented by this CI mock.
+ const deferred=await purgeDisposableAnnouncements();
+ assert.ok(deferred>=1,"independent expired item may still be purged");
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [obsolete])).rows[0].n,1,"sent Telegram message blocks destructive DB purge");
+ await pool.query(
+  `UPDATE posting_deliveries SET status='deleted'
+   WHERE operation_key='purge-delivery' AND status='sent'`);
  const removed=await purgeDisposableAnnouncements();
- assert.ok(removed>=2,"only terminal and explicitly expired standalone must be removed");
+ assert.ok(removed>=1,"terminal entry may be purged only after simulated Telegram deletion ACK");
  for(const id of [obsolete,expiredId]){
   assert.equal((await pool.query(
    "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
