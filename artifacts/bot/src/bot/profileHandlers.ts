@@ -464,7 +464,7 @@ export function registerProfileHandlers(
     if(action==="preview"){
       await ctx.answerCbQuery();
       await ctx.editMessageText(
-        "🪪 プロフィール確認用プレビュー（まだ非公開）\n"+
+        "🪪 プロフィール公開前プレビュー（まだ非公開）\n"+
         renderProfileBasicPreview(draft.data as SavedProfile,ctx.from.username!)+
         "\n\nここは確認用画面です。［↩ プロフィール編集に戻る］で項目の修正へ戻れます。\n非公開保存してもグループには投稿されません。",
         {parse_mode:"HTML",...Markup.inlineKeyboard([
