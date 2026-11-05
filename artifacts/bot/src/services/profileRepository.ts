@@ -260,6 +260,13 @@ export async function recordProfilePublication(
     RETURNING owner_user_id`,
    [id,chatId,threadId,messageId,revision,JSON.stringify(snapshot)]);
   if(updated.rows.length!==1)throw Error("PROFILE_PUBLICATION_STALE");
+  // Public media is permitted only after explicit source+destination consent,
+  // never merely because the profile was privately saved.
+  if(snapshot.media?.length){
+    await c.query(
+      "UPDATE profile_media SET public_allowed=TRUE WHERE owner_user_id=$1 AND item_id=ANY($2::bigint[])",
+      [id,snapshot.media.map(item=>item.itemId)]);
+  }
   await c.query("COMMIT");
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }
