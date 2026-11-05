@@ -3,7 +3,7 @@ import {mkdtemp,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {pool} from "../src/db/index.js";
-import {putDraft,getDraft,getProfile,savePrivateDraft} from "../src/services/profileRepository.js";
+import {putDraft,getDraft,getProfile,savePrivateDraft,recordProfilePublication,claimProfileRevisionUpdate} from "../src/services/profileRepository.js";
 import {makeProfileViewerButtons,resolvePublishedProfileView} from "../src/services/profilePublicView.js";
 
 const id=900000000093;
@@ -118,13 +118,24 @@ try{
   await pool.query(
    "UPDATE profiles SET status='published' WHERE owner_user_id=$1",[id]);
   assert.equal(await resolvePublishedProfileView(token),null,"publication receipt required");
-  await pool.query(
-   `INSERT INTO profile_publications(owner_user_id,chat_id,thread_id,message_id,status,synced_revision)
-    VALUES($1,-1009876543210,110,777,'published',$2)`,[id,current.revision]);
+  await recordProfilePublication(id,current.revision,-1009876543210,110,777,current);
   assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
-  await pool.query(
-   "UPDATE profiles SET status='private' WHERE owner_user_id=$1",[id]);
-  assert.equal(await resolvePublishedProfileView(token),null,"hidden owner cannot be viewed");
+  // Saving edits leaves the original published snapshot untouched.
+  const edit=await putDraft(id,"appearance",{...full,nickname:"改訂テスト"});
+  const updated=await savePrivateDraft(id,edit.revision,"test_user_123");
+  assert.equal(updated.status,"published");
+  assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
+  const nextLinks=await makeProfileViewerButtons(id,updated.revision,topicId);
+  const nextToken=nextLinks[0][0].url.split("pv_")[1];
+  assert.equal(await resolvePublishedProfileView(nextToken),null,"unconfirmed edit not public");
+  const messageId=await claimProfileRevisionUpdate(id,updated.revision,-1009876543210,110);
+  assert.equal(messageId,777,"original publication ID must be reused");
+  assert.equal(await resolvePublishedProfileView(token),null,"update pending must fail closed");
+  await recordProfilePublication(id,updated.revision,-1009876543210,110,777,updated);
+  assert.equal((await resolvePublishedProfileView(nextToken))?.nickname,"改訂テスト");
+  assert.equal(await resolvePublishedProfileView(token),null,"old revision link retired");
+  await pool.query("UPDATE profiles SET status='private' WHERE owner_user_id=$1",[id]);
+  assert.equal(await resolvePublishedProfileView(nextToken),null,"hidden owner cannot be viewed");
  }finally{
   await pool.query("DELETE FROM posting_topics WHERE topic_id=$1",[topicId]);
  }
