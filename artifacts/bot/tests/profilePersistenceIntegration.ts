@@ -55,6 +55,26 @@ try{
  const sql=await pool.query("SELECT pr,pr_ref FROM profiles WHERE owner_user_id=$1",[id]);
  assert.equal(sql.rows[0].pr,null);
  assert.equal(sql.rows[0].pr_ref,null);
+ // Profile tags are a distinct purpose-scoped relation; no public posts are written.
+ const tags=[{category:"パーツ",tag:"乳首"},{category:"性感帯",tag:"乳首"}];
+ const legacyCategory="旧データ互換",legacyTag="旧タグ保持";
+ await pool.query("INSERT INTO profile_tag_catalog(category,tag,ordinal) VALUES($1,$2,1) ON CONFLICT DO NOTHING",
+  [legacyCategory,legacyTag]);
+ await pool.query("INSERT INTO profile_tags(owner_user_id,purpose,category,tag) VALUES($1,'like',$2,$3) ON CONFLICT DO NOTHING",
+  [id,legacyCategory,legacyTag]);
+ const withTags=await putDraft(id,"like-items",{...base,likeTags:tags,loveTags:[{category:"パーツ",tag:"乳首"}]});
+ await savePrivateDraft(id,withTags.revision,"test_user_123");
+ const savedTags=await getProfile(id);
+ assert.deepEqual(savedTags?.likeTags,tags);
+ assert.deepEqual(savedTags?.loveTags,[{category:"パーツ",tag:"乳首"}]);
+ const changed=await putDraft(id,"like-categories",{...base,likeTags:[tags[0]!],loveTags:savedTags?.loveTags});
+ await savePrivateDraft(id,changed.revision,"test_user_123");
+ const all=await pool.query("SELECT purpose,category,tag FROM profile_tags WHERE owner_user_id=$1",[id]);
+ assert.ok(all.rows.some(x=>x.purpose==="like"&&x.category===legacyCategory&&x.tag===legacyTag));
+ assert.ok(all.rows.some(x=>x.purpose==="love"&&x.category==="パーツ"&&x.tag==="乳首"));
+ assert.ok(!all.rows.some(x=>x.purpose==="like"&&x.category==="性感帯"&&x.tag==="乳首"));
+ assert.deepEqual((await getProfile(id))?.likeTags,[tags[0]!]);
+ process.stdout.write("PROFILE_LIKE_LOVE_SQL_ROUNDTRIP=PASS\\n");
  process.stdout.write("PROFILE_III_SQL_OBJECT_ROUNDTRIP=PASS\n");
 }finally{
  await pool.query("DELETE FROM profile_drafts WHERE owner_user_id=$1",[id]);
