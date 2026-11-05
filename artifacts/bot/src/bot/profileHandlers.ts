@@ -684,10 +684,6 @@ export function registerProfileHandlers(
       ...("media_group_id" in message&&typeof message.media_group_id==="string"
         ?{mediaGroupId:message.media_group_id}:{})};
     const items=appendProfileMedia(draft.data.media,entry);
-    if(items.length>100){
-      await updateWizardScreen(ctx,repo,draft,"⚠️ 登録数上限です。"+mediaText(draft.data),mediaKeyboard(draft.revision));
-      return;
-    }
     const updated=await repo.putDraft(ctx.from.id,"media",{...draft.data,media:items},draft.revision);
     try{await ctx.deleteMessage();}catch{console.warn("[PROFILE_MEDIA_DELETE_FAILED]");}
     await updateWizardScreen(ctx,repo,updated,mediaText(updated.data),mediaKeyboard(updated.revision));
