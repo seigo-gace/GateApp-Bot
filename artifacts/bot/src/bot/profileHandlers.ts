@@ -583,6 +583,14 @@ export function registerProfileHandlers(
       {parse_mode:"HTML",...overviewKeyboard(draft.revision)});
   });
 
+  bot.action(/^pf:media:(\d+):back$/,async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const d=await repo.getDraft(ctx.from.id);
+    if(!d||d.step!=="media"||d.revision!==Number(ctx.match[1])){await ctx.answerCbQuery("古い画面です");return;}
+    const u=await repo.putDraft(ctx.from.id,"preview",d.data,d.revision);
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(overviewText(u.data as SavedProfile,ctx.from.username!),{parse_mode:"HTML",...overviewKeyboard(u.revision)});
+  });
   // Legacy callback from the original basic form; keep compatible with
   // already issued buttons, but render the adopted 3/3/2 screen afterward.
   bot.action(/^pf:save:(\d+)$/,async ctx=>{
