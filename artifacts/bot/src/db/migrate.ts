@@ -81,6 +81,8 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY(owner_user_id,chat_id,thread_id)
       );
+      ALTER TABLE profile_publications ADD COLUMN IF NOT EXISTS public_snapshot JSONB;
+      ALTER TABLE profile_publications ADD COLUMN IF NOT EXISTS pending_revision INTEGER;
       CREATE INDEX IF NOT EXISTS profile_pub_status_idx
         ON profile_publications(status);
       CREATE TABLE IF NOT EXISTS profile_view_links (
