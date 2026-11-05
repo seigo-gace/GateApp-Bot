@@ -75,6 +75,29 @@ try{
  assert.ok(!all.rows.some(x=>x.purpose==="like"&&x.category==="性感帯"&&x.tag==="乳首"));
  assert.deepEqual((await getProfile(id))?.likeTags,[tags[0]!]);
  process.stdout.write("PROFILE_LIKE_LOVE_SQL_ROUNDTRIP=PASS\\n");
+
+ // Cross-section contract: any optional screen must commit the entire
+ // five-part profile, rather than saving only its own fields.
+ const full={
+  ...base,hair:"短髪",body:"ガチムチ",region:"東京",area:"新宿",
+  likeTags:[{category:"パーツ",tag:"乳首"}],
+  loveTags:[{category:"性感帯",tag:"耳"}],
+ };
+ for(const step of ["preview","appearance","hair","body","area-blocks","area-children",
+                    "media","like-categories","like-items"] as const){
+  const pending=await putDraft(id,step,full);
+  const saved=await savePrivateDraft(id,pending.revision,"test_user_123");
+  assert.equal(saved.status,"private",step);
+  const actual=await getProfile(id);
+  assert.ok(actual,step);
+  for(const key of ["nickname","heightCm","weightKg","age","position",
+                    "hair","body","region","area","pr","mediaNextId"] as const)
+    assert.deepEqual(actual[key],full[key],step+":"+key);
+  assert.deepEqual(actual.media,full.media,step+":media");
+  assert.deepEqual(actual.likeTags,full.likeTags,step+":like");
+  assert.deepEqual(actual.loveTags,full.loveTags,step+":love");
+ }
+ process.stdout.write("PROFILE_ALL_SECTION_SQL_ROUNDTRIP=PASS\\n");
  process.stdout.write("PROFILE_III_SQL_OBJECT_ROUNDTRIP=PASS\n");
 }finally{
  await pool.query("DELETE FROM profile_drafts WHERE owner_user_id=$1",[id]);
