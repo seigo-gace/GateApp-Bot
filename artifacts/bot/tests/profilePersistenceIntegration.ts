@@ -6,6 +6,7 @@ import {pool} from "../src/db/index.js";
 import {putDraft,getDraft,getProfile,savePrivateDraft,recordProfilePublication,claimProfileRevisionUpdate} from "../src/services/profileRepository.js";
 import {makeProfileViewerButtons,resolvePublishedProfileView} from "../src/services/profilePublicView.js";
 import {hidePublishedProfile} from "../src/services/profilePublicationControl.js";
+import {revisePublishedProfile} from "../src/services/profilePublicationUpdate.js";
 
 const id=900000000093;
 const prior=process.env.PROFILE_PR_STORAGE_DIR;
@@ -129,10 +130,28 @@ try{
   const nextLinks=await makeProfileViewerButtons(id,updated.revision,topicId);
   const nextToken=nextLinks[0][0].url.split("pv_")[1];
   assert.equal(await resolvePublishedProfileView(nextToken),null,"unconfirmed edit not public");
-  const messageId=await claimProfileRevisionUpdate(id,updated.revision,-1009876543210,110);
-  assert.equal(messageId,777,"original publication ID must be reused");
-  assert.equal(await resolvePublishedProfileView(token),null,"update pending must fail closed");
-  await recordProfilePublication(id,updated.revision,-1009876543210,110,777,updated);
+  // Test-only gate in ephemeral PostgreSQL; not real Telegram E2E evidence.
+  await pool.query(
+   "INSERT INTO gaybbs_feature_release_gates (feature,source_commit,ci_evidence,gserver_runtime_evidence,telegram_e2e_evidence,approved_by,enabled) VALUES ($1,$2,$3,$4,$5,$6,TRUE) ON CONFLICT(feature) DO UPDATE SET enabled=TRUE,ci_evidence=EXCLUDED.ci_evidence,gserver_runtime_evidence=EXCLUDED.gserver_runtime_evidence,telegram_e2e_evidence=EXCLUDED.telegram_e2e_evidence",
+   ["profile","0".repeat(40),"CI_TEST_ONLY","CI_TEST_ONLY","CI_TEST_ONLY",1]);
+  let revisions=0;
+  const fakeUpdateTelegram={
+   async getChat(chat:number){return {id:chat,type:"supergroup"}},
+   async getMe(){return {id:55}},
+   async getChatMember(){return {status:"administrator"}},
+   async editMessageText(chat:number,msg:number,_inline:unknown,text:string,opts:any){
+    assert.equal(chat,-1009876543210);assert.equal(msg,777);
+    assert.match(text,/改訂テスト/);
+    assert.equal(opts.reply_markup.inline_keyboard[0].length,3);
+    revisions++;return true;
+   },
+  } as any;
+  const changed=await revisePublishedProfile(fakeUpdateTelegram,id,updated,topicId);
+  assert.equal(changed?.updated,true);
+  assert.equal(changed?.messageId,777,"original ID must be reused");
+  assert.equal(revisions,1);
+  assert.equal((await revisePublishedProfile(fakeUpdateTelegram,id,updated,topicId))?.updated,false);
+  assert.equal(revisions,1,"unchanged revision must not edit twice");
   assert.equal((await resolvePublishedProfileView(nextToken))?.nickname,"改訂テスト");
   assert.equal(await resolvePublishedProfileView(token),null,"old revision link retired");
   await pool.query("UPDATE profiles SET status='private' WHERE owner_user_id=$1",[id]);
@@ -174,6 +193,7 @@ try{
    "SELECT status FROM profile_publications WHERE owner_user_id=$1 AND chat_id=-1009876543210",[id]);
   assert.equal(ambiguous.rows[0].status,"delete_error");
   assert.equal(await resolvePublishedProfileView(nextToken),null,"ambiguous deletion hidden");
+  await pool.query("DELETE FROM gaybbs_feature_release_gates WHERE feature=$1 AND source_commit=$2",["profile","0".repeat(40)]);
   process.stdout.write("PROFILE_PUBLICATION_CONTROL_SQL=PASS\\n");
 
  }finally{
