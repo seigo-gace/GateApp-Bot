@@ -2,6 +2,7 @@ import { Telegraf, Markup, type Context } from "telegraf";
 import type { ProfileDraft, SavedProfile } from "../services/profileRepository.js";
 import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
+import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {
   PROFILE_POSITIONS, parseProfileBasic, renderProfileBasicPreview,
 } from "../services/profileCore.js";
@@ -45,6 +46,18 @@ const requestBasic = [
   "数字入力とボタン選択はどちらが先でも大丈夫です。",
   "",
   "ポジションを選んでください。",
+].join("\n");
+
+const overviewKeyboard=(revision:number)=>Markup.inlineKeyboard(
+  profileOverviewButtons(revision).map(row=>row.map(button=>
+    Markup.button.callback(button.text,button.callback_data)))
+);
+const overviewText=(profile:SavedProfile,username:string)=>[
+  "🪪 プロフィールプレビュー",
+  renderProfileBasicPreview(profile,username),
+  "",
+  "ほかにも任意で登録できる項目があります。",
+  "登録したい項目を下のボタンから選んでください。",
 ].join("\n");
 
 function basicPrompt(position?: string): string {
@@ -199,14 +212,45 @@ export function registerProfileHandlers(
     const updated = await repo.putDraft(ctx.from.id, "preview",
       {...draft.data, position}, draft.revision);
     await ctx.answerCbQuery();
-    await ctx.editMessageText(
-      "🪪 プレビュー（まだ非公開）\n"+renderProfileBasicPreview(
-        updated.data as SavedProfile, ctx.from.username!),
-      {parse_mode:"HTML", ...Markup.inlineKeyboard([
-        [Markup.button.callback("💾 非公開で保存", `pf:save:${updated.revision}`)],
-        [Markup.button.callback("📝 基本情報を修正", "pf:edit:basic")],
-      ])}
-    );
+    await ctx.editMessageText(overviewText(updated.data as SavedProfile,ctx.from.username!),
+      {parse_mode:"HTML",...overviewKeyboard(updated.revision)});
+  });
+
+  bot.action(/^pf:overview:(\d+):(basic|appearance|media|like|love|preview|save|cancel)$/, async ctx=>{
+    if(!canUseProfile(ctx))return;
+    const revision=Number(ctx.match[1]);
+    const action=ctx.match[2];
+    const draft=await repo.getDraft(ctx.from.id);
+    if(!draft||draft.revision!==revision||draft.step!=="preview"){
+      await ctx.answerCbQuery("古い画面です。プロフィールを開き直してください。");
+      return;
+    }
+    if(action==="basic"){
+      const updated=await repo.putDraft(ctx.from.id,"awaiting_basic",draft.data,draft.revision);
+      await ctx.answerCbQuery();
+      await ctx.editMessageText(basicPrompt(draft.data.position),selectPosition(updated.revision));
+      return;
+    }
+    if(action==="preview"){
+      await ctx.answerCbQuery("プレビューを表示しています");
+      return;
+    }
+    if(action==="save"){
+      const saved=await repo.savePrivateDraft(ctx.from.id,draft.revision,ctx.from.username!);
+      await ctx.answerCbQuery("非公開で保存しました");
+      await ctx.editMessageText("✅ プロフィールを非公開保存しました。\n"+
+        renderProfileBasicPreview(saved,ctx.from.username!),{parse_mode:"HTML",
+        ...Markup.inlineKeyboard([[Markup.button.callback("📝 基本情報を編集","pf:edit:basic")]])});
+      return;
+    }
+    if(action==="cancel"){
+      const cancelled=await repo.discardDraft(ctx.from.id,draft.revision);
+      if(!cancelled){await ctx.answerCbQuery("古い操作です");return;}
+      await ctx.answerCbQuery("キャンセルしました");
+      await ctx.editMessageText("プロフィールの入力をキャンセルしました。投稿メニューへの復帰は公開メニュー接続後に有効になります。");
+      return;
+    }
+    await ctx.answerCbQuery("この項目の設定画面は次に実装します。");
   });
 
   bot.action(/^pf:save:(\d+)$/, async (ctx) => {
@@ -249,12 +293,8 @@ export function registerProfileHandlers(
         hasPosition ? "preview" : "awaiting_position", {...draft.data, ...basic}, draft.revision);
       if (hasPosition) {
         await updateWizardScreen(ctx, repo, updated,
-          "🪪 プレビュー（まだ非公開）\n" +
-          renderProfileBasicPreview(updated.data as SavedProfile, ctx.from.username!) + deletionWarning,
-          Markup.inlineKeyboard([
-            [Markup.button.callback("💾 非公開で保存", `pf:save:${updated.revision}`)],
-            [Markup.button.callback("📝 基本情報を修正", "pf:edit:basic")],
-          ]), "HTML");
+          overviewText(updated.data as SavedProfile,ctx.from.username!) + deletionWarning,
+          overviewKeyboard(updated.revision), "HTML");
       } else {
         await updateWizardScreen(ctx, repo, updated,
           "✅ 基本情報を受け付けました。ポジションを選択してください。" + deletionWarning,
