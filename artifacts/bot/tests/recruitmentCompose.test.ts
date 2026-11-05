@@ -34,7 +34,7 @@ test("HTML escaping and short/incomplete input guard",()=>{
 });
 
 test("Telegram 10.3 rich preview puts editing callbacks right beside each section",()=>{
- const d=parseRecruitmentMessage("募集タイトル\\nゼロ\\n175 80 40\\n本文1行\\n本文2行",false);
+ const d=parseRecruitmentMessage("募集タイトル\nゼロ\n175 80 40\n本文1行\n本文2行",false);
  const rich=buildRecruitmentRichPreview(d,7,"投稿先：確認済み");
  const blocks=rich.blocks as any[];
  const inline=blocks.flatMap(b=>Array.isArray(b.text)?b.text:[]).filter(
@@ -43,8 +43,8 @@ test("Telegram 10.3 rich preview puts editing callbacks right beside each sectio
   "recruit:edit:7:title","recruit:edit:7:nickname",
   "recruit:edit:7:stats","recruit:edit:7:body",
  ]);
- assert.equal(blocks.some(b=>b.text==="本文1行\\n本文2行"),true);
- const linked=parseRecruitmentMessage("タイトル\\n本文",true);
+ assert.equal(blocks.some(b=>b.text==="本文1行\n本文2行"),true);
+ const linked=parseRecruitmentMessage("タイトル\n本文",true);
  const linkedButtons=(buildRecruitmentRichPreview(linked,9,"投稿先：確認済み").blocks as any[])
   .flatMap(b=>Array.isArray(b.text)?b.text:[])
   .filter(x=>x?.type==="button").map(x=>x.button.callback_data);
