@@ -65,6 +65,15 @@ export async function projectNextRoomEvent():Promise<{
      VALUES($1,$2,$3)
      ON CONFLICT(announcement_id,room_event_id) DO NOTHING`,
     [id,e.event_id,revision]);
+   // Each actual Telegram message is tracked separately: editing one target
+   // must never imply that other group Topics were updated.
+   await client.query(
+    `INSERT INTO room_status_message_edits(room_event_id,delivery_id)
+     SELECT $1,d.delivery_id FROM posting_deliveries d
+      WHERE d.source_type='announcement' AND d.source_id=$2
+        AND d.status='sent' AND d.telegram_message_id IS NOT NULL
+     ON CONFLICT(room_event_id,delivery_id) DO NOTHING`,
+    [e.event_id,String(id)]);
    await client.query(
     `INSERT INTO announcement_notifications
        (announcement_id,recipient_user_id,event_key,payload)
