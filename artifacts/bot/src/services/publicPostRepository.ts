@@ -127,7 +127,8 @@ export async function markRoomDraftSaved(id:number,revision:number,roomId:number
  */
 export async function saveRoomEditorDraft(id:number,revision:number):Promise<void>{
  const q=await pool.query(
-  `UPDATE public_post_drafts SET step='saved',updated_at=NOW()
+  `UPDATE public_post_drafts SET step='saved',
+     data=data - 'savedTemplate',updated_at=NOW()
    WHERE owner_user_id=$1 AND module='room' AND revision=$2 AND step='preview'
    RETURNING owner_user_id`,[validOwner(id),revision]);
  if(q.rows.length!==1)throw new Error("ROOM_DRAFT_STALE");
