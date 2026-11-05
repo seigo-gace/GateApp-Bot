@@ -78,7 +78,7 @@ export async function savePrivateDraft(id: number, revision: number,
       [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position]
     );
     if (!saved.rows.length) throw new Error("PROFILE_PUBLISHED_EDIT_REQUIRES_SYNC");
-    await client.query("DELETE FROM profile_drafts WHERE owner_user_id=$1",[id]);
+    await client.query("UPDATE profile_drafts SET step='cancelled',data='{}'::jsonb,revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
