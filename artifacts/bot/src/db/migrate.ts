@@ -83,6 +83,17 @@ export async function runMigrations(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS profile_pub_status_idx
         ON profile_publications(status);
+      CREATE TABLE IF NOT EXISTS profile_view_links (
+        owner_user_id BIGINT NOT NULL REFERENCES profiles(owner_user_id) ON DELETE CASCADE,
+        profile_revision INTEGER NOT NULL CHECK(profile_revision > 0),
+        topic_id BIGINT NOT NULL CHECK(topic_id > 0),
+        token TEXT NOT NULL UNIQUE CHECK(length(token) = 32),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(owner_user_id,profile_revision,topic_id)
+      );
+      CREATE INDEX IF NOT EXISTS profile_view_links_owner_status
+        ON profile_view_links(owner_user_id,enabled);
       CREATE TABLE IF NOT EXISTS general_guide_topics (
         chat_id BIGINT PRIMARY KEY CHECK(chat_id < 0),
         message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
