@@ -34,6 +34,10 @@ try{
  assert.deepEqual(loaded?.media?.map(x=>[x.itemId,x.sourceMessageId,x.fileId]),
   [[1,501,"photo-ref-1"],[2,502,"video-ref-2"]]);
  assert.equal(loaded?.mediaNextId,3);
+ // Upgraded legacy profiles can have numbered media and a default counter=1.
+ // Reload must not recycle those already assigned item numbers.
+ await pool.query("UPDATE profiles SET media_next_id=1 WHERE owner_user_id=$1",[id]);
+ assert.equal((await getProfile(id))?.mediaNextId,3);
  const next=await putDraft(id,"preview",{...base,mediaNextId:4,media:[
   {...base.media[1]!},
   {type:"photo",itemId:3,fileId:"photo-ref-3",sourceMessageId:503},
