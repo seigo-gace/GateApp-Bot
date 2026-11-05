@@ -332,7 +332,7 @@ try{
    RETURNING announcement_id`);
  const futureId=Number(future.rows[0].announcement_id);
  const removed=await purgeDisposableAnnouncements();
- assert.ok(removed>=3,"closed, expired and stale standalone must be removed");
+ assert.ok(removed>=2,"only terminal and explicitly expired standalone must be removed");
  for(const id of [obsolete,expiredId]){
   assert.equal((await pool.query(
    "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
@@ -343,7 +343,7 @@ try{
    [keepId])).rows[0].n,1);
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
-  [abandonedId])).rows[0].n,0);
+  [abandonedId])).rows[0].n,1,"active post without expiry must not be deleted just because it is old");
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
   [futureId])).rows[0].n,1,"future event must survive idle TTL");
@@ -366,6 +366,6 @@ try{
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM public_post_drafts WHERE owner_user_id=899002"
  )).rows[0].n,1);
- console.log("GAYBBS_DB_DISPOSABLE_PURGE_NO_RESIDUE=PASS");
+ console.log("GAYBBS_DB_DISPOSABLE_PURGE_NO_RESIDUE_AND_ACTIVE_PROTECTION=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
