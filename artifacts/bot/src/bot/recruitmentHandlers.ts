@@ -126,7 +126,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
  const d=await beginDraft(userId,"announcement","awaiting_text",{
   kind:"recruitment",recruitmentFlow:"compact",
   recruitmentMode:linked?"linked":"manual",
-  mode:linked?"linked":"manual",purposeCodes:[],placeCodes:[],
+  mode:linked?"linked":"manual",profileRevision:linked?profile!.revision:null,
+  purposeCodes:[],placeCodes:[],
  });
  await show(telegram,userId,d,inputInstructions(linked),
   Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]));
@@ -137,6 +138,8 @@ async function publishRecruitment(
  const data=asInput(d);
  const profile=data.mode==="linked"?await getProfile(owner):null;
  validateRecruitmentReady(data,profile);
+ if(data.mode==="linked"&&profile?.revision!==d.data.profileRevision)
+  throw new Error("プロフィールが更新されています。更新後の内容を再確認してください。");
  const topic=await getVerifiedTopic(topicId,"announcement");
  // The posted message is rendered exclusively by the Bot, never forwarded.
  const text=renderRecruitmentPreview(data,profile);
@@ -163,6 +166,18 @@ async function publishRecruitment(
  await markPostSourcePublished(owner,"announcement",ann.sourceId);
  await markDraftPublished(owner,"announcement",d.revision);
  return sent;
+}
+async function checkLinkedProfileChanged(telegram:Telegram,id:number,d:EditorDraft):Promise<boolean>{
+ if(asInput(d).mode!=="linked")return false;
+ const latest=await getProfile(id);
+ if(!latest||!isProfilePosition(latest.position??""))
+  throw Error("保存済みプロフィールが見つかりません。");
+ if(latest.revision===d.data.profileRevision)return false;
+ const revised=await updateDraft(id,"announcement",d.revision,"preview",{
+  ...d.data,profileRevision:latest.revision});
+ await showPreview(telegram,id,revised,
+  "プロフィールが更新されたため、公開前プレビューを新しい内容に更新しました。内容を確認してからもう一度［投稿］を押してください。");
+ return true;
 }
 export function registerCompactRecruitmentHandlers(bot:Telegraf){
  bot.command("recruit",async ctx=>{
@@ -318,6 +333,9 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await ctx.answerCbQuery("古い投稿ボタンです");return;
   }
   try{
+   if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d)){
+    await ctx.answerCbQuery("更新後の内容を確認してください");return;
+   }
    validateRecruitmentReady(asInput(d),
     asInput(d).mode==="linked"?await getProfile(ctx.from.id):null);
    const options=await listVerifiedTopics("announcement");
@@ -349,6 +367,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   }
   try{
    await ctx.answerCbQuery("投稿しています");
+   if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d))return;
    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]));
    await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+sent.chatId+
     " / Topic "+sent.threadId+"\n投稿ID："+sent.messageId);
