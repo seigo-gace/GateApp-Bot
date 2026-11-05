@@ -10,14 +10,17 @@ function fixture() {
   let discards = 0;
   let revisionCounter = 0;
   let screenId = 98;
+  let lastScreenId:number|null=null;
   const sent: any[] = [];
   let deleteInputFails = false;
   let postingMenuUrl:string|null="https://t.me/c/3847210571/501";
   const repo = {
     async getDraft() { return draft; },
+    async getLastScreenMessageId(){return lastScreenId;},
     async bindScreenMessage(_id:number,revision:number,messageId:number) {
       assert.equal(draft?.revision,revision);
       draft.data.screenMessageId=messageId;
+      lastScreenId=messageId;
     },
     async discardDraft(_id: number, expectedRevision: number) {
       if (!draft || draft.revision !== expectedRevision) return false;
@@ -35,6 +38,7 @@ function fixture() {
       assert.equal(draft?.revision, revision);
       assert.equal(draft?.step, "preview");
       saves++;
+      lastScreenId=draft.data.screenMessageId ?? lastScreenId;
       profile = {...draft.data, username, status: "private", revision: 1};
       draft = null;
       return profile;
@@ -322,4 +326,36 @@ test("required position selection is never turned off by reselect and supports a
  assert.equal(f.draft.data.position,"M");
  assert.ok(f.sent.at(-1)[2].reply_markup.inline_keyboard[1][3].text.startsWith("✅"));
  assert.ok(!f.sent.at(-1)[2].reply_markup.inline_keyboard[1][2].text.startsWith("✅"));
+});
+
+test("reopening active profile never clears the draft and reuses one Bot screen",async()=>{
+ const f=fixture();
+ await f.start();
+ const initialId=f.draft.data.screenMessageId;
+ await f.action(positionAction,[String(f.draft.revision),"5"]);
+ const revision=f.draft.revision;
+ await f.start();
+ assert.equal(f.draft.revision,revision);
+ assert.equal(f.draft.data.position,"S");
+ assert.equal(f.draft.data.screenMessageId,initialId);
+ assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+ assert.ok(f.sent.some(x=>x[0]==="screen-edit"&&x[2]===initialId));
+ await f.send("ゼロ\n175 80 40");
+ assert.equal(f.draft.step,"preview");
+ await f.start();
+ assert.equal(f.draft.step,"preview");
+ assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+});
+test("saved profile reopens using the same last Bot message instead of stacking replies",async()=>{
+ const f=fixture();
+ await f.start();
+ const initialId=f.draft.data.screenMessageId;
+ await f.send("ゼロ\n175 80 40");
+ await f.action(positionAction,[String(f.draft.revision),"0"]);
+ await f.action(overviewAction,[String(f.draft.revision),"save"]);
+ await f.start();
+ assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
+ assert.equal(f.sent.at(-1)[0],"screen-edit");
+ assert.equal(f.sent.at(-1)[2],initialId);
+ assert.equal(f.profile.status,"private");
 });
