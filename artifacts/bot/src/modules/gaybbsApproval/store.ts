@@ -5,7 +5,7 @@
 import {randomUUID} from "node:crypto";
 import {pool} from "../../db/index.js";
 import type {PoolClient} from "pg";
-import {ADMISSION_VERSION, canAdvanceAdmission, type ConsentStage} from "./contract.js";
+import {ADMISSION_VERSION, ADMISSION_BOARD_CHAT_IDS, canAdvanceAdmission, type ConsentStage} from "./contract.js";
 
 export type GateAttempt = {
  tg_user_id:string; target_id:number; step:string; step_token:string|null;
@@ -127,7 +127,6 @@ export async function saveIssuedInvites(a:GateAttempt,links:readonly IssuedBoard
   const registered=await c.query(
    `SELECT target_id,chat_id FROM targets WHERE target_type='entry_group'
       AND target_id=ANY($1::int[])`,[links.map(i=>i.targetId)]);
-  const {ADMISSION_BOARD_CHAT_IDS}=await import("./contract.js");
   if(registered.rows.length!==3||
    !ADMISSION_BOARD_CHAT_IDS.every(chatId=>
     registered.rows.some(row=>Number(row.chat_id)===chatId))){
@@ -164,6 +163,45 @@ export async function currentIssuedInvites(a:GateAttempt):Promise<{targetId:numb
   ORDER BY target_id`,[a.tg_user_id,a.attempt_id]);
  return r.rows.map(row=>({targetId:Number(row.target_id),link:String(row.invite_link)}));
 }
+/** Compatibility for non-TGtumbler legacy group approvals.
+ * The adopted three boards are deliberately excluded from this old single-link
+ * API. All production GayBBS handlers use saveIssuedInvites instead.
+ */
+export async function saveIssuedInvite(a:GateAttempt,link:string,expires:Date):Promise<boolean>{
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const target=await c.query("SELECT chat_id FROM targets WHERE target_id=$1",[a.target_id]);
+  if(target.rows.length!==1 ||
+   ADMISSION_BOARD_CHAT_IDS.some(id=>id===Number(target.rows[0].chat_id))){
+   await c.query("ROLLBACK");return false;
+  }
+  const session=await c.query(`UPDATE gate_sessions SET step='approved',updated_at=NOW()
+   WHERE tg_user_id=$1 AND target_id=$2 AND attempt_id=$3 AND step='issuing'
+    AND step_token=$4 AND document_version=$5 RETURNING tg_user_id`,
+   [a.tg_user_id,a.target_id,a.attempt_id,a.step_token,a.document_version]);
+  if(session.rowCount!==1){await c.query("ROLLBACK");return false}
+  const check=await c.query(`SELECT COUNT(DISTINCT stage)::int AS n FROM gate_consents
+   WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3
+     AND document_version=$4 AND accepted=true
+     AND stage IN ('question1','question2','rules')`,
+   [a.target_id,a.tg_user_id,a.attempt_id,a.document_version]);
+  if(check.rows[0]?.n!==3){await c.query("ROLLBACK");return false}
+  await c.query(`INSERT INTO invite_links
+   (target_id,tg_user_id,invite_link,expire_at,attempt_id)
+   VALUES($1,$2,$3,$4,$5)`,[a.target_id,a.tg_user_id,link,expires,a.attempt_id]);
+  const approval=await c.query(`UPDATE approvals SET status='approved',approved_at=NOW(),updated_at=NOW()
+   WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3 AND status='pending'`,
+   [a.target_id,a.tg_user_id,a.attempt_id]);
+  if(approval.rowCount!==1){await c.query("ROLLBACK");return false}
+  await c.query("COMMIT");return true;
+ }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
+}
+export async function currentIssuedInvite(a:GateAttempt):Promise<string|null>{
+ const links=await currentIssuedInvites(a);
+ return links.find(x=>x.targetId===a.target_id)?.link??null;
+}
+
 export async function verifiedApprovalDocumentLinks(chatId:number):Promise<Record<string,string>|null>{
  // Existing verified-link registry only: don't fabricate URLs or silently publish draft policies.
  const r=await pool.query(`SELECT link_key,destination_url FROM general_guide_links
