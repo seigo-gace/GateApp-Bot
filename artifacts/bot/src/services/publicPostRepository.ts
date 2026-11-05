@@ -72,15 +72,20 @@ export async function createRoom(id:number,revision:number,title:string,external
  );
  return {sourceId:String(r.rows[0].room_id),joinUrl:String(r.rows[0].join_url)};
 }
-export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string,eventAt?:Date,purposeCodes:string[]=[],placeCodes:string[]=[],linkedRoomId?:number):
+export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string,eventAt?:Date,purposeCodes:string[]=[],placeCodes:string[]=[],linkedRoomId?:number,
+ details?:{profileSnapshot?:Record<string,unknown>|null;conditions?:Record<string,unknown>}):
  Promise<{sourceId:string}>{
  const key=(linkedRoomId?"room-announcement:":"announcement:")+validOwner(id)+":"+revision;
  const r=await pool.query(
-  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,room_id,status)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,'draft')
+  `INSERT INTO announcement_posts
+     (request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,room_id,
+      profile_snapshot,conditions,status)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft')
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
-  [key,id,kind,text,eventAt||null,purposeCodes,placeCodes,linkedRoomId||null]
+  [key,id,kind,text,eventAt||null,purposeCodes,placeCodes,linkedRoomId||null,
+   details?.profileSnapshot?JSON.stringify(details.profileSnapshot):null,
+   JSON.stringify(details?.conditions??{})]
  );
  return {sourceId:String(r.rows[0].announcement_id)};
 }
