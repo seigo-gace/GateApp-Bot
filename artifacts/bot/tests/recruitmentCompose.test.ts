@@ -23,6 +23,9 @@ test("saved-profile recruitment uses only title and remaining full body, never o
  const value=parseRecruitmentMessage("募集タイトル\n本文冒頭\n\n本文続き",true);
  assert.equal(value.mode,"linked");assert.equal(value.body,"本文冒頭\n\n本文続き");
  assert.equal(value.nickname,undefined);
+ const approved={...value,purposeCodes:["サシ"]};
+ assert.doesNotThrow(()=>validateRecruitmentReady(approved,{nickname:"ゼロ",heightCm:175,weightKg:80,age:40,position:"リバ"}));
+ assert.throws(()=>validateRecruitmentReady(approved,{nickname:"ゼロ",heightCm:175,weightKg:80,age:40}),/必須項目/);
  assert.throws(()=>changeRecruitmentField(value,"nickname","変更禁止"),/READ_ONLY/);
  assert.throws(()=>validateRecruitmentReady(value),/保存済みプロフィール/);
  assert.match(renderRecruitmentPreview(value,{nickname:"ゼロ",heightCm:175,weightKg:80,age:40,position:"リバ"}),/本文続き/);
