@@ -7,8 +7,10 @@ function fixture() {
   let draft: any = null;
   let profile: any = null;
   let saves = 0;
+  let discards = 0;
   const repo = {
     async getDraft() {return draft;},
+    async discardDraft() { draft=null; discards++; },
     async putDraft(_id: number, step: string, data: any, expected?: number) {
       if (expected !== undefined && draft?.revision !== expected) throw Error("PROFILE_DRAFT_STALE");
       draft = {step,data,revision:(draft?.revision ?? 0)+1};
@@ -43,7 +45,7 @@ function fixture() {
     };
   }
   return {handlers,repo,ctx,sent,get draft(){return draft;},
-    get profile(){return profile;},get saves(){return saves;}};
+    get profile(){return profile;},get saves(){return saves;},get discards(){return discards;}};
 }
 
 test("real user profile DM: input, position, private save", async () => {
@@ -103,4 +105,46 @@ test("position selector renders 3 then 4 buttons with S and M at positions 3 and
   await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
   assert.equal(f.draft.data.position,"M");
   assert.equal(f.draft.step,"preview");
+});
+
+test("invalid inputs prompt retry without erasing draft", async () => {
+  const f=fixture();
+  await f.handlers.get("command:profile")!(f.ctx());
+  const revision=f.draft.revision;
+  await f.handlers.get("on:text")!(f.ctx("ゼロ\n300/80/40"),async()=>{});
+  assert.equal(f.draft.step,"awaiting_basic");
+  assert.equal(f.draft.revision,revision);
+  const error=f.sent.find(x=>x[0]==="reply" && String(x[1]).includes("もう一度テキストを送信"));
+  assert.ok(error);
+  assert.equal(error[2]?.reply_markup?.inline_keyboard?.[0]?.[0]?.text,"キャンセルして戻る");
+  await f.handlers.get("on:text")!(f.ctx("ゼロ\n175/80/40"),async()=>{});
+  assert.equal(f.draft.step,"awaiting_position");
+});
+
+test("cancel clears only the unfinished draft, then old callbacks are rejected", async () => {
+  const f=fixture();
+  await f.handlers.get("command:profile")!(f.ctx());
+  const first=f.sent.find(x=>x[0]==="reply" && String(x[1]).includes("基本情報"));
+  assert.equal(first[2]?.reply_markup?.inline_keyboard?.[0]?.[0]?.text,"キャンセルして戻る");
+  await f.handlers.get("action:pf:cancel")!(f.ctx());
+  assert.equal(f.draft,null);
+  assert.equal(f.discards,1);
+  assert.ok(f.sent.some(x=>x[0]==="edit" && String(x[1]).includes("キャンセルしました")));
+  const stale=f.ctx();stale.match=["","2","6"];
+  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(stale);
+  assert.equal(f.saves,0);
+});
+
+test("cancelling basic edit retains existing saved profile", async()=>{
+  const f=fixture();
+  await f.handlers.get("command:profile")!(f.ctx());
+  await f.handlers.get("on:text")!(f.ctx("ゼロ\n175 80 39"),async()=>{});
+  const choose=f.ctx();choose.match=["","2","0"];
+  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
+  const save=f.ctx();save.match=["","3"];
+  await f.handlers.get("action:^pf:save:(\\d+)$")!(save);
+  const stored=f.profile;
+  await f.handlers.get("action:pf:edit:basic")!(f.ctx());
+  await f.handlers.get("action:pf:cancel")!(f.ctx());
+  assert.deepEqual(f.profile,stored);
 });
