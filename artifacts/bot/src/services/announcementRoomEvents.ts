@@ -4,11 +4,11 @@
  */
 import {pool} from "../db/index.js";
 
-export type RoomNoticeKind="scheduled"|"prepared"|"started"|"postponed"|"cancelled"|"finished"|"visibility_changed";
+export type RoomNoticeKind="scheduled"|"prepared"|"started"|"postponed"|"cancelled"|"finished"|"visibility_changed"|"details_changed";
 export function projectRoomNotice(kind:RoomNoticeKind):{
   close:boolean; finalStatus:"cancelled"|"finished"|null;
 }{
- if(!["scheduled","prepared","started","postponed","cancelled","finished","visibility_changed"].includes(kind))
+ if(!["scheduled","prepared","started","postponed","cancelled","finished","visibility_changed","details_changed"].includes(kind))
    throw new Error("ROOM_NOTICE_KIND_INVALID");
  return {close:kind==="cancelled"||kind==="finished",
   finalStatus:kind==="cancelled"?"cancelled":kind==="finished"?"finished":null};
@@ -58,10 +58,12 @@ export async function projectNextRoomEvent():Promise<{
        status=COALESCE($2,status),
        accept_applications=CASE WHEN $3 THEN FALSE ELSE accept_applications END,
        event_at=CASE WHEN $4::timestamptz IS NOT NULL THEN $4::timestamptz ELSE event_at END,
+       text=CASE WHEN $5::text IS NOT NULL THEN $5::text ELSE text END,
        revision=revision+1,updated_at=NOW()
       WHERE announcement_id=$1 RETURNING revision`,
     [id,projected.finalStatus,projected.close,
-     e.payload?.startAt||null]);
+     e.payload?.startAt||null,
+     kind==="details_changed"?String(e.payload.title)+"\n"+String(e.payload.description):null]);
    const revision=Number(updated.rows[0].revision);
    await client.query(
     `INSERT INTO announcement_room_dispatches
