@@ -15,6 +15,7 @@ import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
+import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -470,5 +471,27 @@ try{
  assert.equal(fullEdit.rows.length,1,
   "filled Announcement must queue existing message edit");
  console.log("GAYBBS_DB_FILLED_RECRUITMENT_ROOM_STATUS=PASS");
+ // Six-function shared DM: one text input has exactly one most-recent owner.
+ // Older drafts are retained for explicit resume, but cannot steal a reply.
+ await pool.query(
+  `INSERT INTO profile_drafts(owner_user_id,step,data,updated_at)
+   VALUES(777501,'awaiting_basic','{}'::jsonb,NOW()-INTERVAL '10 minutes')`);
+ assert.equal(await currentDmTextOwner(777501),"profile");
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data,updated_at)
+   VALUES(777501,'announcement','awaiting_text','{}'::jsonb,NOW()-INTERVAL '5 minutes')`);
+ assert.equal(await currentDmTextOwner(777501),"announcement");
+ await pool.query(
+  `INSERT INTO room_host_sessions
+    (owner_user_id,room_id,expected_revision,requested_action,expires_at,updated_at)
+   VALUES(777501,$1,1,'postpone',NOW()+INTERVAL '20 minutes',NOW())`,
+  [fullRoomId]);
+ assert.equal(await currentDmTextOwner(777501),"room_host");
+ await pool.query(
+  `UPDATE profile_drafts SET updated_at=NOW()+INTERVAL '1 second'
+   WHERE owner_user_id=777501`);
+ assert.equal(await currentDmTextOwner(777501),"profile");
+ assert.equal(await currentDmTextOwner(777502),null);
+ console.log("GAYBBS_DB_DM_INPUT_OWNER_NO_CROSS_MODULE_CAPTURE=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
