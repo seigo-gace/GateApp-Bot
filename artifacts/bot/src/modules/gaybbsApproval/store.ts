@@ -230,8 +230,20 @@ export async function saveIssuedInvite(a:GateAttempt,link:string,expires:Date):P
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }
 export async function currentIssuedInvite(a:GateAttempt):Promise<string|null>{
- const links=await currentIssuedInvites(a);
- return links.find(x=>x.targetId===a.target_id)?.link??null;
+ const target=await pool.query("SELECT chat_id FROM targets WHERE target_id=$1",[a.target_id]);
+ if(target.rows.length!==1)return null;
+ if(ADMISSION_BOARD_CHAT_IDS.some(id=>id===Number(target.rows[0].chat_id))){
+  const links=await currentIssuedInvites(a);
+  return links.find(x=>x.targetId===a.target_id)?.link??null;
+ }
+ // Preserve existing non-TGtumbler single-board callers without granting
+ // them the newly-adopted 3-board entitlement.
+ const r=await pool.query(`SELECT invite_link FROM invite_links
+  WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3
+   AND used_at IS NULL AND revoked_at IS NULL AND expire_at>NOW()
+  ORDER BY created_at DESC LIMIT 1`,
+  [a.target_id,a.tg_user_id,a.attempt_id]);
+ return r.rows[0]?.invite_link??null;
 }
 
 export async function verifiedApprovalDocumentLinks(chatId:number):Promise<Record<string,string>|null>{
@@ -250,7 +262,7 @@ export async function getRequestEligibility(client:PoolClient,args:{
  const r=await client.query(`SELECT i.invite_id,i.target_id,i.tg_user_id,
    i.attempt_id,i.expire_at,i.used_at,i.revoked_at,
    a.status, a.document_version,g.status AS group_status,
-   s.target_id AS consent_target_id,
+   t.chat_id AS requested_chat_id,s.target_id AS consent_target_id,
    s.step AS session_step,s.attempt_id AS session_attempt,s.document_version AS session_version
    FROM invite_links i
    JOIN gate_sessions s ON s.tg_user_id=i.tg_user_id
@@ -259,6 +271,7 @@ export async function getRequestEligibility(client:PoolClient,args:{
      AND a.attempt_id=s.attempt_id AND a.document_version=s.document_version
    JOIN approvals g ON g.target_id=i.target_id AND g.tg_user_id=i.tg_user_id
      AND g.attempt_id=i.attempt_id AND g.document_version=s.document_version
+   JOIN targets t ON t.target_id=i.target_id
    WHERE i.target_id=$1 AND i.tg_user_id=$2 AND i.invite_link=$3
    FOR UPDATE OF i`,[args.targetId,args.userId,args.url]);
  if(r.rowCount!==1)return {allowed:false,inviteId:null,reason:"invite_mismatch"};
@@ -269,7 +282,8 @@ export async function getRequestEligibility(client:PoolClient,args:{
   row.session_attempt!==row.attempt_id || row.session_version!==row.document_version)
   return {allowed:false,inviteId:null,reason:"approval_or_invite_expired"};
  // A single refusal by any of the three groups rejects membership in ALL.
- if(!await sharedBoardApprovalAccepted(client,args.userId,row.attempt_id,row.document_version))
+ if(ADMISSION_BOARD_CHAT_IDS.some(id=>id===Number(row.requested_chat_id)) &&
+  !await sharedBoardApprovalAccepted(client,args.userId,row.attempt_id,row.document_version))
   return {allowed:false,inviteId:null,reason:"shared_approval_rejected"};
  const cons=await client.query(`SELECT COUNT(DISTINCT stage)::int AS n FROM gate_consents
   WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3 AND document_version=$4
