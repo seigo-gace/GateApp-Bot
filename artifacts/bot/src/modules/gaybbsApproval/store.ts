@@ -5,7 +5,7 @@
 import {randomUUID} from "node:crypto";
 import {pool} from "../../db/index.js";
 import type {PoolClient} from "pg";
-import {ADMISSION_VERSION, type ConsentStage} from "./contract.js";
+import {ADMISSION_VERSION, canAdvanceAdmission, type ConsentStage} from "./contract.js";
 
 export type GateAttempt = {
  tg_user_id:string; target_id:number; step:string; step_token:string|null;
@@ -18,7 +18,8 @@ export async function readAttempt(userId:number):Promise<GateAttempt|undefined>{
  const r=await pool.query<GateAttempt>("SELECT * FROM gate_sessions WHERE tg_user_id=$1",[userId]);
  return r.rows[0];
 }
-export async function openAttempt(userId:number,targetId:number,token:string,applicant?:{username?:string;displayName?:string;isPremium?:boolean}):Promise<{attempt:GateAttempt;existing:boolean}>{
+export async function openAttempt(userId:number,targetId:number,token:string,applicant?:{username?:string;displayName?:string;isPremium?:boolean},documentVersion:string=ADMISSION_VERSION):Promise<{attempt:GateAttempt;existing:boolean}>{
+ if(!documentVersion || documentVersion.length>120)throw new Error("GATE_DOCUMENT_VERSION_INVALID");
  const c=await pool.connect();
  try{
   await c.query("BEGIN");
@@ -29,12 +30,15 @@ export async function openAttempt(userId:number,targetId:number,token:string,app
    throw new Error("GATE_LEGACY_SESSION_CONFLICT");
   if(old && active.has(old.step) && old.updated_at.getTime()>Date.now()-24*3600_000){
    if(old.target_id!==targetId)throw new Error("GATE_ANOTHER_TARGET_ACTIVE");
-   await c.query("COMMIT");
-   return {attempt:old,existing:true};
+   if(old.document_version===documentVersion){
+    await c.query("COMMIT");
+    return {attempt:old,existing:true};
+   }
+   // Document or rule changes make previous consent invalid; start afresh.
   }
   // An already approved invitation is not silently replaced by another attempt.
   if(old && old.step==="approved" && old.updated_at.getTime()>Date.now()-24*3600_000 &&
-     old.target_id===targetId){
+     old.target_id===targetId && old.document_version===documentVersion){
    await c.query("COMMIT");
    return {attempt:old,existing:true};
   }
@@ -48,7 +52,7 @@ export async function openAttempt(userId:number,targetId:number,token:string,app
    (target_id,tg_user_id,username,display_name,is_premium,status,attempt_id,document_version)
    VALUES ($1,$2,$3,$4,$5,'pending',$6,$7)`,
    [targetId,userId,applicant?.username??null,applicant?.displayName??null,
-    applicant?.isPremium??false,attemptId,ADMISSION_VERSION]);
+    applicant?.isPremium??false,attemptId,documentVersion]);
   const r=await c.query<GateAttempt>(`INSERT INTO gate_sessions
    (tg_user_id,target_id,step,step_token,attempt_id,document_version,challenge_fails,challenge_data,last_message_id,last_attempt)
    VALUES ($1,$2,'intro',$3,$4,$5,0,NULL,NULL,NOW())
@@ -57,7 +61,7 @@ export async function openAttempt(userId:number,targetId:number,token:string,app
    attempt_id=EXCLUDED.attempt_id,document_version=EXCLUDED.document_version,
    challenge_fails=0,challenge_data=NULL,last_message_id=NULL,
    last_attempt=NOW(),created_at=NOW(),updated_at=NOW() RETURNING *`,
-   [userId,targetId,token,attemptId,ADMISSION_VERSION]);
+   [userId,targetId,token,attemptId,documentVersion]);
   await c.query("COMMIT");
   return {attempt:r.rows[0]!,existing:false};
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
@@ -73,15 +77,17 @@ export async function transition(args:{
  fails?:number;challengeData?:unknown;consent?:{stage:ConsentStage;accepted:boolean}
 }):Promise<boolean>{
  const {attempt:a}=args;
+ if(!canAdvanceAdmission(a.step,args.next,args.consent))return false;
+ if(a.document_version!==ADMISSION_VERSION && !a.document_version.startsWith(ADMISSION_VERSION+":"))return false;
  const c=await pool.connect();
  try{
   await c.query("BEGIN");
   const r=await c.query(`UPDATE gate_sessions SET step=$1,step_token=$2,
    challenge_fails=$3,challenge_data=$4,updated_at=NOW()
    WHERE tg_user_id=$5 AND target_id=$6 AND attempt_id=$7
-   AND step=$8 AND step_token=$9 AND last_message_id=$10`,
+   AND step=$8 AND step_token=$9 AND last_message_id=$10 AND document_version=$11`,
    [args.next,args.newToken,args.fails??a.challenge_fails,args.challengeData??null,
-    a.tg_user_id,a.target_id,a.attempt_id,a.step,a.step_token,args.messageId]);
+    a.tg_user_id,a.target_id,a.attempt_id,a.step,a.step_token,args.messageId,a.document_version]);
   if(r.rowCount!==1){await c.query("ROLLBACK");return false}
   if(args.consent){
    await c.query(`INSERT INTO gate_consents
@@ -111,11 +117,13 @@ export async function saveIssuedInvite(a:GateAttempt,link:string,expires:Date):P
   await c.query("BEGIN");
   const session=await c.query(`UPDATE gate_sessions SET step='approved',updated_at=NOW()
    WHERE tg_user_id=$1 AND target_id=$2 AND attempt_id=$3 AND step='issuing'
-   RETURNING tg_user_id`,[a.tg_user_id,a.target_id,a.attempt_id]);
+     AND step_token=$4 AND document_version=$5
+   RETURNING tg_user_id`,[a.tg_user_id,a.target_id,a.attempt_id,a.step_token,a.document_version]);
   if(session.rowCount!==1){await c.query("ROLLBACK");return false}
   const check=await c.query(`SELECT COUNT(DISTINCT stage)::int AS n FROM gate_consents
     WHERE target_id=$1 AND tg_user_id=$2 AND attempt_id=$3
-      AND document_version=$4 AND accepted=true`,
+      AND document_version=$4 AND accepted=true
+      AND stage IN ('question1','question2','rules')`,
     [a.target_id,a.tg_user_id,a.attempt_id,a.document_version]);
   if(check.rows[0]?.n!==3){await c.query("ROLLBACK");return false}
   await c.query(`INSERT INTO invite_links
@@ -147,7 +155,7 @@ export async function verifiedApprovalDocumentLinks(chatId:number):Promise<Recor
  return Object.keys(links).length===4?links:null;
 }
 export async function getRequestEligibility(client:PoolClient,args:{
- targetId:number;userId:number;url:string
+ targetId:number;userId:number;url:string;expectedDocumentVersion?:string
 }):Promise<{allowed:boolean;inviteId:number|null;reason:string}>{
  const r=await client.query(`SELECT i.invite_id,i.target_id,i.tg_user_id,
    i.attempt_id,i.expire_at,i.used_at,i.revoked_at,
@@ -163,6 +171,7 @@ export async function getRequestEligibility(client:PoolClient,args:{
  const row=r.rows[0];
  if(row.used_at || row.revoked_at || new Date(row.expire_at).getTime()<=Date.now() ||
   row.status!=="approved" || row.session_step!=="approved" ||
+  (args.expectedDocumentVersion!==undefined && row.document_version!==args.expectedDocumentVersion) ||
   row.session_attempt!==row.attempt_id || row.session_version!==row.document_version)
   return {allowed:false,inviteId:null,reason:"approval_or_invite_expired"};
  const cons=await client.query(`SELECT COUNT(DISTINCT stage)::int AS n FROM gate_consents
