@@ -18,7 +18,7 @@ export function appendProfileMedia(items:readonly ProfileMediaItem[]|undefined,i
 }
 export function validateProfileMedia(items:readonly ProfileMediaItem[]|undefined):void{
  if(!items)return;
- if(!Array.isArray(items)||items.length>100)throw Error("PROFILE_MEDIA_LIMIT");
+ if(!Array.isArray(items))throw Error("PROFILE_MEDIA_INVALID");
  const seen=new Set<number>();
  for(const item of items){
   appendProfileMedia([],item);
