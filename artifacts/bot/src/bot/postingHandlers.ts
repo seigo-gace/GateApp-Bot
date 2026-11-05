@@ -1,20 +1,22 @@
 import { Markup, type Telegraf, type Telegram } from "telegraf";
 import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
-import {makeProfileViewerButtons} from "../services/profilePublicView.js";
+import {makeProfileViewerButtons,existingPublishedProfileUrl} from "../services/profilePublicView.js";
 import {revisePublishedProfile} from "../services/profilePublicationUpdate.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
-  validateRoom,assertHttpsMeetingUrl,parseJstDateTime,type AnnouncementKind } from "../services/postingDomain.js";
+  validateRoom,assertHttpsMeetingUrl,parseJstDateTime,parseRoomDetails,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createRoom,createLinkButton,markRoomDraftSaved,
- createAnnouncement,markDraftPublished,markPostSourcePublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
-import type { PostPurpose } from "../services/topicRouting.js";
+ createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
+import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
+import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
+import {updateRoomState} from "../services/roomLifecycle.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 
 async function showPostScreen(
@@ -37,10 +39,19 @@ function preview(module:Module,draft:EditorDraft):string {
  }
  if(module==="room"){
   const title=String(draft.data.title||"");
-  const url=draft.data.externalUrl ? String(draft.data.externalUrl) : undefined;
-  return buildRoomCard(validateRoom({ownerId:1,name:title,mode:url?"external":"jitsi",
-   externalUrl:url,status:"ready"}),url||"");
- }
+  const description=String(draft.data.description||"");
+  const externalUrl=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
+  validateRoom({ownerId:1,name:title,mode:externalUrl?"external":"jitsi",
+   externalUrl,status:"draft"});
+  const when=draft.data.startAt?new Date(String(draft.data.startAt)):null;
+  return ["🎬 ROOM："+escapeProfileHtml(title),
+    escapeProfileHtml(description),
+    "方式："+(externalUrl?"URL持込":"無料Jitsi"),
+    "開催："+(when?when.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）":"今すぐ"),
+    "参加："+(draft.data.visibility==="public"?"自由参加":"応募受付"),
+    "プロフ連携："+(draft.data.profileLinked?"あり":"なし"),
+    "状態："+(when?"📅 予告中":"🔴 LIVE中")].join("\n");
+  }
  const kind=draft.data.kind as AnnouncementKind;
  return buildAnnouncementCard(validateAnnouncement({ownerId:1,kind,
   text:String(draft.data.text||""),
@@ -92,10 +103,51 @@ function tagPanel(draft:EditorDraft) {
  return Markup.inlineKeyboard(rows);
 }
 /** The same editor is called from /room and an authenticated M2 entry. */
+function roomOptions(d:EditorDraft){
+ const revision=d.revision;
+ const external=Boolean(d.data.externalUrl);
+ const publicJoin=d.data.visibility==="public";
+ return Markup.inlineKeyboard([
+  [Markup.button.callback(external?"▫️ 無料Jitsi":"✅ 無料Jitsi",
+    `room:mode:${revision}:jitsi`),
+   Markup.button.callback(external?"✅ URL持込":"▫️ URL持込",
+    `room:mode:${revision}:external`)],
+  [Markup.button.callback(publicJoin?"✅ 自由参加":"▫️ 自由参加",
+    `room:joinmode:${revision}:public`),
+   Markup.button.callback(!publicJoin?"✅ 応募受付":"▫️ 応募受付",
+    `room:joinmode:${revision}:approved_only`)],
+  [Markup.button.callback("📝 タイトル・説明を修正",`room:edit:${revision}`),
+   Markup.button.callback(d.data.profileLinked?"✅ プロフ連携":"▫️ プロフ連携",
+    `room:profile:${revision}`)],
+  [Markup.button.callback("▶ 開始する",`room:plan:${revision}:now`),
+   Markup.button.callback("📅 予告する",`room:plan:${revision}:scheduled`)],
+  [Markup.button.callback("下書き保存",`room:save:${revision}`),
+   Markup.button.callback("キャンセル",`room:cancel:${revision}`)],
+ ]);
+}
+async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,
+  "ROOM内容（まだ公開していません）\n"+preview("room",d),
+  roomOptions(d));
+}
+async function roomBoardMenu(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,"投稿先グループを選択してください。",
+  Markup.inlineKeyboard([BOARD_KEYS.map((key,index)=>
+   Markup.button.callback(BOARD_TITLES[key],`room:board:${d.revision}:${index}`))]));
+}
+/** Entry shared by /room and the verified ROOM topic menu. */
 export async function startRoomEditor(telegram:Telegram,userId:number):Promise<void>{
- const draft=await beginDraft(userId,"room","awaiting_text");
+ const existing=await getDraft(userId,"room");
+ if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
+  const resumed=await updateDraft(userId,"room",existing.revision,"preview",
+   {...existing.data,startAt:null});
+  await roomPreviewScreen(telegram,userId,resumed);
+  return;
+ }
+ const draft=await beginDraft(userId,"room","awaiting_text",
+  {visibility:"approved_only",profileLinked:false});
  await showPostScreen(telegram,userId,draft,
-  "🎬 ROOM名を入力してください。持込URLを使う場合は「ROOM名 | https://...」と1通で送れます。URL省略時はJitsiを生成します。");
+  "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
 }
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
 export async function startLinkEditor(telegram:Telegram,userId:number):Promise<void>{
