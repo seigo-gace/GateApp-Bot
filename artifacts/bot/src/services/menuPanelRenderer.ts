@@ -12,6 +12,57 @@ export type PanelSpec={
 };
 export type ButtonSpec={text:string;url:string};
 export type RenderedPanel={text:string;rows:ButtonSpec[][]};
+
+/** No empty Telegram inline-keyboard cells. A final single button occupies
+ * the whole last row. Preserve semantic order; never fabricate padding links.
+ */
+export function packButtonRows(items:readonly ButtonSpec[],columns:2|3=2):ButtonSpec[][]{
+ if(!items.length)throw new Error("BUTTON_ROWS_EMPTY");
+ const rows:ButtonSpec[][]=[];
+ for(let i=0;i<items.length;i+=columns)rows.push(items.slice(i,i+columns));
+ return rows;
+}
+export type AreaBlockBoardSpec={
+ blockTitle:string;
+ description:string;
+ areaLinks:readonly NavLink[];
+ searchLink:NavLink;
+ filterLink:NavLink;
+ chatLink:NavLink;
+ backLink:NavLink;
+};
+/** L1 navigation only: region destinations, search, common talk, and L0 back.
+ * Profile and ROOM creation belong to L2 posting menus / their Bot DM.
+ * Search/Filter are read-only entrypoints, never post-editor actions.
+ */
+export function renderAreaBlockBoard(spec:AreaBlockBoardSpec):RenderedPanel{
+ if(!spec.blockTitle.trim()||spec.blockTitle.length>80||
+    !spec.description.trim()||spec.description.length>3300||
+    spec.areaLinks.length===0||spec.areaLinks.length>40)
+  throw new Error("AREA_BLOCK_CONTENT_INCOMPLETE");
+ const seen=new Set<string>();
+ const checked=(link:NavLink):ButtonSpec=>{
+  assertPublishedLink(link);
+  if(!link.label.trim()||link.label.length>64||seen.has(link.label))
+   throw new Error("AREA_BLOCK_LABEL_DUPLICATE");
+  seen.add(link.label);
+  return {text:link.label,url:link.url};
+ };
+ const regions=spec.areaLinks.map(checked);
+ const search=checked(spec.searchLink);
+ const filter=checked(spec.filterLink);
+ const chat=checked(spec.chatLink);
+ const back=checked(spec.backLink);
+ return {
+  text:spec.blockTitle+"\\n"+spec.description,
+  rows:[
+   ...packButtonRows(regions,2),
+   [search,filter],
+   [chat,back],
+  ],
+ };
+}
+
 function safeUrl(url:string):boolean{
  try{
   const x=new URL(url);
@@ -29,11 +80,11 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  if(!["area_bbs","video_chat","gay_board"].includes(spec.board))
   throw new Error("PANEL_BOARD_INVALID");
  const seen=new Set<string>();
- const rows:ButtonSpec[][]=[];
+ const buttons:ButtonSpec[]=[];
  const add=(label:string,url:string)=>{
   if(!label.trim()||label.length>64||seen.has(label)||!safeUrl(url))
    throw new Error("PANEL_LINK_DUPLICATE_OR_INVALID");
-  seen.add(label);rows.push([{text:label,url}]);
+  seen.add(label);buttons.push({text:label,url});
  };
  if(spec.type==="general_guide"){
   // M1: guide/navigation only. Content is a preapproved existing permanent
@@ -42,7 +93,7 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
    assertPublishedLink(item);
    add(item.label,item.url);
   }
-  if(!rows.length)throw new Error("PANEL_GUIDE_EMPTY");
+  if(!buttons.length)throw new Error("PANEL_GUIDE_EMPTY");
   return {text:"📌 総合案内\n各ボタンから既存の案内・トピックへ移動できます。",rows};
  }
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
@@ -61,6 +112,6 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
   add(name[item.feature],item.url);
  }
  for(const item of spec.links){assertPublishedLink(item);add(item.label,item.url);}
- if(!rows.length)throw new Error("PANEL_POSTING_EMPTY");
+ if(!buttons.length)throw new Error("PANEL_POSTING_EMPTY");
  return {text:"📝 投稿メニュー\nこのトピックからBotのDMへ移動し、下書き・公開先を確認できます。",rows};
 }
