@@ -88,3 +88,19 @@ test("username missing never creates a profile draft",async()=>{
   await f.handlers.get("command:profile")!(c);
   assert.equal(f.draft,null);
 });
+
+test("position selector renders 3 then 4 buttons with S and M at positions 3 and 4", async () => {
+  const f=fixture();
+  await f.handlers.get("command:profile")!(f.ctx());
+  await f.handlers.get("on:text")!(f.ctx("ゼロ\n175 80 39"),async()=>{});
+  const prompt=f.sent.find(x=>x[0]==="reply" && String(x[1]).includes("ポジションを選択"));
+  assert.ok(prompt);
+  const keyboard=prompt[2]?.reply_markup?.inline_keyboard;
+  assert.deepEqual(keyboard?.map((row:any[])=>row.map((b:any)=>b.text)),[
+    ["タチ","タチリバ","リバ"],["ウケリバ","ウケ","S","M"]
+  ]);
+  const choose=f.ctx(); choose.match=["","2","6"];
+  await f.handlers.get("action:^pf:pos:(\\d+):([0-6])$")!(choose);
+  assert.equal(f.draft.data.position,"M");
+  assert.equal(f.draft.step,"preview");
+});
