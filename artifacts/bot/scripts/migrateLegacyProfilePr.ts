@@ -5,12 +5,7 @@
 import {pool} from "../src/db/index.js";
 import {storeProfilePr,readProfilePr} from "../src/services/profilePrStorage.js";
 
-async function main(){
- const dryRun=process.argv.includes("--dry-run");
- if(process.argv.some(x=>!["--dry-run","--execute"].includes(x)&&x.startsWith("--"))||
-    (!dryRun&&!process.argv.includes("--execute"))||
-    (dryRun&&process.argv.includes("--execute")))
-  throw Error("USE_EITHER_--dry-run_OR_--execute");
+export async function migrateLegacyProfilePr(dryRun:boolean){
  if(!dryRun&&!process.env.PROFILE_PR_STORAGE_DIR)
   throw Error("PROFILE_PR_DURABLE_STORAGE_NOT_CONFIGURED");
  let migrated=0;
@@ -40,5 +35,16 @@ async function main(){
  }
  process.stdout.write(JSON.stringify({mode:dryRun?"dry-run":"execute",scanned,migrated})+"\n");
 }
-main().catch(e=>{console.error("MIGRATION_FAILED",e instanceof Error?e.message:"UNKNOWN");process.exitCode=1})
- .finally(()=>pool.end());
+if(process.argv[1]?.endsWith("migrateLegacyProfilePr.ts")){
+ const flags=process.argv.slice(2);
+ const valid=flags.length===1&&["--dry-run","--execute"].includes(flags[0]!);
+ if(!valid){
+  console.error("USE_EITHER_--dry-run_OR_--execute");
+  process.exitCode=1;
+  void pool.end();
+ }else{
+  void migrateLegacyProfilePr(flags[0]==="--dry-run")
+    .catch(e=>{console.error("MIGRATION_FAILED",e instanceof Error?e.message:"UNKNOWN");process.exitCode=1;})
+    .finally(()=>pool.end());
+ }
+}
