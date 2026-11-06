@@ -1,0 +1,22 @@
+name: TGtumbler GayBBS Docker package verification
+on:
+  pull_request:
+    paths:
+      - 'artifacts/bot/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/tgtumbler-gaybbs-package.yml'
+  push:
+    branches: ['chat/tgtumbler-gserver-deploy-20261106']
+jobs:
+  gaybbs-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated GayBBS image (no credentials)
+        run: docker build --file artifacts/bot/deploy/Dockerfile.gaybbs --tag gaybbs:ci --pull=false .
+      - name: Check bundled program without Telegram, DB, or network
+        run: docker run --rm --network none --entrypoint node gaybbs:ci --check /app/gaybbs.mjs
