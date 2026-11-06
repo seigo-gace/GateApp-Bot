@@ -12,6 +12,9 @@ import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft} from "../src/services/publicPostRepository.js";
 import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
+import {makeApplicationLink} from "../src/services/applicationLinks.js";
+import {publishPost} from "../src/services/publishService.js";
+import {markPostSourcePublished} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
@@ -689,5 +692,67 @@ try{
  assert.equal(await currentDmTextOwner(777501),"profile");
  assert.equal(await currentDmTextOwner(777502),null);
  console.log("GAYBBS_DB_DM_INPUT_OWNER_NO_CROSS_MODULE_CAPTURE=PASS");
+ // Cross-module handoff: a ROOM destination has purpose='room', while
+ // its reusable Announcement source and MPB delivery use 'announcement'.
+ // This is the real entrypoint used by the ROOM publish callback, with a
+ // fake Telegram adapter and without production credentials.
+ const owner=777701;
+ const publicationRoom=await createRoom(owner,881,"ROOM公開契約",undefined,
+  {description:"公開契約の説明",visibility:"approved_only"});
+ const pubRoomId=Number(publicationRoom.sourceId);
+ const publication=await createAnnouncement(owner,881,"recruitment",
+  "ROOM公開契約\n公開契約の説明",undefined,[],[],pubRoomId);
+ const applicationLink=await makeApplicationLink(owner,Number(publication.sourceId));
+ const joinLink=await makeRoomJoinLink(owner,pubRoomId);
+ assert.match(applicationLink,/start=a_/);
+ assert.match(joinLink,/start=j_/);
+ const newTopic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,
+    title,verified_by,verified_at,enabled)
+   VALUES('gay_board','room',-1003770334893,91001,'ROOM投稿先',
+    $1,NOW(),TRUE) RETURNING topic_id`,[owner]);
+ const newTopicId=Number(newTopic.rows[0].topic_id);
+ const sendCalls:Array<{chatId:number;threadId:number;text:string;buttons:unknown}>=[];
+ const fakePublishBot={
+  getChat:async()=>({id:-1003770334893,type:"supergroup"}),
+  getMe:async()=>({id:778888}),
+  getChatMember:async()=>({status:"administrator"}),
+  sendMessage:async(chatId:number,text:string,opts:{
+   message_thread_id:number;reply_markup?:unknown})=>{
+   sendCalls.push({chatId,threadId:opts.message_thread_id,text,
+    buttons:opts.reply_markup});
+   return {message_id:91002};
+  }
+ } as unknown as Telegram;
+ const pubReq={
+  sourceType:"announcement" as const,destinationPurpose:"room" as const,
+  sourceId:publication.sourceId,ownerId:owner,revision:881,topicId:newTopicId,
+  text:"🎬 ROOM：ROOM公開契約\n公開契約の説明\n状態：🔴 LIVE中",
+  buttons:[[{text:"📨 参加希望",url:applicationLink},
+   {text:"🎥 参加する",url:joinLink}]],approved:true
+ };
+ await pool.query("UPDATE gaybbs_feature_release_gates SET enabled=FALSE WHERE feature='room'");
+ await assert.rejects(()=>publishPost(fakePublishBot,pubReq),/FEATURE_RELEASE_NOT_VERIFIED/);
+ assert.equal(sendCalls.length,0,"Gate must reject before any Telegram call");
+ await pool.query("UPDATE gaybbs_feature_release_gates SET enabled=TRUE WHERE feature='room'");
+ const sentPublication=await publishPost(fakePublishBot,pubReq);
+ assert.equal(sentPublication.messageId,91002);
+ assert.equal(sendCalls.length,1);
+ assert.equal(sendCalls[0].threadId,91001);
+ await markPostSourcePublished(owner,"announcement",publication.sourceId);
+ const repeatedPublication=await publishPost(fakePublishBot,pubReq);
+ assert.equal(repeatedPublication.messageId,91002);
+ assert.equal(sendCalls.length,1,"Same publication must not duplicate send");
+ const publicationDelivery=await pool.query(
+  `SELECT d.source_type,t.purpose,d.status FROM posting_deliveries d
+   JOIN posting_topics t ON t.topic_id=d.posting_topic_id
+   WHERE d.source_id=$1 AND d.operation_key=$2`,
+  [publication.sourceId,"announcement:"+publication.sourceId+":881:"+newTopicId]);
+ assert.equal(publicationDelivery.rows.length,1);
+ assert.deepEqual(publicationDelivery.rows[0],{
+  source_type:"announcement",purpose:"room",status:"sent"});
+ const publishedRoom=await updateRoomState(owner,pubRoomId,1,"start");
+ assert.equal(publishedRoom.state,"live");
+ console.log("GAYBBS_DB_ROOM_VERIFIED_TOPIC_MPB_REUSE_AND_GATE=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
