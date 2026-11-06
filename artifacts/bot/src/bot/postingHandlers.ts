@@ -203,7 +203,7 @@ async function announcementDestinationPicker(telegram:Telegram,userId:number,d:E
 /** Announcement is selected by its menu, not by an extra mandatory kind page. */
 export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
  const existing=await getDraft(userId,"announcement");
- if(existing?.step==="saved"){
+ if(existing?.step==="saved"&&existing.data.kind!=="recruitment"){
   const {savedTemplate:_previous,...template}=existing.data;
   const resumed=await updateDraft(userId,"announcement",existing.revision,
    String(template.text||"").trim()?"preview":"awaiting_text",
