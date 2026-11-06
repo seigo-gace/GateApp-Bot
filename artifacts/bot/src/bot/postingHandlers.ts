@@ -158,7 +158,7 @@ export async function startLinkEditor(telegram:Telegram,userId:number):Promise<v
   "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。");
 }
 /** One shared Bot DM message for the approved 告知/予告 layout. */
-function announcementPanel(d:EditorDraft):WizardKeyboard{
+export function announcementPanel(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
  const kind=d.data.kind==="preview"?"preview":"announcement";
  return Markup.inlineKeyboard([
@@ -177,7 +177,7 @@ function announcementPanel(d:EditorDraft):WizardKeyboard{
   [Markup.button.callback("キャンセル",`post:announce:cancel:${rev}`)],
  ]);
 }
-function announcementSummary(d:EditorDraft):string{
+export function announcementSummary(d:EditorDraft):string{
  const kind=d.data.kind==="preview"?"preview":"announcement";
  const value=String(d.data.text||"").trim();
  const date=d.data.eventAt?new Date(String(d.data.eventAt)):undefined;
