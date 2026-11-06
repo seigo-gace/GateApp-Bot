@@ -774,8 +774,8 @@ try{
    eventAt:new Date(Date.now()+86400000).toISOString()});
  assert.equal(forecast.data.kind,"preview");
  assert.equal((await getDraft(777801,"announcement"))?.data.text,"お知らせ本文");
- const panel=announcementPanel(forecast);
- const rows=panel.reply_markup.inline_keyboard;
+ const announcementLayout=announcementPanel(forecast);
+ const rows=announcementLayout.reply_markup.inline_keyboard;
  assert.deepEqual(rows.map(row=>row.map(x=>x.text)),[
   ["▫️ 📢 告知","✅ 📅 予告"],
   ["📝 本文編集","📅 日時・受付"],
