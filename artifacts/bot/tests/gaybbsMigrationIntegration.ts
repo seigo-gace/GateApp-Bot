@@ -12,6 +12,7 @@ import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft,saveAnnouncementEditorDraft} from "../src/services/publicPostRepository.js";
 import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
+import {announcementPanel,announcementSummary} from "../src/bot/postingHandlers.js";
 import {makeApplicationLink} from "../src/services/applicationLinks.js";
 import {publishPost} from "../src/services/publishService.js";
 import {markPostSourcePublished} from "../src/services/publicPostRepository.js";
@@ -773,6 +774,20 @@ try{
    eventAt:new Date(Date.now()+86400000).toISOString()});
  assert.equal(forecast.data.kind,"preview");
  assert.equal((await getDraft(777801,"announcement"))?.data.text,"お知らせ本文");
+ const panel=announcementPanel(forecast);
+ const rows=panel.reply_markup.inline_keyboard;
+ assert.deepEqual(rows.map(row=>row.map(x=>x.text)),[
+  ["▫️ 📢 告知","✅ 📅 予告"],
+  ["📝 本文編集","📅 日時・受付"],
+  ["▫️ 🔗 プロフ連携","📍 投稿先"],
+  ["✅ 投稿","下書き保存"],
+  ["キャンセル"],
+ ]);
+ assert.match(announcementSummary(forecast),/📅 予告/);
+ assert.match(announcementSummary(forecast),/お知らせ本文/);
+ const withoutDate={...forecast,data:{...forecast.data,eventAt:null}};
+ assert.match(announcementSummary(withoutDate),/開催日時：未指定/);
+ console.log("GAYBBS_DB_ANNOUNCEMENT_APPROVED_LAYOUT=PASS");
  console.log("GAYBBS_DB_ANNOUNCEMENT_ONE_SCREEN_DRAFT_RESUME=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
