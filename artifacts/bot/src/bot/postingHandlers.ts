@@ -519,11 +519,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
      sourceId=ann.sourceId;
      text=preview("room",draft);
      const rows:{text:string;url:string}[][]=[];
-     if(startAt){
-      if(visibility==="approved_only"){
-       rows.push([{text:"📨 参加希望",url:await makeApplicationLink(ctx.from.id,Number(sourceId))}]);
-      }
-     }else{
+     if(visibility==="approved_only"){
+      // Applicants must be able to request approval for both scheduled and
+      // immediate ROOMs; a join button alone never grants private access.
+      rows.push([{text:"📨 参加希望",url:await makeApplicationLink(ctx.from.id,Number(sourceId))}]);
+     }
+     if(!startAt){
       rows.push([{text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)}]);
      }
      if(draft.data.profileLinked){
