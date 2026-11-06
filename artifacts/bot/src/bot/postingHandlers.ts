@@ -344,6 +344,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery();
     await announcementDestinationPicker(ctx.telegram,ctx.from.id,d);
    }else if(op==="topics"){
+    if(!String(d.data.text||"").trim()||
+       (d.data.kind==="preview"&&!d.data.eventAt)){
+     await ctx.answerCbQuery("本文と必要な開催日時を入力してください。");return;
+    }
+    const current=await getDraft(ctx.from.id,"announcement");
+    if(!current||current.revision!==rev||current.step!=="preview"){
+     await ctx.answerCbQuery("本文の入力を完了してから選択してください。");return;
+    }
     await ctx.answerCbQuery();
     await destinationMenu(ctx,"announcement",rev);
    }else if(op==="back"){
