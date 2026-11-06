@@ -110,6 +110,19 @@ export async function markDraftPublished(id:number,module:PostModule,revision:nu
  if(r.rows.length!==1)throw new Error("POST_DRAFT_FINALIZATION_NEEDS_RECONCILE");
 }
 
+/** Save an announcement editor only. No published Announcement or MPB intent
+ * is generated until the owner explicitly chooses a verified destination.
+ */
+export async function saveAnnouncementEditorDraft(id:number,revision:number):Promise<void>{
+ const result=await pool.query(
+  `UPDATE public_post_drafts SET step='saved',updated_at=NOW()
+     WHERE owner_user_id=$1 AND module='announcement'
+       AND revision=$2 AND step IN ('preview','awaiting_text')
+     RETURNING owner_user_id`,
+  [validOwner(id),revision]);
+ if(result.rows.length!==1)throw new Error("ANNOUNCEMENT_DRAFT_STALE");
+}
+
 /** A private ROOM is saved without publishing a Telegram URL or post. */
 export async function markRoomDraftSaved(id:number,revision:number,roomId:number):Promise<void>{
  if(!Number.isSafeInteger(roomId)||roomId<=0)throw new Error("ROOM_ID_INVALID");
