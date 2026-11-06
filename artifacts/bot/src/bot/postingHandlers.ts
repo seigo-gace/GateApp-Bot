@@ -567,6 +567,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
     text=preview(module,d);
    }
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
+   if(module==="announcement"){
+    const d=await getDraft(ctx.from.id,"announcement");
+    if(!d||d.step!=="preview"||d.revision!==rev)throw new Error("ANNOUNCEMENT_DRAFT_STALE");
+    if(d.data.kind==="announcement"||d.data.kind==="preview"){
+     const next=await updateDraft(ctx.from.id,"announcement",rev,"preview",
+      {...d.data,topicId,destinationLabel:BOARD_TITLES[selected.board]+" / "+selected.title});
+     await ctx.answerCbQuery();
+     await announcementScreen(ctx.telegram,ctx.from.id,next);
+     return;
+    }
+   }
    await ctx.answerCbQuery();
    await ctx.editMessageText(
     "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+
