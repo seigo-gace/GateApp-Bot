@@ -622,6 +622,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const draft=await getDraft(ctx.from.id,module);
     if(!draft||draft.step!=="preview"||draft.revision!==revision)
      throw new Error("投稿下書きが変更されています。");
+    if(module==="announcement"&&(draft.data.kind==="announcement"||draft.data.kind==="preview")&&
+      draft.data.topicId!==topicId)
+      throw new Error("ANNOUNCEMENT_DESTINATION_STALE");
     if(module==="link"){
      const payload=draft.data as LinkDraft;
      const link=await createLinkButton(ctx.from.id,revision,payload);
@@ -672,6 +675,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
        purposeCodes,placeCodes);
      sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,
        kind,text:value,eventAt,purposeCodes,placeCodes});
+     if(kind!=="recruitment"&&draft.data.profileLinked){
+      const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
+      if(!profileUrl)throw new Error("ANNOUNCEMENT_PROFILE_NOT_AVAILABLE");
+      buttons=[[{text:"🪪 プロフを見る",url:profileUrl}]];
+     }
      if(kind==="recruitment"){
       const link=await makeApplicationLink(ctx.from.id,Number(sourceId));
       buttons=[[{text:"📨 応募する（Bot DM）",url:link}]];
