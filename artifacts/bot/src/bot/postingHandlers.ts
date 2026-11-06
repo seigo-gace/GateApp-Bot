@@ -305,7 +305,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const op=ctx.match[1],rev=Number(ctx.match[2]);
   const kindChoice=ctx.match[3];
   const d=await getDraft(ctx.from.id,"announcement");
-  if(!d||d.revision!==rev||!["preview","awaiting_text"].includes(d.step)||
+  if(!d||d.revision!==rev||!["preview","awaiting_text","awaiting_datetime"].includes(d.step)||
      d.data.kind==="recruitment"){
    await ctx.answerCbQuery("古い操作です。/announce から再開してください。");return;
   }
@@ -463,7 +463,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     validateAnnouncement({ownerId:ctx.from.id,
       kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
-    await destinationMenu(ctx,current.module,updated.revision);
+    if(current.module==="announcement"&&data.kind!=="recruitment"){
+     await announcementScreen(ctx.telegram,ctx.from.id,updated);
+    }else await destinationMenu(ctx,current.module,updated.revision);
     return;
    }
    if(current.module==="room"&&current.step==="awaiting_room_url"){
@@ -492,10 +494,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else{
     if(!current.data.kind)throw new Error("投稿種別が未選択です。");
     const kind=current.data.kind as AnnouncementKind;
-    if(kind==="preview"){
-     const next=await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_datetime",
+    if(kind==="preview"&&!current.data.eventAt){
+     const next=await updateDraft(ctx.from.id,current.module,current.revision,"preview",
        {...current.data,text:input});
-     await render(next,"開催日時を1通で入力してください（日本時間）。例：2026/11/20 20:00");
+     await announcementScreen(ctx.telegram,ctx.from.id,next);
      return;
     }
     if(kind==="recruitment"){
@@ -510,6 +512,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
    if(current.module==="room"){
     await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
+   }else if(current.module==="announcement"&&updated.data.kind!=="recruitment"){
+    await announcementScreen(ctx.telegram,ctx.from.id,updated);
    }else{
     await destinationMenu(ctx,current.module,updated.revision);
    }
