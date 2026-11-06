@@ -9,7 +9,7 @@ import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,parseRoomDetails,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createRoom,createLinkButton,markRoomDraftSaved,
- createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
+ createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
@@ -157,15 +157,59 @@ export async function startLinkEditor(telegram:Telegram,userId:number):Promise<v
  await showPostScreen(telegram,userId,draft,
   "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。");
 }
-/** Announcement category editor shared by command and Topic deep link. */
-export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
- const draft=await beginDraft(userId,"announcement","awaiting_kind");
- await showPostScreen(telegram,userId,draft,"📢 投稿の種類を選択してください。",
+/** One shared Bot DM message for the approved 告知/予告 layout. */
+function announcementPanel(d:EditorDraft):WizardKeyboard{
+ const rev=d.revision;
+ const kind=d.data.kind==="preview"?"preview":"announcement";
+ return Markup.inlineKeyboard([
+  [Markup.button.callback(kind==="announcement"?"✅ 📢 告知":"▫️ 📢 告知",
+    `post:announce:kind:${rev}:announcement`),
+   Markup.button.callback(kind==="preview"?"✅ 📅 予告":"▫️ 📅 予告",
+    `post:announce:kind:${rev}:preview`)],
+  [Markup.button.callback("📝 本文編集",`post:announce:edit:${rev}`),
+   Markup.button.callback("📅 日時・受付",`post:announce:date:${rev}`)],
+  [Markup.button.callback(d.data.profileLinked?"✅ 🔗 プロフ連携":"▫️ 🔗 プロフ連携",
+    `post:announce:profile:${rev}`),
+   Markup.button.callback("📍 投稿先",`post:announce:destination:${rev}`)],
+  [Markup.button.callback("✅ 投稿",`post:announce:publish:${rev}`),
+   Markup.button.callback("下書き保存",`post:announce:save:${rev}`)],
+  [Markup.button.callback("キャンセル",`post:announce:cancel:${rev}`)],
+ ]);
+}
+function announcementSummary(d:EditorDraft):string{
+ const kind=d.data.kind==="preview"?"preview":"announcement";
+ const value=String(d.data.text||"").trim();
+ const date=d.data.eventAt?new Date(String(d.data.eventAt)):undefined;
+ const message=value?
+  buildAnnouncementCard({ownerId:1,kind,text:value,eventAt:date}):
+  (kind==="preview"?"📅 予告":"📢 告知")+"\n本文を1通で入力してください。";
+ return "📢 告知/予告\n"+message+
+  "\n投稿先："+(typeof d.data.destinationLabel==="string"?d.data.destinationLabel:"未選択")+
+  "\nプロフ連携："+(d.data.profileLinked?"あり":"なし")+
+  "\n\n必要な項目だけ選択して編集できます。";
+}
+async function announcementScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,announcementSummary(d),announcementPanel(d));
+}
+async function announcementDestinationPicker(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,announcementSummary(d)+"\n\n公開先を選択してください。",
   Markup.inlineKeyboard([
-   [Markup.button.callback("告知",`post:kind:${draft.revision}:announcement`)],
-   [Markup.button.callback("予告",`post:kind:${draft.revision}:preview`)],
-   [Markup.button.callback("募集",`post:kind:${draft.revision}:recruitment`)],
+   [Markup.button.callback("📍 検証済みTopicから選択",`post:announce:topics:${d.revision}`)],
+   [Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]
   ]));
+}
+/** Announcement is selected by its menu, not by an extra mandatory kind page. */
+export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
+ const existing=await getDraft(userId,"announcement");
+ if(existing?.step==="saved"){
+  const resumed=await updateDraft(userId,"announcement",existing.revision,"preview",
+   existing.data);
+  await announcementScreen(telegram,userId,resumed);
+  return;
+ }
+ const draft=await beginDraft(userId,"announcement","awaiting_text",
+  {kind:"announcement",profileLinked:false});
+ await announcementScreen(telegram,userId,draft);
 }
 export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("publishprofile",async ctx=>{
