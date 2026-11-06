@@ -10,7 +10,7 @@ import {projectNextRoomEvent,enqueueDueRoomStartReminders} from "../src/services
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
-import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft} from "../src/services/publicPostRepository.js";
+import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft,saveAnnouncementEditorDraft} from "../src/services/publicPostRepository.js";
 import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
 import {makeApplicationLink} from "../src/services/applicationLinks.js";
 import {publishPost} from "../src/services/publishService.js";
@@ -754,5 +754,25 @@ try{
  const publishedRoom=await updateRoomState(owner,pubRoomId,1,"start");
  assert.equal(publishedRoom.state,"live");
  console.log("GAYBBS_DB_ROOM_VERIFIED_TOPIC_MPB_REUSE_AND_GATE=PASS");
+ // 告知/予告 reuses the same owner/revision-checked DM draft as ROOM.
+ const announcementDraft=await beginDraft(777801,"announcement","awaiting_text",
+  {kind:"announcement",profileLinked:false});
+ const writtenDraft=await updateDraft(777801,"announcement",announcementDraft.revision,
+  "preview",{...announcementDraft.data,text:"お知らせ本文",kind:"announcement"});
+ await saveAnnouncementEditorDraft(777801,writtenDraft.revision);
+ const savedAnnouncement=await getDraft(777801,"announcement");
+ assert.equal(savedAnnouncement?.step,"saved");
+ assert.equal(savedAnnouncement?.data.text,"お知らせ本文");
+ const resumedAnnouncement=await updateDraft(777801,"announcement",
+  savedAnnouncement!.revision,"preview",savedAnnouncement!.data);
+ assert.equal(resumedAnnouncement.data.text,"お知らせ本文");
+ await assert.rejects(
+  ()=>saveAnnouncementEditorDraft(777801,writtenDraft.revision),/ANNOUNCEMENT_DRAFT_STALE/);
+ const forecast=await updateDraft(777801,"announcement",resumedAnnouncement.revision,
+  "preview",{...resumedAnnouncement.data,kind:"preview",
+   eventAt:new Date(Date.now()+86400000).toISOString()});
+ assert.equal(forecast.data.kind,"preview");
+ assert.equal((await getDraft(777801,"announcement"))?.data.text,"お知らせ本文");
+ console.log("GAYBBS_DB_ANNOUNCEMENT_ONE_SCREEN_DRAFT_RESUME=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
