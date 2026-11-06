@@ -5,6 +5,7 @@ import { registerStartHandler } from "./bot/startHandler.js";
 import { registerMenuHandlers } from "./bot/menuHandlers.js";
 import { registerGateHandlers } from "./bot/gateHandlers.js";
 import { registerTextHandlers } from "./bot/textHandlers.js";
+import { registerProfileHandlers } from "./bot/profileHandlers.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool, pool } from "./db/index.js";
 import * as sessionRepo from "./repositories/sessionRepo.js";
@@ -22,6 +23,7 @@ async function main() {
   registerStartHandler(bot);
   registerGateHandlers(bot);
   registerMenuHandlers(bot);
+  registerProfileHandlers(bot);
   registerTextHandlers(bot);
 
   bot.catch((err: unknown, ctx) => {
@@ -78,7 +80,7 @@ async function main() {
 
   bot.launch({
     dropPendingUpdates: true,
-    allowedUpdates: ["message", "callback_query", "chat_member", "chat_shared"],
+    allowedUpdates: ["message", "callback_query", "chat_member"],
   }).catch((err) => {
     console.error("Bot launch error:", err);
     process.exit(1);
