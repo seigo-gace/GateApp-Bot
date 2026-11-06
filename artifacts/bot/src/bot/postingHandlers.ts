@@ -204,9 +204,16 @@ async function announcementDestinationPicker(telegram:Telegram,userId:number,d:E
 export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
  const existing=await getDraft(userId,"announcement");
  if(existing?.step==="saved"){
-  const resumed=await updateDraft(userId,"announcement",existing.revision,"preview",
-   {...existing.data,savedTemplate:existing.data});
+  const {savedTemplate:_previous,...template}=existing.data;
+  const resumed=await updateDraft(userId,"announcement",existing.revision,
+   String(template.text||"").trim()?"preview":"awaiting_text",
+   {...template,savedTemplate:template});
   await announcementScreen(telegram,userId,resumed);
+  return;
+ }
+ if(existing&&["preview","awaiting_text","awaiting_datetime"].includes(existing.step)&&
+    existing.data.kind!=="recruitment"){
+  await announcementScreen(telegram,userId,existing);
   return;
  }
  const draft=await beginDraft(userId,"announcement","awaiting_text",
