@@ -616,6 +616,34 @@ try{
  assert.equal((await pool.query(
   "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key=$1",
   ["room:"+scheduledRoomId+":started:participant:777004"])).rows[0].n,1);
+ // Exercise actual shared notification delivery with a fake Telegram sender:
+ // one accepted recipient receives a private Bot join button; waiting
+ // recipient receives one DM without a join button or private meeting URL.
+ const acceptedKey="room:"+scheduledRoomId+":started:participant:777004";
+ const waitingKey="room:"+scheduledRoomId+":started:participant:777005";
+ await pool.query(
+  `UPDATE announcement_notifications SET state='sent'
+    WHERE state='pending' AND event_key NOT IN ($1,$2)`,
+  [acceptedKey,waitingKey]);
+ const startDms:Array<{to:number;body:string;opts:unknown}>=[];
+ const notifyBot={sendMessage:async(to:number,body:string,opts:unknown)=>{
+  startDms.push({to,body,opts});return {message_id:22000+startDms.length};
+ }} as unknown as Telegram;
+ process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED="enabled";
+ assert.equal((await deliverNextAnnouncementNotification(notifyBot))?.state,"sent");
+ assert.equal((await deliverNextAnnouncementNotification(notifyBot))?.state,"sent");
+ assert.equal(await deliverNextAnnouncementNotification(notifyBot),null);
+ delete process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED;
+ assert.equal(startDms.length,2);
+ const acceptDm=startDms.find(x=>x.to===777004);
+ const waitDm=startDms.find(x=>x.to===777005);
+ assert.ok(acceptDm);
+ assert.ok(waitDm);
+ assert.match(acceptDm.body,/LIVE中/);
+ assert.match(waitDm.body,/承認待ち/);
+ assert.match(JSON.stringify(acceptDm.opts),/start=j_/);
+ assert.ok(!JSON.stringify(waitDm.opts).includes("start=j_"));
+ assert.ok(!startDms.some(x=>x.body.includes("meet.jit.si")));
  console.log("GAYBBS_DB_ROOM_SCHEDULED_APPROVED_ONE_START_DM=PASS");
  // Six-function shared DM: one text input has exactly one most-recent owner.
  // Older drafts are retained for explicit resume, but cannot steal a reply.
