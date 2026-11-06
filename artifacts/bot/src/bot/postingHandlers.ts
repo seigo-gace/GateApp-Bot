@@ -171,7 +171,8 @@ function announcementPanel(d:EditorDraft):WizardKeyboard{
   [Markup.button.callback(d.data.profileLinked?"✅ 🔗 プロフ連携":"▫️ 🔗 プロフ連携",
     `post:announce:profile:${rev}`),
    Markup.button.callback("📍 投稿先",`post:announce:destination:${rev}`)],
-  [Markup.button.callback("✅ 投稿",`post:announce:publish:${rev}`),
+  [Markup.button.callback("✅ 投稿",typeof d.data.topicId==="number"?
+   `post:publish:announcement:${rev}:${d.data.topicId}`:`post:announce:publish:${rev}`),
    Markup.button.callback("下書き保存",`post:announce:save:${rev}`)],
   [Markup.button.callback("キャンセル",`post:announce:cancel:${rev}`)],
  ]);
@@ -180,8 +181,9 @@ function announcementSummary(d:EditorDraft):string{
  const kind=d.data.kind==="preview"?"preview":"announcement";
  const value=String(d.data.text||"").trim();
  const date=d.data.eventAt?new Date(String(d.data.eventAt)):undefined;
- const message=value?
+ const message=value&&!(kind==="preview"&&!date)?
   buildAnnouncementCard({ownerId:1,kind,text:value,eventAt:date}):
+  value?(kind==="preview"?"📅 予告":"📢 告知")+"\n"+escapeProfileHtml(value)+"\n開催日時：未指定":
   (kind==="preview"?"📅 予告":"📢 告知")+"\n本文を1通で入力してください。";
  return "📢 告知/予告\n"+message+
   "\n投稿先："+(typeof d.data.destinationLabel==="string"?d.data.destinationLabel:"未選択")+
@@ -203,7 +205,7 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number):P
  const existing=await getDraft(userId,"announcement");
  if(existing?.step==="saved"){
   const resumed=await updateDraft(userId,"announcement",existing.revision,"preview",
-   existing.data);
+   {...existing.data,savedTemplate:existing.data});
   await announcementScreen(telegram,userId,resumed);
   return;
  }
@@ -297,6 +299,74 @@ export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("announce",async ctx=>{
   if(!privateDM(ctx))return;
   await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+ });
+ bot.action(/^post:announce:(kind|edit|date|profile|destination|topics|back|publish|save|cancel):(\d+)(?::(announcement|preview))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]);
+  const kindChoice=ctx.match[3];
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!d||d.revision!==rev||!["preview","awaiting_text"].includes(d.step)||
+     d.data.kind==="recruitment"){
+   await ctx.answerCbQuery("古い操作です。/announce から再開してください。");return;
+  }
+  try{
+   if(op==="kind"){
+    if(kindChoice!=="announcement"&&kindChoice!=="preview")throw new Error("ANNOUNCEMENT_KIND_INVALID");
+    const next=await updateDraft(ctx.from.id,"announcement",rev,d.step,{
+     ...d.data,kind:kindChoice,eventAt:kindChoice==="announcement"?null:d.data.eventAt});
+    await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="edit"){
+    const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_text",d.data);
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,next,
+     "📝 告知本文を1通で送信してください。元の入力項目は保持します。",
+     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+      `post:announce:back:${next.revision}`)]]));
+   }else if(op==="date"){
+    const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_datetime",d.data);
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,next,
+     "📅 日時を日本時間で1通送信してください。例：2026/11/20 20:00",
+     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+      `post:announce:back:${next.revision}`)]]));
+   }else if(op==="profile"){
+    if(!d.data.profileLinked&&!await existingPublishedProfileUrl(ctx.from.id)){
+     await ctx.answerCbQuery("利用可能な公開プロフィールがありません。");return;
+    }
+    const next=await updateDraft(ctx.from.id,"announcement",rev,d.step,
+     {...d.data,profileLinked:!d.data.profileLinked});
+    await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="destination"||op==="publish"){
+    if(op==="publish"&&(!String(d.data.text||"").trim()||
+       (d.data.kind==="preview"&&!d.data.eventAt))){
+     await ctx.answerCbQuery("本文と必要な日時を入力してください。");return;
+    }
+    await ctx.answerCbQuery();
+    await announcementDestinationPicker(ctx.telegram,ctx.from.id,d);
+   }else if(op==="topics"){
+    await ctx.answerCbQuery();
+    await destinationMenu(ctx,"announcement",rev);
+   }else if(op==="back"){
+    const next=await updateDraft(ctx.from.id,"announcement",rev,
+     String(d.data.text||"").trim()?"preview":"awaiting_text",d.data);
+    await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="save"){
+    await saveAnnouncementEditorDraft(ctx.from.id,rev);
+    await ctx.answerCbQuery("下書きを保存しました");
+    await ctx.editMessageText("✅ 告知/予告を非公開保存しました。/announce から再開できます。");
+   }else if(op==="cancel"){
+    const old=d.data.savedTemplate;
+    const saved=old&&typeof old==="object"&&!Array.isArray(old)?
+     old as Record<string,unknown>:null;
+    await updateDraft(ctx.from.id,"announcement",rev,saved?"saved":"cancelled",
+     saved??{cancelled:true});
+    await ctx.answerCbQuery("作成をキャンセルしました");
+    await ctx.editMessageText("作成をキャンセルしました。公開済み投稿は変更していません。"+
+     (saved?"\n以前の保存済み下書きは残っています。":""));
+   }
+  }catch{
+   await ctx.answerCbQuery("操作できません。/announce から内容を確認してください。");
+  }
  });
  bot.action(/^post:kind:(\d+):(announcement|preview|recruitment)$/,async ctx=>{
   if(!privateDM(ctx))return;
