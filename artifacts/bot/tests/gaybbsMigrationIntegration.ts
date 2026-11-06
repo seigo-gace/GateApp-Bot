@@ -642,7 +642,7 @@ try{
  assert.match(acceptDm.body,/LIVE中/);
  assert.match(waitDm.body,/承認待ち/);
  assert.match(JSON.stringify(acceptDm.opts),/start=j_/);
- assert.ok(!JSON.stringify(waitDm.opts).includes("start=j_"));
+ assert.ok(!JSON.stringify(waitDm.opts??null).includes("start=j_"));
  assert.ok(!startDms.some(x=>x.body.includes("meet.jit.si")));
  // Host reminder is one-time at the due time; it must not start
  // the meeting, notify applicants again, or reveal the join URL.
