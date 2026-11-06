@@ -2,6 +2,8 @@
  * claimed event. Unknown outcomes NEVER go back to pending automatically.
  */
 import type {Telegram} from "telegraf";
+import {Markup} from "telegraf";
+import {roomJoinUrl} from "./roomJoinLinks.js";
 import {pool} from "../db/index.js";
 
 type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number;applicationStatus?:string};
@@ -59,8 +61,24 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
   const userId=Number(row.recipient_user_id);
   if(!Number.isSafeInteger(userId)||userId<=0)
    throw new Error("NOTIFICATION_USER_INVALID");
-  const message=renderAnnouncementNotification(row.payload as EventPayload);
-  await telegram.sendMessage(userId,message);
+  const payload=row.payload as EventPayload;
+  const message=renderAnnouncementNotification(payload);
+  // A start DM can offer the same authenticated Bot deep-link used in the
+  // public card. Never attach it to a pending/held applicant's message.
+  let keyboard:ReturnType<typeof Markup.inlineKeyboard>|undefined;
+  if(payload.kind==="started"&&payload.applicationStatus==="accepted"&&
+     Number.isSafeInteger(payload.roomId)&&Number(payload.roomId)>0){
+   const join=await pool.query(
+    `SELECT j.token FROM room_join_links j
+       JOIN room_posts r ON r.room_id=j.room_id
+      WHERE j.room_id=$1 AND j.enabled=TRUE AND r.status='live'`,
+    [payload.roomId]);
+   if(join.rows.length!==1)throw new Error("ROOM_JOIN_BUTTON_NOT_READY");
+   keyboard=Markup.inlineKeyboard([
+    [Markup.button.url("🎥 ROOMに参加する",roomJoinUrl(String(join.rows[0].token)))]
+   ]);
+  }
+  await telegram.sendMessage(userId,message,keyboard);
   const ack=await pool.query(
    `UPDATE announcement_notifications SET state='sent',sent_at=NOW()
      WHERE notification_id=$1 AND state='sending' RETURNING notification_id`,[id]);
