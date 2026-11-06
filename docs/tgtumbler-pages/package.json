@@ -1,0 +1,15 @@
+{
+  "name": "@tgtumbler/pages-docs",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TGtumbler policy docs for Cloudflare Pages (static).",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "verify": "node build.mjs && test -f dist/index.html",
+    "deploy": "node build.mjs && wrangler pages deploy dist --project-name=${CLOUDFLARE_PAGES_PROJECT_NAME:-tgtumbler-docs}"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
+  }
+}

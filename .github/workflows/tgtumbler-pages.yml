@@ -1,0 +1,75 @@
+# TGtumbler docs → Cloudflare Pages (wrangler deploy from GitHub Actions).
+#
+# Repo secret (required): CLOUDFLARE_API_TOKEN
+#   Create: Cloudflare Dashboard → My Profile → API Tokens → Create Token → Templates →
+#   "Edit Cloudflare Workers" OR custom with Account · Cloudflare Pages · Edit (and Zone · DNS · Read if attaching custom domain later).
+#
+# Repo secret (optional): CLOUDFLARE_ACCOUNT_ID — Dashboard right sidebar "Account ID" copy/paste.
+#
+# Repo variable (optional): CLOUDFLARE_PAGES_PROJECT_NAME — default tgtumbler-docs (wrangler creates project on first deploy).
+#
+# hentaigay.org: Pages project → Custom domains (after Master approves public). Do not change other projects' zones from here.
+name: tgtumbler-pages
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/tgtumbler-pages/**'
+      - '.github/workflows/tgtumbler-pages.yml'
+  pull_request:
+    paths:
+      - 'docs/tgtumbler-pages/**'
+      - '.github/workflows/tgtumbler-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: docs/tgtumbler-pages
+        run: npm ci
+
+      - name: Build static site
+        working-directory: docs/tgtumbler-pages
+        run: npm run build
+
+      - name: Verify output
+        working-directory: docs/tgtumbler-pages
+        run: test -f dist/index.html && test -f dist/guidelines.html
+
+  deploy:
+    needs: build
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && secrets.CLOUDFLARE_API_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: docs/tgtumbler-pages
+        run: npm ci
+
+      - name: Build and deploy to Cloudflare Pages
+        working-directory: docs/tgtumbler-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+        run: |
+          npm run build
+          PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT_NAME:-tgtumbler-docs}"
+          npx wrangler pages deploy dist --project-name="$PROJECT_NAME"
