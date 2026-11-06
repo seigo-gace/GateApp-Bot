@@ -6,7 +6,7 @@ import {runMigrations} from "../src/db/migrate.js";
 import {pool,closePool} from "../src/db/index.js";
 import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
 import {updateRoomState,updateRoomDetails,changeRoomVisibility} from "../src/services/roomLifecycle.js";
-import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
+import {projectNextRoomEvent,enqueueDueRoomStartReminders} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
@@ -644,6 +644,28 @@ try{
  assert.match(JSON.stringify(acceptDm.opts),/start=j_/);
  assert.ok(!JSON.stringify(waitDm.opts).includes("start=j_"));
  assert.ok(!startDms.some(x=>x.body.includes("meet.jit.si")));
+ // Host reminder is one-time at the due time; it must not start
+ // the meeting, notify applicants again, or reveal the join URL.
+ const due=await pool.query(
+  `INSERT INTO room_posts(request_key,owner_user_id,title,description,mode,join_url,status,start_at)
+   VALUES('db-due-reminder',777006,'開始確認','開始ボタン待ち','jitsi',
+    'https://meet.jit.si/PRIVATE_DUE','scheduled',NOW()-INTERVAL '1 minute')
+   RETURNING room_id`);
+ const dueRoomId=Number(due.rows[0].room_id);
+ const dueAnn=await createAnnouncement(777006,78,"recruitment",
+  "開始確認\n開始ボタン待ち",undefined,[],[],dueRoomId);
+ await pool.query("UPDATE announcement_posts SET status='published' WHERE announcement_id=$1",
+  [dueAnn.sourceId]);
+ const dueCount=await enqueueDueRoomStartReminders();
+ assert.ok(dueCount>=1);
+ assert.equal(await enqueueDueRoomStartReminders(),0);
+ assert.equal((await pool.query("SELECT status FROM room_posts WHERE room_id=$1",
+  [dueRoomId])).rows[0].status,"scheduled");
+ const reminder=await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key LIKE $1",
+  ["room:"+dueRoomId+":due:%"]);
+ assert.equal(reminder.rows[0].n,1);
+ console.log("GAYBBS_DB_ROOM_DUE_REMINDER_ONCE_NO_AUTOSTART=PASS");
  console.log("GAYBBS_DB_ROOM_SCHEDULED_APPROVED_ONE_START_DM=PASS");
  // Six-function shared DM: one text input has exactly one most-recent owner.
  // Older drafts are retained for explicit resume, but cannot steal a reply.
