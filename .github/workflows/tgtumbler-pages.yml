@@ -50,9 +50,7 @@ jobs:
   deploy:
     needs: build
     # Do not use `secrets.*` in job-level `if` (breaks workflow parsing).
-    if: |
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
-      || github.event_name == 'workflow_dispatch'
+    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,7 +65,7 @@ jobs:
         run: npm ci
 
       - name: Build and deploy to Cloudflare Pages
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
         working-directory: docs/tgtumbler-pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -78,6 +76,6 @@ jobs:
           PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT_NAME:-tgtumbler-docs}"
           npx wrangler pages deploy dist --project-name="$PROJECT_NAME"
 
-      - name: Skip deploy (missing CLOUDFLARE_API_TOKEN)
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' }}
-        run: echo 'CLOUDFLARE_API_TOKEN not set — build-only; add secret to enable wrangler pages deploy.'
+      - name: Skip deploy (missing CLOUDFLARE_API_TOKEN or not production branch)
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' || (github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master') }}
+        run: echo 'CLOUDFLARE_API_TOKEN not set or non-production ref — build-only; add secret and push to main/master to enable wrangler pages deploy.'
