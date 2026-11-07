@@ -11,9 +11,12 @@ const links = {
  rules: "https://example.org/rules",
 };
 
-test("approved exact two questions and separate group rule remain unchanged", () => {
+test("Bot challenge followed by eligibility including noncommercial intent, terms, and third group-rule consent", () => {
  assert.equal(APPROVAL_QUESTIONS.length, 2);
  assert.match(APPROVAL_QUESTIONS[0]!.text, /18歳以上/);
+ assert.match(APPROVAL_QUESTIONS[0]!.text, /男性と性的関係/);
+ assert.match(APPROVAL_QUESTIONS[0]!.text, /商用目的/);
+ assert.match(APPROVAL_QUESTIONS[1]!.title, /規約・規則/);
  assert.match(APPROVAL_QUESTIONS[1]!.text, /Privacy Policy/);
  assert.match(RULES_CONSENT_QUESTION, /グループルール/);
  assert.match(RULES_CONSENT_QUESTION, /過激な表現/);
