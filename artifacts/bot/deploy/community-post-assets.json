@@ -38,9 +38,10 @@
       },
       "approved_introduction_source": "Existing adopted TGtumbler community description/Notion minutes; not reproduced without source readback",
       "publication": {
-        "status": "not_verified",
-        "chat_id": null,
-        "message_id": null
+        "status": "published",
+        "chat_id": "-1003847210571",
+        "message_id": 1024,
+        "updated_at": "2026-11-07T14:45:56.681951+00:00"
       }
     },
     {
@@ -64,9 +65,10 @@
       },
       "approved_introduction_source": "Existing adopted TGtumbler community description/Notion minutes; not reproduced without source readback",
       "publication": {
-        "status": "not_verified",
-        "chat_id": null,
-        "message_id": null
+        "status": "published",
+        "chat_id": "-1002373696859",
+        "message_id": 4507,
+        "updated_at": "2026-11-07T14:46:03.046844+00:00"
       }
     },
     {
@@ -90,9 +92,10 @@
       },
       "approved_introduction_source": "Existing adopted TGtumbler community description/Notion minutes; not reproduced without source readback",
       "publication": {
-        "status": "not_verified",
-        "chat_id": null,
-        "message_id": null
+        "status": "published",
+        "chat_id": "-1003770334893",
+        "message_id": 1015,
+        "updated_at": "2026-11-07T14:46:09.572197+00:00"
       }
     }
   ]
