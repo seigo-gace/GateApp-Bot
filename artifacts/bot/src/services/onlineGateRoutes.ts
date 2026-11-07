@@ -5,7 +5,7 @@
  */
 import {randomBytes,createHash} from "node:crypto";
 import {pool} from "../db/index.js";
-import {ONLINE_HISTORICAL_TARGETS} from "./onlineRoomBoard.js";
+import {ONLINE_HISTORICAL_TARGETS,ONLINE_TOPIC_LEDGER_URL} from "./onlineRoomBoard.js";
 import type {OnlineGateLink} from "./onlineRoomBoard.js";
 export type OnlineRoomGroup=OnlineGateLink["group"];
 export const ONLINE_GROUPS={
@@ -13,6 +13,12 @@ export const ONLINE_GROUPS={
  video_chat:{chatId:-1002373696859,topicUrl:ONLINE_HISTORICAL_TARGETS.video_chat},
  gay_board:{chatId:-1003770334893,topicUrl:ONLINE_HISTORICAL_TARGETS.gay_board},
 } as const;
+/** Cross-group community-link destination: Area's BBS ONLINE topic (not ROOM B/C/D). */
+export const ONLINE_HUB={
+ cardKey:"online_hub" as const,
+ chatId:-1003847210571,
+ topicUrl:ONLINE_TOPIC_LEDGER_URL,
+};
 
 const isGroup=(x:string):x is OnlineRoomGroup=>
  Object.prototype.hasOwnProperty.call(ONLINE_GROUPS,x);
@@ -25,7 +31,14 @@ export function requireOnlineBotUsername(value:string):string{
   throw new Error("ONLINE_GATE_IDENTITY_UNVERIFIED");
  return value;
 }
-export type OnlineRoute={key:OnlineRoomGroup;chatId:number;topicUrl:string;targetId:number};
+export type OnlineRouteKey=OnlineRoomGroup|typeof ONLINE_HUB.cardKey;
+export type OnlineRoute={key:OnlineRouteKey;chatId:number;topicUrl:string;targetId:number};
+
+function expectedRoute(cardKey:string):{chatId:number;topicUrl:string}|null{
+ if(cardKey===ONLINE_HUB.cardKey)return ONLINE_HUB;
+ if(isGroup(cardKey))return ONLINE_GROUPS[cardKey];
+ return null;
+}
 
 /** Prep command for Composer after verifying Bot Identity and targets.
  * Never rotate an active public token implicitly; revoked links require
@@ -81,20 +94,20 @@ export async function resolveOnlineGatePayload(payload:string):Promise<OnlineRou
    WHERE token_hash=$1 AND enabled=TRUE`,[hash(payload)]);
  if(r.rows.length!==1)return null;
  const x=r.rows[0];
- if(!isGroup(String(x.card_key)))return null;
- const key=x.card_key as OnlineRoomGroup,expected=ONLINE_GROUPS[key];
- if(Number(x.chat_id)!==expected.chatId||x.topic_url!==expected.topicUrl)return null;
+ const key=String(x.card_key);
+ const expected=expectedRoute(key);
+ if(!expected||Number(x.chat_id)!==expected.chatId||x.topic_url!==expected.topicUrl)return null;
  const targets=await pool.query(
   `SELECT target_id FROM targets WHERE chat_id=$1 AND target_type='entry_group'`,
   [expected.chatId]);
  if(targets.rows.length!==1)return null;
- return {key,chatId:expected.chatId,topicUrl:expected.topicUrl,
+ return {key:key as OnlineRouteKey,chatId:expected.chatId,topicUrl:expected.topicUrl,
   targetId:Number(targets.rows[0].target_id)};
 }
 export async function rememberOnlineGateDestination(userId:number,route:OnlineRoute):Promise<void>{
  if(!Number.isSafeInteger(userId)||userId<=0)throw new Error("ONLINE_USER_ID_INVALID");
- const expected=ONLINE_GROUPS[route.key];
- if(expected.chatId!==route.chatId||expected.topicUrl!==route.topicUrl)
+ const expected=expectedRoute(route.key);
+ if(!expected||expected.chatId!==route.chatId||expected.topicUrl!==route.topicUrl)
   throw new Error("ONLINE_ROUTE_DESTINATION_MISMATCH");
  await pool.query(
   `INSERT INTO online_gate_sessions(tg_user_id,card_key,target_id)
@@ -110,12 +123,12 @@ export async function recallOnlineGateDestination(userId:number):Promise<OnlineR
    WHERE s.tg_user_id=$1`,[userId]);
  if(s.rows.length!==1||s.rows[0].enabled!==true)return null;
  const x=s.rows[0];
- if(!isGroup(String(x.card_key)))return null;
- const key=x.card_key as OnlineRoomGroup, expected=ONLINE_GROUPS[key];
- if(Number(x.chat_id)!==expected.chatId||x.topic_url!==expected.topicUrl)return null;
+ const key=String(x.card_key);
+ const expected=expectedRoute(key);
+ if(!expected||Number(x.chat_id)!==expected.chatId||x.topic_url!==expected.topicUrl)return null;
  const t=await pool.query(
   `SELECT target_id FROM targets WHERE chat_id=$1 AND target_type='entry_group'`,[expected.chatId]);
  if(t.rows.length!==1||Number(t.rows[0].target_id)!==Number(x.target_id))
   return null;
- return {key,targetId:Number(x.target_id),chatId:expected.chatId,topicUrl:expected.topicUrl};
+ return {key:key as OnlineRouteKey,targetId:Number(x.target_id),chatId:expected.chatId,topicUrl:expected.topicUrl};
 }

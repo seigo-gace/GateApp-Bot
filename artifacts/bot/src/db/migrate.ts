@@ -532,7 +532,7 @@ export async function runMigrations(): Promise<void> {
         host_chat_id BIGINT NOT NULL,
         message_thread_id BIGINT NOT NULL,
         promoted_board_key TEXT NOT NULL
-          CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board')),
+          CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board','online_hub')),
         message_id BIGINT,
         media_file_id TEXT,
         image_repo_path TEXT NOT NULL,
@@ -584,7 +584,7 @@ export async function runMigrations(): Promise<void> {
         UNIQUE(set_id,message_id)
       );
       CREATE TABLE IF NOT EXISTS online_gate_routes (
-        card_key TEXT PRIMARY KEY CHECK(card_key IN ('area_bbs','video_chat','gay_board')),
+        card_key TEXT PRIMARY KEY CHECK(card_key IN ('area_bbs','video_chat','gay_board','online_hub')),
         token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
         start_url TEXT NOT NULL CHECK(start_url LIKE 'https://t.me/%?start=online_%'),
         chat_id BIGINT NOT NULL,

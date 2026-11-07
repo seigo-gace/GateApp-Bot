@@ -37,9 +37,11 @@ export async function deliverOnlineDestination(
 ):Promise<boolean>{
  const member=await onlineMembership(telegram,route.chatId,userId);
  if(member!=="member")return false;
+ const hub=route.key==="online_hub";
  await telegram.sendMessage(userId,
-  "✅ 参加中のグループを確認しました。下のボタンから目的のROOM関連トピックへ進めます。",
-  Markup.inlineKeyboard([[Markup.button.url("🎬 ROOM掲示板へ",route.topicUrl)]]));
+  hub?"✅ 参加中のグループを確認しました。下のボタンからオンラインビデオChat案内へ進めます。"
+  :"✅ 参加中のグループを確認しました。下のボタンから目的のROOM関連トピックへ進めます。",
+  Markup.inlineKeyboard([[Markup.button.url(hub?"🔗 オンライン案内へ":"🎬 ROOM掲示板へ",route.topicUrl)]]));
  return true;
 }
 export async function handleOnlineGateStart(
