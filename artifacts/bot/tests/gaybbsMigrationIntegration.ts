@@ -881,12 +881,12 @@ try{
  assert.equal(sr.hits[0].title,"公開者");
  assert.equal(sr.hits[0].url,"https://t.me/c/3847210571/881775");
  assert.equal((await findPublicSearchHits({...s2.filters,region:"北海道"},0)).hits.length,0);
- const recruitment=await pool.query(
+ const searchRecruitment=await pool.query(
   `INSERT INTO announcement_posts
      (request_key,owner_user_id,kind,text,status,purpose_codes,area_code)
    VALUES('search-recruit-1',881774,'recruitment','今夜の公開募集','published',
      ARRAY['飲み/飯'],'東京') RETURNING announcement_id`);
- const recruitmentId=String(recruitment.rows[0].announcement_id);
+ const searchRecruitmentId=String(searchRecruitment.rows[0].announcement_id);
  const searchTopic=await pool.query(
   `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,
     verified_by,verified_at,enabled)
@@ -897,7 +897,7 @@ try{
     (source_type,source_id,owner_user_id,source_revision,
      posting_topic_id,operation_key,status,telegram_message_id)
    VALUES('announcement',$1,881774,1,$2,'search-recruit-1','sent',881777)`,
-  [recruitmentId,searchTopic.rows[0].topic_id]);
+  [searchRecruitmentId,searchTopic.rows[0].topic_id]);
  const rr=await findPublicSearchHits({...initialSearchFilters(),
   kind:"recruitment",keyword:"公開募集",region:"東京",purpose:"飲み/飯"},0);
  assert.equal(rr.hits.length,1);
