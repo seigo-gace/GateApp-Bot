@@ -6,6 +6,7 @@ import type { Telegram } from "telegraf";
 import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
 import {guideMessageUrl} from "../bot/generalGuideHandlers.js";
+import {GUIDE_DOCUMENT_TYPES} from "./generalGuideLinkCandidates.js";
 import {newMenuToken,tokenHash,type MenuFeature} from "./menuOrigin.js";
 import {renderMenuPanel,type NavLink,type EntryLink} from "./menuPanelRenderer.js";
 type PanelRow={
@@ -43,12 +44,23 @@ async function buildLinks(panel:PanelRow):Promise<{
    links.push({label:target.label,
     url:guideMessageUrl(target.chat,Number(found[0].message_id)),verified:true});
   }
+  // Four independently published documents already have authoritative
+  // message IDs. Keep "規則" separate: never alias it to "ルール".
+  const docs=await pool.query(
+   `SELECT document_type,message_id FROM general_guide_documents
+    WHERE chat_id=$1 AND status='published' AND message_id IS NOT NULL
+      AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,[chatId]);
+  for(const [label,type] of Object.entries(GUIDE_DOCUMENT_TYPES)){
+   const found=docs.rows.filter(r=>r.document_type===type);
+   if(found.length!==1)throw new Error("GUIDE_DOCUMENT_NOT_PUBLISHED:"+label);
+   links.push({label,url:guideMessageUrl(chatId,Number(found[0].message_id)),
+    verified:true});
+  }
   const other=await pool.query(
    `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
      AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
      AND label IN ('お知らせ','雑談','みんなのプロフ',
-                   '検索/フィルター','使い方','リンク',
-                   '規約','規則','ルール','ガイドライン')`,[chatId]);
+                   '検索/フィルター','リンク','規則')`,[chatId]);
   links.push(...other.rows.map(r=>({label:r.label,url:r.destination_url,verified:true})));
   // renderApprovedLinks rejects missing, duplicate or unknown destinations.
   return {links,entries:[]};
