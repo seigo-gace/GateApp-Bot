@@ -176,3 +176,20 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - 既存Postgres Migration: `db/migrate.ts`。テストは `tests/roomLifecycle.test.ts` / `tests/roomPostStatus.test.ts` / `tests/postingDomain.test.ts` / `tests/announcementNotifications.test.ts` / `tests/gaybbsMigrationIntegration.ts`。
 
 **完成境界**：Source/CIは該当HEADに紐付く成功Runで判断。実Bot配備、Gserver、3グループの本番Topic IDsと書込権限、iOS/Android等の入退室実機E2E、明示feature-release gateは別に未検証のため、Source/CI PASSだけで公開済みとは扱わない。新たなBot起動・Worker有効化・PR mergeや本番送信は行わない。直前のROOM v2にあった同グループビデオChat Topic固定や準備報告必須等の旧仕様は、今回のMaster最新決定によりROOM UIでは変更対象（履歴は保存）。
+
+## 2026-11-08 Master最新確定｜総合案内は返信キーボード・3/3/3/4の13ボタン
+
+この節は旧「総合案内2×6・12ボタン」について**最新の明示変更**。旧節は履歴として保持。変更対象は総合案内のみ。投稿メニュー・操作説明メニュー・トピック一覧本文は変更しない。
+
+Telegramメッセージ入力欄の**ReplyKeyboardMarkup**に次の**正確な文言と行配列**を使用する。見かけ上のInlineKeyboardで置き換えない。文字・省略・同義語変換・勝手な結合を禁止。
+
+1. [お知らせ] [雑談] [みんなのプロフ]
+2. [全国ボード] [カテゴリーボード] [ビデオ/動画]
+3. [検索/フィルター] [使い方] [リンク]
+4. [規約] [規則] [ルール] [ガイドライン]
+
+計13ボタン、行数4、3/3/3/4。4段目の「規約」「規則」「ルール」「ガイドライン」は**別々の4ボタン**として保持し、接続先も確定データがあるものだけ設定する。「総合案内」「雑談」「コミュニティリンク」はトピック一覧本文へ重複掲載しない（ただし「雑談」「リンク」は総合案内のボタンに存在する）。
+
+ReplyKeyboardMarkupのボタンはURLボタンではなく、押すと通常のテキストメッセージを送信する。Botは押された文言とchat/user/実topicを照合し、検証済みのリンク先へ案内する。不要な入力メッセージは削除を試行する。返信キーボードを特定のforum topicにだけ確実に限定できるとはみなさず、実Telegramで表示・他Topicへの干渉を確認する。該当制約を理由に勝手にInlineKeyboardへ仕様変更してはいけない。実運用で不可能なことが判明した場合は事実と代替案を記録し、Masterの判断を受ける。
+
+既存Bot投稿は勝手に削除せず、実Telegram/台帳の相違を解消し、既存12ボタン版の残存と誤操作を防ぐ。公開・配備・実機確認前のSource/CI合格を完成扱いしない。
