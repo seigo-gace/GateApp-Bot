@@ -133,6 +133,51 @@ export async function runMigrations(): Promise<void> {
         PRIMARY KEY(chat_id,link_key),
         CHECK(NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
       );
+      CREATE TABLE IF NOT EXISTS topic_board_posts (
+        board_key TEXT PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        message_id BIGINT CHECK(message_id > 0),
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK(state IN ('verified','publishing','published','needs_reconcile')),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE topic_board_posts
+        ADD COLUMN IF NOT EXISTS approved_scope_text TEXT;
+      ALTER TABLE topic_board_posts
+        ADD COLUMN IF NOT EXISTS scope_approved_by BIGINT;
+      ALTER TABLE topic_board_posts
+        ADD COLUMN IF NOT EXISTS scope_approved_at TIMESTAMPTZ;
+      CREATE TABLE IF NOT EXISTS online_room_board_sets (
+        set_id BIGSERIAL PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id = -1003847210571),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        revision INTEGER NOT NULL DEFAULT 1,
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK(state IN ('verified','publishing','published','needs_reconcile')),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(chat_id,message_thread_id)
+      );
+      CREATE TABLE IF NOT EXISTS online_room_board_cards (
+        set_id BIGINT NOT NULL REFERENCES online_room_board_sets(set_id),
+        card_key TEXT NOT NULL CHECK(card_key IN ('intro','area_bbs','video_chat','gay_board')),
+        message_id BIGINT NOT NULL CHECK(message_id > 0),
+        published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(set_id,card_key),
+        UNIQUE(set_id,message_id)
+      );
+      CREATE TABLE IF NOT EXISTS topic_board_area_links (
+        block_name TEXT NOT NULL,
+        area_name TEXT NOT NULL,
+        target_url TEXT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(block_name,area_name)
+      );
       CREATE TABLE IF NOT EXISTS board_menu_panels (
         panel_id BIGSERIAL PRIMARY KEY,
         chat_id BIGINT NOT NULL CHECK(chat_id < 0),
@@ -502,6 +547,14 @@ export async function runMigrations(): Promise<void> {
 
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
+
+      CREATE TABLE IF NOT EXISTS area_legacy_reply_keyboard_removals (
+        chat_id BIGINT PRIMARY KEY,
+        message_thread_id BIGINT NOT NULL,
+        message_id BIGINT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
 
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,

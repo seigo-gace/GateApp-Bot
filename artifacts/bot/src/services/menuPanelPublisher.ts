@@ -6,6 +6,7 @@ import type { Telegram } from "telegraf";
 import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
 import {guideMessageUrl} from "../bot/generalGuideHandlers.js";
+import {GUIDE_DOCUMENT_TYPES} from "./generalGuideLinkCandidates.js";
 import {newMenuToken,tokenHash,type MenuFeature} from "./menuOrigin.js";
 import {renderMenuPanel,type NavLink,type EntryLink} from "./menuPanelRenderer.js";
 type PanelRow={
@@ -25,25 +26,43 @@ async function buildLinks(panel:PanelRow):Promise<{
 }>{
  const chatId=Number(panel.chat_id);
  if(panel.panel_type==="general_guide"){
+  // Master-final 13 inline buttons, exact 3/3/3/4 layout.
+  // No legal/rule labels are merged or renamed.
+  const links:NavLink[]=[];
+  const boardRows=await pool.query(
+   `SELECT board_key,chat_id,message_id FROM topic_board_posts
+    WHERE board_key IN ('national','category','video')
+      AND state='published' AND message_id IS NOT NULL`);
+  for(const target of [
+   {key:"national",label:"全国ボード",chat:-1003847210571},
+   {key:"category",label:"カテゴリーボード",chat:-1003770334893},
+   {key:"video",label:"ビデオ/動画",chat:-1002373696859},
+  ]){
+   const found=boardRows.rows.filter(r=>r.board_key===target.key);
+   if(found.length!==1||Number(found[0].chat_id)!==target.chat)
+    throw new Error("TOPIC_BOARD_NOT_PUBLISHED:"+target.key);
+   links.push({label:target.label,
+    url:guideMessageUrl(target.chat,Number(found[0].message_id)),verified:true});
+  }
+  // Four independently published documents already have authoritative
+  // message IDs. Keep "規則" separate: never alias it to "ルール".
   const docs=await pool.query(
    `SELECT document_type,message_id FROM general_guide_documents
     WHERE chat_id=$1 AND status='published' AND message_id IS NOT NULL
-    AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,[chatId]);
-  const labels:Record<string,string>={terms:"🛡 利用規約",rules:"📖 グループルール",
-   safety:"🛡 安全ガイドライン",privacy:"🔐 プライバシー",howto:"📋 使い方"};
-  const must=["terms","rules","safety","privacy","howto"];
-  if(must.some(name=>!docs.rows.some(r=>r.document_type===name)))
-   throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
-  const links:NavLink[]=must.map(name=>{
-   const row=docs.rows.find(r=>r.document_type===name);
-   return {label:labels[name]!,url:guideMessageUrl(chatId,Number(row.message_id)),
-    verified:true};
-  });
+      AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,[chatId]);
+  for(const [label,type] of Object.entries(GUIDE_DOCUMENT_TYPES)){
+   const found=docs.rows.filter(r=>r.document_type===type);
+   if(found.length!==1)throw new Error("GUIDE_DOCUMENT_NOT_PUBLISHED:"+label);
+   links.push({label,url:guideMessageUrl(chatId,Number(found[0].message_id)),
+    verified:true});
+  }
   const other=await pool.query(
    `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
      AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
-     ORDER BY link_key`,[chatId]);
+     AND label IN ('お知らせ','雑談','みんなのプロフ',
+                   '検索/フィルター','リンク','規則')`,[chatId]);
   links.push(...other.rows.map(r=>({label:r.label,url:r.destination_url,verified:true})));
+  // renderApprovedLinks rejects missing, duplicate or unknown destinations.
   return {links,entries:[]};
  }
  const gates=await pool.query(

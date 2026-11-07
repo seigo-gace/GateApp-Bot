@@ -1,0 +1,15 @@
+{
+  "schema": "tgtumbler.area-keyboard-removal/v1",
+  "chat_id": -1003847210571,
+  "bot": "@GayBBS_bot",
+  "status": "removed",
+  "message_id": 1123,
+  "message_thread_id": 0,
+  "url": "https://t.me/c/3847210571/1123",
+  "reply_markup": {
+    "remove_keyboard": true,
+    "selective": false
+  },
+  "ledger": "area_legacy_reply_keyboard_removals",
+  "note": "general_guide_topics still holds bootstrap placeholder thread_id=1; removal posted to forum General because thread 1 is invalid on Telegram."
+}

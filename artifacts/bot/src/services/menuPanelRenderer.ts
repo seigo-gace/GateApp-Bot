@@ -31,7 +31,7 @@ export type AreaBlockBoardSpec={
  chatLink:NavLink;
  backLink:NavLink;
 };
-/** L1 navigation only: region destinations, search, common talk, and L0 back.
+/** L1 navigation only: region destinations in three columns (Master 2026-11-08),\n * search, common talk, and L0 back.
  * Profile and ROOM creation belong to L2 posting menus / their Bot DM.
  * Search/Filter are read-only entrypoints, never post-editor actions.
  */
@@ -56,7 +56,7 @@ export function renderAreaBlockBoard(spec:AreaBlockBoardSpec):RenderedPanel{
  return {
   text:spec.blockTitle+"\\n"+spec.description,
   rows:[
-   ...packButtonRows(regions,2),
+   ...packButtonRows(regions,3),
    [search,filter],
    [chat,back],
   ],
@@ -86,12 +86,10 @@ export const APPROVED_POSTING_ROWS = [
  ["雑談","紹介/招待","操作説明"],
 ] as const;
 export const APPROVED_GUIDE_ROWS = [
- ["お知らせ","フリートーク/雑談"],
- ["全国エリアボード","カテゴリーボード"],
- ["ビデオチャット/動画","検索/フィルター"],
- ["みんなのプロフ","コミュニティリンク"],
- ["グループルール","使い方"],
- ["安全ガイド","利用規約"],
+ ["お知らせ","雑談","みんなのプロフ"],
+ ["全国ボード","カテゴリーボード","ビデオ/動画"],
+ ["検索/フィルター","使い方","リンク"],
+ ["規約","規則","ルール","ガイドライン"],
 ] as const;
 export const APPROVED_HELP_ROWS = [
  ["プロフ","Room+募集","告知/予告"],
@@ -126,7 +124,7 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
   throw new Error("PANEL_BOARD_INVALID");
  if(spec.type==="general_guide"){
   if(spec.entryLinks.length)throw new Error("GUIDE_EDITOR_ENTRY_FORBIDDEN");
-  return {text:"📌 総合案内\\n各ボタンから案内やトピックへ移動できます。",
+  return {text:"📌 総合案内\n各ボタンから案内やトピックへ移動できます。",
    rows:renderApprovedLinks("general_guide",spec.links)};
  }
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");

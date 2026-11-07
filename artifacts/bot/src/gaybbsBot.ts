@@ -13,6 +13,7 @@ import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
+import { registerTopicBoardHandlers } from "./bot/topicBoardHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
 import {resolveRoomJoinLink} from "./services/roomJoinLinks.js";
@@ -92,6 +93,7 @@ async function main():Promise<void>{
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
  registerMenuPanelHandlers(bot);
+ registerTopicBoardHandlers(bot);
  registerApplicationHandlers(bot);
  registerRoomHandlers(bot);
  bot.catch((error,ctx)=>{

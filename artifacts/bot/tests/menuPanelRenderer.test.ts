@@ -17,11 +17,12 @@ test("Master-approved posting rows remain exactly 3/1/2/3, without profile or fi
  assert.deepEqual(result.rows.map(r=>r.length),[3,1,2,3]);
  assert.ok(!result.rows.flat().some(x=>x.text.includes("プロフ")));
 });
-test("Master-approved general-guide rows remain exactly six pairs",()=>{
+test("Master-approved general-guide post buttons remain exactly 13 in 3/3/3/4",()=>{
  const result=renderMenuPanel({type:"general_guide",board:"gay_board",
   links:makeLinks(APPROVED_GUIDE_ROWS),entryLinks:[]});
  assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_GUIDE_ROWS.map(r=>[...r]));
- assert.deepEqual(result.rows.map(r=>r.length),[2,2,2,2,2,2]);
+ assert.deepEqual(result.rows.map(r=>r.length),[3,3,3,4]);
+ assert.equal(result.rows.flat().length,13);
 });
 test("Master-approved help rows remain exactly two rows of three",()=>{
  const rows=renderApprovedLinks("operation_help",makeLinks(APPROVED_HELP_ROWS));
@@ -43,7 +44,7 @@ test("publishing incomplete or unverified menu is rejected, not auto-padded",()=
 test("guide requires published official links and rejects guessed ones",()=>{
  const links=makeLinks(APPROVED_GUIDE_ROWS);
  assert.throws(()=>renderMenuPanel({type:"general_guide",board:"area_bbs",
-  links:[...links.slice(0,11),{...links[11]!,url:"https://example.com"}],entryLinks:[]}),/NOT_VERIFIED/);
+  links:[...links.slice(0,12),{...links[12]!,url:"https://example.com"}],entryLinks:[]}),/NOT_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"general_guide",board:"area_bbs",
   links,entryLinks:[{feature:"profile",url:"https://t.me/GayBBS_bot",ready:true}]}),/FORBIDDEN/);
 });
@@ -53,6 +54,6 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
   areaLinks:[link("東京",101),link("大阪",102),link("福岡",103)],
   searchLink:link("検索",104),filterLink:link("フィルター",105),
   chatLink:link("雑談",106),backLink:link("戻る",107)});
- assert.deepEqual(result.rows.map(row=>row.length),[2,1,2,2]);
+ assert.deepEqual(result.rows.map(row=>row.length),[3,2,2]);
  assert.deepEqual(result.rows.at(-2)?.map(x=>x.text),["検索","フィルター"]);
 });

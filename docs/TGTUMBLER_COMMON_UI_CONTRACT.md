@@ -176,3 +176,41 @@ Master決定：③はTelegram通常入力欄へ画像・動画・自己PRを送�
 - 既存Postgres Migration: `db/migrate.ts`。テストは `tests/roomLifecycle.test.ts` / `tests/roomPostStatus.test.ts` / `tests/postingDomain.test.ts` / `tests/announcementNotifications.test.ts` / `tests/gaybbsMigrationIntegration.ts`。
 
 **完成境界**：Source/CIは該当HEADに紐付く成功Runで判断。実Bot配備、Gserver、3グループの本番Topic IDsと書込権限、iOS/Android等の入退室実機E2E、明示feature-release gateは別に未検証のため、Source/CI PASSだけで公開済みとは扱わない。新たなBot起動・Worker有効化・PR mergeや本番送信は行わない。直前のROOM v2にあった同グループビデオChat Topic固定や準備報告必須等の旧仕様は、今回のMaster最新決定によりROOM UIでは変更対象（履歴は保存）。
+
+## 2026-11-08 Master最新確定｜総合案内は返信キーボード・3/3/3/4の13ボタン
+
+この節は旧「総合案内2×6・12ボタン」について**最新の明示変更**。旧節は履歴として保持。変更対象は総合案内のみ。投稿メニュー・操作説明メニュー・トピック一覧本文は変更しない。
+
+Telegramメッセージ入力欄の**ReplyKeyboardMarkup**に次の**正確な文言と行配列**を使用する。見かけ上のInlineKeyboardで置き換えない。文字・省略・同義語変換・勝手な結合を禁止。
+
+1. [お知らせ] [雑談] [みんなのプロフ]
+2. [全国ボード] [カテゴリーボード] [ビデオ/動画]
+3. [検索/フィルター] [使い方] [リンク]
+4. [規約] [規則] [ルール] [ガイドライン]
+
+計13ボタン、行数4、3/3/3/4。4段目の「規約」「規則」「ルール」「ガイドライン」は**別々の4ボタン**として保持し、接続先も確定データがあるものだけ設定する。「総合案内」「雑談」「コミュニティリンク」はトピック一覧本文へ重複掲載しない（ただし「雑談」「リンク」は総合案内のボタンに存在する）。
+
+ReplyKeyboardMarkupのボタンはURLボタンではなく、押すと通常のテキストメッセージを送信する。Botは押された文言とchat/user/実topicを照合し、検証済みのリンク先へ案内する。不要な入力メッセージは削除を試行する。返信キーボードを特定のforum topicにだけ確実に限定できるとはみなさず、実Telegramで表示・他Topicへの干渉を確認する。該当制約を理由に勝手にInlineKeyboardへ仕様変更してはいけない。実運用で不可能なことが判明した場合は事実と代替案を記録し、Masterの判断を受ける。
+
+既存Bot投稿は勝手に削除せず、実Telegram/台帳の相違を解消し、既存12ボタン版の残存と誤操作を防ぐ。公開・配備・実機確認前のSource/CI合格を完成扱いしない。
+
+## 2026-11-08 Master最新変更｜総合案内13ボタンは投稿下部InlineKeyboard
+
+直前の「総合案内はReplyKeyboardMarkup」決定をMasterが「これも投稿ボタンでいいや」と変更。**総合案内は既存の案内投稿の下部に配置するInlineKeyboard（URLボタン）**とする。直前に確定した**13件の文言・3/3/3/4の4行構成は一切変えない**。旧ReplyKeyboard案は経緯として残すが最新採用仕様としては適用しない。
+
+1. [お知らせ] [雑談] [みんなのプロフ]
+2. [全国ボード] [カテゴリーボード] [ビデオ/動画]
+3. [検索/フィルター] [使い方] [リンク]
+4. [規約] [規則] [ルール] [ガイドライン]
+
+各URLボタンは検証済みの既存Telegram投稿/機能へのリンクであり、不明なリンクを仮生成しない。4段目4項目を勝手に統合しない。**個々のトピック一覧本文**には「総合案内」「雑談」「コミュニティリンク」を掲載せず、既存メニューから遷移する責務分離を維持。既存の投稿メニュー（別責務）や案内ボード本文は変更しない。
+
+Source参照：既存GateApp-Bot Draft PR #20。Source/CIと実Telegram投稿・クリック検証は区別する。
+
+## 2026-11-08 Master確定｜エリア’s BBSの旧返信キーボードを撤去
+
+Master：「現在エリアｓにキーボード内メニューがあるから撤去もしろ」。既存エリア’s BBSのTelegram入力欄に残る旧ReplyKeyboardMarkupを**撤去**し、総合案内は上記確定の投稿下部InlineKeyboard（13ボタン、3/3/3/4）へ一本化する。既存のエリアボード、個別地域トピック、投稿メニューやBotデータは削除しない。別の2グループの返信キーボードは今回の撤去対象外。
+
+実装上の撤去要求はTelegram Bot APIの`ReplyKeyboardRemove(remove_keyboard=true, selective=false)`を使用する。既存の管理者・Bot管理権限とエリア’s BBSの総合案内実threadを照合して限定する。特定トピックへの送信が他トピックのキーボードに与える影響や各利用端末の描画状態はTelegram実機で検証し、完了をSourceだけで宣言しない。旧キーボード発行主体が引き続き同じReplyKeyboardを送信しないことも確認する。旧案内投稿は勝手に削除せず、新13ボタン投稿の公開と撤去の成否を独立記録する。
+
+Source: `artifacts/bot/src/bot/menuPanelHandlers.ts` の管理者専用 `/removeareakeyboard`。未配備のコードを撤去済みと報告しない。
