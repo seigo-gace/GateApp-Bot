@@ -87,13 +87,16 @@ async function buildLinks(panel:PanelRow):Promise<{
   const token=newMenuToken();
   const hash=tokenHash(token);
   tokenHashes.push(hash);
-  await pool.query(
-   `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at,enabled)
-    VALUES($1,$2,$3,NOW()+INTERVAL '365 days',TRUE)`,
-   [hash,panel.panel_id,entry.feature]);
   entries.push({feature:entry.feature,label:entry.label,
    url:"https://t.me/GayBBS_bot?start="+entry.prefix+token,ready:true});
  }
+ // Insert the five new entries in one atomic PostgreSQL statement:
+ // a partial failed render must never leave enabled phantom deep links.
+ await pool.query(
+  `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at,enabled)
+   SELECT token_hash,$1,feature,NOW()+INTERVAL '365 days',TRUE
+   FROM UNNEST($2::text[],$3::text[]) AS candidate(token_hash,feature)`,
+  [panel.panel_id,tokenHashes,entrySpecs.map(x=>x.feature)]);
  return {links,entries,tokenHashes};
 }
 async function markUnknown(id:string,messageId:number|null):Promise<void>{
