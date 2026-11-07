@@ -14,8 +14,9 @@ test("operation help always uses approved 3x2 button layout",()=>{
 test("help section opens only owned existing editor and returns to guide",()=>{
  for(const feature of ["profile","room","announcement","link","search"] as const){
   const rows=helpSectionKeyboard(5,feature).reply_markup.inline_keyboard;
-  assert.deepEqual(rows.map(r=>r.length),[1,1]);
+  assert.deepEqual(rows.map(r=>r.length),feature==="room"?[2,1]:[1,1]);
   assert.equal(rows[0][0].callback_data,"help:open:5:"+feature);
+  if(feature==="room")assert.equal(rows[0][1].callback_data,"help:recruit:5");
   assert.equal(rows[1][0].callback_data,"help:home:5");
  }
 });
