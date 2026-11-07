@@ -12,7 +12,7 @@ import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft,saveAnnouncementEditorDraft} from "../src/services/publicPostRepository.js";
 import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
-import {announcementPanel,announcementSummary} from "../src/bot/postingHandlers.js";
+import {announcementPanel,announcementSummary,registerPostingHandlers} from "../src/bot/postingHandlers.js";
 import {makeApplicationLink} from "../src/services/applicationLinks.js";
 import {publishPost} from "../src/services/publishService.js";
 import {publishExistingMenuPanel} from "../src/services/menuPanelPublisher.js";
@@ -867,6 +867,46 @@ try{
   if(previousMenuRelease===undefined)delete process.env.GAYBBS_PUBLIC_MENU_RELEASE;
   else process.env.GAYBBS_PUBLIC_MENU_RELEASE=previousMenuRelease;
  }
+ // A cancelled final confirmation is tied to the original private revision.
+ // Replayed Telegram callbacks cannot publish after explicit cancellation.
+ const postActions:Array<{pattern:RegExp;handle:(ctx:any)=>Promise<void>}>=[];
+ const fakeBot={
+  command:()=>{},on:()=>{},
+  action:(pattern:string|RegExp,handle:(ctx:any)=>Promise<void>)=>{
+   if(pattern instanceof RegExp)postActions.push({pattern,handle});
+  },
+ };
+ registerPostingHandlers(fakeBot as any);
+ const cancelledDraft=await beginDraft(881789,"link","preview",{
+  text:"検証用リンク",columns:1,buttons:[{label:"サイト",url:"https://example.org"}]
+ });
+ const cancelPattern="post:cancel:link:"+cancelledDraft.revision;
+ const cancelHandler=postActions.find(h=>h.pattern.test(cancelPattern))?.handle;
+ assert.ok(cancelHandler,"revision-bound cancel callback must exist");
+ const editEvents:string[]=[];
+ await cancelHandler!({
+  chat:{type:"private"},from:{id:881789},
+  match:cancelPattern.match(postActions.find(h=>h.pattern.test(cancelPattern))!.pattern),
+  answerCbQuery:async()=>{},editMessageText:async(text:string)=>{editEvents.push(text);}
+ });
+ const preserved=await getDraft(881789,"link");
+ assert.equal(preserved?.step,"preview");
+ assert.equal(preserved?.data.text,"検証用リンク");
+ assert.ok(preserved!.revision>cancelledDraft.revision);
+ const publishPattern="post:publish:link:"+cancelledDraft.revision+":777";
+ const publishHandler=postActions.find(h=>h.pattern.test(publishPattern))?.handle;
+ assert.ok(publishHandler);
+ let telegramCalled=false;
+ await publishHandler!({
+  chat:{type:"private"},from:{id:881789},
+  match:publishPattern.match(postActions.find(h=>h.pattern.test(publishPattern))!.pattern),
+  answerCbQuery:async()=>{},editMessageText:async(text:string)=>{editEvents.push(text);},
+  telegram:{sendMessage:async()=>{telegramCalled=true;}}
+ });
+ assert.equal(telegramCalled,false,"stale final-confirmation must not send");
+ assert.ok(editEvents.at(-1)?.includes("❌")||
+  editEvents.at(-1)?.includes("確認"),"user receives a stale-confirmation response");
+ console.log("GAYBBS_DB_COMMON_CONFIRMATION_CANCEL_REJECTS_REPLAY=PASS");
  // Shared DM arbitration must ignore preview-only editor rows. A hidden
  // old form must never steal text from Video/ROOM/Announcement/search.
  const arbitrationUser=881785;
