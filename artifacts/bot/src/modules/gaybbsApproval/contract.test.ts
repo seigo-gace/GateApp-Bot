@@ -11,7 +11,7 @@ const links = {
  rules: "https://example.org/rules",
 };
 
-test("Bot challenge followed by eligibility including noncommercial intent, terms, and third group-rule consent", () => {
+test("Master order eligibility, terms, group-rule consent, then bot challenge", () => {
  assert.equal(APPROVAL_QUESTIONS.length, 2);
  assert.match(APPROVAL_QUESTIONS[0]!.text, /18歳以上/);
  assert.match(APPROVAL_QUESTIONS[0]!.text, /男性と性的関係/);
@@ -26,11 +26,11 @@ test("Bot challenge followed by eligibility including noncommercial intent, term
 test("consent stage cannot be skipped, falsified or replayed in another stage", () => {
  const yes = (stage: "question1"|"question2"|"rules") => ({stage,accepted:true});
  const no = (stage: "question1"|"question2"|"rules") => ({stage,accepted:false});
- assert.equal(canAdvanceAdmission("intro","challenge"),true);
- assert.equal(canAdvanceAdmission("intro","q1"),false);
- assert.equal(canAdvanceAdmission("challenge","q1"),true);
+ assert.equal(canAdvanceAdmission("intro","challenge"),false);
+ assert.equal(canAdvanceAdmission("intro","q1"),true);
+ assert.equal(canAdvanceAdmission("challenge","q1"),false);
  assert.equal(canAdvanceAdmission("challenge","rejected"),true);
- assert.equal(canAdvanceAdmission("challenge","issuing"),false);
+ assert.equal(canAdvanceAdmission("challenge","issuing"),true);
  assert.equal(canAdvanceAdmission("q1","q2",yes("question1")),true);
  assert.equal(canAdvanceAdmission("q1","rules",yes("question1")),false);
  assert.equal(canAdvanceAdmission("q1","q2",no("question1")),false);
@@ -38,8 +38,9 @@ test("consent stage cannot be skipped, falsified or replayed in another stage", 
  assert.equal(canAdvanceAdmission("q1","rejected",no("question1")),true);
  assert.equal(canAdvanceAdmission("q2","rules",yes("question2")),true);
  assert.equal(canAdvanceAdmission("q2","issuing",yes("question2")),false);
- assert.equal(canAdvanceAdmission("rules","issuing",yes("rules")),true);
- assert.equal(canAdvanceAdmission("rules","issuing",no("rules")),false);
+ assert.equal(canAdvanceAdmission("rules","issuing",yes("rules")),false);
+ assert.equal(canAdvanceAdmission("rules","challenge",yes("rules")),true);
+ assert.equal(canAdvanceAdmission("rules","challenge",no("rules")),false);
  assert.equal(canAdvanceAdmission("rules","rejected",no("rules")),true);
  assert.equal(canAdvanceAdmission("approved","issuing",yes("rules")),false);
 });
