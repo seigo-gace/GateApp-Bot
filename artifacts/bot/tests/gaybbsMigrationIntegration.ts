@@ -25,6 +25,7 @@ import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
 import {beginSearch,getSearchSession,updateSearch,findPublicSearchHits} from "../src/services/searchRepository.js";
 import {initialSearchFilters} from "../src/services/searchDomain.js";
 import {activateMenuOrigin} from "../src/services/menuOriginRepository.js";
+import {startOperationHelp,registerOperationHelpHandlers} from "../src/bot/operationHelpHandlers.js";
 import {newMenuToken,tokenHash} from "../src/services/menuOrigin.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
@@ -896,6 +897,55 @@ try{
  assert.equal(annResumed?.data.text,"保持する予告");
  assert.match(resumeEvents.at(-1)!.text,/日時を日本時間/);
  console.log("GAYBBS_DB_ROOM_ANNOUNCEMENT_DRAFT_RESUME=PASS");
+ // Operation help must have a durable private DM screen and reject stale
+ // callbacks without ever opening a posting editor.
+ const helpOwner=881790;
+ const helpEvents:Array<{kind:string;text?:string;keyboard?:any}>=[];
+ const helpTelegram={
+  sendMessage:async(_id:number,text:string,opts:any)=>{
+   helpEvents.push({kind:"send",text,keyboard:opts.reply_markup});
+   return {message_id:881791};
+  },
+  editMessageText:async(_id:number,_messageId:number,_inline:unknown,text:string,opts:any)=>{
+   helpEvents.push({kind:"edit",text,keyboard:opts.reply_markup});
+   return true;
+  }
+ } as unknown as Telegram;
+ await startOperationHelp(helpTelegram,helpOwner);
+ const helpSaved=await pool.query(
+  "SELECT revision,section,screen_message_id FROM gaybbs_help_sessions WHERE owner_user_id=$1",
+  [helpOwner]);
+ assert.equal(helpSaved.rows[0].section,"home");
+ assert.equal(Number(helpSaved.rows[0].screen_message_id),881791);
+ const helpKeyboard=helpEvents.at(-1)!.keyboard.inline_keyboard;
+ assert.deepEqual(helpKeyboard.map((row:any[])=>row.map(b=>b.text)),[
+  ["プロフ","Room+募集","告知/予告"],
+  ["🔗ボタン作成","検索/フィルター","戻る"]]);
+ const helpCallbacks:Array<{pattern:RegExp;handle:(ctx:any)=>Promise<void>}>=[];
+ registerOperationHelpHandlers({command:()=>{},action:(pattern:RegExp,handle:any)=>{
+  helpCallbacks.push({pattern,handle});
+ }} as any);
+ let helpAnswers:string[]=[];
+ const tap=async(value:string)=>{
+  const match=helpCallbacks.map(x=>({x,match:value.match(x.pattern)}))
+   .find(x=>x.match);
+  assert.ok(match,"help handler for "+value);
+  await match.x.handle({
+   chat:{type:"private"},from:{id:helpOwner},match:match.match,
+   telegram:helpTelegram,answerCbQuery:async(text?:string)=>{helpAnswers.push(text??"");}
+  });
+ };
+ await tap("help:topic:1:profile");
+ assert.match(helpEvents.at(-1)!.text!,/プロフィール/);
+ assert.equal(helpEvents.at(-1)!.kind,"edit");
+ await tap("help:topic:1:room");
+ assert.ok(helpAnswers.at(-1)?.includes("古い操作"));
+ await tap("help:home:2");
+ const helpState=await pool.query(
+  "SELECT revision,section FROM gaybbs_help_sessions WHERE owner_user_id=$1",[helpOwner]);
+ assert.equal(helpState.rows[0].section,"home");
+ assert.equal(Number(helpState.rows[0].revision),3);
+ console.log("GAYBBS_DB_OPERATION_HELP_3X2_REVISION_AND_RETURN=PASS");
  // A cancelled final confirmation is tied to the original private revision.
  // Replayed Telegram callbacks cannot publish after explicit cancellation.
  const postActions:Array<{pattern:RegExp;handle:(ctx:any)=>Promise<void>}>=[];
