@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
  VIDEO_TOPICS,CATEGORY_TOPICS,AREA_BLOCKS,
- renderTopicBoard,renderNationalBoard,renderAreaBlock,areaBlockDescription,AREA_BLOCK_DESCRIPTIONS,AREA_BLOCK_POSTING_GUIDE,
+ renderTopicBoard,renderNationalBoard,renderAreaBlock,areaBlockDescription,AREA_BLOCK_DESCRIPTIONS,AREA_CHILD_COVERAGE,AREA_BLOCK_POSTING_GUIDE,
 } from "../src/services/topicBoardContent.js";
 test("all designated topic links are present, no menu-only destinations",()=>{
  assert.equal(VIDEO_TOPICS.length,7);
@@ -54,7 +54,27 @@ test("all thirteen L1 block boards have distinct regional guidance and L2 postin
   assert.match(text,/📝 投稿メニュー/);
   assert.ok(!/架空の市区町村/.test(text));
  }
- assert.match(areaBlockDescription("東京"),/池袋.*新宿.*渋谷.*品川.*都心.*区東部.*都下/);
- assert.match(areaBlockDescription("関西"),/大阪キタ.*大阪ミナミ/);
+ assert.ok(["池袋","新宿","渋谷","品川","都心","区東部","都下"].every(x=>areaBlockDescription("東京").includes("【"+x+"】")));
+ assert.ok(["大阪キタ","大阪ミナミ"].every(x=>areaBlockDescription("関西").includes("【"+x+"】")));
  assert.throws(()=>areaBlockDescription("架空"),/AREA_BLOCK_DESCRIPTION_MISSING/);
+});
+
+test("every L1 button is matched to an explicit coverage explanation in original order",()=>{
+ for(const block of AREA_BLOCKS){
+  const text=areaBlockDescription(block.label);
+  const expected=block.children.map(x=>"【"+x.label+"】");
+  assert.equal(Object.keys(AREA_CHILD_COVERAGE[block.label]??{}).length,block.children.length);
+  assert.equal(text.match(/【[^】]+】/g)?.length,block.children.length);
+  let before=-1;
+  for(const item of expected){
+   const at=text.indexOf(item);
+   assert.ok(at>before,"missing/out-of-order: "+block.label+"/"+item);
+   before=at;
+   assert.ok((AREA_CHILD_COVERAGE[block.label]?.[item.slice(1,-1)]?.length??0)>25);
+  }
+  assert.ok(text.length<=3300,block.label+": max region description length");
+ }
+ assert.match(areaBlockDescription("東京"),/町田.*町田・相模原・厚木/);
+ assert.match(areaBlockDescription("関西"),/大阪駅|梅田/);
+ assert.match(areaBlockDescription("関西"),/難波|心斎橋/);
 });
