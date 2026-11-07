@@ -94,28 +94,38 @@ def main() -> int:
     for host in hosts:
         cid, tid = int(host["chat_id"]), int(host["message_thread_id"])
         existing = stored_mid(cid, tid)
-        if existing:
-            results.append({"host": host["board_key"], "status": "skipped", "message_id": existing})
+        if not existing:
+            results.append({
+                "host":host["board_key"],"status":"fail",
+                "reason":"EXISTING_ONLINE_CARD_MESSAGE_ID_NOT_FOUND_EDIT_ONLY",
+            })
             continue
-        resp = send_photo(tk, cid, tid, intro, gate, data)
-        if not resp.get("ok"):
-            results.append({"host": host["board_key"], "status": "fail", "reason": resp.get("description")})
-            continue
-        mid = int(resp["result"]["message_id"])
-        media = (resp["result"].get("photo") or [{}])[-1].get("file_id", "")
-        upsert_db(cid, tid, mid, gate, fp, media)
-        slug = str(cid).replace("-100", "")
-        results.append(
-            {
-                "host_board": host["board_key"],
-                "host_chat_id": cid,
-                "message_thread_id": tid,
-                "status": "published",
-                "message_id": mid,
-                "url": f"https://t.me/c/{slug}/{mid}",
-                "gate_url": gate,
-            }
+        # Preserve the media and message ID, only edit approved caption/button.
+        payload={
+            "chat_id":cid,"message_id":existing,"caption":intro,
+            "reply_markup":{"inline_keyboard":[[{"text":"🔗参加はこちら","url":gate}]]},
+        }
+        req=urllib.request.Request(
+            f"https://api.telegram.org/bot{tk}/editMessageCaption",
+            data=json.dumps(payload,ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type":"application/json"},
+            method="POST",
         )
+        try:
+            with urllib.request.urlopen(req,timeout=30) as response:
+                edited=json.load(response)
+        except Exception as exc:
+            results.append({"host":host["board_key"],"status":"fail",
+                            "reason":"EXISTING_EDIT_FAILED_RECONCILE","type":type(exc).__name__})
+            continue
+        if not edited.get("ok"):
+            results.append({"host":host["board_key"],"status":"fail",
+                            "reason":"EXISTING_EDIT_NOT_CONFIRMED"})
+            continue
+        upsert_db(cid,tid,existing,gate,fp,"")
+        results.append({"host":host["board_key"],"status":"updated",
+                        "message_id":existing,"gate_url":gate})
+
     out = Path(__file__).with_name("online-community-link-publish-result.json")
     out.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(results, ensure_ascii=False))
