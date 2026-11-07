@@ -8,7 +8,6 @@ import {showWizardScreen} from "../services/dmWizardScreen.js";
 import {APPROVED_HELP_ROWS} from "../services/menuPanelRenderer.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {startRoomEditor,startAnnouncementEditor,startLinkEditor} from "./postingHandlers.js";
-import {startCompactRecruitmentEditor} from "./recruitmentHandlers.js";
 import {startSearchEditor} from "./searchHandlers.js";
 import {startProfileEditor} from "./profileHandlers.js";
 
