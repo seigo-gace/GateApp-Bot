@@ -65,7 +65,9 @@ async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:n
  if(!options.length){
   const message="投稿先の実Topic IDがまだ確認されていません。管理者によるトピック接続後に公開できます。下書きは保持しています。";
   const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
-  if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,message);
+  if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,
+   module==="link"?message+"\n\n"+preview("link",draft):message,
+   module==="link"?linkPreviewKeyboard(draft):undefined);
   else await ctx.reply(message);
   return;
  }
@@ -165,7 +167,16 @@ export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  ]);
 }
 export async function startLinkEditor(telegram:Telegram,userId:number):Promise<void>{
- const draft=await beginDraft(userId,"link","awaiting_text");
+ const prior=await getDraft(userId,"link");
+ // Reopening /link must not erase a still-private, valid editor. Other
+ // draft modules and published receipts are never touched.
+ if(prior?.step==="preview"){
+  await showPostScreen(telegram,userId,prior,"公開前プレビュー\n"+preview("link",prior)+
+   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(prior));
+  return;
+ }
+ const draft=prior?.step==="awaiting_text"?prior:
+  await beginDraft(userId,"link","awaiting_text");
  await showPostScreen(telegram,userId,draft,
   "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。",
   Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
@@ -611,7 +622,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const data={...d.data,columns:cols};
   const next=await updateDraft(ctx.from.id,"link",rev,"preview",data);
   await ctx.answerCbQuery("列数を保存しました");
-  await ctx.editMessageText("公開前プレビュー\n"+preview("link",next));
   await destinationMenu(ctx,"link",next.revision);
  });
  bot.action(/^post:choose:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
