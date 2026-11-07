@@ -15,6 +15,7 @@ import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
 import {announcementPanel,announcementSummary} from "../src/bot/postingHandlers.js";
 import {makeApplicationLink} from "../src/services/applicationLinks.js";
 import {publishPost} from "../src/services/publishService.js";
+import {publishExistingMenuPanel} from "../src/services/menuPanelPublisher.js";
 import {markPostSourcePublished} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
@@ -35,7 +36,7 @@ try{
   "announcement_notifications","announcement_application_entries",
   "announcement_room_dispatches","room_source_events","room_host_sessions",
   "link_button_posts","general_guide_topics","general_guide_documents",
-  "board_menu_panels","board_menu_entry_tokens","gaybbs_feature_release_gates"]){
+  "board_menu_panels","board_posting_menu_links","board_menu_entry_tokens","gaybbs_feature_release_gates"]){
   const found=await pool.query("SELECT to_regclass($1)::text AS reg",[table]);
   assert.ok(found.rows[0]?.reg,table);
  }
@@ -789,5 +790,65 @@ try{
  assert.match(announcementSummary(withoutDate),/開催日時：未指定/);
  console.log("GAYBBS_DB_ANNOUNCEMENT_APPROVED_LAYOUT=PASS");
  console.log("GAYBBS_DB_ANNOUNCEMENT_ONE_SCREEN_DRAFT_RESUME=PASS");
+ // Posting menu release is a single gated existing-topic operation. Before
+ // network I/O, missing verified navigation must be retryable, not reconcile.
+ const menuChat=-1002373696859, menuThread=970010;
+ const panelRow=await pool.query(
+  `INSERT INTO board_menu_panels
+   (chat_id,message_thread_id,panel_type,state,verified_by,verified_at)
+   VALUES($1,$2,'posting','verified',880001,NOW()) RETURNING panel_id`,
+  [menuChat,menuThread]);
+ const panelId=Number(panelRow.rows[0].panel_id);
+ const previousMenuRelease=process.env.GAYBBS_PUBLIC_MENU_RELEASE;
+ process.env.GAYBBS_PUBLIC_MENU_RELEASE="enabled";
+ const menuCalls:Array<{chatId:number;opts:any}>=[];
+ const fakeMenuTelegram={
+  getChatMember:async()=>({status:"administrator"}),
+  getMe:async()=>({id:880002}),
+  sendMessage:async(chatId:number,_text:string,opts:any)=>{
+   menuCalls.push({chatId,opts});return {message_id:970011};
+  },
+  pinChatMessage:async()=>true,
+ } as unknown as Telegram;
+ try{
+  await assert.rejects(
+   ()=>publishExistingMenuPanel(fakeMenuTelegram,menuChat,menuThread,880001),
+   /POSTING_NAV_LINKS_NOT_VERIFIED/);
+  assert.equal(menuCalls.length,0);
+  const before=await pool.query("SELECT state FROM board_menu_panels WHERE panel_id=$1",[panelId]);
+  assert.equal(before.rows[0].state,"verified");
+  const names=["クリエーター有料ビデオ投稿","検索/フィルター","雑談","紹介/招待","操作説明"];
+  for(let i=0;i<names.length;i++)await pool.query(
+   `INSERT INTO board_posting_menu_links
+      (chat_id,label,destination_url,source,verified_by,verified_at,enabled)
+    VALUES($1,$2,$3,'isolated-ci-fixture',880001,NOW(),TRUE)`,
+   [menuChat,names[i],"https://t.me/c/2373696859/"+(970020+i)]);
+  for(const feature of ["announcement","room","link"])await pool.query(
+   `INSERT INTO gaybbs_feature_release_gates
+     (feature,source_commit,ci_evidence,gserver_runtime_evidence,
+      telegram_e2e_evidence,approved_by,enabled)
+    VALUES($1,repeat('f',40),'ci-test','runtime-test','telegram-mock-only',880001,TRUE)
+    ON CONFLICT(feature) DO UPDATE SET enabled=TRUE`,[feature]);
+  const posted=await publishExistingMenuPanel(fakeMenuTelegram,menuChat,menuThread,880001);
+  assert.deepEqual(posted,{messageId:970011,updatedExisting:false});
+  assert.equal(menuCalls.length,1);
+  const keys=menuCalls[0].opts.reply_markup.inline_keyboard;
+  assert.deepEqual(keys.map((row:any[])=>row.map(x=>x.text)),[
+   ["相手募集","募集+Room","告知/予告"],
+   ["クリエーター有料ビデオ投稿"],
+   ["🔗ボタン作成","検索/フィルター"],
+   ["雑談","紹介/招待","操作説明"]]);
+  assert.match(keys[0][0].url,/start=r_/);
+  assert.match(keys[2][0].url,/start=m_/);
+  const count=await pool.query(
+   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1",[panelId]);
+  assert.equal(count.rows[0].n,4);
+  const state=await pool.query("SELECT state,message_id,pinned FROM board_menu_panels WHERE panel_id=$1",[panelId]);
+  assert.deepEqual(state.rows[0],{state:"published",message_id:"970011",pinned:true});
+  console.log("GAYBBS_DB_POSTING_MENU_VERIFIED_LINKS_AND_DM_ENTRIES=PASS");
+ }finally{
+  if(previousMenuRelease===undefined)delete process.env.GAYBBS_PUBLIC_MENU_RELEASE;
+  else process.env.GAYBBS_PUBLIC_MENU_RELEASE=previousMenuRelease;
+ }
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
