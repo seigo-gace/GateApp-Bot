@@ -10,6 +10,7 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {beginSearch,getSearchSession,updateSearch,bindSearchScreen,findPublicSearchHits,type SearchSession} from "../services/searchRepository.js";
 import {setSearchFilter,initialSearchFilters,searchOptions,toggleSearchTag,parseSearchAge,type SearchOptionKey} from "../services/searchDomain.js";
 import {authorizedSearchGroupIds} from "../services/searchAccess.js";
+import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 const dm=(c:any)=>c.chat?.type==="private";
 const button=(text:string,data:string)=>Markup.button.callback(text,data);
 async function show(t:Telegram,id:number,s:SearchSession,text:string,rows:any[][]){
@@ -120,10 +121,18 @@ export function registerSearchHandlers(bot:Telegraf){
    const next=await updateSearch(ctx.from.id,rev,"keyword",s.filters);
    await show(ctx.telegram,ctx.from.id,next,"検索キーワードを1通で送ってください。（80文字以内）",
     [[button("↩ 戻る",`search:back:${next.revision}`)]]);
-  }else if(op==="filter"){const next=await updateSearch(ctx.from.id,rev,"home",s.filters);await filter(ctx.telegram,ctx.from.id,next);}
+  }else if(op==="filter"){const next=await updateSearch(ctx.from.id,rev,"filter",s.filters);await filter(ctx.telegram,ctx.from.id,next);}
   else if(op==="clear"){const next=await updateSearch(ctx.from.id,rev,"home",initialSearchFilters());await home(ctx.telegram,ctx.from.id,next);}
   else if(op==="run"){const next=await updateSearch(ctx.from.id,rev,"results",s.filters);await results(ctx.telegram,ctx.from.id,next,0);}
-  else{const next=await updateSearch(ctx.from.id,rev,"home",s.filters);await home(ctx.telegram,ctx.from.id,next);}
+  else{
+   const next=await updateSearch(ctx.from.id,rev,"home",s.filters);
+   if(s.step!=="home"){await home(ctx.telegram,ctx.from.id,next);return;}
+   const url=await verifiedPostingMenuReturnUrl(ctx.from.id);
+   await show(ctx.telegram,ctx.from.id,next,
+    "🔍 検索を終了しました。"+(url?"\n↩ 元の投稿メニューへ戻れます。":
+      "\n起点の投稿メニューは確認できません。必要な場合はBotの /start から共通メニューを開いてください。"),
+    url?[[Markup.button.url("↩ 元の投稿メニュー",url)]]:[]);
+  }
  });
  bot.action(/^search:kind:(\d+):(profile|recruitment)$/,async ctx=>{
   if(!dm(ctx))return;
@@ -171,7 +180,7 @@ export function registerSearchHandlers(bot:Telegraf){
   if(!dm(ctx))return;
   const rev=Number(ctx.match[1]),s=await getSearchSession(ctx.from.id);
   if(!s||s.revision!==rev||s.step!=="age"){await ctx.answerCbQuery("古い操作です");return;}
-  const next=await updateSearch(ctx.from.id,rev,"home",{...s.filters,ageMin:null,ageMax:null});
+  const next=await updateSearch(ctx.from.id,rev,"filter",{...s.filters,ageMin:null,ageMax:null});
   await ctx.answerCbQuery();await filter(ctx.telegram,ctx.from.id,next);
  });
  bot.action(/^search:tag:(\d+):(like|love)$/,async ctx=>{
