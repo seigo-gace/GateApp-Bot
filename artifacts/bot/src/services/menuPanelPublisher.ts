@@ -48,7 +48,7 @@ async function buildLinks(panel:PanelRow):Promise<{
  // The other five URLs are provided only from a verified existing-project
  // registry. Never make up a destination, Bot link or feature-release receipt.
  const staticLabels=["クリエーター有料ビデオ投稿",
-  "雑談","紹介/招待","操作説明"] as const;
+  "雑談","紹介/招待"] as const;
  const stored=await pool.query(
   `SELECT label,destination_url FROM board_posting_menu_links
    WHERE chat_id=$1 AND enabled=TRUE AND verified_by IS NOT NULL
@@ -62,14 +62,14 @@ async function buildLinks(panel:PanelRow):Promise<{
    throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
  const gates=await pool.query(
   `SELECT feature FROM gaybbs_feature_release_gates
-   WHERE feature IN ('announcement','room','link','search')
+   WHERE feature IN ('announcement','room','link','search','help')
      AND enabled=TRUE AND length(source_commit)=40
      AND length(trim(ci_evidence))>0
      AND length(trim(gserver_runtime_evidence))>0
      AND length(trim(telegram_e2e_evidence))>0
      AND approved_by IS NOT NULL`);
  const ready=new Set(gates.rows.map(x=>String(x.feature)));
- if(!["announcement","room","link","search"].every(x=>ready.has(x)))
+ if(!["announcement","room","link","search","help"].every(x=>ready.has(x)))
   throw new Error("POSTING_DM_FEATURES_NOT_RELEASED");
  // Both recruitment (r_) and announcements (m_) refer to the same
  // existing 'announcement' feature, but enter different approved UI paths.
@@ -79,6 +79,7 @@ async function buildLinks(panel:PanelRow):Promise<{
   {label:"告知/予告",feature:"announcement",prefix:"m_"},
   {label:"🔗ボタン作成",feature:"link",prefix:"m_"},
   {label:"検索/フィルター",feature:"search",prefix:"m_"},
+  {label:"操作説明",feature:"help",prefix:"m_"},
  ] as const;
  const entries:EntryLink[]=[];
  const tokenHashes:string[]=[];
