@@ -206,3 +206,11 @@ ReplyKeyboardMarkupのボタンはURLボタンではなく、押すと通常の�
 各URLボタンは検証済みの既存Telegram投稿/機能へのリンクであり、不明なリンクを仮生成しない。4段目4項目を勝手に統合しない。**個々のトピック一覧本文**には「総合案内」「雑談」「コミュニティリンク」を掲載せず、既存メニューから遷移する責務分離を維持。既存の投稿メニュー（別責務）や案内ボード本文は変更しない。
 
 Source参照：既存GateApp-Bot Draft PR #20。Source/CIと実Telegram投稿・クリック検証は区別する。
+
+## 2026-11-08 Master確定｜エリア’s BBSの旧返信キーボードを撤去
+
+Master：「現在エリアｓにキーボード内メニューがあるから撤去もしろ」。既存エリア’s BBSのTelegram入力欄に残る旧ReplyKeyboardMarkupを**撤去**し、総合案内は上記確定の投稿下部InlineKeyboard（13ボタン、3/3/3/4）へ一本化する。既存のエリアボード、個別地域トピック、投稿メニューやBotデータは削除しない。別の2グループの返信キーボードは今回の撤去対象外。
+
+実装上の撤去要求はTelegram Bot APIの`ReplyKeyboardRemove(remove_keyboard=true, selective=false)`を使用する。既存の管理者・Bot管理権限とエリア’s BBSの総合案内実threadを照合して限定する。特定トピックへの送信が他トピックのキーボードに与える影響や各利用端末の描画状態はTelegram実機で検証し、完了をSourceだけで宣言しない。旧キーボード発行主体が引き続き同じReplyKeyboardを送信しないことも確認する。旧案内投稿は勝手に削除せず、新13ボタン投稿の公開と撤去の成否を独立記録する。
+
+Source: `artifacts/bot/src/bot/menuPanelHandlers.ts` の管理者専用 `/removeareakeyboard`。未配備のコードを撤去済みと報告しない。
