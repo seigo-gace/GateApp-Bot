@@ -16,10 +16,15 @@ export async function showWizardScreen(
    await telegram.editMessageText(chatId,oldId,undefined,text,keyboard);
    return {messageId:oldId,replaced:true};
   }catch(e){
-   if(e instanceof Error && /message is not modified/i.test(e.message))
+   const reason=e instanceof Error?e.message:"";
+   if(/message is not modified/i.test(reason))
     return {messageId:oldId,replaced:true};
-   // Use an explicit fallback only when Telegram rejects editing the old screen.
-   // Never log profile/post text or a Telegram token.
+   // An edit timeout/5xx can occur AFTER Telegram has already edited the
+   // message. Align with VideoBot's shared screen transport: never create
+   // an additional screen unless Telegram explicitly says it cannot edit.
+   if(!/message (?:to edit|to be edited) not found|message can.t be edited|message cannot be edited|MESSAGE_ID_INVALID/i.test(reason))
+    throw new Error("WIZARD_EDIT_RESULT_UNKNOWN");
+   // The old private Bot screen was definitively rejected. Fallback is safe.
   }
  }
  const msg=await telegram.sendMessage(chatId,text,keyboard);
