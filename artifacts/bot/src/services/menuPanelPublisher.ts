@@ -6,7 +6,7 @@ import type { Telegram } from "telegraf";
 import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
 import {guideMessageUrl} from "../bot/generalGuideHandlers.js";
-import {newMenuToken,tokenHash,type MenuFeature} from "./menuOrigin.js";
+import {newMenuToken,tokenHash} from "./menuOrigin.js";
 import {renderMenuPanel,type NavLink,type EntryLink} from "./menuPanelRenderer.js";
 type PanelRow={
  panel_id:string;chat_id:string;message_thread_id:string;panel_type:"general_guide"|"posting";
@@ -46,28 +46,52 @@ async function buildLinks(panel:PanelRow):Promise<{
   links.push(...other.rows.map(r=>({label:r.label,url:r.destination_url,verified:true})));
   return {links,entries:[]};
  }
+ // The other five URLs are provided only from a verified existing-project
+ // registry. Never make up a destination, Bot link or feature-release receipt.
+ const staticLabels=["クリエーター有料ビデオ投稿","検索/フィルター",
+  "雑談","紹介/招待","操作説明"] as const;
+ const stored=await pool.query(
+  `SELECT label,destination_url FROM board_posting_menu_links
+   WHERE chat_id=$1 AND enabled=TRUE AND verified_by IS NOT NULL
+     AND verified_at IS NOT NULL`,[chatId]);
+ const links:NavLink[]=stored.rows.map(row=>({
+  label:String(row.label),url:String(row.destination_url),verified:true
+ }));
+ if(links.length!==staticLabels.length||
+    links.some(x=>!staticLabels.includes(x.label as typeof staticLabels[number]))||
+    new Set(links.map(x=>x.label)).size!==staticLabels.length)
+   throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
  const gates=await pool.query(
   `SELECT feature FROM gaybbs_feature_release_gates
-   WHERE enabled=TRUE AND length(source_commit)=40
+   WHERE feature IN ('announcement','room','link')
+     AND enabled=TRUE AND length(source_commit)=40
      AND length(trim(ci_evidence))>0
      AND length(trim(gserver_runtime_evidence))>0
      AND length(trim(telegram_e2e_evidence))>0
      AND approved_by IS NOT NULL`);
  const ready=new Set(gates.rows.map(x=>String(x.feature)));
- const permitted:MenuFeature[]=["profile","announcement","room","link","search"];
- const features=permitted.filter(x=>ready.has(x));
- if(!features.length)throw new Error("NO_VERIFIED_POSTING_FEATURES");
+ if(!["announcement","room","link"].every(x=>ready.has(x)))
+  throw new Error("POSTING_DM_FEATURES_NOT_RELEASED");
+ // Both recruitment (r_) and announcements (m_) refer to the same
+ // existing 'announcement' feature, but enter different approved UI paths.
+ const entrySpecs=[
+  {label:"相手募集",feature:"announcement",prefix:"r_"},
+  {label:"募集+Room",feature:"room",prefix:"m_"},
+  {label:"告知/予告",feature:"announcement",prefix:"m_"},
+  {label:"🔗ボタン作成",feature:"link",prefix:"m_"},
+ ] as const;
  const entries:EntryLink[]=[];
- for(const feature of features){
+ for(const entry of entrySpecs){
   const token=newMenuToken();
   const hash=tokenHash(token);
   await pool.query(
    `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at,enabled)
     VALUES($1,$2,$3,NOW()+INTERVAL '365 days',TRUE)`,
-   [hash,panel.panel_id,feature]);
-  entries.push({feature,url:"https://t.me/GayBBS_bot?start=m_"+token,ready:true});
+   [hash,panel.panel_id,entry.feature]);
+  entries.push({feature:entry.feature,label:entry.label,
+   url:"https://t.me/GayBBS_bot?start="+entry.prefix+token,ready:true});
  }
- return {links:[],entries};
+ return {links,entries};
 }
 async function markUnknown(id:string,messageId:number|null):Promise<void>{
  await pool.query(
