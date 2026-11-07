@@ -123,22 +123,24 @@ export async function showMemberDirectLinks(
   userId: number,
   boards: readonly BoardTarget[],
   membership: { joined: number[]; pending: number[] },
+  destinationTargetId: number,
+  destinationTopicUrl?: string,
 ): Promise<void> {
-  const rows = boards.flatMap((b, i) => {
-    const inGroup = membership.joined.includes(b.chatId);
-    return inGroup
-      ? [Markup.button.url(`${i + 1}．${b.title}`, groupDeepLink(b.chatId))]
-      : [];
-  });
-  const text =
-    "✅ すでに参加済みです。審査の再回答は不要です。各掲示板へは下のボタンから移動してください。";
+  // Preserve the link's originally selected target. Never reopen a three-board
+  // chooser for an already-approved member.
+  const selected = boards.find(b => b.targetId === destinationTargetId);
+  if (!selected || !membership.joined.includes(selected.chatId)) {
+    throw new Error("GATE_SELECTED_DESTINATION_NOT_JOINED");
+  }
+  const url = destinationTopicUrl ?? groupDeepLink(selected.chatId);
+  const text = "✅ 参加承認済みです。再審査は不要です。元のリンクの移動先はこちらです。";
+  const attempt = await readAttempt(userId);
   const out = await showWizardScreen(
     telegram,
     userId,
-    undefined,
+    attempt?.last_message_id ?? undefined,
     text,
-    rows.length ? Markup.inlineKeyboard([rows.slice(0, 2), ...(rows.length > 2 ? [rows.slice(2)] : [])]) : undefined,
+    Markup.inlineKeyboard([[Markup.button.url("🔗 移動先を開く", url)]]),
   );
-  const a = await readAttempt(userId);
-  if (a) await rememberScreen(a, out.messageId);
+  if (attempt) await rememberScreen(attempt, out.messageId);
 }
