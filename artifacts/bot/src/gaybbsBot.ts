@@ -17,7 +17,7 @@ import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
-import {suppressAreaCommandMenu} from "./services/areaMenuSuppression.js";
+import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
 
@@ -98,6 +98,21 @@ async function main():Promise<void>{
     " legacy_status="+areaMenu.legacyBotStatus);
  }catch(error){
   console.error("GAYBBS_AREA_MENU_SUPPRESSION_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
+ try{
+  const gayScopes=await suppressGroupCommandMenu(bot.telegram,GAY_BOARD_CHAT_ID);
+  await pool.query(
+    `INSERT INTO area_command_menu_suppressions
+      (chat_id,scopes_cleared,legacy_bot_id,legacy_bot_status,legacy_bot_removed,verified_by)
+     VALUES ($1,$2,0,'n/a',FALSE,0)
+     ON CONFLICT (chat_id) DO UPDATE SET
+      scopes_cleared=EXCLUDED.scopes_cleared,
+      suppressed_at=NOW()`,
+    [GAY_BOARD_CHAT_ID,gayScopes.join(",")]);
+  console.log("GAYBBS_GAY_BOARD_MENU_SUPPRESSED chat="+GAY_BOARD_CHAT_ID);
+ }catch(error){
+  console.error("GAYBBS_GAY_BOARD_MENU_SUPPRESSION_FAILED",
     error instanceof Error?error.message:"unknown");
  }
  bot.catch((error,ctx)=>{

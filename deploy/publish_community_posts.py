@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS community_link_topic_cards (
   host_chat_id BIGINT NOT NULL,
   message_thread_id BIGINT NOT NULL,
   promoted_board_key TEXT NOT NULL
-    CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board')),
+    CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board','online_hub')),
   message_id BIGINT,
   media_file_id TEXT,
   image_repo_path TEXT NOT NULL,

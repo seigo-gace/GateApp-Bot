@@ -100,27 +100,34 @@ def main() -> int:
                 "reason":"EXISTING_ONLINE_CARD_MESSAGE_ID_NOT_FOUND_EDIT_ONLY",
             })
             continue
-        # Preserve the media and message ID, only edit approved caption/button.
-        payload={
-            "chat_id":cid,"message_id":existing,"caption":intro,
-            "reply_markup":{"inline_keyboard":[[{"text":"🔗参加はこちら","url":gate}]]},
-        }
-        req=urllib.request.Request(
-            f"https://api.telegram.org/bot{tk}/editMessageCaption",
-            data=json.dumps(payload,ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type":"application/json"},
-            method="POST",
+        def tg_json(method: str, payload: dict) -> dict:
+            req = urllib.request.Request(
+                f"https://api.telegram.org/bot{tk}/{method}",
+                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            return json.loads(urllib.request.urlopen(req, timeout=30).read())
+
+        cap = tg_json("editMessageCaption", {"chat_id": cid, "message_id": existing, "caption": intro})
+        markup = tg_json(
+            "editMessageReplyMarkup",
+            {
+                "chat_id": cid,
+                "message_id": existing,
+                "reply_markup": {"inline_keyboard": [[{"text": "🔗参加はこちら", "url": gate}]]},
+            },
         )
-        try:
-            with urllib.request.urlopen(req,timeout=30) as response:
-                edited=json.load(response)
-        except Exception as exc:
-            results.append({"host":host["board_key"],"status":"fail",
-                            "reason":"EXISTING_EDIT_FAILED_RECONCILE","type":type(exc).__name__})
-            continue
-        if not edited.get("ok"):
-            results.append({"host":host["board_key"],"status":"fail",
-                            "reason":"EXISTING_EDIT_NOT_CONFIRMED"})
+        if not cap.get("ok") or not markup.get("ok"):
+            results.append(
+                {
+                    "host": host["board_key"],
+                    "status": "fail",
+                    "reason": "EXISTING_EDIT_NOT_CONFIRMED",
+                    "cap": cap.get("description"),
+                    "markup": markup.get("description"),
+                }
+            )
             continue
         # Do not overwrite an existing Telegram photo media_file_id on edit.
         psql(
