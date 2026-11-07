@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Telegraf } from "telegraf";
 import { BOT_TOKEN } from "./config/env.js";
 import { registerStartHandler } from "./bot/startHandler.js";
+import {registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import { registerMenuHandlers } from "./bot/menuHandlers.js";
 import { registerGateHandlers } from "./bot/gateHandlers.js";
 import { registerTextHandlers } from "./bot/textHandlers.js";
@@ -21,6 +22,7 @@ async function main() {
   const bot = new Telegraf(BOT_TOKEN!);
 
   registerStartHandler(bot);
+  registerOnlineGateCheckHandler(bot);
   registerGateHandlers(bot);
   registerMenuHandlers(bot);
   registerProfileHandlers(bot);
