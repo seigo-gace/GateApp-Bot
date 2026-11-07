@@ -951,6 +951,16 @@ try{
   ["▶ この機能を開く"]);
  assert.equal(roomHelp[0][0].callback_data,"help:open:4:room");
  assert.equal(roomHelp.length,2,"Room+募集 stays a single entry in operation help");
+ await tap("help:open:4:room");
+ assert.equal(helpEvents.filter(x=>x.kind==="send").length,1,
+  "help-to-ROOM must edit the same Bot DM message instead of posting a new one");
+ assert.equal(helpEvents.at(-1)!.kind,"edit");
+ assert.match(helpEvents.at(-1)!.text!,/ROOM作成/);
+ const openedRoom=await getDraft(helpOwner,"room");
+ assert.equal(openedRoom?.data.screenMessageId,881791);
+ await tap("help:open:4:room");
+ assert.ok(helpAnswers.at(-1)?.includes("古い操作"),
+  "help button becomes stale after entering existing ROOM wizard");
  console.log("GAYBBS_DB_OPERATION_HELP_3X2_REVISION_AND_RETURN=PASS");
  // A cancelled final confirmation is tied to the original private revision.
  // Replayed Telegram callbacks cannot publish after explicit cancellation.
