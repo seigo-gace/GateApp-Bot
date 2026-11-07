@@ -8,17 +8,16 @@ import { pool } from "../db/index.js";
 import {guideMessageUrl} from "../bot/generalGuideHandlers.js";
 import {newMenuToken,tokenHash} from "./menuOrigin.js";
 import {renderMenuPanel,type NavLink,type EntryLink} from "./menuPanelRenderer.js";
+import {BOARD_GROUP_CHAT_IDS,type BoardKey} from "./topicRouting.js";
 type PanelRow={
  panel_id:string;chat_id:string;message_thread_id:string;panel_type:"general_guide"|"posting";
  state:string;message_id:string|null;pinned:boolean;
 };
-function board(chatId:number):"area_bbs"|"video_chat"|"gay_board"{
- const found:Record<string,"area_bbs"|"video_chat"|"gay_board">={
-  "-1003847210571":"area_bbs","-1002373696859":"video_chat",
-  "-1003770334893":"gay_board"};
- const result=found[String(chatId)];
- if(!result)throw new Error("UNREGISTERED_GROUP");
- return result;
+function board(chatId:number):BoardKey{
+ const found=Object.entries(BOARD_GROUP_CHAT_IDS)
+  .find(([,id])=>id===chatId)?.[0] as BoardKey|undefined;
+ if(!found)throw new Error("UNREGISTERED_GROUP");
+ return found;
 }
 async function buildLinks(panel:PanelRow):Promise<{
  links:NavLink[];entries:EntryLink[];tokenHashes:string[];
