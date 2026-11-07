@@ -21,7 +21,7 @@ export const ONLINE_START_PREFIX="online_";
 
 /** Telegram bot username comes from getMe() of the REAL existing GATE Bot. */
 export function requireOnlineBotUsername(value:string):string{
- if(!/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(value)||!/_bot$/i.test(value))
+ if(!/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(value)||!/bot$/i.test(value))
   throw new Error("ONLINE_GATE_IDENTITY_UNVERIFIED");
  return value;
 }
