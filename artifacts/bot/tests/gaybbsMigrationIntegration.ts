@@ -12,7 +12,7 @@ import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
 import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft,saveAnnouncementEditorDraft} from "../src/services/publicPostRepository.js";
 import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
-import {announcementPanel,announcementSummary,registerPostingHandlers} from "../src/bot/postingHandlers.js";
+import {announcementPanel,announcementSummary,registerPostingHandlers,startRoomEditor,startAnnouncementEditor} from "../src/bot/postingHandlers.js";
 import {makeApplicationLink} from "../src/services/applicationLinks.js";
 import {publishPost} from "../src/services/publishService.js";
 import {publishExistingMenuPanel} from "../src/services/menuPanelPublisher.js";
@@ -867,6 +867,35 @@ try{
   if(previousMenuRelease===undefined)delete process.env.GAYBBS_PUBLIC_MENU_RELEASE;
   else process.env.GAYBBS_PUBLIC_MENU_RELEASE=previousMenuRelease;
  }
+ // Existing ROOM/Announcement draft reopening must not reset the user's
+ // unfinished fields, selected mode, or current text-entry phase.
+ const resumeUser=881798;
+ const roomToResume=await beginDraft(resumeUser,"room","awaiting_text",
+  {title:"以前のROOM",visibility:"public",description:"保持する説明"});
+ const resumeEvents:Array<{text:string;messageId:number|null}>=[];
+ const transport={
+  sendMessage:async(_id:number,text:string)=>{
+   resumeEvents.push({text,messageId:null});return {message_id:881799};
+  },
+  editMessageText:async(_id:number,id:number,_inline:unknown,text:string)=>{
+   resumeEvents.push({text,messageId:id});return true;
+  },
+ } as unknown as Telegram;
+ await startRoomEditor(transport,resumeUser);
+ const roomResumed=await getDraft(resumeUser,"room");
+ assert.equal(roomResumed?.revision,roomToResume.revision);
+ assert.equal(roomResumed?.data.title,"以前のROOM");
+ assert.equal(roomResumed?.data.visibility,"public");
+ assert.ok(resumeEvents.at(-1)?.text.includes("ROOM作成"));
+ const annToResume=await beginDraft(resumeUser,"announcement","awaiting_datetime",
+  {kind:"preview",text:"保持する予告",profileLinked:true});
+ await startAnnouncementEditor(transport,resumeUser);
+ const annResumed=await getDraft(resumeUser,"announcement");
+ assert.equal(annResumed?.revision,annToResume.revision);
+ assert.equal(annResumed?.step,"awaiting_datetime");
+ assert.equal(annResumed?.data.text,"保持する予告");
+ assert.match(resumeEvents.at(-1)!.text,/日時を日本時間/);
+ console.log("GAYBBS_DB_ROOM_ANNOUNCEMENT_DRAFT_RESUME=PASS");
  // A cancelled final confirmation is tied to the original private revision.
  // Replayed Telegram callbacks cannot publish after explicit cancellation.
  const postActions:Array<{pattern:RegExp;handle:(ctx:any)=>Promise<void>}>=[];
