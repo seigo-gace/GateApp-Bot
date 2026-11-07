@@ -32,3 +32,21 @@ B/C/Dは生のTopic URLを公衆向けボタンに直接入れない。既存GAT
 - `onlineRoomPublisher.test.ts`：正常4件の順序・結果記録、途中失敗で前2件を残す、既存レシートがあれば再送拒否、未検証Topic/URL拒否を検査する。
 
 **本番一括配備までの必要接続**：Gserver既存のDrive保護認可で4画像のbytesを得るasset loader、既存GATE Botで発行する目的別署名付きSTART URL、管理者による実ONLINE Topic/threadと既存投稿の確認、既存メッセージとの競合検査、4枚の公開とピン管理の権限・実Telegram E2E。これは実Botへの登録・本番送信完了を意味しない。
+
+ 
+## 2026-11-08｜Google Driveから画像4枚を実取得・保全
+
+Master追加指示：ONLINE用の既存画像を参照IDだけでなく**現物としてDriveから取り出して実装へ接続**する。Google Drive connector経由で既存4枚を取得し、原本画像を変更せず、すべて正確に1080×1080・MIME・ファイルサイズ・SHA-256を確認した。
+
+|順|ファイル名|サイズ(bytes)|SHA-256|
+|---|---|---:|---|
+| A | 00_ONLINE案内_1080.jpg | 543343 | 01c2917d4d46397641b4a64b7263ea3c264dfb54c6278074abbefb9ea44c3f6b |
+| B | 01_エリアsBBS_1080.png | 1109867 | 8220e50b1a295c789b056ef48a49ac6a36826e0ca624d5fa5ad7513ad54e35b5 |
+| C | 02_ビデオChat_1080.jpg | 387687 | 47f7a8345e3e8e082276a447f75390b0fd47f622c7be857832d6e05d1052c55e |
+| D | 03_ゲイ掲示板_1080.jpg | 475218 | bffea7ac0137ddf2abf8166a62472f02907f657c9700f1cabbbc3c2a502364f9 |
+
+Sourceに `onlineDriveAssetLoader.ts` を追加。既存Botのコンテナ読み取り専用マウント `ONLINE_ROOM_ASSET_DIR` に置かれた画像のみを対象として、**実画像バイトとSource内のDrive file ID・正確なハッシュ・サイズ**を照合してから送信機構へ渡す。URL自動ダウンロード・画像生成・Driveの公開URLの直接使用はしない。追加ユニットテストは画像欠落、画像改変、未登録Drive IDを拒否。
+
+**実行用画像データ**：本チャットで4枚の未加工画像を `TGtumbler_ONLINE_4_original_images_verified.zip` としてZIP化し、`manifest.json`（実測サイズ・SHA-256・Drive ID）とREADMEも同梱。ZIPはMasterが既存Gserver TGtumblerのRuntimeへ一括投入する際の画像資材。GitHubに画像を巨大なバイナリとして重複保存せず、既存Driveを正本として維持。
+
+**注意**：画像を取得できたのはこの会話の作業コンテナであって、Gserverの実サービスが既に4画像をマウントした証拠ではない。本番一括配備時は既存Gserverの許可された媒体転送経路でZIPの4枚を読み取り専用領域へ配置し、`ONLINE_ROOM_ASSET_DIR` を指定してハッシュreadbackを行う。既存GATE Bot STARTのトークン、ONLINE Topicの実thread/既存投稿照合、投稿送信は未実施。
