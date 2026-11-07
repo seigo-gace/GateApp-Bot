@@ -11,14 +11,15 @@ export function validateLinkDestination(raw:string):string{
  if(val.length>2048||!val)throw new Error("LINK_URL_INVALID");
  let url:URL;
  try{url=new URL(val)}catch{throw new Error("LINK_URL_INVALID");}
- if(url.protocol!=="https:"||!url.hostname||url.username||url.password||
-    SHORTENERS.has(url.hostname)||url.port&&url.port!=="443"||
-    url.hostname==="localhost"||url.hostname.endsWith(".localhost")||
-    url.hostname.endsWith(".local")||url.hostname.endsWith(".internal")||
-    /^\d+(?:\.\d+){3}$/.test(url.hostname)||
-    url.hostname.startsWith("[")||
-    url.hostname==="0"||
-    url.hostname.endsWith(".onion"))
+ const host=url.hostname.toLowerCase().replace(/\.$/,"");
+ if(url.protocol!=="https:"||!host||url.username||url.password||
+    SHORTENERS.has(host)||url.port&&url.port!=="443"||
+    host==="localhost"||host.endsWith(".localhost")||
+    host.endsWith(".local")||host.endsWith(".internal")||
+    /^\d+(?:\.\d+){3}$/.test(host)||
+    host.startsWith("[")||
+    host==="0"||
+    host.endsWith(".onion"))
   throw new Error("LINK_HOST_NOT_ALLOWED");
  return url.toString();
 }
