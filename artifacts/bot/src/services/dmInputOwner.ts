@@ -21,7 +21,7 @@ export async function currentDmTextOwner(userId:number):Promise<DmTextOwner|null
      UNION ALL
      SELECT 'search'::text AS module,updated_at,4 AS priority
        FROM gaybbs_search_sessions
-       WHERE owner_user_id=$1 AND step='keyword'
+       WHERE owner_user_id=$1 AND step IN ('keyword','age')
    ) candidates ORDER BY updated_at DESC,priority DESC LIMIT 1`,[userId]);
  return result.rows.length?result.rows[0].module as DmTextOwner:null;
 }
