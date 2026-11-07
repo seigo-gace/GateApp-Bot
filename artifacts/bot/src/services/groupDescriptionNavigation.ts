@@ -1,4 +1,4 @@
-/** TGtumbler group about + four named text hyperlinks.
+/** TGtumbler group descriptions and separate optional message navigation.
  * Telegram setChatDescription accepts PLAIN text (0..255 chars), with no
  * parse_mode/entities. Rich text hyperlinks MUST be a Bot message, not the
  * group description. Never mistake Markdown anchors for clickable about text.
@@ -23,17 +23,27 @@ export const FOUR_NAV_LABELS=[
 export type FourNavKey="area_bbs"|"video_chat"|"gay_board"|"online";
 export const FOUR_NAV_KEYS=["area_bbs","video_chat","gay_board","online"] as const;
 
-export function groupAboutText(key:GroupAboutKey,links:readonly VerifiedNavigationLink[]):string{
+/** Each description contains exactly ONE URL for its own group.
+ * A verified existing group-level Gate link must be supplied from Runtime,
+ * never an ONLINE topic or unprotected t.me/c invite.
+ */
+export function groupAboutText(key:GroupAboutKey,link:VerifiedNavigationLink):string{
  if(!GROUP_ABOUT_TARGETS[key])throw new Error("GROUP_ABOUT_UNKNOWN_GROUP");
- // A Telegram group description supports plain text only; present bare HTTPS
- // URLs after the individual introduction. NO rich anchors or labels.
- const urls=verifiedGroupAboutUrls(links);
- const about=GROUP_ABOUT_INTROS[key]+"\\n"+urls.join("\\n");
+ if(link.key!==key)throw new Error("GROUP_ABOUT_WRONG_GATE_TARGET");
+ if(!link.verified||!isGateStartUrl(link.url))
+  throw new Error("GROUP_ABOUT_GATE_NOT_VERIFIED");
+ const about=GROUP_ABOUT_INTROS[key]+"\n\n🔗参加はこちら\n"+link.url;
  if([...about].length>255)throw new Error("GROUP_DESCRIPTION_LIMIT_255");
  return about;
 }
-function verifiedGroupAboutUrls(links:readonly VerifiedNavigationLink[]):readonly string[]{
- return verifiedRouteMap(links).map(x=>x.url);
+function isGateStartUrl(url:string):boolean{
+ try{
+  const u=new URL(url);
+  return u.protocol==="https:"&&u.hostname==="t.me"&&
+    /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(u.pathname.slice(1))&&
+    /^((gate|online)_[A-Za-z0-9_-]{1,64})$/.test(u.searchParams.get("start")||"")&&
+    [...u.searchParams.keys()].length===1&&!u.hash;
+ }catch{return false;}
 }
 export type VerifiedNavigationLink={key:FourNavKey;url:string;verified:boolean};
 /** These are Bot DM/GATE START urls, verified from existing runtime/DB.
@@ -45,7 +55,7 @@ function verifiedRouteMap(links:readonly VerifiedNavigationLink[]){
  for(const link of links){
   if(!FOUR_NAV_KEYS.includes(link.key)||byKey.has(link.key))
    throw new Error("GROUP_NAV_UNKNOWN_OR_DUPLICATE");
-  if(!link.verified||!/^https:\\/\\/t\\.me\\/[A-Za-z][A-Za-z0-9_]{4,31}\\?start=[A-Za-z0-9_-]{1,64}$/.test(link.url))
+  if(!link.verified||!isGateStartUrl(link.url))
    throw new Error("GROUP_NAV_GATE_URL_UNVERIFIED:"+link.key);
   byKey.set(link.key,link.url);
  }
