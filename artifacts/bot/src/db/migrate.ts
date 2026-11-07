@@ -522,6 +522,14 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
 
+      CREATE TABLE IF NOT EXISTS area_legacy_reply_keyboard_removals (
+        chat_id BIGINT PRIMARY KEY,
+        message_thread_id BIGINT NOT NULL,
+        message_id BIGINT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
         state TEXT NOT NULL DEFAULT 'top',

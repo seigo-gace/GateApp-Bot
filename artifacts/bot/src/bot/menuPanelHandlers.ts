@@ -26,8 +26,7 @@ async function checked(ctx:any):Promise<{chatId:number;threadId:number;adminId:n
 }
 export function registerMenuPanelHandlers(bot:Telegraf):void{
  // Remove the obsolete Area BBS reply keyboard from the Telegram input area.
- // This is intentionally NOT deleting any pinned post or changing other groups.
- // Telegram removal is client-side and may require a client to view the message.
+ // Does not delete pinned posts or affect other groups. Idempotent via DB ledger.
  bot.command("removeareakeyboard",async ctx=>{
   const where=await checked(ctx);if(!where)return;
   if(where.chatId!==-1003847210571){
@@ -36,17 +35,29 @@ export function registerMenuPanelHandlers(bot:Telegraf):void{
   const guide=await pool.query(
    "SELECT message_thread_id FROM general_guide_topics WHERE chat_id=$1 AND enabled=TRUE",
    [where.chatId]);
-  if(guide.rows.length!==1||
-     Number(guide.rows[0].message_thread_id)!==where.threadId){
-   await ctx.reply("既存の📌総合案内トピック以外では撤去しません。");return;
+  if(guide.rows.length!==1){
+   await ctx.reply("総合案内Topicが未登録です。/bindguide を先に実行してください。");return;
+  }
+  const done=await pool.query(
+   "SELECT message_id FROM area_legacy_reply_keyboard_removals WHERE chat_id=$1",
+   [where.chatId]);
+  if(done.rows.length){
+   await ctx.reply("既に旧キーボード撤去を送信済みです（message_id="+
+    done.rows[0].message_id+"）。再送しません。");return;
   }
   try{
    // selective:false addresses all recipients, not just the administrator.
-   await ctx.telegram.sendMessage(where.chatId,
+   const sent=await ctx.telegram.sendMessage(where.chatId,
     "📌 旧キーボードメニューは廃止しました。今後は総合案内の投稿ボタンをご利用ください。",{
      message_thread_id:where.threadId,
      reply_markup:{remove_keyboard:true,selective:false},
     });
+   await pool.query(
+    `INSERT INTO area_legacy_reply_keyboard_removals
+      (chat_id,message_thread_id,message_id,verified_by)
+     VALUES($1,$2,$3,$4)`,
+    [where.chatId,where.threadId,sent.message_id,where.adminId]);
+   await ctx.reply("✅ 旧返信キーボードの撤去要求を送信しました（message_id="+sent.message_id+"）。");
   }catch{
    await ctx.reply("キーボード撤去メッセージの送信結果を確認できません。再送前にTelegramで表示を確認してください。");
   }
@@ -81,7 +92,7 @@ export function registerMenuPanelHandlers(bot:Telegraf):void{
       state=CASE WHEN board_menu_panels.state='published' THEN 'published'
                  ELSE 'verified' END,updated_at=NOW()`,
    [where.chatId,where.threadId,mode,where.adminId]);
-  await ctx.reply("✅ 既存トピックのメニュー台帳を確認しました。投稿・固定・既存メッセージ変更はしていません。");
+  await ctx.reply("✅ 既存トピックのメニュー台帳を接続しました。投稿・固定・既存メッセージ変更はしていません。");
  });
  bot.command("publishpanel",async ctx=>{
   const where=await checked(ctx);if(!where)return;
