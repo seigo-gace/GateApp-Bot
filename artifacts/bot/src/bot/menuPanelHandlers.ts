@@ -25,6 +25,43 @@ async function checked(ctx:any):Promise<{chatId:number;threadId:number;adminId:n
  return {chatId:ctx.chat.id,threadId:thread,adminId:ctx.from.id};
 }
 export function registerMenuPanelHandlers(bot:Telegraf):void{
+ // Remove the obsolete Area BBS reply keyboard from the Telegram input area.
+ // Does not delete pinned posts or affect other groups. Idempotent via DB ledger.
+ bot.command("removeareakeyboard",async ctx=>{
+  const where=await checked(ctx);if(!where)return;
+  if(where.chatId!==-1003847210571){
+   await ctx.reply("エリア’s BBS以外は対象外です。");return;
+  }
+  const guide=await pool.query(
+   "SELECT message_thread_id FROM general_guide_topics WHERE chat_id=$1 AND enabled=TRUE",
+   [where.chatId]);
+  if(guide.rows.length!==1){
+   await ctx.reply("総合案内Topicが未登録です。/bindguide を先に実行してください。");return;
+  }
+  // Use the live thread from the admin update (never a URL-derived id).
+  const done=await pool.query(
+   "SELECT message_id FROM area_legacy_reply_keyboard_removals WHERE chat_id=$1",
+   [where.chatId]);
+  if(done.rows.length){
+   await ctx.reply("既に旧キーボード撤去を送信済みです（message_id="+
+    done.rows[0].message_id+"）。再送しません。");return;
+  }
+  try{
+   const sent=await ctx.telegram.sendMessage(where.chatId,
+    "📌 旧キーボードメニューは廃止しました。今後は総合案内の投稿ボタンをご利用ください。",{
+     message_thread_id:where.threadId,
+     reply_markup:{remove_keyboard:true,selective:false},
+    });
+   await pool.query(
+    `INSERT INTO area_legacy_reply_keyboard_removals
+      (chat_id,message_thread_id,message_id,verified_by)
+     VALUES($1,$2,$3,$4)`,
+    [where.chatId,where.threadId,sent.message_id,where.adminId]);
+   await ctx.reply("✅ 旧返信キーボードの撤去要求を送信しました（message_id="+sent.message_id+"）。");
+  }catch{
+   await ctx.reply("キーボード撤去メッセージの送信結果を確認できません。再送前にTelegramで表示を確認してください。");
+  }
+ });
  bot.command("bindpanel",async ctx=>{
   const where=await checked(ctx);if(!where)return;
   const mode=ctx.message.text.replace(/^\/\S+(?:@\w+)?\s*/,"").trim();

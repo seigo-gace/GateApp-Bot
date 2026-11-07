@@ -545,6 +545,14 @@ export async function runMigrations(): Promise<void> {
         PRIMARY KEY (host_chat_id, message_thread_id, promoted_board_key)
       );
 
+      CREATE TABLE IF NOT EXISTS area_legacy_reply_keyboard_removals (
+        chat_id BIGINT PRIMARY KEY,
+        message_thread_id BIGINT NOT NULL,
+        message_id BIGINT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
         state TEXT NOT NULL DEFAULT 'top',
