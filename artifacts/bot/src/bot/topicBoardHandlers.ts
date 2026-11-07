@@ -53,6 +53,17 @@ async function boardMessage(key:string):Promise<TransportMessage>{
  const block=key.slice(6);
  const selected=AREA_BLOCKS.find(x=>x.label===block);
  if(!selected)throw new Error("BOARD_KEY_UNKNOWN");
+ // Exact geographic boundaries are not authoritatively resolved in the
+ // old D01-D20 record. Require an independently approved block-specific text.
+ const scope=await pool.query(
+  `SELECT approved_scope_text,scope_approved_by,scope_approved_at
+   FROM topic_board_posts WHERE board_key=$1 AND chat_id=$2`,
+  [key,CHAT_AREA]);
+ if(scope.rows.length!==1||!scope.rows[0].scope_approved_by||
+    !scope.rows[0].scope_approved_at||
+    typeof scope.rows[0].approved_scope_text!=="string"||
+    !scope.rows[0].approved_scope_text.trim())
+  throw new Error("AREA_BLOCK_SCOPE_NOT_APPROVED:"+block);
  const rows=await pool.query(
   `SELECT area_name,target_url FROM topic_board_area_links
    WHERE block_name=$1 AND verified_by IS NOT NULL`,[block]);
@@ -81,7 +92,7 @@ async function boardMessage(key:string):Promise<TransportMessage>{
  };
  const rendered=renderAreaBlockBoard({
   blockTitle:block+"エリアボード",
-  description:areaBlockDescription(block),
+  description:areaBlockDescription(block,String(scope.rows[0].approved_scope_text)),
   areaLinks,
   searchLink:control("検索","検索"),
   filterLink:control("フィルター","フィルター"),
@@ -91,6 +102,31 @@ async function boardMessage(key:string):Promise<TransportMessage>{
  return {text:rendered.text,buttons:rendered.rows};
 }
 export function registerTopicBoardHandlers(bot:Telegraf):void{
+ // Store the approved geographic boundary/selection notes separately
+ // from candidate text. Applies only to an already bound Area BBS block board.
+ bot.command("setboarddescription",async ctx=>{
+  const at=await adminContext(ctx);if(!at||at.chatId!==CHAT_AREA)return;
+  const arg=actionArg(ctx.message.text);
+  const first=arg.indexOf(" ");
+  const name=first>0?arg.slice(0,first):"";
+  const description=first>0?arg.slice(first+1).trim():"";
+  if(!AREA_BLOCKS.some(b=>b.label===name)||!description||
+     description.length>1200){
+   await ctx.reply("形式: /setboarddescription ブロック名 正式な範囲と選び方の説明\n対象ブロック内で、承認済みの記録に基づく内容を指定してください。");
+   return;
+  }
+  const result=await pool.query(
+   `UPDATE topic_board_posts SET approved_scope_text=$3,
+      scope_approved_by=$4,scope_approved_at=NOW(),updated_at=NOW()
+    WHERE board_key=$1 AND chat_id=$2 AND message_thread_id=$5
+      AND state IN ('verified','published') RETURNING board_key`,
+   ["block:"+name,CHAT_AREA,description,at.adminId,at.threadId]);
+  if(result.rowCount!==1){
+   await ctx.reply("この既存エリアブロックTopicは未登録です。保存しません。");
+   return;
+  }
+  await ctx.reply("✅ "+name+"の承認済み地域説明を記録しました。まだ投稿はしていません。");
+ });
  bot.command("bindtopicboard",async ctx=>{
   const at=await adminContext(ctx);if(!at)return;
   const key=actionArg(ctx.message.text);
