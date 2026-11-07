@@ -5,6 +5,15 @@
 import {Markup, type Telegram} from "telegraf";
 
 export type WizardKeyboard = ReturnType<typeof Markup.inlineKeyboard>;
+/** One policy for profile, ROOM, recruitment, help and search.
+ * Ambiguous Telegram edit outcomes must not trigger a duplicate send. */
+export function wizardEditOutcome(error:unknown):"unchanged"|"missing"|"unknown"{
+ const reason=error instanceof Error?error.message:"";
+ if(/message is not modified/i.test(reason))return "unchanged";
+ if(/message (?:to edit|to be edited) not found|message can.t be edited|message cannot be edited|MESSAGE_ID_INVALID/i.test(reason))
+  return "missing";
+ return "unknown";
+}
 export async function showWizardScreen(
  telegram:Telegram, chatId:number, previousMessageId:number|undefined,
  text:string, keyboard?:WizardKeyboard,
@@ -16,14 +25,12 @@ export async function showWizardScreen(
    await telegram.editMessageText(chatId,oldId,undefined,text,keyboard);
    return {messageId:oldId,replaced:true};
   }catch(e){
-   const reason=e instanceof Error?e.message:"";
-   if(/message is not modified/i.test(reason))
-    return {messageId:oldId,replaced:true};
+   const outcome=wizardEditOutcome(e);
+   if(outcome==="unchanged")return {messageId:oldId,replaced:true};
    // An edit timeout/5xx can occur AFTER Telegram has already edited the
    // message. Align with VideoBot's shared screen transport: never create
    // an additional screen unless Telegram explicitly says it cannot edit.
-   if(!/message (?:to edit|to be edited) not found|message can.t be edited|message cannot be edited|MESSAGE_ID_INVALID/i.test(reason))
-    throw new Error("WIZARD_EDIT_RESULT_UNKNOWN");
+   if(outcome!=="missing")throw new Error("WIZARD_EDIT_RESULT_UNKNOWN");
    // The old private Bot screen was definitively rejected. Fallback is safe.
   }
  }
