@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
  VIDEO_TOPICS,CATEGORY_TOPICS,AREA_BLOCKS,
- renderTopicBoard,renderNationalBoard,renderAreaBlock,
+ renderTopicBoard,renderNationalBoard,renderAreaBlock,areaBlockDescription,AREA_BLOCK_DESCRIPTIONS,AREA_BLOCK_POSTING_GUIDE,
 } from "../src/services/topicBoardContent.js";
 test("all designated topic links are present, no menu-only destinations",()=>{
  assert.equal(VIDEO_TOPICS.length,7);
@@ -44,4 +44,17 @@ test("historically ambiguous or incomplete child ID never becomes a guessed topi
  }
  assert.match(renderAreaBlock("北海道"),/3847210571\/49/);
  assert.match(renderAreaBlock("沖縄"),/3847210571\/104/);
+});
+
+test("all thirteen L1 block boards have distinct regional guidance and L2 posting navigation",()=>{
+ assert.equal(Object.keys(AREA_BLOCK_DESCRIPTIONS).length,13);
+ for(const block of AREA_BLOCKS){
+  const text=areaBlockDescription(block.label);
+  assert.ok(text.length>=AREA_BLOCK_POSTING_GUIDE.length+20);
+  assert.match(text,/📝 投稿メニュー/);
+  assert.ok(!/架空の市区町村/.test(text));
+ }
+ assert.match(areaBlockDescription("東京"),/池袋.*新宿.*渋谷.*品川.*都心.*区東部.*都下/);
+ assert.match(areaBlockDescription("関西"),/大阪キタ.*大阪ミナミ/);
+ assert.throws(()=>areaBlockDescription("架空"),/AREA_BLOCK_DESCRIPTION_MISSING/);
 });
