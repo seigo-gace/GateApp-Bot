@@ -111,24 +111,10 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
  }
  let text="", rows:ReturnType<typeof Markup.button.callback>[][]=[];
  if(a.step==="intro"){
-  text=`【3グループ共通の参加審査】\n${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\n")}\n\n参加前に共通文書①〜④の全文を確認してください。各グループ固有のルールは最終承諾画面で確認します。\n\n${APPROVAL_SUMMARY}\n\n確認後、Bot対策の問題から始まります。質問は3グループ共通で1回だけです。`;
-  // URL buttons have a distinct Telegram type from callback buttons.
-  if(text.length>4096)throw new Error("GATE_DOCUMENT_EXCEEDS_TELEGRAM_LIMIT");
-  // The admission questionnaire is ONE shared process for all three boards.
-  // Display only the four verified common documents once (2x2).
-  // Group-specific rule text remains in the separate final "rules" step.
-  const shared=cfg.boards[0]!.links;
-  const docKeys=["guideline","terms","privacy","rules"] as const;
-  if(cfg.boards.some(b=>docKeys.some(k=>b.links[k]!==shared[k])))
-   throw new Error("GATE_COMMON_DOCUMENT_URLS_MISMATCH");
-  const docRows=[
-   [Markup.button.url("①ガイドライン",shared.guideline),Markup.button.url("②規約",shared.terms)],
-   [Markup.button.url("③Privacy Policy",shared.privacy),Markup.button.url("④グループルール",shared.rules)],
-  ];
-  const links=Markup.inlineKeyboard([...docRows,
-   [Markup.button.callback("✅ 確認して審査を開始",action(a,"continue"))],
-  ]);
-  const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,text,links);
+  // Legacy, already-open sessions only. New sessions now start at question 1.
+  text="参加資格の確認から審査を進めます。";
+  const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
+   text,Markup.inlineKeyboard([[Markup.button.callback("①参加資格の確認へ",action(a,"continue"))]]));
   await rememberScreen(a,out.messageId);
   return;
  }
@@ -140,6 +126,13 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
  }else if(a.step==="q1"||a.step==="q2"){
   const q=APPROVAL_QUESTIONS[a.step==="q1"?0:1];
   text=`【3グループ共通】\n${q.title}\n\n${q.text}`;
+  if(a.step==="q2"){
+   // Use the already verified published policy page, as a single clickable
+   // TEXT URL in the question body; no URL buttons or invented URL registry.
+   const url=cfg.boards[0]?.links.terms;
+   if(!url||!isSafeDocUrl(url))throw new Error("GATE_TERMS_URL_UNVERIFIED");
+   text+="\n\n🔗 規約・規則の全文はこちら\n"+url;
+  }
   rows=[[Markup.button.callback(q.yes,action(a,"yes")),
    Markup.button.callback(q.no,action(a,"no"))]];
  }else if(a.step==="rules"){
@@ -297,8 +290,7 @@ async function onAction(ctx:Context,step:string,choice:string,stepToken:string):
  };
  if(step==="intro"){
   if(choice!=="continue"){await ctx.answerCbQuery("無効な操作です");return}
-  const q=generateChallenge(cfg.challenge.difficulty);
-  const changed=await transition({attempt:a,messageId,next:"challenge",newToken:token(),challengeData:q});
+  const changed=await transition({attempt:a,messageId,next:"q1",newToken:token()});
   if(!changed){await ctx.answerCbQuery("処理済みです");return}
  }else if(step==="challenge"){
   const q=a.challenge_data as ChallengeQuestion|null;
@@ -312,16 +304,17 @@ async function onAction(ctx:Context,step:string,choice:string,stepToken:string):
     fails:a.challenge_fails+1,challengeData:generateChallenge(cfg.challenge.difficulty)});
    if(!changed){await ctx.answerCbQuery("処理済みです");return}
   }else{
-   const changed=await transition({attempt:a,messageId,next:"q1",newToken:token()});
+   const changed=await transition({attempt:a,messageId,next:"issuing",newToken:token()});
    if(!changed){await ctx.answerCbQuery("処理済みです");return}
   }
  }else if(step==="q1"||step==="q2"||step==="rules"){
   if(choice!=="yes"&&choice!=="no"){await ctx.answerCbQuery("無効な操作です");return}
   const consent=step==="q1"?"question1":step==="q2"?"question2":"rules";
   if(choice==="no"){await reject("参加条件または規約への承諾がありません。",{stage:consent,accepted:false});return}
-  const next=step==="q1"?"q2":step==="q2"?"rules":"issuing";
+  const next=step==="q1"?"q2":step==="q2"?"rules":"challenge";
+  const challengeData=step==="rules"?generateChallenge(cfg.challenge.difficulty):undefined;
   const changed=await transition({attempt:a,messageId,next,newToken:token(),
-   consent:{stage:consent,accepted:true}});
+   challengeData,consent:{stage:consent,accepted:true}});
   if(!changed){await ctx.answerCbQuery("処理済みです");return}
  }else{await ctx.answerCbQuery("無効な操作です");return}
  await ctx.answerCbQuery();
