@@ -18,7 +18,7 @@ import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
  APPROVAL_SUMMARY,RULES_CONSENT_QUESTION,hasAdoptedQuestions,isSafeDocUrl,
  ADMISSION_BOARD_CHAT_IDS,sharedAdmissionDocumentVersion} from "./contract.js";
 import {openAttempt,readAttempt,rememberScreen,transition,consentsComplete,
- saveIssuedInvites,currentIssuedInvites,verifiedApprovalDocumentLinks,getRequestEligibility,
+ saveIssuedInvites,currentIssuedInvites,verifiedApprovalDocumentLinks,verifiedSharedApprovalOverview,getRequestEligibility,
  refreshJoinInvitesIfNeeded,
  withAdmissionClient,type GateAttempt} from "./store.js";
 import {
@@ -111,24 +111,22 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
  }
  let text="", rows:ReturnType<typeof Markup.button.callback>[][]=[];
  if(a.step==="intro"){
-  text=`【3グループ共通の参加審査】\n${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\n")}\n\n参加前に共通文書①〜④の全文を確認してください。各グループ固有のルールは最終承諾画面で確認します。\n\n${APPROVAL_SUMMARY}\n\n確認後、Bot対策の問題から始まります。質問は3グループ共通で1回だけです。`;
-  // URL buttons have a distinct Telegram type from callback buttons.
+  // One common approval, one verified common policy index, ONE inline text link.
+  // Never render group x document URL buttons (12), or 4 URL buttons.
+  const overview=await verifiedSharedApprovalOverview(cfg.boards.map(b=>Number(b.target.chat_id)));
+  if(!overview)throw new Error("GATE_SHARED_POLICY_OVERVIEW_UNVERIFIED");
+  const escapeHtml=(v:string)=>v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  text=`【3グループ共通の参加審査】
+${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\n")}
+
+参加前にガイドライン・規約・Privacy Policy・グループルールの全文を確認してください。
+🔗 <a href="${escapeHtml(overview)}">参加規約・ルール等の全文はこちら</a>
+
+確認後、Bot対策の問題から始めます。質問は3グループ共通で1回だけです。`;
   if(text.length>4096)throw new Error("GATE_DOCUMENT_EXCEEDS_TELEGRAM_LIMIT");
-  // The admission questionnaire is ONE shared process for all three boards.
-  // Display only the four verified common documents once (2x2).
-  // Group-specific rule text remains in the separate final "rules" step.
-  const shared=cfg.boards[0]!.links;
-  const docKeys=["guideline","terms","privacy","rules"] as const;
-  if(cfg.boards.some(b=>docKeys.some(k=>b.links[k]!==shared[k])))
-   throw new Error("GATE_COMMON_DOCUMENT_URLS_MISMATCH");
-  const docRows=[
-   [Markup.button.url("①ガイドライン",shared.guideline),Markup.button.url("②規約",shared.terms)],
-   [Markup.button.url("③Privacy Policy",shared.privacy),Markup.button.url("④グループルール",shared.rules)],
-  ];
-  const links=Markup.inlineKeyboard([...docRows,
-   [Markup.button.callback("✅ 確認して審査を開始",action(a,"continue"))],
-  ]);
-  const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,text,links);
+  const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
+    text,Markup.inlineKeyboard([[Markup.button.callback("✅ 確認して審査を開始",action(a,"continue"))]]),
+    {parse_mode:"HTML"});
   await rememberScreen(a,out.messageId);
   return;
  }
