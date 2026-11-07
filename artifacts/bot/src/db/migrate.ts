@@ -150,6 +150,26 @@ export async function runMigrations(): Promise<void> {
         ADD COLUMN IF NOT EXISTS scope_approved_by BIGINT;
       ALTER TABLE topic_board_posts
         ADD COLUMN IF NOT EXISTS scope_approved_at TIMESTAMPTZ;
+      CREATE TABLE IF NOT EXISTS online_room_board_sets (
+        set_id BIGSERIAL PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id = -1003847210571),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        revision INTEGER NOT NULL DEFAULT 1,
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK(state IN ('verified','publishing','published','needs_reconcile')),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(chat_id,message_thread_id)
+      );
+      CREATE TABLE IF NOT EXISTS online_room_board_cards (
+        set_id BIGINT NOT NULL REFERENCES online_room_board_sets(set_id),
+        card_key TEXT NOT NULL CHECK(card_key IN ('intro','area_bbs','video_chat','gay_board')),
+        message_id BIGINT NOT NULL CHECK(message_id > 0),
+        published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(set_id,card_key),
+        UNIQUE(set_id,message_id)
+      );
       CREATE TABLE IF NOT EXISTS topic_board_area_links (
         block_name TEXT NOT NULL,
         area_name TEXT NOT NULL,
