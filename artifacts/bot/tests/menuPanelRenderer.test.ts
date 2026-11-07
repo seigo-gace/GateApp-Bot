@@ -58,8 +58,8 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
  assert.deepEqual(result.rows.at(-2)?.map(x=>x.text),["検索","フィルター"]);
 });
 
-test("posting panel merges four verified DM editors and five verified navigation URLs",()=>{
- const staticLabels=["クリエーター有料ビデオ投稿","検索/フィルター",
+test("posting panel merges five verified DM editors and four verified navigation URLs",()=>{
+ const staticLabels=["クリエーター有料ビデオ投稿",
   "雑談","紹介/招待","操作説明"];
  const links=staticLabels.map((label,i)=>({label,
   url:"https://t.me/c/3847210571/"+(500+i),verified:true}));
@@ -68,6 +68,7 @@ test("posting panel merges four verified DM editors and five verified navigation
   {label:"募集+Room",feature:"room",url:"https://t.me/GayBBS_bot?start=m_123",ready:true},
   {label:"告知/予告",feature:"announcement",url:"https://t.me/GayBBS_bot?start=m_456",ready:true},
   {label:"🔗ボタン作成",feature:"link",url:"https://t.me/GayBBS_bot?start=m_789",ready:true},
+  {label:"検索/フィルター",feature:"search",url:"https://t.me/GayBBS_bot?start=m_900",ready:true},
  ] as const;
  const result=renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:[...entryLinks]});
