@@ -56,6 +56,12 @@ async function main():Promise<void>{
     [Markup.button.url("🎥 ROOMに参加する",room.joinUrl)]]));
    return;
   }
+  // Public read-only search can also be opened by a verified Area Board URL.
+  // No group/topic identity is inferred from this non-posting entry.
+  if(ctx.startPayload==="search"){
+   await startSearchEditor(ctx.telegram,ctx.from.id);
+   return;
+  }
   if(ctx.startPayload?.startsWith("a_")){
    await startApplicationEditor(ctx,ctx.startPayload);
    return;
