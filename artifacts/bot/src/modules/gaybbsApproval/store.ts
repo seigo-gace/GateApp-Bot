@@ -255,26 +255,6 @@ export async function verifiedApprovalDocumentLinks(chatId:number):Promise<Recor
  for(const row of r.rows){links[row.link_key]=row.destination_url}
  return Object.keys(links).length===4?links:null;
 }
-/** One common, explicitly verified index for all four policy documents.
- * Never synthesize a URL from three per-board links.
- */
-export async function verifiedSharedApprovalOverview(chatIds:readonly number[]):Promise<string|null>{
- if(chatIds.length!==3||new Set(chatIds).size!==3)return null;
- const r=await pool.query<{chat_id:string;destination_url:string}>(`
-  SELECT chat_id,destination_url FROM general_guide_links
-  WHERE chat_id=ANY($1::bigint[]) AND link_key='approval_overview'
-    AND enabled=true AND verified_by IS NOT NULL AND verified_at IS NOT NULL
- `,[[...chatIds]]);
- if(r.rows.length!==3 || new Set(r.rows.map(x=>Number(x.chat_id))).size!==3)return null;
- const urls=new Set(r.rows.map(x=>x.destination_url));
- if(urls.size!==1)return null;
- const url=[...urls][0];
- try{
-  const parsed=new URL(url);
-  if(parsed.protocol!=="https:"||parsed.username||parsed.password||parsed.hash)return null;
-  return url;
- }catch{return null;}
-}
 export async function getRequestEligibility(client:PoolClient,args:{
  targetId:number;userId:number;url:string;expectedDocumentVersion?:string
 }):Promise<{allowed:boolean;inviteId:number|null;reason:string}>{
