@@ -901,6 +901,7 @@ try{
   chat:{type:"private"},from:{id:881789},
   match:publishPattern.match(postActions.find(h=>h.pattern.test(publishPattern))!.pattern),
   answerCbQuery:async()=>{},editMessageText:async(text:string)=>{editEvents.push(text);},
+  reply:async(text:string)=>{editEvents.push(text);},
   telegram:{sendMessage:async()=>{telegramCalled=true;}}
  });
  assert.equal(telegramCalled,false,"stale final-confirmation must not send");
