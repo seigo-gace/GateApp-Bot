@@ -12,7 +12,7 @@ test("each of three group descriptions has only its OWN Gate URL and stays withi
   const official={key,text:"MASTER_APPROVED_EXACT_COPY_FOR_TEST_ONLY",verified:true,source:"fixture"} as const;
   const description=groupAboutText(key,link,official);
   assert.ok([...description].length<=255,key);
-  assert.ok(description.includes("🔗参加はこちら"));
+  assert.ok(description.includes("🔗 参加はこちらから"));
   assert.ok(description.includes(link.url));
   assert.equal((description.match(/https:\/\/t\.me\//g)||[]).length,1);
   assert.ok(!description.includes("<a href="));
