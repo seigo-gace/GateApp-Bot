@@ -5,15 +5,18 @@ import {FOUR_NAV_KEYS,FOUR_NAV_LABELS,GROUP_ABOUT_TARGETS,
 const links=FOUR_NAV_KEYS.map((key,i)=>({
  key,url:"https://t.me/GayBBS_bot?start=gate_test_"+i,verified:true,
 }));
-test("three official group about texts remain Telegram 255-codepoint-safe",()=>{
+test("each of three group descriptions has only its OWN Gate URL and stays within 255",()=>{
  assert.deepEqual(Object.keys(GROUP_ABOUT_TARGETS),["area_bbs","video_chat","gay_board"]);
  for(const key of Object.keys(GROUP_ABOUT_TARGETS) as Array<keyof typeof GROUP_ABOUT_TARGETS>){
-  const text=groupAboutText(key);
-  assert.ok([...text].length<=255,key+": about length");
-  assert.ok(text.length>40);
-  assert.equal(FOUR_NAV_LABELS.every(label=>text.includes(label)),true);
-  assert.ok(text.includes(GROUP_ABOUT_TARGETS[key].communityTopicUrl));
-  assert.ok(!text.includes("<a href="));
+  const link=links.find(x=>x.key===key)!;
+  const description=groupAboutText(key,link);
+  assert.ok([...description].length<=255,key);
+  assert.ok(description.includes("🔗参加はこちら"));
+  assert.ok(description.includes(link.url));
+  assert.equal((description.match(/https:\/\/t\.me\//g)||[]).length,1);
+  assert.ok(!description.includes("<a href="));
+  assert.throws(()=>groupAboutText(key,links.find(x=>x.key!==key)!),/WRONG_GATE_TARGET/);
+  assert.throws(()=>groupAboutText(key,{...link,verified:false}),/GATE_NOT_VERIFIED/);
  }
 });
 test("four actual text links are HTML message anchors, one per verified Gate route",()=>{
