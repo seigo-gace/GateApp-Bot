@@ -35,5 +35,5 @@ test("ONLINE deep link bot identity is read from runtime and never assumed",()=>
  assert.equal(requireOnlineBotUsername("ExistingGateBot"),"ExistingGateBot");
  assert.throws(()=>requireOnlineBotUsername(""),/IDENTITY_UNVERIFIED/);
  assert.throws(()=>requireOnlineBotUsername("https://t.me/Test_bot"),/IDENTITY_UNVERIFIED/);
- assert.throws(()=>requireOnlineBotUsername("UserNotBot"),/IDENTITY_UNVERIFIED/);
+ assert.throws(()=>requireOnlineBotUsername("UserNotAgent"),/IDENTITY_UNVERIFIED/);
 });
