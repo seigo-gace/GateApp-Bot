@@ -1,10 +1,8 @@
 import "dotenv/config";
+import { readConfiguredBotToken } from "./botToken.js";
 
-export const BOT_TOKEN = process.env.BOT_TOKEN;
-
-if (!BOT_TOKEN) {
-  throw new Error("BOT_TOKEN environment variable is required.");
-}
+// The same credential-loading interface is used by both GroupBot runtimes.
+export const BOT_TOKEN = readConfiguredBotToken();
 
 export const DATABASE_URL = process.env.DATABASE_URL;
 
