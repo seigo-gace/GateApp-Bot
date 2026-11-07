@@ -95,9 +95,9 @@ export function areaBlockDescription(block:string,approvedScope?:string):string 
  if(!cover||Object.keys(cover).length!==child.length||
     child.some(x=>!cover[x.label]||!cover[x.label].trim()))
   throw new Error("AREA_CHILD_COVERAGE_MISSING:"+block);
- const coverageText=child.map(x=>"【"+x.label+"】"+cover[x.label]).join("\\n");
- return description+"\\n\\n"+coverageText+(scope?"\\n\\n"+scope:"")+
-  "\\n\\n"+AREA_BLOCK_POSTING_GUIDE;
+ const coverageText=child.map(x=>"【"+x.label+"】"+cover[x.label]).join("\n");
+ return description+"\n\n"+coverageText+(scope?"\n\n"+scope:"")+
+  "\n\n"+AREA_BLOCK_POSTING_GUIDE;
 }
 const escapeHtml=(s:string):string=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const link=(label:string,url:string)=>`<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
