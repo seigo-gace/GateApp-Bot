@@ -16,6 +16,8 @@ import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
+import {suppressAreaCommandMenu} from "./services/areaMenuSuppression.js";
+import {pool} from "./db/index.js";
 
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
@@ -71,6 +73,25 @@ async function main():Promise<void>{
  registerApplicationHandlers(bot);
  registerRoomHandlers(bot);
  registerGayBbsApprovalHandlers(bot);
+ try{
+  const areaMenu=await suppressAreaCommandMenu(bot.telegram);
+  await pool.query(
+    `INSERT INTO area_command_menu_suppressions
+      (chat_id,scopes_cleared,legacy_bot_id,legacy_bot_status,legacy_bot_removed,verified_by)
+     VALUES ($1,$2,$3,$4,$5,0)
+     ON CONFLICT (chat_id) DO UPDATE SET
+      scopes_cleared=EXCLUDED.scopes_cleared,
+      legacy_bot_status=EXCLUDED.legacy_bot_status,
+      legacy_bot_removed=EXCLUDED.legacy_bot_removed OR area_command_menu_suppressions.legacy_bot_removed,
+      suppressed_at=NOW()`,
+    [areaMenu.chatId,areaMenu.scopesCleared.join(","),areaMenu.legacyBotId,
+     areaMenu.legacyBotStatus,areaMenu.legacyBotRemoved]);
+  console.log("GAYBBS_AREA_MENU_SUPPRESSED chat="+areaMenu.chatId+
+    " legacy_status="+areaMenu.legacyBotStatus);
+ }catch(error){
+  console.error("GAYBBS_AREA_MENU_SUPPRESSION_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
  bot.catch((error,ctx)=>{
   console.error("[GAYBBS_ERROR]",ctx.updateType,
     error instanceof Error?error.name:"unknown");

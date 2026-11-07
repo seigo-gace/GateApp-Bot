@@ -1,0 +1,24 @@
+{
+  "chat_id": -1003847210571,
+  "bot": "@GayBBS_bot",
+  "scopes_cleared": [
+    "chat",
+    "chat_administrators"
+  ],
+  "getMyCommands_before": {
+    "default": [],
+    "all_group_chats": [],
+    "chat": [],
+    "chat_administrators": []
+  },
+  "getMyCommands_after": {
+    "default": [],
+    "all_group_chats": [],
+    "chat": [],
+    "chat_administrators": []
+  },
+  "legacy_bot_id": 8086265383,
+  "legacy_bot_username": "@ShowTimeLIVE_Bot",
+  "legacy_bot_status": "left",
+  "legacy_bot_removed": false
+}

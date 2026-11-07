@@ -553,6 +553,16 @@ export async function runMigrations(): Promise<void> {
         removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS area_command_menu_suppressions (
+        chat_id BIGINT PRIMARY KEY,
+        scopes_cleared TEXT NOT NULL,
+        legacy_bot_id BIGINT NOT NULL,
+        legacy_bot_status TEXT NOT NULL,
+        legacy_bot_removed BOOLEAN NOT NULL DEFAULT FALSE,
+        suppressed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        verified_by BIGINT
+      );
+
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
         state TEXT NOT NULL DEFAULT 'top',
