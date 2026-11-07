@@ -2,12 +2,13 @@
 import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {PROFILE_AREA_BLOCKS} from "../services/profileArea.js";
 import {PROFILE_POSITIONS} from "../services/profileCore.js";
+import {LIKE_CATEGORIES,LIKE_PAGE_SIZE} from "../services/profileLike.js";
 import {PURPOSE_TAGS} from "../services/announcementTags.js";
 import {selectionRows} from "../services/inlineSelection.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {beginSearch,getSearchSession,updateSearch,bindSearchScreen,findPublicSearchHits,type SearchSession} from "../services/searchRepository.js";
-import {setSearchFilter,initialSearchFilters} from "../services/searchDomain.js";
+import {setSearchFilter,initialSearchFilters,searchOptions,toggleSearchTag,parseSearchAge,type SearchOptionKey} from "../services/searchDomain.js";
 import {authorizedSearchGroupIds} from "../services/searchAccess.js";
 const dm=(c:any)=>c.chat?.type==="private";
 const button=(text:string,data:string)=>Markup.button.callback(text,data);
@@ -27,11 +28,15 @@ function summary(s:SearchSession){
  const f=s.filters;return "🔍 検索/フィルター\n対象："+(f.kind==="profile"?"プロフィール":"相手募集")+
  "\nキーワード："+(f.keyword||"指定なし")+"\nエリア："+(f.region||"指定なし")+
  "\nポジション："+(f.position||"指定なし")+"\n目的："+(f.purpose||"指定なし")+
+ (f.kind==="profile"?
+  "\n年齢："+(f.ageMin===null?"指定なし":f.ageMin+"〜"+f.ageMax+"歳")+
+  "\n髪型："+(f.hair||"指定なし")+" / 体型："+(f.body||"指定なし")+
+  "\n#Like："+(f.like?.tag||"指定なし")+" / #Love："+(f.love?.tag||"指定なし"):"")+
  "\n公開済み投稿から検索します。";
 }
 async function home(t:Telegram,id:number,s:SearchSession){await show(t,id,s,summary(s),homeRows(s));}
-function options(s:SearchSession,key:"region"|"position"|"purpose"){
- const items=key==="region"?PROFILE_AREA_BLOCKS:key==="position"?PROFILE_POSITIONS:PURPOSE_TAGS;
+function options(s:SearchSession,key:SearchOptionKey){
+ const items=searchOptions(key);
  const rows=[] as any[][];
  for(let i=0;i<items.length;i+=3){
   const group=items.slice(i,i+3).map((label,j)=>({label,index:i+j}));
@@ -42,11 +47,20 @@ function options(s:SearchSession,key:"region"|"position"|"purpose"){
  return rows;
 }
 async function filter(t:Telegram,id:number,s:SearchSession){
- await show(t,id,s,summary(s)+"\n\n絞り込む項目を選択してください。",[
-  [button("📍 エリア",`search:panel:${s.revision}:region`),
-   button("ポジション",`search:panel:${s.revision}:position`),
-   button("目的",`search:panel:${s.revision}:purpose`)],
-  [button("🔎 検索実行",`search:run:${s.revision}`),button("↩ 戻る",`search:back:${s.revision}`)]]);
+ const r=s.revision;
+ const rows=s.filters.kind==="profile"?[
+  [button("📍 エリア",`search:panel:${r}:region`),button("年齢",`search:age:${r}`),
+   button("ポジション",`search:panel:${r}:position`)],
+  [button("体型",`search:panel:${r}:body`),button("髪型",`search:panel:${r}:hair`),
+   button("目的",`search:panel:${r}:purpose`)],
+  [button("#Like",`search:tag:${r}:like`),button("#Love",`search:tag:${r}:love`)],
+ ]:[
+  [button("📍 エリア",`search:panel:${r}:region`),
+   button("ポジション",`search:panel:${r}:position`),
+   button("目的",`search:panel:${r}:purpose`)],
+ ];
+ rows.push([button("🔎 検索実行",`search:run:${r}`),button("↩ 戻る",`search:back:${r}`)]);
+ await show(t,id,s,summary(s)+"\n\n絞り込む項目を選択してください。",rows);
 }
 async function results(t:Telegram,id:number,s:SearchSession,page:number){
  const offset=page*5;
@@ -88,24 +102,27 @@ export function registerSearchHandlers(bot:Telegraf){
   if(!dm(ctx))return;
   const rev=Number(ctx.match[1]),s=await getSearchSession(ctx.from.id);
   if(!s||s.revision!==rev){await ctx.answerCbQuery("古い操作です");return;}
-  const next=await updateSearch(ctx.from.id,rev,"home",{...s.filters,kind:ctx.match[2] as "profile"|"recruitment"});
+  const kind=ctx.match[2] as "profile"|"recruitment";
+  const next=await updateSearch(ctx.from.id,rev,"home",kind==="recruitment"?
+   {...s.filters,kind,hair:null,body:null,ageMin:null,ageMax:null,like:null,love:null}:
+   {...s.filters,kind});
   await ctx.answerCbQuery();await home(ctx.telegram,ctx.from.id,next);
  });
- bot.action(/^search:panel:(\d+):(region|position|purpose)$/,async ctx=>{
+ bot.action(/^search:panel:(\d+):(region|position|purpose|hair|body)$/,async ctx=>{
   if(!dm(ctx))return;
-  const rev=Number(ctx.match[1]),key=ctx.match[2] as "region"|"position"|"purpose";
+  const rev=Number(ctx.match[1]),key=ctx.match[2] as SearchOptionKey;
   const s=await getSearchSession(ctx.from.id);
   if(!s||s.revision!==rev){await ctx.answerCbQuery("古い操作です");return;}
   const next=await updateSearch(ctx.from.id,rev,key,s.filters);
   await ctx.answerCbQuery();await show(ctx.telegram,ctx.from.id,next,
    summary(next)+"\n\n"+key+"を選択（再押下で解除）",options(next,key));
  });
- bot.action(/^search:pick:(\d+):(region|position|purpose):(\d+)$/,async ctx=>{
+ bot.action(/^search:pick:(\d+):(region|position|purpose|hair|body):(\d+)$/,async ctx=>{
   if(!dm(ctx))return;
-  const rev=Number(ctx.match[1]),key=ctx.match[2] as "region"|"position"|"purpose",idx=Number(ctx.match[3]);
+  const rev=Number(ctx.match[1]),key=ctx.match[2] as SearchOptionKey,idx=Number(ctx.match[3]);
   const s=await getSearchSession(ctx.from.id);
   if(!s||s.revision!==rev||s.step!==key){await ctx.answerCbQuery("古い操作です");return;}
-  const values=key==="region"?PROFILE_AREA_BLOCKS:key==="position"?PROFILE_POSITIONS:PURPOSE_TAGS;
+  const values=searchOptions(key);
   if(!Number.isSafeInteger(idx)||idx<0||idx>=values.length){await ctx.answerCbQuery("選択肢が不正です");return;}
   const next=await updateSearch(ctx.from.id,rev,key,setSearchFilter(s.filters,key,values[idx]!));
   await ctx.answerCbQuery();await show(ctx.telegram,ctx.from.id,next,summary(next)+"\n\n"+key+"を選択（再押下で解除）",options(next,key));
