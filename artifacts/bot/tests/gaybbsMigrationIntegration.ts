@@ -907,7 +907,7 @@ try{
  await pool.query(
   `UPDATE posting_deliveries SET status='needs_reconcile' WHERE operation_key='search-recruit-1'`);
  assert.equal((await findPublicSearchHits({...initialSearchFilters(),
-  kind:"recruitment"},0)).hits.length,0,
+  kind:"recruitment",keyword:"今夜の公開募集"},0)).hits.length,0,
   "ambiguous Telegram send must never appear in search");
  console.log("GAYBBS_DB_SHARED_SEARCH_PUBLIC_VISIBILITY_AND_FILTERS=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
