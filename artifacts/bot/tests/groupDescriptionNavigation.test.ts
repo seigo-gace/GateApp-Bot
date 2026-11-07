@@ -9,14 +9,16 @@ test("each of three group descriptions has only its OWN Gate URL and stays withi
  assert.deepEqual(Object.keys(GROUP_ABOUT_TARGETS),["area_bbs","video_chat","gay_board"]);
  for(const key of Object.keys(GROUP_ABOUT_TARGETS) as Array<keyof typeof GROUP_ABOUT_TARGETS>){
   const link=links.find(x=>x.key===key)!;
-  const description=groupAboutText(key,link);
+  const official={key,text:"MASTER_APPROVED_EXACT_COPY_FOR_TEST_ONLY",verified:true,source:"fixture"} as const;
+  const description=groupAboutText(key,link,official);
   assert.ok([...description].length<=255,key);
   assert.ok(description.includes("🔗参加はこちら"));
   assert.ok(description.includes(link.url));
   assert.equal((description.match(/https:\/\/t\.me\//g)||[]).length,1);
   assert.ok(!description.includes("<a href="));
-  assert.throws(()=>groupAboutText(key,links.find(x=>x.key!==key)!),/WRONG_GATE_TARGET/);
-  assert.throws(()=>groupAboutText(key,{...link,verified:false}),/GATE_NOT_VERIFIED/);
+  assert.throws(()=>groupAboutText(key,links.find(x=>x.key!==key)!,official),/WRONG_GATE_TARGET/);
+  assert.throws(()=>groupAboutText(key,{...link,verified:false},official),/GATE_NOT_VERIFIED/);
+  assert.throws(()=>groupAboutText(key,link,{...official,verified:false}),/OFFICIAL_TEXT_NOT_VERIFIED/);
  }
 });
 test("four actual text links are HTML message anchors, one per verified Gate route",()=>{
