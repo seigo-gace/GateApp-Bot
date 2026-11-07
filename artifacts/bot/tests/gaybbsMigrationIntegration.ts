@@ -876,13 +876,32 @@ try{
    (owner_user_id,chat_id,thread_id,message_id,status)
    VALUES (881772,-1003847210571,881774,881775,'published'),
           (881773,-1003847210571,881774,881776,'published')`);
- const sr=await findPublicSearchHits({...s2.filters,region:"東京",position:"リバ"},0,5,[-1003847210571]);
+ await pool.query(
+  "UPDATE profiles SET hair='坊主',body='筋肉質' WHERE owner_user_id=881772");
+ await pool.query(
+  `INSERT INTO profile_tag_catalog(category,tag,ordinal)
+   VALUES ('エロワード','変態',1),('パーツ','乳首',1)
+   ON CONFLICT(category,tag) DO NOTHING`);
+ await pool.query(
+  `INSERT INTO profile_tags(owner_user_id,purpose,category,tag)
+   VALUES (881772,'like','エロワード','変態'),
+          (881772,'love','パーツ','乳首')`);
+ const sr=await findPublicSearchHits({...s2.filters,region:"東京",position:"リバ",
+  ageMin:30,ageMax:40,hair:"坊主",body:"筋肉質",
+  like:{category:"エロワード",tag:"変態"},
+  love:{category:"パーツ",tag:"乳首"}},0,5,[-1003847210571]);
  assert.equal(sr.hits.length,1,"private profile must never be returned");
  assert.equal((await findPublicSearchHits({...s2.filters,region:"東京"},0)).hits.length,0,
   "missing group membership scope must not expose profiles");
  assert.equal((await findPublicSearchHits({...s2.filters,region:"東京"},0,5,[-1002373696859])).hits.length,0,
   "membership in another group must not expose this group's profile");
  assert.equal(sr.hits[0].title,"公開者");
+ assert.equal((await findPublicSearchHits({...s2.filters,ageMin:18,ageMax:25},
+  0,5,[-1003847210571])).hits.length,0);
+ assert.equal((await findPublicSearchHits({...s2.filters,hair:"ロング"},
+  0,5,[-1003847210571])).hits.length,0);
+ assert.equal((await findPublicSearchHits({...s2.filters,
+  love:{category:"パーツ",tag:"ペニス"}},0,5,[-1003847210571])).hits.length,0);
  assert.equal(sr.hits[0].url,"https://t.me/c/3847210571/881775");
  assert.equal((await findPublicSearchHits({...s2.filters,region:"北海道"},0,5,[-1003847210571])).hits.length,0);
  const searchRecruitment=await pool.query(
