@@ -945,6 +945,14 @@ try{
   "SELECT revision,section FROM gaybbs_help_sessions WHERE owner_user_id=$1",[helpOwner]);
  assert.equal(helpState.rows[0].section,"home");
  assert.equal(Number(helpState.rows[0].revision),3);
+ await tap("help:topic:3:room");
+ const roomHelp=helpEvents.at(-1)!.keyboard.inline_keyboard;
+ assert.deepEqual(roomHelp[0].map((button:any)=>button.text),
+  ["🎬 ROOMを作成","📢 相手募集を作成"]);
+ await tap("help:recruit:4");
+ const startedRecruitment=await getDraft(helpOwner,"announcement");
+ assert.equal(startedRecruitment?.data.recruitmentFlow,"compact");
+ assert.equal(startedRecruitment?.step,"awaiting_text");
  console.log("GAYBBS_DB_OPERATION_HELP_3X2_REVISION_AND_RETURN=PASS");
  // A cancelled final confirmation is tied to the original private revision.
  // Replayed Telegram callbacks cannot publish after explicit cancellation.
