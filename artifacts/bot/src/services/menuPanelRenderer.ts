@@ -3,7 +3,7 @@
  * missing functionality or links to a disabled document.
  */
 export type NavLink={label:string;url:string;verified:boolean};
-export type EntryLink={feature:"announcement"|"room"|"link"|"search";label:string;url:string;ready:boolean};
+export type EntryLink={feature:"announcement"|"room"|"link"|"search"|"help";label:string;url:string;ready:boolean};
 export type PanelSpec={
  type:"general_guide"|"posting";
  board:"area_bbs"|"video_chat"|"gay_board";
@@ -135,7 +135,7 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  const allowed:Readonly<Record<string,EntryLink["feature"]>>={
   "相手募集":"announcement","募集+Room":"room",
   "告知/予告":"announcement","🔗ボタン作成":"link",
-  "検索/フィルター":"search",
+  "検索/フィルター":"search","操作説明":"help",
  };
  const entries=spec.entryLinks.map(entry=>{
   if(allowed[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
