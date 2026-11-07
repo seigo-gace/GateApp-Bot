@@ -46,6 +46,34 @@ export const AREA_BLOCKS:readonly AreaBlock[]=[
  {label:"九州",url:c(AREA,999),children:[{label:"福岡",url:c(AREA,97)},{label:"大分",url:c(AREA,98)},{label:"佐賀",url:c(AREA,99)},{label:"長崎",url:c(AREA,100)},{label:"熊本",url:c(AREA,101)},{label:"宮崎",url:c(AREA,102)},{label:"鹿児島",url:c(AREA,103)}]},
  {label:"沖縄",url:c(AREA,104),children:[{label:"沖縄",url:c(AREA,104)}]},
 ];
+/** Adopted L1 copy structure: concrete Topic names and L2 creation guidance.
+ * Fine geographic boundaries were NOT formally approved in the 2026-10-28
+ * decision ledger. Do not invent wards, municipalities or station catchments.
+ * When a boundary is adopted, preserve it in the board's approved copy.
+ */
+export const AREA_BLOCK_DESCRIPTIONS:Readonly<Record<string,string>>={
+ "北海道":"北海道エリアの掲示板です。北海道はブロックと個別エリアを兼ねるため、同じトピックを重複して作成しません。",
+ "東北":"青森・秋田・岩手・山形・宮城・福島の6エリアに分かれています。交流したい地域のエリアを選んでください。",
+ "甲信越":"新潟・長野・山梨の3エリアに分かれています。交流したい地域に対応するエリアを選んでください。",
+ "北陸":"富山・石川・福井の3エリアに分かれています。交流したい地域に対応するエリアを選んでください。",
+ "北関東":"群馬・栃木・茨城の3エリアに分かれています。交流したい地域に対応するエリアを選んでください。",
+ "東京":"東京は池袋・新宿・渋谷・品川・都心・区東部・都下の7エリアに分かれています。都心や区東部・都下は独立した区分です。市区町村・駅などの厳密な境界は公開前に既存の正式記録で照合してください。",
+ "南関東":"千葉・埼玉・横須賀／湘南／小田原・横浜／川崎・町田／相模原／厚木の5エリアに分かれています。複数地域をまとめたエリア名に注意して選んでください。",
+ "東海":"静岡・愛知・岐阜・三重の4エリアに分かれています。交流したい地域に対応するエリアを選んでください。",
+ "関西":"滋賀・京都・大阪キタ・大阪ミナミ・兵庫・奈良・和歌山の7エリアに分かれています。大阪はキタとミナミを別々の掲示板として扱います。両エリアの厳密な境界は公開前に既存の正式記録で照合してください。",
+ "中国":"鳥取・島根・岡山・広島・山口の5エリアに分かれています。交流したい地域に対応するエリアを選んでください。",
+ "四国":"徳島・香川・愛媛・高知の4エリアに分かれています。交流したい地域に対応するエリアを選んでください。",
+ "九州":"福岡・大分・佐賀・長崎・熊本・宮崎・鹿児島の7エリアに分かれています。交流したい地域に対応するエリアを選んでください。",
+ "沖縄":"沖縄エリアの掲示板です。沖縄はブロックと個別エリアを兼ねるため、同じトピックを重複して作成しません。",
+};
+export const AREA_BLOCK_POSTING_GUIDE=
+ "投稿するときは、下からエリアを選び、移動先の青い固定「📝 投稿メニュー」からBot個別チャットで作成してください。公開前に投稿先を確認できます。";
+export function areaBlockDescription(block:string):string {
+ const description=AREA_BLOCK_DESCRIPTIONS[block];
+ if(!description||!AREA_BLOCKS.some(x=>x.label===block))
+  throw new Error("AREA_BLOCK_DESCRIPTION_MISSING");
+ return description+"\\n\\n"+AREA_BLOCK_POSTING_GUIDE;
+}
 const escapeHtml=(s:string):string=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const link=(label:string,url:string)=>`<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
 const ensureLink=(url:string,expected:number)=>{
