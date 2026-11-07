@@ -54,9 +54,9 @@ export async function openAttempt(userId:number,targetId:number,token:string,app
     applicant?.isPremium??false,attemptId,documentVersion]);
   const r=await c.query<GateAttempt>(`INSERT INTO gate_sessions
    (tg_user_id,target_id,step,step_token,attempt_id,document_version,challenge_fails,challenge_data,last_message_id,last_attempt)
-   VALUES ($1,$2,'intro',$3,$4,$5,0,NULL,NULL,NOW())
+   VALUES ($1,$2,'q1',$3,$4,$5,0,NULL,NULL,NOW())
    ON CONFLICT (tg_user_id) DO UPDATE SET
-   target_id=EXCLUDED.target_id,step='intro',step_token=EXCLUDED.step_token,
+   target_id=EXCLUDED.target_id,step='q1',step_token=EXCLUDED.step_token,
    attempt_id=EXCLUDED.attempt_id,document_version=EXCLUDED.document_version,
    challenge_fails=0,challenge_data=NULL,last_message_id=NULL,
    last_attempt=NOW(),created_at=NOW(),updated_at=NOW() RETURNING *`,
