@@ -50,7 +50,7 @@ async function filter(t:Telegram,id:number,s:SearchSession){
 async function results(t:Telegram,id:number,s:SearchSession,page:number){
  const offset=page*5;
  const found=await findPublicSearchHits(s.filters,offset);
- const rows=found.hits.map((hit,i)=>[Markup.button.url((offset+i+1)+". "+hit.title,hit.url)]);
+ const rows:any[][]=found.hits.map((hit,i)=>[Markup.button.url((offset+i+1)+". "+hit.title,hit.url)]);
  const nav=[] as any[];
  if(page>0)nav.push(button("◀ 前へ",`search:page:${s.revision}:${page-1}`));
  if(found.hasNext)nav.push(button("次へ ▶",`search:page:${s.revision}:${page+1}`));
@@ -111,11 +111,11 @@ export function registerSearchHandlers(bot:Telegraf){
   if(!s||s.revision!==rev||s.step!=="results"||!Number.isSafeInteger(page)||page>200){await ctx.answerCbQuery("古い操作です");return;}
   await ctx.answerCbQuery();await results(ctx.telegram,ctx.from.id,s,page);
  });
- bot.on("text",async(ctx,next)=>{
-  if(!dm(ctx)||ctx.message.text.startsWith("/"))return next();
+ bot.on("text",async(ctx,goNext)=>{
+  if(!dm(ctx)||ctx.message.text.startsWith("/"))return goNext();
   const s=await getSearchSession(ctx.from.id);
-  if(!s||s.step!=="keyword")return next();
-  if(await currentDmTextOwner(ctx.from.id))return next();
+  if(!s||s.step!=="keyword")return goNext();
+  if(await currentDmTextOwner(ctx.from.id))return goNext();
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
   const keyword=ctx.message.text.trim();
   if(keyword.length>80||/[\u0000-\u001f]/.test(keyword)){
