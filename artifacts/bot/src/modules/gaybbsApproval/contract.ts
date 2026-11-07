@@ -13,12 +13,12 @@ export type ApprovalDocKey = typeof APPROVAL_DOC_KEYS[number];
 export const APPROVAL_QUESTIONS = [
   {
     stage: "q1", consent: "question1", title: "質問1：参加条件への承諾",
-    text: "当グループは18歳以上で、性自認が男性（FTMを含む）、男性と性的関係を持てる方を対象とします。参加条件をすべて満たし、虚偽なく申請していますか？",
+    text: "当グループは18歳以上で、性自認が男性（FTMを含む）、男性と性的関係を持てる方を対象とします。女性・参加条件を満たさない異性愛者、および営業・勧誘・金銭取引などの商用目的で参加する方は対象外です。参加資格をすべて満たし、商用目的ではなく、虚偽なく申請していますか？",
     yes: "✅条件を満たし承諾する",
     no: "❌条件を満たさない／承諾しない",
   },
   {
-    stage: "q2", consent: "question2", title: "質問2：利用条件と情報の取扱いへの承諾",
+    stage: "q2", consent: "question2", title: "質問2：規約・規則の遵守への承諾",
     text: "利用者同士の交流は自己責任です。法令・Telegram規約・当コミュニティの規約を遵守し、管理Botによるグループ内投稿のモニタリングと違反履歴管理について、②規約・③Privacy Policyの全文を確認し承諾しますか？",
     yes: "✅確認して承諾する",
     no: "❌承諾しない",
