@@ -80,9 +80,12 @@ async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:n
   "✅ 元のトピックを候補の先頭に表示しています。":
   "元のトピックはこの投稿種別に未登録です。別の実Topicを明示選択してください。"):
   "元のトピックが不明なため、実Topicを明示選択してください。";
- const keyboard=Markup.inlineKeyboard(sorted.slice(0,30).map(t=>[
+ const rows=sorted.slice(0,30).map(t=>[
    Markup.button.callback((matched?.id===t.id?"📍 ":"")+BOARD_TITLES[t.board]+" / "+t.title,
-    `post:choose:${module}:${revision}:${t.id}`)]));
+    `post:choose:${module}:${revision}:${t.id}`)]);
+ if(module==="link")rows.push([Markup.button.callback("↩ プレビューに戻る",
+  `post:link:back:${revision}`)]);
+ const keyboard=Markup.inlineKeyboard(rows);
  const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
  if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,prefix+"\n投稿先を選択してください。まだ公開しません。",keyboard);
  else await ctx.reply(prefix+"\n投稿先を選択してください。まだ公開しません。",keyboard);
@@ -152,10 +155,21 @@ export async function startRoomEditor(telegram:Telegram,userId:number):Promise<v
   "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
 }
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
+export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
+ const rev=d.revision;
+ return Markup.inlineKeyboard([
+  [1,2,3].map(i=>Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
+    "post:linkcols:"+rev+":"+i)),
+  [Markup.button.callback("📝 内容を修正","post:link:edit:"+rev),
+   Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
+ ]);
+}
 export async function startLinkEditor(telegram:Telegram,userId:number):Promise<void>{
  const draft=await beginDraft(userId,"link","awaiting_text");
  await showPostScreen(telegram,userId,draft,
-  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。");
+  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。",
+  Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+   "post:link:cancel:"+draft.revision)]]));
 }
 /** One shared Bot DM message for the approved 告知/予告 layout. */
 export function announcementPanel(d:EditorDraft):WizardKeyboard{
@@ -496,8 +510,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
       {...current.data,...parsed,columns:1});
     await render(updated,"公開前プレビュー\n"+preview("link",updated)+
       "\n\nボタンの表示列数を選択してください。",
-      Markup.inlineKeyboard([[1,2,3].map(i=>Markup.button.callback(
-        i+"列","post:linkcols:"+updated.revision+":"+i))]));
+      linkPreviewKeyboard(updated));
     return;
    }
    if(current.module==="room"){
@@ -552,6 +565,41 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("下書き保存済み");
    await ctx.editMessageText("✅ ROOMのタイトル・説明・設定を非公開保存しました。\n/room から再利用できます。");
   }catch{await ctx.answerCbQuery("保存に失敗しました。/room から確認してください。");}
+ });
+ bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==rev||!["awaiting_text","preview"].includes(d.step)){
+   await ctx.answerCbQuery("古い操作です。/link から再開してください。");return;
+  }
+  if(op==="cancel"){
+   await updateDraft(ctx.from.id,"link",rev,"cancelled",{cancelled:true});
+   await ctx.answerCbQuery("作成をキャンセルしました");
+   await ctx.editMessageText("🔗 ボタン作成をキャンセルしました。公開済みの投稿は変更していません。");
+   return;
+  }
+  if(op==="edit"){
+   if(d.step!=="preview"){
+    await ctx.answerCbQuery("先にURLと表示名を入力してください。");return;
+   }
+   const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",d.data);
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,next,
+    "📝 本文とリンクをまとめて再入力してください。\\n1行目：本文\\n2行目以降：表示名 | https://URL\\n以前の入力は確定するまで保持します。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
+     "post:link:back:"+next.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]]));
+   return;
+  }
+  if(!Array.isArray(d.data.buttons)||!d.data.buttons.length){
+   await ctx.answerCbQuery("先にリンクを入力してください。");return;
+  }
+  const next=d.step==="awaiting_text"?
+   await updateDraft(ctx.from.id,"link",rev,"preview",d.data):d;
+  await ctx.answerCbQuery();
+  await showPostScreen(ctx.telegram,ctx.from.id,next,"公開前プレビュー\\n"+preview("link",next)+
+   "\\n\\nボタンの表示列数を選択してください。",linkPreviewKeyboard(next));
  });
  bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
   if(!privateDM(ctx))return;
