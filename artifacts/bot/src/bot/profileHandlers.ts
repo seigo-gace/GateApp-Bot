@@ -2,6 +2,7 @@ import { Telegraf, Markup, type Context } from "telegraf";
 import type { ProfileDraft, SavedProfile } from "../services/profileRepository.js";
 import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
+import {wizardEditOutcome} from "../services/dmWizardScreen.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {nextSelection,selectionRows} from "../services/inlineSelection.js";
 import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,toggleLike,validLikeTags,tagPurposeDescription,type ProfileTagPurpose} from "../services/profileLike.js";
@@ -226,9 +227,12 @@ async function updateWizardScreen(ctx: Context, repo: ProfileRepo, draft: Profil
      await ctx.telegram.editMessageText(chatId, oldId, undefined, text, opts);
      return;
    } catch (error) {
-     // A deleted/expired screen can be replaced without abandoning the draft.
-     // Do not log the user's profile text or reveal it to other chats.
-     console.warn("[PROFILE_SCREEN_EDIT_FAILED]", error instanceof Error ? error.message : "unknown");
+     const outcome=wizardEditOutcome(error);
+     if(outcome==="unchanged")return;
+     // Telegram may have applied the edit before timing out. Retain the old
+     // message instead of creating a duplicate Bot DM screen.
+     if(outcome!=="missing")throw new Error("WIZARD_EDIT_RESULT_UNKNOWN");
+     // Only explicit invalid/deleted Bot screen allows replacement.
    }
  }
  const sent = await ctx.reply(text, opts);
