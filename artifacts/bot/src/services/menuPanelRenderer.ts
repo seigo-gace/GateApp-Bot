@@ -86,12 +86,10 @@ export const APPROVED_POSTING_ROWS = [
  ["雑談","紹介/招待","操作説明"],
 ] as const;
 export const APPROVED_GUIDE_ROWS = [
- ["お知らせ","フリートーク/雑談"],
- ["全国エリアボード","カテゴリーボード"],
- ["ビデオチャット/動画","検索/フィルター"],
- ["みんなのプロフ","コミュニティリンク"],
- ["グループルール","使い方"],
- ["安全ガイド","利用規約"],
+ ["お知らせ","雑談","みんなのプロフ"],
+ ["全国ボード","カテゴリーボード","ビデオ/動画"],
+ ["検索/フィルター","使い方","リンク"],
+ ["規約","規則","ルール","ガイドライン"],
 ] as const;
 export const APPROVED_HELP_ROWS = [
  ["プロフ","Room+募集","告知/予告"],
@@ -125,9 +123,8 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  if(!["area_bbs","video_chat","gay_board"].includes(spec.board))
   throw new Error("PANEL_BOARD_INVALID");
  if(spec.type==="general_guide"){
-  if(spec.entryLinks.length)throw new Error("GUIDE_EDITOR_ENTRY_FORBIDDEN");
-  return {text:"📌 総合案内\\n各ボタンから案内やトピックへ移動できます。",
-   rows:renderApprovedLinks("general_guide",spec.links)};
+  // The adopted guide uses Telegram ReplyKeyboardMarkup, never InlineKeyboard.
+  throw new Error("GUIDE_REPLY_KEYBOARD_REQUIRED");
  }
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
  // Existing limited feature-release gates cannot yet supply every approved
