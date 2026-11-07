@@ -128,9 +128,18 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
   const q=APPROVAL_QUESTIONS[a.step==="q1"?0:1];
   text=`${q.title}\n\n${q.text}`;
   if(a.step==="q2"){
+   // Show the adopted rules in plain user-facing language BEFORE the one
+   // verified full-text URL. The URL is not a substitute for the summary.
    const url=cfg.boards[0]?.links.terms;
    if(!url||!isSafeDocUrl(url))throw new Error("GATE_TERMS_URL_UNVERIFIED");
-   text+="\n\n🔗 利用規約・規則を確認する\n"+url;
+   text+="\n\n【規約・規則の主な内容】"+
+    "\n・法令とTelegramの利用規約を守り、他の参加者を尊重してください。"+
+    "\n・誹謗中傷、嫌がらせ、個人情報の暴露、スパムや不正な勧誘は禁止です。"+
+    "\n・許可のない宣伝、金銭目的の取引・販売、外部サービスへの誘導は禁止です。"+
+    "\n・運営Botはルール違反への対応のため投稿や違反履歴を管理します。"+
+    "\n・違反内容に応じて投稿削除、利用制限、退会・再参加禁止の措置があります。"+
+    "\n\n上記は要点です。参加前に正式な規約・規則の全文をご確認ください。"+
+    "\n🔗 利用規約・規則の全文\n"+url;
   }
   rows=[[Markup.button.callback(q.yes,action(a,"yes")),
    Markup.button.callback(q.no,action(a,"no"))]];
@@ -235,7 +244,7 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
  if(route.kind==="member_direct"){
   await showMemberDirectLinks(ctx.telegram,ctx.from.id,cfg.boards.map(b=>({
     targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title,
-  })),route);
+  })),route,cfg.target.target_id);
   return;
  }
  if(route.kind==="approved_join"&&route.attempt){
