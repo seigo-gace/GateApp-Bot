@@ -8,7 +8,7 @@ import {showWizardScreen} from "../services/dmWizardScreen.js";
 import {APPROVED_HELP_ROWS} from "../services/menuPanelRenderer.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {startRoomEditor,startAnnouncementEditor,startLinkEditor} from "./postingHandlers.js";
-import {startCompactRecruitmentEditor} from "./recruitmentHandlers.js";
+
 import {startSearchEditor} from "./searchHandlers.js";
 import {startProfileEditor} from "./profileHandlers.js";
 
@@ -22,7 +22,7 @@ const sectionLabels:Readonly<Record<Topic,string>>={
 };
 const sectionText:Readonly<Record<Topic,string>>={
  profile:"🪪 プロフ（プロフィール）\n① 名前と身長・体重・年齢を入力します。\n② ポジション、容姿・エリア、写真・動画・自己PR、#Like/#Loveを選択します。\n③ プレビューを確認して保存します。保存だけなら非公開です。掲載したい場合は別途、公開先と内容を確認して公開します。",
- room:"🎬 Room+募集\nビデオチャットのROOMを開く場合と、相手を募集する場合で操作が異なります。\n\n🎬 ROOM作成：タイトルと説明を入力し、今すぐ開始／予告や参加方式などを選びます。\n📢 相手募集：プロフィールを使うか今回だけ入力するかを選び、目的・条件を設定します。\n\nどちらもBotが勝手に公開せず、本人が投稿内容と投稿先を確認してから公開します。",
+ room:"🎬 Room+募集\nROOMの作成と参加者募集は、同じ画面から設定できます。\n① ROOMのタイトル・説明を入力します。\n② 無料JitsiかURL持込を選びます。\n③ 参加方式を［自由参加］または［応募受付］から選びます。応募受付では既存の募集・承認機能を利用します。\n④ 必要ならプロフィールを連携し、［今すぐ開始］または［予告］を選びます。\n⑤ 内容・投稿先を確認してから公開します。\n入力途中の内容は保持され、公開前なら下書き保存・キャンセルができます。",
  announcement:"📣 告知/予告\n① 告知または予告の種類を選びます。\n② 本文を入力し、予告の場合は日本時間で日時を指定します。\n③ プロフィールとの連携や投稿先を確認します。\n④ プレビューを確認し、本人が公開ボタンを押した場合だけ投稿します。\n入力を中断しても未公開の下書きは残ります。",
  link:"🔗 ボタン作成\n① 1行目に本文を入力します。\n② 2行目以降に1ボタンずつ『表示名 | https://URL』と書きます。\n③ 1〜3列の表示を選び、プレビューで表示名・リンク先を確認します。\n④ 必要なら修正して、投稿先を確認し公開します。\nHTTPや短縮URLなど、使用できないリンクは理由を確認して修正します。",
  search:"🔍 検索/フィルター\n① プロフィールと相手募集から探す対象を選びます。\n② キーワードや地域・目的などで絞ります。プロフィールでは年齢・体型・髪型・#Like/#Loveも選択できます。\n③ 検索結果を5件ずつ確認し、気になる投稿を開きます。\n現在参加中のグループの公開済み投稿だけを表示します。"
@@ -34,10 +34,7 @@ export function helpHomeKeyboard(rev:number){
 }
 export function helpSectionKeyboard(rev:number,section:Topic){
  return Markup.inlineKeyboard([
-  ...(section==="room"?[[
-   Markup.button.callback("🎬 ROOMを作成",`help:open:${rev}:room`),
-   Markup.button.callback("📢 相手募集を作成",`help:recruit:${rev}`),
-  ]]:[[Markup.button.callback("▶ この機能を開く",`help:open:${rev}:${section}`)]]),
+  [Markup.button.callback("▶ この機能を開く",`help:open:${rev}:${section}`)],
   [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
  ]);
 }
@@ -102,16 +99,6 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   else if(topic==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
   else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
   else await startSearchEditor(ctx.telegram,ctx.from.id);
- });
- bot.action(/^help:recruit:(\d+)$/,async ctx=>{
-  if(ctx.chat?.type!=="private")return;
-  const revision=Number(ctx.match[1]);
-  const session=await load(ctx.from.id);
-  if(!session||session.revision!==revision||session.section!=="room"){
-   await ctx.answerCbQuery("古い操作です。/help から再開してください。");return;
-  }
-  await ctx.answerCbQuery();
-  await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
  });
  bot.action(/^help:(home|back):(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
