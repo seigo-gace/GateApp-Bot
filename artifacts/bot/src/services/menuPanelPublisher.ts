@@ -119,6 +119,7 @@ export async function publishExistingMenuPanel(
  const panel=claim.rows[0] as PanelRow;
  let messageId=panel.message_id?Number(panel.message_id):null;
  const updating=messageId!==null;
+ let deliveryAttempted=false;
  try{
   const {links,entries}=await buildLinks(panel);
   const rendered=renderMenuPanel({
@@ -128,8 +129,10 @@ export async function publishExistingMenuPanel(
   const target={chatId,threadId};
   const body={text:rendered.text,buttons:rendered.rows};
   if(messageId!==null){
+   deliveryAttempted=true;
    await dispatcher.revise(target,messageId,body);
   }else{
+   deliveryAttempted=true;
    messageId=await dispatcher.publish(target,body);
    await pool.query(
     "UPDATE board_menu_panels SET message_id=$2,updated_at=NOW() WHERE panel_id=$1 AND state='publishing'",
@@ -143,7 +146,17 @@ export async function publishExistingMenuPanel(
   if(commit.rows.length!==1)throw new Error("PANEL_ACK_CONFLICT");
   return {messageId,updatedExisting:updating};
  }catch(e){
-  await markUnknown(panel.panel_id,messageId);
+  if(deliveryAttempted){
+   // A Telegram send/edit/pin can have succeeded even if its ACK failed.
+   await markUnknown(panel.panel_id,messageId);
+  }else{
+   // Validation/configuration failures happened before any external side
+   // effect: preserve the previous state so admin can fix links and retry.
+   await pool.query(
+    `UPDATE board_menu_panels SET state=$2,updated_at=NOW()
+      WHERE panel_id=$1 AND state='publishing'`,
+    [panel.panel_id,updating?"published":"verified"]);
+  }
   throw e;
  }
 }
