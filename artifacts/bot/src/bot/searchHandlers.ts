@@ -115,7 +115,7 @@ export function registerSearchHandlers(bot:Telegraf){
   if(!dm(ctx)||ctx.message.text.startsWith("/"))return goNext();
   const s=await getSearchSession(ctx.from.id);
   if(!s||s.step!=="keyword")return goNext();
-  if(await currentDmTextOwner(ctx.from.id))return goNext();
+  if(await currentDmTextOwner(ctx.from.id)!=="search")return goNext();
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
   const keyword=ctx.message.text.trim();
   if(keyword.length>80||/[\u0000-\u001f]/.test(keyword)){
