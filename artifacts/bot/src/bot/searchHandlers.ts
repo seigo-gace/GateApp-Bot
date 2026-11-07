@@ -62,6 +62,33 @@ async function filter(t:Telegram,id:number,s:SearchSession){
  rows.push([button("🔎 検索実行",`search:run:${r}`),button("↩ 戻る",`search:back:${r}`)]);
  await show(t,id,s,summary(s)+"\n\n絞り込む項目を選択してください。",rows);
 }
+async function tagCategories(t:Telegram,id:number,s:SearchSession,kind:"like"|"love"){
+ const rows:any[][]=[];
+ for(let i=0;i<LIKE_CATEGORIES.length;i+=3)
+  rows.push(LIKE_CATEGORIES.slice(i,i+3).map((cat,j)=>
+   button((s.filters[kind]?.category===cat.name?"✅ ":"▫️ ")+cat.name,
+    `search:tagpage:${s.revision}:${kind}:${i+j}:0`)));
+ rows.push([button("↩ 戻る",`search:filter:${s.revision}`)]);
+ await show(t,id,s,summary(s)+"\n\n"+(kind==="like"?"#Like":"#Love")+"：分類を選択",rows);
+}
+async function tagItems(t:Telegram,id:number,s:SearchSession,kind:"like"|"love",category:number,page:number){
+ const cat=LIKE_CATEGORIES[category];
+ if(!cat||!Number.isSafeInteger(page)||page<0||page>=Math.ceil(cat.items.length/LIKE_PAGE_SIZE))
+  throw Error("SEARCH_TAG_PAGE_INVALID");
+ const start=page*LIKE_PAGE_SIZE,items=cat.items.slice(start,start+LIKE_PAGE_SIZE);
+ const rows:any[][]=[];
+ for(let i=0;i<items.length;i+=3)
+  rows.push(items.slice(i,i+3).map((label,j)=>button(
+   (s.filters[kind]?.category===cat.name&&s.filters[kind]?.tag===label?"✅ ":"▫️ ")+label,
+   `search:tagpick:${s.revision}:${kind}:${category}:${start+i+j}`)));
+ const nav:any[]=[];
+ if(page>0)nav.push(button("◀ 前へ",`search:tagpage:${s.revision}:${kind}:${category}:${page-1}`));
+ if(start+LIKE_PAGE_SIZE<cat.items.length)nav.push(button("次へ ▶",`search:tagpage:${s.revision}:${kind}:${category}:${page+1}`));
+ if(nav.length)rows.push(nav);
+ rows.push([button("↩ 分類へ",`search:tag:${s.revision}:${kind}`),
+  button("🎛 条件へ",`search:filter:${s.revision}`)]);
+ await show(t,id,s,summary(s)+"\n\n"+cat.name+"：1件選択（同じ項目で解除）",rows);
+}
 async function results(t:Telegram,id:number,s:SearchSession,page:number){
  const offset=page*5;
  const allowed=await authorizedSearchGroupIds(t,id);
@@ -126,6 +153,53 @@ export function registerSearchHandlers(bot:Telegraf){
   if(!Number.isSafeInteger(idx)||idx<0||idx>=values.length){await ctx.answerCbQuery("選択肢が不正です");return;}
   const next=await updateSearch(ctx.from.id,rev,key,setSearchFilter(s.filters,key,values[idx]!));
   await ctx.answerCbQuery();await show(ctx.telegram,ctx.from.id,next,summary(next)+"\n\n"+key+"を選択（再押下で解除）",options(next,key));
+ });
+ bot.action(/^search:age:(\d+)$/,async ctx=>{
+  if(!dm(ctx))return;
+  const rev=Number(ctx.match[1]),s=await getSearchSession(ctx.from.id);
+  if(!s||s.revision!==rev||s.filters.kind!=="profile"){
+   await ctx.answerCbQuery("古い操作です");return;
+  }
+  const next=await updateSearch(ctx.from.id,rev,"age",s.filters);
+  await ctx.answerCbQuery();
+  await show(ctx.telegram,ctx.from.id,next,
+   summary(next)+"\n\n年齢を 18-49 のように範囲で、または35のように1値で入力してください。（18〜89）",
+   [[button("年齢条件を解除",`search:ageclear:${next.revision}`),
+     button("↩ 戻る",`search:filter:${next.revision}`)]]);
+ });
+ bot.action(/^search:ageclear:(\d+)$/,async ctx=>{
+  if(!dm(ctx))return;
+  const rev=Number(ctx.match[1]),s=await getSearchSession(ctx.from.id);
+  if(!s||s.revision!==rev||s.step!=="age"){await ctx.answerCbQuery("古い操作です");return;}
+  const next=await updateSearch(ctx.from.id,rev,"home",{...s.filters,ageMin:null,ageMax:null});
+  await ctx.answerCbQuery();await filter(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^search:tag:(\d+):(like|love)$/,async ctx=>{
+  if(!dm(ctx))return;
+  const rev=Number(ctx.match[1]),kind=ctx.match[2] as "like"|"love";
+  const s=await getSearchSession(ctx.from.id);
+  if(!s||s.revision!==rev||s.filters.kind!=="profile"){await ctx.answerCbQuery("古い操作です");return;}
+  const next=await updateSearch(ctx.from.id,rev,kind,s.filters);
+  await ctx.answerCbQuery();await tagCategories(ctx.telegram,ctx.from.id,next,kind);
+ });
+ bot.action(/^search:tagpage:(\d+):(like|love):(\d+):(\d+)$/,async ctx=>{
+  if(!dm(ctx))return;
+  const rev=Number(ctx.match[1]),kind=ctx.match[2] as "like"|"love",
+   category=Number(ctx.match[3]),page=Number(ctx.match[4]);
+  const s=await getSearchSession(ctx.from.id);
+  if(!s||s.revision!==rev||s.step!==kind){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();await tagItems(ctx.telegram,ctx.from.id,s,kind,category,page);
+ });
+ bot.action(/^search:tagpick:(\d+):(like|love):(\d+):(\d+)$/,async ctx=>{
+  if(!dm(ctx))return;
+  const rev=Number(ctx.match[1]),kind=ctx.match[2] as "like"|"love",
+   category=Number(ctx.match[3]),item=Number(ctx.match[4]);
+  const s=await getSearchSession(ctx.from.id);
+  if(!s||s.revision!==rev||s.step!==kind){await ctx.answerCbQuery("古い操作です");return;}
+  const selected=toggleSearchTag(s.filters,kind,category,item);
+  const next=await updateSearch(ctx.from.id,rev,kind,selected);
+  await ctx.answerCbQuery();
+  await tagItems(ctx.telegram,ctx.from.id,next,kind,category,Math.floor(item/LIKE_PAGE_SIZE));
  });
  bot.action(/^search:page:(\d+):(\d+)$/,async ctx=>{
   if(!dm(ctx))return;
