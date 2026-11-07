@@ -1,7 +1,7 @@
 /** Searches only records with a published Telegram receipt, never private drafts. */
 import {pool} from "../db/index.js";
 import {initialSearchFilters,validateSearch,type SearchFilters,telegramPublishedMessageUrl} from "./searchDomain.js";
-export type SearchSession={revision:number;step:"home"|"keyword"|"age"|"region"|"position"|"purpose"|"hair"|"body"|"like"|"love"|"results";screenMessageId:number|null;filters:SearchFilters};
+export type SearchSession={revision:number;step:"home"|"keyword"|"age"|"filter"|"region"|"position"|"purpose"|"hair"|"body"|"like"|"love"|"results";screenMessageId:number|null;filters:SearchFilters};
 export type SearchHit={title:string;description:string;url:string};
 const validId=(id:number)=>{if(!Number.isSafeInteger(id)||id<=0)throw Error("SEARCH_USER_INVALID");return id;};
 export async function getSearchSession(id:number):Promise<SearchSession|null>{
