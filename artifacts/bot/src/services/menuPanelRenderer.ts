@@ -31,7 +31,7 @@ export type AreaBlockBoardSpec={
  chatLink:NavLink;
  backLink:NavLink;
 };
-/** L1 navigation only: region destinations, search, common talk, and L0 back.
+/** L1 navigation only: region destinations in three columns (Master 2026-11-08),\n * search, common talk, and L0 back.
  * Profile and ROOM creation belong to L2 posting menus / their Bot DM.
  * Search/Filter are read-only entrypoints, never post-editor actions.
  */
@@ -56,7 +56,7 @@ export function renderAreaBlockBoard(spec:AreaBlockBoardSpec):RenderedPanel{
  return {
   text:spec.blockTitle+"\\n"+spec.description,
   rows:[
-   ...packButtonRows(regions,2),
+   ...packButtonRows(regions,3),
    [search,filter],
    [chat,back],
   ],
