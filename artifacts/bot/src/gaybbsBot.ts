@@ -14,6 +14,7 @@ import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
 import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js";
+import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
 import {resolveRoomJoinLink} from "./services/roomJoinLinks.js";
@@ -83,6 +84,8 @@ async function main():Promise<void>{
      await startLinkEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="search"){
      await startSearchEditor(ctx.telegram,ctx.from.id);
+    }else if(origin.feature==="help"){
+     await startOperationHelp(ctx.telegram,ctx.from.id);
     }else{
      await ctx.reply("この機能の公開準備が完了していません。");
     }
@@ -91,7 +94,7 @@ async function main():Promise<void>{
    }
    return;
   }
-  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/recruit — 相手募集\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/search — 検索/フィルター\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
+  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/recruit — 相手募集\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/search — 検索/フィルター\n/help — 操作説明\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
  });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
