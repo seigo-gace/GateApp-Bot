@@ -66,4 +66,9 @@ jobs:
             exit 0
           fi
           PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT_NAME:-tgtumbler-docs}"
-          npx wrangler pages deploy dist --project-name="$PROJECT_NAME"
+          PROD_BRANCH="${GITHUB_REF_NAME:-master}"
+          if ! npx wrangler pages project list 2>/dev/null | grep -Fq "$PROJECT_NAME"; then
+            echo "Creating Pages project: $PROJECT_NAME (production branch: $PROD_BRANCH)"
+            npx wrangler pages project create "$PROJECT_NAME" --production-branch="$PROD_BRANCH"
+          fi
+          npx wrangler pages deploy dist --project-name="$PROJECT_NAME" --commit-dirty=true
