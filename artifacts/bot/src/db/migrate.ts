@@ -144,6 +144,12 @@ export async function runMigrations(): Promise<void> {
         verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE topic_board_posts
+        ADD COLUMN IF NOT EXISTS approved_scope_text TEXT;
+      ALTER TABLE topic_board_posts
+        ADD COLUMN IF NOT EXISTS scope_approved_by BIGINT;
+      ALTER TABLE topic_board_posts
+        ADD COLUMN IF NOT EXISTS scope_approved_at TIMESTAMPTZ;
       CREATE TABLE IF NOT EXISTS topic_board_area_links (
         block_name TEXT NOT NULL,
         area_name TEXT NOT NULL,
