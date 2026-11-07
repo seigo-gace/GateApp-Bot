@@ -107,10 +107,16 @@ async function results(t:Telegram,id:number,s:SearchSession,page:number){
  await show(t,id,s,summary(s)+"\n\n検索結果（参加済みグループ内）\n"+
   (detail||"該当する公開投稿はありません。"),rows);
 }
-export async function startSearchEditor(t:Telegram,id:number){
+export async function startSearchEditor(t:Telegram,id:number,screenId?:number){
  const old=await getSearchSession(id);
  const s=old?(old.step==="home"?old:await updateSearch(id,old.revision,"home",old.filters)):
   await beginSearch(id);
+ // The help screen owns the message being edited. Pass that ID into the
+ // existing search session before rendering, rather than sending another DM.
+ if(screenId&&s.screenMessageId!==screenId){
+  await bindSearchScreen(id,s.revision,screenId);
+  s.screenMessageId=screenId;
+ }
  await home(t,id,s);
 }
 export function registerSearchHandlers(bot:Telegraf){
