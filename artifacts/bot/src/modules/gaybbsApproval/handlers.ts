@@ -111,13 +111,20 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
  }
  let text="", rows:ReturnType<typeof Markup.button.callback>[][]=[];
  if(a.step==="intro"){
-  text=`【3グループ共通の参加審査】\n${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\n")}\n\n参加前に各グループの①〜④の全文を確認してください。\n\n${APPROVAL_SUMMARY}\n\n確認後、Bot対策の問題から始まります。質問は3グループ共通で1回だけです。`;
+  text=`【3グループ共通の参加審査】\n${cfg.boards.map((b,i)=>`${i+1}．${b.target.title}`).join("\n")}\n\n参加前に共通文書①〜④の全文を確認してください。各グループ固有のルールは最終承諾画面で確認します。\n\n${APPROVAL_SUMMARY}\n\n確認後、Bot対策の問題から始まります。質問は3グループ共通で1回だけです。`;
   // URL buttons have a distinct Telegram type from callback buttons.
   if(text.length>4096)throw new Error("GATE_DOCUMENT_EXCEEDS_TELEGRAM_LIMIT");
-  const docRows=cfg.boards.flatMap((board,i)=>[
-   [Markup.button.url(`${i+1}①ガイドライン`,board.links.guideline),Markup.button.url(`${i+1}②規約`,board.links.terms)],
-   [Markup.button.url(`${i+1}③Privacy Policy`,board.links.privacy),Markup.button.url(`${i+1}④グループルール`,board.links.rules)],
-  ]);
+  // The admission questionnaire is ONE shared process for all three boards.
+  // Display only the four verified common documents once (2x2).
+  // Group-specific rule text remains in the separate final "rules" step.
+  const shared=cfg.boards[0]!.links;
+  const docKeys=["guideline","terms","privacy","rules"] as const;
+  if(cfg.boards.some(b=>docKeys.some(k=>b.links[k]!==shared[k])))
+   throw new Error("GATE_COMMON_DOCUMENT_URLS_MISMATCH");
+  const docRows=[
+   [Markup.button.url("①ガイドライン",shared.guideline),Markup.button.url("②規約",shared.terms)],
+   [Markup.button.url("③Privacy Policy",shared.privacy),Markup.button.url("④グループルール",shared.rules)],
+  ];
   const links=Markup.inlineKeyboard([...docRows,
    [Markup.button.callback("✅ 確認して審査を開始",action(a,"continue"))],
   ]);
