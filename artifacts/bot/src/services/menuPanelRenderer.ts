@@ -123,8 +123,9 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  if(!["area_bbs","video_chat","gay_board"].includes(spec.board))
   throw new Error("PANEL_BOARD_INVALID");
  if(spec.type==="general_guide"){
-  // The adopted guide uses Telegram ReplyKeyboardMarkup, never InlineKeyboard.
-  throw new Error("GUIDE_REPLY_KEYBOARD_REQUIRED");
+  if(spec.entryLinks.length)throw new Error("GUIDE_EDITOR_ENTRY_FORBIDDEN");
+  return {text:"📌 総合案内\n各ボタンから案内やトピックへ移動できます。",
+   rows:renderApprovedLinks("general_guide",spec.links)};
  }
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
  // Existing limited feature-release gates cannot yet supply every approved
