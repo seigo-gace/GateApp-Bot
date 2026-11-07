@@ -867,6 +867,28 @@ try{
   if(previousMenuRelease===undefined)delete process.env.GAYBBS_PUBLIC_MENU_RELEASE;
   else process.env.GAYBBS_PUBLIC_MENU_RELEASE=previousMenuRelease;
  }
+ // Shared DM arbitration must ignore preview-only editor rows. A hidden
+ // old form must never steal text from Video/ROOM/Announcement/search.
+ const arbitrationUser=881785;
+ await pool.query(
+  `INSERT INTO profile_drafts(owner_user_id,step,data)
+   VALUES($1,'preview','{}'::jsonb)`,[arbitrationUser]);
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data)
+   VALUES($1,'announcement','preview','{}'::jsonb)`,[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),null);
+ await pool.query(
+  "UPDATE profile_drafts SET step='media' WHERE owner_user_id=$1",[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),"profile");
+ await pool.query(
+  `UPDATE public_post_drafts SET step='awaiting_recruitment_edit',
+   updated_at=NOW()+INTERVAL '1 second'
+   WHERE owner_user_id=$1 AND module='announcement'`,[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),"announcement");
+ await pool.query(
+  "UPDATE public_post_drafts SET step='preview' WHERE owner_user_id=$1",[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),"profile");
+ console.log("GAYBBS_DB_SHARED_DM_TEXT_OWNER_ACTIVE_STEPS=PASS");
  // Search shares the DM text owner, and never exposes private drafts or
  // merely saved, not actually Telegram-published profiles.
  const seeker=881771;
