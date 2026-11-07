@@ -1,0 +1,51 @@
+{
+  "schema": "tgtumbler.online-room-publish-result/v1",
+  "published_at": "2026-11-08T05:42:00+09:00",
+  "git_head": "4a206438f2a1824580149513295931be181154f6",
+  "chat_id": -1003847210571,
+  "message_thread_id": 1000,
+  "set_id": 1,
+  "state": "published",
+  "cards": [
+    {
+      "order": "A",
+      "card_key": "intro",
+      "message_id": 1134,
+      "ledger_url": "https://t.me/c/3847210571/1134",
+      "button": "↩ 総合案内へ戻る",
+      "button_url": "https://t.me/c/3847210571/43",
+      "asset": "00_ONLINE案内_1080.jpg",
+      "sha256": "01c2917d4d46397641b4a64b7263ea3c264dfb54c6278074abbefb9ea44c3f6b"
+    },
+    {
+      "order": "B",
+      "card_key": "area_bbs",
+      "message_id": 1135,
+      "ledger_url": "https://t.me/c/3847210571/1135",
+      "button": "🎬 ROOM掲示板へ",
+      "button_url": "https://t.me/GayBBS_bot?start=online_0n9j_LZJqU8lPihHRrUryNpl",
+      "asset": "01_エリアsBBS_1080.png"
+    },
+    {
+      "order": "C",
+      "card_key": "video_chat",
+      "message_id": 1136,
+      "ledger_url": "https://t.me/c/3847210571/1136",
+      "button": "🎬 ROOM掲示板へ",
+      "button_url": "https://t.me/GayBBS_bot?start=online_5-MjTOLg7_hYD_t88T1A2BT4",
+      "asset": "02_ビデオChat_1080.jpg"
+    },
+    {
+      "order": "D",
+      "card_key": "gay_board",
+      "message_id": 1137,
+      "ledger_url": "https://t.me/c/3847210571/1137",
+      "button": "🎬 ROOM掲示板へ",
+      "button_url": "https://t.me/GayBBS_bot?start=online_Yw9ihisn12KrrYhhs2LEFOmj",
+      "asset": "03_ゲイ掲示板_1080.jpg"
+    }
+  ],
+  "gate_routes_ledger": "deploy/online-gate-routes-result.json",
+  "topic_ids_ledger": "deploy/online-topic-verified.json",
+  "idempotent_replay": "skipped set_id=1 after success"
+}
