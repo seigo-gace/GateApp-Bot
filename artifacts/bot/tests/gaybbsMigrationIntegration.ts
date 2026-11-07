@@ -876,7 +876,7 @@ try{
    (owner_user_id,chat_id,thread_id,message_id,status)
    VALUES (881772,-1003847210571,881774,881775,'published'),
           (881773,-1003847210571,881774,881776,'published')`);
- const sr=await findPublicSearchHits({...s2.filters,region:"東京",position:"リバ"},0);
+ const sr=await findPublicSearchHits({...s2.filters,region:"東京",position:"リバ"},0,5,[-1003847210571]);
  assert.equal(sr.hits.length,1,"private profile must never be returned");
  assert.equal(sr.hits[0].title,"公開者");
  assert.equal(sr.hits[0].url,"https://t.me/c/3847210571/881775");
@@ -899,7 +899,7 @@ try{
    VALUES('announcement',$1,881774,1,$2,'search-recruit-1','sent',881777)`,
   [searchRecruitmentId,searchTopic.rows[0].topic_id]);
  const rr=await findPublicSearchHits({...initialSearchFilters(),
-  kind:"recruitment",keyword:"公開募集",region:"東京",purpose:"飲み/飯"},0);
+  kind:"recruitment",keyword:"公開募集",region:"東京",purpose:"飲み/飯"},0,5,[-1003847210571]);
  assert.equal(rr.hits.length,1);
  assert.equal(rr.hits[0].url,"https://t.me/c/3847210571/881777");
  assert.equal((await findPublicSearchHits({...initialSearchFilters(),
