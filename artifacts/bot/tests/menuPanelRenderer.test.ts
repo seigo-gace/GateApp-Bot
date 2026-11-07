@@ -54,6 +54,6 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
   areaLinks:[link("東京",101),link("大阪",102),link("福岡",103)],
   searchLink:link("検索",104),filterLink:link("フィルター",105),
   chatLink:link("雑談",106),backLink:link("戻る",107)});
- assert.deepEqual(result.rows.map(row=>row.length),[2,1,2,2]);
+ assert.deepEqual(result.rows.map(row=>row.length),[3,2,2]);
  assert.deepEqual(result.rows.at(-2)?.map(x=>x.text),["検索","フィルター"]);
 });
