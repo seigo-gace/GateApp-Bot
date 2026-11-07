@@ -210,17 +210,27 @@ export function registerSearchHandlers(bot:Telegraf){
  bot.on("text",async(ctx,goNext)=>{
   if(!dm(ctx)||ctx.message.text.startsWith("/"))return goNext();
   const s=await getSearchSession(ctx.from.id);
-  if(!s||s.step!=="keyword")return goNext();
+  if(!s||!["keyword","age"].includes(s.step))return goNext();
   if(await currentDmTextOwner(ctx.from.id)!=="search")return goNext();
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
-  const keyword=ctx.message.text.trim();
-  if(keyword.length>80||/[\u0000-\u001f]/.test(keyword)){
-   await show(ctx.telegram,ctx.from.id,s,"検索キーワードは80文字以内で入力してください。"+
+  const input=ctx.message.text.trim();
+  let filters=s.filters;
+  try{
+   if(s.step==="age")filters={...filters,...parseSearchAge(input)};
+   else {
+    if(input.length>80||/[\u0000-\u001f]/.test(input))throw Error("SEARCH_KEYWORD_INVALID");
+    filters={...filters,keyword:input};
+   }
+  }catch{
+   const message=s.step==="age"?
+    "年齢は18〜89の1値、または18-49のように範囲で入力してください。":
+    "検索キーワードは80文字以内で入力してください。";
+   await show(ctx.telegram,ctx.from.id,s,message+
     (deleted?"":"\n⚠️ 入力メッセージは手動削除してください。"),
-    [[button("↩ 戻る",`search:back:${s.revision}`)]]);
+    [[button("↩ 戻る",`search:filter:${s.revision}`)]]);
    return;
   }
-  const next=await updateSearch(ctx.from.id,s.revision,"home",{...s.filters,keyword});
+  const next=await updateSearch(ctx.from.id,s.revision,"home",filters);
   await home(ctx.telegram,ctx.from.id,next);
  });
 }
