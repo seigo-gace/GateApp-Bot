@@ -37,7 +37,7 @@ export function helpSectionKeyboard(rev:number,section:Topic){
   ...(section==="room"?[[
    Markup.button.callback("🎬 ROOMを作成",`help:open:${rev}:room`),
    Markup.button.callback("📢 相手募集を作成",`help:recruit:${rev}`),
-  ]]:[[Markup.button.callback("▶ この機能を開く",`help:open:${rev}:${section`)]]),
+  ]]:[[Markup.button.callback("▶ この機能を開く",`help:open:${rev}:${section}`)]]),
   [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
  ]);
 }
