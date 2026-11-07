@@ -195,6 +195,22 @@ async function issueInvite(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promi
  const next=await readAttempt(Number(a.tg_user_id));
  if(next)await show(telegram,next,cfg);
 }
+/** Single authoritative common Gate approval check for external ONLINE links.
+ * Uses the same document version, three approval receipts and membership
+ * mapping as startGayBbsAdmission. Never equate membership with approval.
+ */
+export async function commonGayBbsApproval(
+ telegram:Telegram,userId:number,targetId:number,
+):Promise<boolean>{
+ const cfg=await configured(targetId);
+ if(!cfg)return false;
+ const route=await resolveGateEntry(
+  telegram,userId,cfg.documentVersion,
+  cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title})),
+  false,
+ );
+ return !!route.attempt;
+}
 export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<void>{
  if(ctx.chat?.type!=="private"||!ctx.from)return;
  const gateCode=payload.startsWith("gate_")?payload.slice(5):"";
