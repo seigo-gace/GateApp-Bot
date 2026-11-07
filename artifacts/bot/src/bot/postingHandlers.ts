@@ -665,15 +665,33 @@ export function registerPostingHandlers(bot:Telegraf):void{
     "\nこの宛先に公開する場合だけボタンを押してください。",
     {parse_mode:"HTML",...Markup.inlineKeyboard([
      [Markup.button.callback("✅ この内容を公開",`post:publish:${module}:${rev}:${topicId}`)],
-     [Markup.button.callback("キャンセル（非公開のまま）","post:cancel")],
+     [Markup.button.callback("キャンセル（非公開のまま）",`post:cancel:${module}:${rev}`)],
     ])}
    );
   }catch(e){await ctx.answerCbQuery("対象を確認できません。最初からやり直してください。");}
  });
- bot.action("post:cancel",async ctx=>{
+ bot.action(/^post:cancel:(profile|room|announcement|link):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
+  const module=ctx.match[1] as Module;
+  const rev=Number(ctx.match[2]);
+  if(module==="profile"){
+   const profile=await getProfile(ctx.from.id);
+   if(!profile||profile.revision!==rev){
+    await ctx.answerCbQuery("古い操作です。公開前の画面を開き直してください。");return;
+   }
+  }else{
+   const d=await getDraft(ctx.from.id,module);
+   if(!d||d.revision!==rev||d.step!=="preview"){
+    await ctx.answerCbQuery("古い操作です。/room、/announce、/linkから再開してください。");return;
+   }
+   // Preserve all private draft fields, but advance the revision so an old
+   // confirmation tap cannot publish after the owner cancelled it.
+   await updateDraft(ctx.from.id,module,rev,"preview",d.data);
+  }
   await ctx.answerCbQuery("公開しません");
-  await ctx.editMessageText("公開は取り消しました。下書きは保存されています。");
+  await ctx.editMessageText("公開は取り消しました。"+
+    (module==="profile"?"保存済みのプロフィールは変更していません。":
+     "入力した下書きは保存されています。"));
  });
  bot.action(/^post:publish:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
