@@ -810,6 +810,10 @@ try{
   sendMessage:async(chatId:number,_text:string,opts:any)=>{
    menuCalls.push({chatId,opts});return {message_id:970011};
   },
+  editMessageText:async(chatId:number,messageId:number,_inlineId:unknown,_text:string,opts:any)=>{
+   assert.equal(messageId,970011);
+   menuCalls.push({chatId,opts});return true;
+  },
   pinChatMessage:async()=>true,
  } as unknown as Telegram;
  try{
@@ -845,6 +849,17 @@ try{
   const count=await pool.query(
    "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1",[postingPanelId]);
   assert.equal(count.rows[0].n,5);
+  const revisedMenu=await publishExistingMenuPanel(fakeMenuTelegram,menuChat,menuThread,880001);
+  assert.deepEqual(revisedMenu,{messageId:970011,updatedExisting:true});
+  assert.equal(menuCalls.length,2,"update must edit the existing menu, not duplicate it");
+  const activeTokens=await pool.query(
+   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1 AND enabled=TRUE",
+   [postingPanelId]);
+  assert.equal(activeTokens.rows[0].n,5,"only latest five DM entries remain valid");
+  const staleTokens=await pool.query(
+   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1 AND enabled=FALSE",
+   [postingPanelId]);
+  assert.equal(staleTokens.rows[0].n,5,"old deep links must be retired on verified update");
   const state=await pool.query("SELECT state,message_id,pinned FROM board_menu_panels WHERE panel_id=$1",[postingPanelId]);
   assert.deepEqual(state.rows[0],{state:"published",message_id:"970011",pinned:true});
   console.log("GAYBBS_DB_POSTING_MENU_VERIFIED_LINKS_AND_DM_ENTRIES=PASS");
