@@ -2,7 +2,7 @@
 """Set exactly three TGtumbler group descriptions using existing original texts.
 
 Source of truth:
-  deploy/community-intro-texts.json (already published verbatim intro)
+  deploy/group-description-official-texts.json (Master exact Notion-approved original)
   artifacts/bot/deploy/community-post-assets.json (existing Gate URLs)
 Default is READ-ONLY preview; --apply requires existing Bot admin permissions.
 Never generate, trim, or paraphrase Master-approved introductions.
@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INTRO_PATH = ROOT / "deploy/community-intro-texts.json"
+INTRO_PATH = ROOT / "deploy/group-description-official-texts.json"
 ASSET_PATH = ROOT / "artifacts/bot/deploy/community-post-assets.json"
 BOARD_TARGETS = {
     "areas_bbs": -1003847210571,
@@ -54,13 +54,13 @@ def plan() -> list[dict]:
     for key, chat_id in BOARD_TARGETS.items():
         if key not in intros or key not in links:
             raise ValueError(f"GROUP_OFFICIAL_SOURCE_MISSING:{key}")
-        original = intros[key]  # exact existing Master-provided text
+        original = intros[key]  # exact Master-approved text from 2026-11-08 Notion section
         gate = links[key]  # exact registered, already-published group GATE link
         if not original or original != original.strip():
             raise ValueError(f"GROUP_OFFICIAL_TEXT_INVALID:{key}")
         if not GATE_PATTERN.fullmatch(gate):
             raise ValueError(f"GROUP_GATE_INVALID:{key}")
-        description = original + "\n\n🔗参加はこちら\n" + gate
+        description = original + "\n\n🔗 参加はこちらから\n" + gate
         if len(description) > 255:
             raise ValueError(f"GROUP_DESCRIPTION_EXCEEDS_255:{key}:{len(description)}")
         if description.count("https://") != 1:
