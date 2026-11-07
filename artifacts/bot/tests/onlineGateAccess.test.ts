@@ -31,7 +31,7 @@ test("approved member sees topic, approved nonmember gets join, unapproved gets 
  assert.equal(onlineGateDecision("member",true,true),"refuse");
 });
 test("ONLINE deep link bot identity is read from runtime and never assumed",()=>{
- assert.equal(requireOnlineBotUsername("ExistingGateBot"),"ExistingGateBot");
+ assert.equal(requireOnlineBotUsername("ExistingGate_bot"),"ExistingGate_bot");
  assert.throws(()=>requireOnlineBotUsername(""),/IDENTITY_UNVERIFIED/);
  assert.throws(()=>requireOnlineBotUsername("https://t.me/Test_bot"),/IDENTITY_UNVERIFIED/);
  assert.throws(()=>requireOnlineBotUsername("UserNotBot"),/IDENTITY_UNVERIFIED/);
