@@ -13,6 +13,7 @@ import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
+import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
 import {resolveRoomJoinLink} from "./services/roomJoinLinks.js";
