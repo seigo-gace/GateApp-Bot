@@ -75,7 +75,8 @@ export async function handleOnlineGateStart(
  const decision=onlineGateDecision(member,approval?.status==="approved",false);
  await rememberOnlineGateDestination(user.id,route);
  if(decision==="open_topic"){
-  await deliverOnlineDestination(ctx.telegram,user.id,route);
+  if(!await deliverOnlineDestination(ctx.telegram,user.id,route))
+   await ctx.reply("参加状態を再確認できませんでした。後でもう一度お試しください。");
   return true;
  }
  if(decision==="join_after_approval"){
@@ -118,6 +119,7 @@ export function registerOnlineGateCheckHandler(bot:Telegraf):void{
    await ctx.reply("グループへの参加完了をまだ確認できません。参加後、もう一度このボタンを押してください。");
    return;
   }
-  await deliverOnlineDestination(ctx.telegram,ctx.from.id,route);
+  if(!await deliverOnlineDestination(ctx.telegram,ctx.from.id,route))
+   await ctx.reply("参加状態を再確認できませんでした。後でもう一度お試しください。");
  });
 }
