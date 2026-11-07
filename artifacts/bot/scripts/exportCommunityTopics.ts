@@ -62,7 +62,7 @@ try {
       ${enabled ? 'AND "enabled" = TRUE' : ""}`;
     const got = await client.query(sql, [CHATS.map(x=>x.chat_id)]);
     for (const item of got.rows) {
-      if (!allowed.has(String(item.chat_id)) || !/^\\d+$/.test(String(item.thread_id))) continue;
+      if (!allowed.has(String(item.chat_id)) || !/^\d+$/.test(String(item.thread_id))) continue;
       rows.push({
         chat_id:String(item.chat_id), thread_id:String(item.thread_id),
         title:item.title==null?null:String(item.title),purpose:item.purpose==null?null:String(item.purpose),
@@ -85,10 +85,10 @@ try {
     scope:"PERSISTED_BOT_DB_ONLY_NOT_TELEGRAM_FULL_INVENTORY",
     groups:byGroup, sources:examined,
     warning:"Bot API cannot enumerate all existing forum topics; unobserved topics remain unknown."
-  },null,2)+"\\n");
+  },null,2)+"\n");
 } catch (err) {
   try { await client.query("ROLLBACK"); } catch {}
-  console.error("TOPIC_INVENTORY_READ_FAILED", err instanceof Error ? err.message.replace(/postgres(?:ql)?:\\/\\/[^\\s]+/g,"[DB_URL_REDACTED]") : "unknown");
+  console.error("TOPIC_INVENTORY_READ_FAILED", err instanceof Error ? err.message.replace(/postgres(?:ql)?:\/\/[^\s]+/g,"[DB_URL_REDACTED]") : "unknown");
   process.exitCode=1;
 } finally {
   await client.end();
