@@ -597,7 +597,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",d.data);
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    "📝 本文とリンクをまとめて再入力してください。\\n1行目：本文\\n2行目以降：表示名 | https://URL\\n以前の入力は確定するまで保持します。",
+    "📝 本文とリンクをまとめて再入力してください。\n1行目：本文\n2行目以降：表示名 | https://URL\n以前の入力は確定するまで保持します。",
     Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
      "post:link:back:"+next.revision)],
      [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]]));
@@ -609,8 +609,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const next=d.step==="awaiting_text"?
    await updateDraft(ctx.from.id,"link",rev,"preview",d.data):d;
   await ctx.answerCbQuery();
-  await showPostScreen(ctx.telegram,ctx.from.id,next,"公開前プレビュー\\n"+preview("link",next)+
-   "\\n\\nボタンの表示列数を選択してください。",linkPreviewKeyboard(next));
+  await showPostScreen(ctx.telegram,ctx.from.id,next,"公開前プレビュー\n"+preview("link",next)+
+   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(next));
  });
  bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
   if(!privateDM(ctx))return;
