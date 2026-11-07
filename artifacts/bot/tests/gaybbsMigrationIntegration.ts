@@ -878,9 +878,13 @@ try{
           (881773,-1003847210571,881774,881776,'published')`);
  const sr=await findPublicSearchHits({...s2.filters,region:"東京",position:"リバ"},0,5,[-1003847210571]);
  assert.equal(sr.hits.length,1,"private profile must never be returned");
+ assert.equal((await findPublicSearchHits({...s2.filters,region:"東京"},0)).hits.length,0,
+  "missing group membership scope must not expose profiles");
+ assert.equal((await findPublicSearchHits({...s2.filters,region:"東京"},0,5,[-1002373696859])).hits.length,0,
+  "membership in another group must not expose this group's profile");
  assert.equal(sr.hits[0].title,"公開者");
  assert.equal(sr.hits[0].url,"https://t.me/c/3847210571/881775");
- assert.equal((await findPublicSearchHits({...s2.filters,region:"北海道"},0)).hits.length,0);
+ assert.equal((await findPublicSearchHits({...s2.filters,region:"北海道"},0,5,[-1003847210571])).hits.length,0);
  const searchRecruitment=await pool.query(
   `INSERT INTO announcement_posts
      (request_key,owner_user_id,kind,text,status,purpose_codes,area_code)
@@ -903,11 +907,11 @@ try{
  assert.equal(rr.hits.length,1);
  assert.equal(rr.hits[0].url,"https://t.me/c/3847210571/881777");
  assert.equal((await findPublicSearchHits({...initialSearchFilters(),
-  kind:"recruitment",purpose:"サシ"},0)).hits.length,0);
+  kind:"recruitment",purpose:"サシ"},0,5,[-1003847210571])).hits.length,0);
  await pool.query(
   `UPDATE posting_deliveries SET status='needs_reconcile' WHERE operation_key='search-recruit-1'`);
  assert.equal((await findPublicSearchHits({...initialSearchFilters(),
-  kind:"recruitment",keyword:"今夜の公開募集"},0)).hits.length,0,
+  kind:"recruitment",keyword:"今夜の公開募集"},0,5,[-1003847210571])).hits.length,0,
   "ambiguous Telegram send must never appear in search");
  console.log("GAYBBS_DB_SHARED_SEARCH_PUBLIC_VISIBILITY_AND_FILTERS=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
