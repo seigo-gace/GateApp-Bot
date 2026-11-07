@@ -28,8 +28,9 @@ export async function onlineMembership(telegram:Telegram,chatId:number,userId:nu
 export type OnlineGateDecision="open_topic"|"join_after_approval"|"begin_gate"|"refuse";
 export function onlineGateDecision(member:OnlineMember,approved:boolean,blocked:boolean):OnlineGateDecision{
  if(blocked||member==="unknown")return "refuse";
- if(member==="member")return "open_topic";
- return approved?"join_after_approval":"begin_gate";
+ // Telegram membership is NOT evidence of common Gate approval.
+ if(!approved)return "begin_gate";
+ return member==="member"?"open_topic":"join_after_approval";
 }
 const allowed=(v:unknown)=>v&&typeof v==="object"&&"status" in v;
 export async function deliverOnlineDestination(
@@ -119,6 +120,11 @@ export function registerOnlineGateCheckHandler(bot:Telegraf):void{
   if(member==="unknown"){await ctx.reply("参加状態が確認できません。後で再確認してください。");return;}
   if(member!=="member"){
    await ctx.reply("グループへの参加完了をまだ確認できません。参加後、もう一度このボタンを押してください。");
+   return;
+  }
+  const approval=await approvalRepo.getLatestApproval(route.targetId,ctx.from.id);
+  if(approval?.status!=="approved"){
+   await ctx.reply("参加中でも承認質問の完了が必要です。元の参加案内から審査を始めてください。");
    return;
   }
   if(!await deliverOnlineDestination(ctx.telegram,ctx.from.id,route))
