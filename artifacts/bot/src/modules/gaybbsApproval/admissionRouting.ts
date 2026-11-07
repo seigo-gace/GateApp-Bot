@@ -101,6 +101,7 @@ export async function resolveGateEntry(
   const { joined, pending } = await membershipForBoards(telegram, userId, boards);
   const attempt = await latestSharedApproval(userId, documentVersion);
   if (
+    attempt &&
     joined.length === ADMISSION_BOARD_CHAT_IDS.length &&
     pending.length === 0
   ) {
