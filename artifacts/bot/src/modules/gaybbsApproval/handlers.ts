@@ -143,7 +143,7 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
   rows=[[Markup.button.callback(q.yes,action(a,"yes")),
    Markup.button.callback(q.no,action(a,"no"))]];
  }else if(a.step==="rules"){
-  text=`【3グループ共通・最終ルール承諾】\n${RULES_CONSENT_QUESTION}\n\n${cfg.boards.map((b,i)=>`【${i+1}．${b.target.title} のルール】\n${b.ruleText}`).join("\n\n")}`;
+  text=`【質問3：各グループのルールを守れるか】\n${RULES_CONSENT_QUESTION}\n\n${cfg.boards.map((b,i)=>`【${i+1}．${b.target.title} のルール】\n${b.ruleText}`).join("\n\n")}`;
   rows=[[Markup.button.callback("✅規則・ルールを承諾する",action(a,"yes")),
    Markup.button.callback("❌承諾しない",action(a,"no"))]];
  }else{return}
