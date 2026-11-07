@@ -907,7 +907,7 @@ try{
    return {message_id:881791};
   },
   editMessageText:async(_id:number,_messageId:number,_inline:unknown,text:string,opts:any)=>{
-   helpEvents.push({kind:"edit",text,keyboard:opts.reply_markup});
+   helpEvents.push({kind:"edit",text,keyboard:opts?.reply_markup});
    return true;
   }
  } as unknown as Telegram;
