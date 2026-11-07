@@ -142,8 +142,12 @@ async function roomBoardMenu(telegram:Telegram,userId:number,d:EditorDraft):Prom
    Markup.button.callback(BOARD_TITLES[key],`room:board:${d.revision}:${index}`))]));
 }
 /** Entry shared by /room and the verified ROOM topic menu. */
-export async function startRoomEditor(telegram:Telegram,userId:number):Promise<void>{
+export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
  const existing=await getDraft(userId,"room");
+ if(screenId&&existing){
+  await bindDraftScreen(userId,"room",existing.revision,screenId);
+  existing.data.screenMessageId=screenId;
+ }
  if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
   const {savedTemplate:_unused,...template}=existing.data;
   const resumed=await updateDraft(userId,"room",existing.revision,"preview",
@@ -167,7 +171,7 @@ export async function startRoomEditor(telegram:Telegram,userId:number):Promise<v
   return;
  }
  const draft=await beginDraft(userId,"room","awaiting_text",
-  {visibility:"approved_only",profileLinked:false});
+  {visibility:"approved_only",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
  await showPostScreen(telegram,userId,draft,
   "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
 }
@@ -181,8 +185,12 @@ export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
    Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
  ]);
 }
-export async function startLinkEditor(telegram:Telegram,userId:number):Promise<void>{
+export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
  const prior=await getDraft(userId,"link");
+ if(screenId&&prior){
+  await bindDraftScreen(userId,"link",prior.revision,screenId);
+  prior.data.screenMessageId=screenId;
+ }
  // Reopening /link must not erase a still-private, valid editor. Other
  // draft modules and published receipts are never touched.
  if(prior?.step==="preview"){
@@ -191,7 +199,7 @@ export async function startLinkEditor(telegram:Telegram,userId:number):Promise<v
   return;
  }
  const draft=prior?.step==="awaiting_text"?prior:
-  await beginDraft(userId,"link","awaiting_text");
+  await beginDraft(userId,"link","awaiting_text",screenId?{screenMessageId:screenId}:{});
  await showPostScreen(telegram,userId,draft,
   "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。",
   Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
@@ -241,8 +249,12 @@ async function announcementDestinationPicker(telegram:Telegram,userId:number,d:E
   ]));
 }
 /** Announcement is selected by its menu, not by an extra mandatory kind page. */
-export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
+export async function startAnnouncementEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
  const existing=await getDraft(userId,"announcement");
+ if(screenId&&existing){
+  await bindDraftScreen(userId,"announcement",existing.revision,screenId);
+  existing.data.screenMessageId=screenId;
+ }
  if(existing?.step==="saved"&&existing.data.kind!=="recruitment"){
   const {savedTemplate:_previous,...template}=existing.data;
   const resumed=await updateDraft(userId,"announcement",existing.revision,
