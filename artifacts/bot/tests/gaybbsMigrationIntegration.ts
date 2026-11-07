@@ -948,11 +948,9 @@ try{
  await tap("help:topic:3:room");
  const roomHelp=helpEvents.at(-1)!.keyboard.inline_keyboard;
  assert.deepEqual(roomHelp[0].map((button:any)=>button.text),
-  ["🎬 ROOMを作成","📢 相手募集を作成"]);
- await tap("help:recruit:4");
- const startedRecruitment=await getDraft(helpOwner,"announcement");
- assert.equal(startedRecruitment?.data.recruitmentFlow,"compact");
- assert.equal(startedRecruitment?.step,"awaiting_text");
+  ["▶ この機能を開く"]);
+ assert.equal(roomHelp[0][0].callback_data,"help:open:4:room");
+ assert.equal(roomHelp.length,2,"Room+募集 stays a single entry in operation help");
  console.log("GAYBBS_DB_OPERATION_HELP_3X2_REVISION_AND_RETURN=PASS");
  // A cancelled final confirmation is tied to the original private revision.
  // Replayed Telegram callbacks cannot publish after explicit cancellation.
