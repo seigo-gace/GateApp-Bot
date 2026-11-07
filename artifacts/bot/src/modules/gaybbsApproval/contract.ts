@@ -57,7 +57,7 @@ export function canAdvanceAdmission(
 ): boolean {
  if (from === "intro") return next === "q1" && consent === undefined;
  if (from === "challenge") {
-  return (next === "challenge" || next === "q1" || next === "rejected") &&
+  return (next === "challenge" || next === "issuing" || next === "rejected") &&
    consent === undefined;
  }
  const required: ConsentStage | undefined =
