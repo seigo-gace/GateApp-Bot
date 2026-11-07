@@ -147,20 +147,27 @@ export async function publishExistingMenuPanel(
     [panel.panel_id,messageId]);
   }
   if(!panel.pinned)await telegram.pinChatMessage(chatId,messageId,{disable_notification:true});
-  const commit=await pool.query(
-   `UPDATE board_menu_panels SET state='published',message_id=$2,pinned=TRUE,
-    revision=revision+1,updated_at=NOW() WHERE panel_id=$1 AND state='publishing'
-    RETURNING panel_id`,[panel.panel_id,messageId]);
-  if(commit.rows.length!==1)throw new Error("PANEL_ACK_CONFLICT");
-  if(panel.panel_type==="posting"&&tokenHashes.length){
-   // Disable superseded menu links only AFTER Telegram edit/send and
-   // durable publication receipt have both succeeded. Older DM sessions
-   // must explicitly re-enter from the new pinned menu.
-   await pool.query(
-    `UPDATE board_menu_entry_tokens SET enabled=FALSE
-     WHERE panel_id=$1 AND enabled=TRUE AND NOT(token_hash=ANY($2::text[]))`,
-    [panel.panel_id,tokenHashes]);
-  }
+  // Receipt and old-token retirement are ONE DB transaction. If either
+  // fails after the Bot API operation, leave 'publishing' so the outer catch
+  // marks needs_reconcile; never report published with stale active tokens.
+  const cx=await pool.connect();
+  try{
+   await cx.query("BEGIN");
+   const commit=await cx.query(
+    `UPDATE board_menu_panels SET state='published',message_id=$2,pinned=TRUE,
+     revision=revision+1,updated_at=NOW() WHERE panel_id=$1 AND state='publishing'
+     RETURNING panel_id`,[panel.panel_id,messageId]);
+   if(commit.rows.length!==1)throw new Error("PANEL_ACK_CONFLICT");
+   if(panel.panel_type==="posting"&&tokenHashes.length){
+    await cx.query(
+     `UPDATE board_menu_entry_tokens SET enabled=FALSE
+      WHERE panel_id=$1 AND enabled=TRUE AND NOT(token_hash=ANY($2::text[]))`,
+     [panel.panel_id,tokenHashes]);
+   }
+   await cx.query("COMMIT");
+  }catch(error){
+   await cx.query("ROLLBACK");throw error;
+  }finally{cx.release();}
   return {messageId,updatedExisting:updating};
  }catch(e){
   if(deliveryAttempted){
