@@ -61,7 +61,9 @@ async function results(t:Telegram,id:number,s:SearchSession,page:number){
 }
 export async function startSearchEditor(t:Telegram,id:number){
  const old=await getSearchSession(id);
- const s=old??await beginSearch(id);await home(t,id,s);
+ const s=old?(old.step==="home"?old:await updateSearch(id,old.revision,"home",old.filters)):
+  await beginSearch(id);
+ await home(t,id,s);
 }
 export function registerSearchHandlers(bot:Telegraf){
  bot.command("search",async ctx=>{if(dm(ctx))await startSearchEditor(ctx.telegram,ctx.from.id);});
