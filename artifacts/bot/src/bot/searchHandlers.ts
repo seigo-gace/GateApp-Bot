@@ -17,7 +17,7 @@ async function show(t:Telegram,id:number,s:SearchSession,text:string,rows:any[][
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,Markup.inlineKeyboard(rows));
  if(view.messageId!==s.screenMessageId)await bindSearchScreen(id,s.revision,view.messageId);
 }
-function homeRows(s:SearchSession){
+export function searchHomeRows(s:SearchSession){
  const r=s.revision;
  return [[button("🔍 キーワード検索",`search:keyword:${r}`),button("🎛 詳細フィルター",`search:filter:${r}`)],
  [button(s.filters.kind==="profile"?"✅ プロフ":"▫️ プロフ",`search:kind:${r}:profile`),
@@ -35,7 +35,7 @@ function summary(s:SearchSession){
   "\n#Like："+(f.like?.tag||"指定なし")+" / #Love："+(f.love?.tag||"指定なし"):"")+
  "\n公開済み投稿から検索します。";
 }
-async function home(t:Telegram,id:number,s:SearchSession){await show(t,id,s,summary(s),homeRows(s));}
+async function home(t:Telegram,id:number,s:SearchSession){await show(t,id,s,summary(s),searchHomeRows(s));}
 function options(s:SearchSession,key:SearchOptionKey){
  const items=searchOptions(key);
  const rows=[] as any[][];
@@ -47,7 +47,7 @@ function options(s:SearchSession,key:SearchOptionKey){
  rows.push([button("↩ 戻る",`search:filter:${s.revision}`)]);
  return rows;
 }
-async function filter(t:Telegram,id:number,s:SearchSession){
+export function searchFilterRows(s:SearchSession){
  const r=s.revision;
  const rows=s.filters.kind==="profile"?[
   [button("📍 エリア",`search:panel:${r}:region`),button("年齢",`search:age:${r}`),
@@ -61,7 +61,10 @@ async function filter(t:Telegram,id:number,s:SearchSession){
    button("目的",`search:panel:${r}:purpose`)],
  ];
  rows.push([button("🔎 検索実行",`search:run:${r}`),button("↩ 戻る",`search:back:${r}`)]);
- await show(t,id,s,summary(s)+"\n\n絞り込む項目を選択してください。",rows);
+ return rows;
+}
+async function filter(t:Telegram,id:number,s:SearchSession){
+ await show(t,id,s,summary(s)+"\n\n絞り込む項目を選択してください。",searchFilterRows(s));
 }
 async function tagCategories(t:Telegram,id:number,s:SearchSession,kind:"like"|"love"){
  const rows:any[][]=[];
