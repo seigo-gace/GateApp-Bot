@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
  * consent questions followed by the separately configured per-group rule consent.
  */
 export const ADMISSION_VERSION = "2026-10-28-v1.0";
-export const ADMISSION_STAGES = ["intro", "challenge", "q1", "q2", "rules", "approved", "rejected"] as const;
+export const ADMISSION_STAGES = ["intro", "q1", "q2", "rules", "challenge", "approved", "rejected"] as const;
 export type AdmissionStage = typeof ADMISSION_STAGES[number];
 export type ConsentStage = "question1" | "question2" | "rules";
 export const APPROVAL_DOC_KEYS = ["guideline", "terms", "privacy", "rules"] as const;
@@ -55,7 +55,7 @@ export function canAdvanceAdmission(
  from: string, next: string,
  consent?: {stage: ConsentStage; accepted: boolean},
 ): boolean {
- if (from === "intro") return next === "challenge" && consent === undefined;
+ if (from === "intro") return next === "q1" && consent === undefined;
  if (from === "challenge") {
   return (next === "challenge" || next === "q1" || next === "rejected") &&
    consent === undefined;
@@ -65,12 +65,12 @@ export function canAdvanceAdmission(
   from === "q2" ? "question2" :
   from === "rules" ? "rules" : undefined;
  if (!required || consent?.stage !== required) return false;
- const forward = from === "q1" ? "q2" : from === "q2" ? "rules" : "issuing";
+ const forward = from === "q1" ? "q2" : from === "q2" ? "rules" : "challenge";
  return (next === forward && consent.accepted === true) ||
   (next === "rejected" && consent.accepted === false);
 }
 
-/** Bind each consent attempt to the actual fixed questions, links and group rules.
+/** Bind each consent attempt to the actual fixed questions, links, ordered flow and group rules.
  * Any change requires a fresh attempt, even if the human-readable base version
  * was not manually incremented. No raw document or user data leaves the module.
  */
@@ -82,7 +82,7 @@ export function admissionDocumentVersion(
   throw new Error("GATE_DOCUMENT_VERSION_UNSAFE");
  }
  const digest = createHash("sha256").update(JSON.stringify([
-  ADMISSION_VERSION,targetId,APPROVAL_QUESTIONS,RULES_CONSENT_QUESTION,
+  ADMISSION_VERSION,ADMISSION_STAGES,targetId,APPROVAL_QUESTIONS,RULES_CONSENT_QUESTION,
   rulesText,...APPROVAL_DOC_KEYS.map(key => [key,links[key]]),
  ])).digest("hex");
  return ADMISSION_VERSION + ":" + digest;
