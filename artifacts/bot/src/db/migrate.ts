@@ -150,6 +150,23 @@ export async function runMigrations(): Promise<void> {
         ADD COLUMN IF NOT EXISTS scope_approved_by BIGINT;
       ALTER TABLE topic_board_posts
         ADD COLUMN IF NOT EXISTS scope_approved_at TIMESTAMPTZ;
+      CREATE TABLE IF NOT EXISTS online_gate_routes (
+        card_key TEXT PRIMARY KEY CHECK(card_key IN ('area_bbs','video_chat','gay_board')),
+        token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
+        chat_id BIGINT NOT NULL CHECK(chat_id IN (-1003847210571,-1002373696859,-1003770334893)),
+        topic_url TEXT NOT NULL CHECK(topic_url LIKE 'https://t.me/c/%'),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS online_gate_sessions (
+        tg_user_id BIGINT PRIMARY KEY,
+        card_key TEXT NOT NULL REFERENCES online_gate_routes(card_key),
+        target_id INTEGER NOT NULL REFERENCES targets(target_id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS online_room_board_sets (
         set_id BIGSERIAL PRIMARY KEY,
         chat_id BIGINT NOT NULL CHECK(chat_id = -1003847210571),
