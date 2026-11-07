@@ -36,7 +36,7 @@ try{
   "announcement_notifications","announcement_application_entries",
   "announcement_room_dispatches","room_source_events","room_host_sessions",
   "link_button_posts","general_guide_topics","general_guide_documents",
-  "board_menu_panels","board_posting_menu_links","board_menu_entry_tokens","gaybbs_feature_release_gates"]){
+  "board_menu_panels","board_posting_menu_links","board_menu_entry_tokens","gaybbs_search_sessions","gaybbs_feature_release_gates"]){
   const found=await pool.query("SELECT to_regclass($1)::text AS reg",[table]);
   assert.ok(found.rows[0]?.reg,table);
  }
@@ -817,13 +817,13 @@ try{
   assert.equal(menuCalls.length,0);
   const before=await pool.query("SELECT state FROM board_menu_panels WHERE panel_id=$1",[postingPanelId]);
   assert.equal(before.rows[0].state,"verified");
-  const names=["クリエーター有料ビデオ投稿","検索/フィルター","雑談","紹介/招待","操作説明"];
+  const names=["クリエーター有料ビデオ投稿","雑談","紹介/招待","操作説明"];
   for(let i=0;i<names.length;i++)await pool.query(
    `INSERT INTO board_posting_menu_links
       (chat_id,label,destination_url,source,verified_by,verified_at,enabled)
     VALUES($1,$2,$3,'isolated-ci-fixture',880001,NOW(),TRUE)`,
    [menuChat,names[i],"https://t.me/c/2373696859/"+(970020+i)]);
-  for(const feature of ["announcement","room","link"])await pool.query(
+  for(const feature of ["announcement","room","link","search"])await pool.query(
    `INSERT INTO gaybbs_feature_release_gates
      (feature,source_commit,ci_evidence,gserver_runtime_evidence,
       telegram_e2e_evidence,approved_by,enabled)
@@ -842,7 +842,7 @@ try{
   assert.match(keys[2][0].url,/start=m_/);
   const count=await pool.query(
    "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1",[postingPanelId]);
-  assert.equal(count.rows[0].n,4);
+  assert.equal(count.rows[0].n,5);
   const state=await pool.query("SELECT state,message_id,pinned FROM board_menu_panels WHERE panel_id=$1",[postingPanelId]);
   assert.deepEqual(state.rows[0],{state:"published",message_id:"970011",pinned:true});
   console.log("GAYBBS_DB_POSTING_MENU_VERIFIED_LINKS_AND_DM_ENTRIES=PASS");
