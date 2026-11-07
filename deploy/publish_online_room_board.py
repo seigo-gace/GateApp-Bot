@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish 4 ONLINE ROOM cards after asset + gate verification."""
+"""Edit already-published ONLINE ROOM cards in place, never send a new post."""
 from __future__ import annotations
 
 import hashlib
@@ -36,33 +36,32 @@ def token() -> str:
     return Path("/home/gace/server-core/projects/TGtumbler/GateApp-Bot/deploy/secrets/bot_token.txt").read_text().strip()
 
 
-def send_photo(tk: str, fname: str, mime: str, data: bytes, caption: str, btn: tuple[str, str]) -> int:
-    boundary = "----GACEONLINE"
-    markup = json.dumps({"inline_keyboard": [[{"text": btn[0], "url": btn[1]}]]})
-    fields = {
-        "chat_id": str(AREA_CHAT),
-        "message_thread_id": str(ONLINE_THREAD),
+def edit_card(tk: str, message_id: int, caption: str, btn: tuple[str, str]) -> None:
+    """Edit an existing Bot photo message; never create a replacement post."""
+    payload = {
+        "chat_id": AREA_CHAT,
+        "message_id": message_id,
         "caption": caption,
-        "reply_markup": markup,
+        "reply_markup": {
+            "inline_keyboard": [[{"text": btn[0], "url": btn[1]}]]
+        },
     }
-    body = bytearray()
-    for k, v in fields.items():
-        body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode())
-    body.extend(
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"{fname}\"\r\nContent-Type: {mime}\r\n\r\n".encode()
-    )
-    body.extend(data)
-    body.extend(f"\r\n--{boundary}--\r\n".encode())
     req = urllib.request.Request(
-        f"https://api.telegram.org/bot{tk}/sendPhoto",
-        data=bytes(body),
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        f"https://api.telegram.org/bot{tk}/editMessageCaption",
+        data=json.dumps(payload, ensure_ascii=False).encode(),
+        headers={"Content-Type": "application/json"},
         method="POST",
     )
-    out = json.loads(urllib.request.urlopen(req, timeout=120).read())
-    if not out.get("ok"):
-        raise SystemExit(out.get("description"))
-    return int(out["result"]["message_id"])
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 400 and "message is not modified" in details.lower():
+            return
+        sys.exit(f"ONLINE_EXISTING_CARD_EDIT_FAILED:{message_id}:HTTP{exc.code}")
+    if not result.get("ok"):
+        sys.exit(f"ONLINE_EXISTING_CARD_EDIT_NOT_CONFIRMED:{message_id}")
 
 
 def main() -> None:
@@ -77,13 +76,19 @@ def main() -> None:
         gates[key] = url
     set_row = psql(f"SELECT set_id,state FROM online_room_board_sets WHERE chat_id={AREA_CHAT} AND message_thread_id={ONLINE_THREAD}")
     if not set_row:
-        psql(f"INSERT INTO online_room_board_sets (chat_id,message_thread_id,state,verified_by) VALUES ({AREA_CHAT},{ONLINE_THREAD},'verified',8872855519)")
-        set_id = psql(f"SELECT set_id FROM online_room_board_sets WHERE chat_id={AREA_CHAT} AND message_thread_id={ONLINE_THREAD}")
-    else:
-        set_id, state = set_row.split("|")
-        if state == "published" and psql(f"SELECT count(*) FROM online_room_board_cards WHERE set_id={set_id}") == "4":
-            print(json.dumps({"status": "skipped", "set_id": int(set_id)}))
-            return
+        sys.exit("ONLINE_EXISTING_SET_NOT_FOUND_EDIT_ONLY")
+    set_id, state = set_row.split("|")
+    if state != "published":
+        sys.exit("ONLINE_SET_NOT_PUBLISHED_EDIT_ONLY")
+    existing = {}
+    for key in ORDER:
+        found = psql(
+            f"SELECT message_id FROM online_room_board_cards "
+            f"WHERE set_id={set_id} AND card_key='{key}'"
+        )
+        if not found or not found.isdigit() or int(found) <= 0:
+            sys.exit(f"ONLINE_EXISTING_MESSAGE_ID_MISSING:{key}")
+        existing[key] = int(found)
     tk = token()
     receipts = {}
     for key in ORDER:
@@ -95,8 +100,8 @@ def main() -> None:
         if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
             sys.exit(f"ASSET_CHECKSUM_MISMATCH:{name}")
         btn = ("↩ 総合案内へ戻る", "https://t.me/c/3847210571/43") if key == "intro" else ("🎬 ROOM掲示板へ", gates[key])
-        mid = send_photo(tk, name, mime, data, CAPTIONS[key], btn)
-        psql(f"INSERT INTO online_room_board_cards (set_id,card_key,message_id) VALUES ({set_id},'{key}',{mid}) ON CONFLICT DO NOTHING")
+        mid = existing[key]
+        edit_card(tk, mid, CAPTIONS[key], btn)
         receipts[key] = mid
     psql(f"UPDATE online_room_board_sets SET state='published',updated_at=NOW() WHERE set_id={set_id}")
     result = {"chat_id": AREA_CHAT, "message_thread_id": ONLINE_THREAD, "cards": receipts}
