@@ -22,8 +22,8 @@ Owner: existing TGtumbler / @GayBBS_bot / GateApp-Bot. This is a release checkli
 - 入口: 既存Bot `/search`／投稿メニューの検証済み `m_` Search token／エリアボード等で実際に認証・検証した `https://t.me/GayBBS_bot?start=search`。直接の `start=search` は閲覧専用であり、起点のグループ・Topic IDを推測も復元もしない。
 - 既存 `showWizardScreen` と `dmInputOwner`、`inlineSelection` の選択/戻る/同一メッセージ更新、`PROFILE_AREA_CATALOG`・`PROFILE_POSITIONS`・`PURPOSE_TAGS` の確定候補を再利用。新DBは作らず `gaybbs_search_sessions` を既存PostgreSQLへ追加。
 - Source: `searchDomain.ts`（選択と検証）、`searchRepository.ts`（公開済みTelegramメッセージのみ）、`searchHandlers.ts`（DM対話）を追加。検索は読取専用であり、個別投稿への応募/削除/マイ投稿管理、非公開プロフィールの表示、未公開募集の表示を作らない。
-- 現段階の絞込: キーワード、地域13ブロック、ポジション、確定済み目的タグ、対象（公開プロフィール／公開済み相手募集）、5件ページ送り。結果は既存Telegram公開投稿へのリンクであり新たな検索内容の公開はしない。
-- Source検索結果は `profiles.status='published'` かつ `profile_publications.status='published'`、または `announcement_posts.kind='recruitment' AND status='published'` かつ `posting_deliveries.status='sent'` に限定。未確認送信・非公開・削除予定は出さない。特定グループの参加権限はTelegramが最終判定する。
+- 現段階の絞込: 対象（公開プロフィール／公開済み相手募集）、キーワード、地域13ブロック、ポジション、募集目的に加えプロフィール対象の年齢18〜89（1値・範囲）、既存の髪型10/体型13、Notion採用済み#Like/#Loveカテゴリ・12件ページ送りを利用。検索結果は5件ページ送りで既存Telegram公開投稿へのリンクを表示し、新たな検索内容の公開はしない。
+- Source検索結果は `profiles.status='published'` かつ `profile_publications.status='published'`、または `announcement_posts.kind='recruitment' AND status='published'` かつ `posting_deliveries.status='sent'` に限定。未確認送信・非公開・削除予定は出さない。**各検索時に `getChatMember` で本人の参加資格を3グループごとに照合し、加入中のグループに限定したSQLだけ実行する。** 未加入・退出・権限エラー・API通信失敗を全て除外し、ユーザーに表示される結果は本人が閲覧できる既存投稿へのリンクのみ。
 - 検索は本番feature gate `search` に従う。本番のメニュー入口や静的ボードリンクの有効化には、実機検証と証拠が必要。**Sourceのテストデータや仮URLを本番に流用しない。**
 
 ## 3. 本番一括切替時に必要な実値・確認（Source時点では入力禁止）
@@ -40,7 +40,7 @@ Owner: existing TGtumbler / @GayBBS_bot / GateApp-Bot. This is a release checkli
 
 ## 4. 本番E2E受入
 
-グループ3件×各投稿メニュー9ボタンおよび検索入口（行順/表記を含む）、DM起点戻りと検証済みTopic ID一致、初回start/既参加、投稿先制限、本文とリンク入力、悪性/誤URL、1/2/3列、入力失敗、プレビュー修正・戻る・キャンセル、古いボタン/二重タップ、本人限定、未確認宛先、公開同意、公開後message IDs、検索のキーワード/地域/ポジション/目的/対象切替/5件ページ送り/非公開データ除外、通信断後の `needs_reconcile` と復旧、Bot再起動後の保存内容を確認する。Android/iOS/Windowsは個別確認。完了した項目だけ証拠として記録。
+グループ3件×各投稿メニュー9ボタンおよび検索入口（行順/表記を含む）、DM起点戻りと検証済みTopic ID一致、初回start/既参加、投稿先制限、本文とリンク入力、悪性/誤URL、1/2/3列、入力失敗、プレビュー修正・戻る・キャンセル、古いボタン/二重タップ、本人限定、未確認宛先、公開同意、公開後message IDs、検索のキーワード/地域/年齢/体型/髪型/ポジション/#Like/#Love/目的/対象切替/5件ページ送り/非公開データ除外/別グループ参加制限、通信断後の `needs_reconcile` と復旧、Bot再起動後の保存内容を確認する。Android/iOS/Windowsは個別確認。完了した項目だけ証拠として記録。
 
 ## 5. 絶対に混同しない状態
 
