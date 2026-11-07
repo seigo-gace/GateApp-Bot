@@ -122,7 +122,13 @@ def main() -> int:
             results.append({"host":host["board_key"],"status":"fail",
                             "reason":"EXISTING_EDIT_NOT_CONFIRMED"})
             continue
-        upsert_db(cid,tid,existing,gate,fp,"")
+        # Do not overwrite an existing Telegram photo media_file_id on edit.
+        psql(
+            f"UPDATE community_link_topic_cards SET gate_url='{gate}', "
+            f"intro_fingerprint='{fp}',updated_at=NOW() "
+            f"WHERE host_chat_id={cid} AND message_thread_id={tid} "
+            f"AND promoted_board_key='{PROMOTED}' AND message_id={existing}"
+        )
         results.append({"host":host["board_key"],"status":"updated",
                         "message_id":existing,"gate_url":gate})
 
