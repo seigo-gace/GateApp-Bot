@@ -30,7 +30,7 @@ Owner: existing TGtumbler / @GayBBS_bot / GateApp-Bot. This is a release checkli
 - 投稿メニューの［操作説明］は、従来の静的未確認リンクではなく、既存 `m_` Token→`help` Feature→Bot DMの `operationHelpHandlers.ts` へ接続。Feature gate `help` の実機検証と公開承認が揃うまで固定メニューを有効化しない。
 - 確定画面は **3×2**：［プロフ］［Room+募集］［告知/予告］／［🔗ボタン作成］［検索/フィルター］［戻る］。下位の説明から既存Profile/ROOM/告知/Link/Search機能を開き、機能の独立実装をしない。
 - `gaybbs_help_sessions` を既存PostgreSQL内に追加。本人・revision照合、既存共通 `showWizardScreen` を使用した同一DMメッセージ編集、戻る時の既存 `verifiedPostingMenuReturnUrl` のみ採用。未検証グループ/Topicへのリンク推測は禁止。
-- 実機では入口TokenとBot本人識別、操作説明の6ボタン位置、下位説明から各ウィザードへの接続、ページ戻り、古いCallback、複数操作後の画面ID維持、Gserver再起動後の保存・通信失敗時の復旧を検証する。
+- 各機能の説明は利用者に手順を段階表示し、既存の実処理へ移る［▶ この機能を開く］を備える。［Room+募集］のみ、異なる業務を誤案内しないよう［🎬 ROOMを作成］と［📢 相手募集を作成］を分け、前者は既存Room編集、後者は既存compact相手募集編集に接続する。\n- 実機では入口TokenとBot本人識別、操作説明の6ボタン位置、下位説明から各ウィザードへの接続、ページ戻り、古いCallback、複数操作後の画面ID維持、Gserver再起動後の保存・通信失敗時の復旧を検証する。
 
 ## 3. 本番一括切替時に必要な実値・確認（Source時点では入力禁止）
 
