@@ -2,7 +2,7 @@
  * A Telegram deep link must NEVER accept raw chat ID / thread ID from a user.
  */
 import { createHash, randomBytes } from "node:crypto";
-export const MENU_FEATURES=["profile","announcement","room","link","search"] as const;
+export const MENU_FEATURES=["profile","announcement","room","link","search","help"] as const;
 export type MenuFeature=typeof MENU_FEATURES[number];
 export type MenuOrigin={chatId:number;threadId:number;panelId:number;feature:MenuFeature};
 export function newMenuToken():string {
