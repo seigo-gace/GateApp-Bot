@@ -11,6 +11,7 @@ import { generateChallenge, ChallengeQuestion } from "../services/challengeServi
 import { sendLog } from "../services/loggingService.js";
 import { createInviteLink } from "../services/inviteService.js";
 import { COOLDOWN_SECONDS } from "../config/env.js";
+import {recallOnlineGateDestination} from "../services/onlineGateRoutes.js";
 import type { Target } from "../db/schema/targets.js";
 import type { Context } from "telegraf";
 
@@ -299,9 +300,14 @@ async function approveUser(
     ? `${titleHeader(target)}${target.approval_caption}`
     : `${titleHeader(target)}✨ 承認が完了しました！\n\n下のボタンから参加してください。`;
 
+  // Preserve the originating ONLINE ROOM topic across question Gate flow.
+  // The callback checks REAL membership before showing a Topic URL.
+  const onlineRoute=await recallOnlineGateDestination(userId);
+  const returnToOnline=onlineRoute?.targetId===target.target_id;
   const replyMarkup = {
     inline_keyboard: [
       [{ text: "🎉 参加する", url: inviteLink }],
+      ...(returnToOnline?[[{text:"✅ 参加後にROOM掲示板へ",callback_data:"online:check"}]]:[]),
     ],
   };
 
@@ -313,7 +319,7 @@ async function approveUser(
     const sent = await telegram.sendMessage(
       userId,
       caption,
-      Markup.inlineKeyboard([[Markup.button.url("🎉 参加する", inviteLink)]])
+      Markup.inlineKeyboard([[Markup.button.url("🎉 参加する", inviteLink)],...(returnToOnline?[[Markup.button.callback("✅ 参加後にROOM掲示板へ","online:check")]]:[])])
     );
     approvalMsgId = sent.message_id;
   }
