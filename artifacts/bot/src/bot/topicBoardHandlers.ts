@@ -53,17 +53,17 @@ async function boardMessage(key:string):Promise<TransportMessage>{
  const block=key.slice(6);
  const selected=AREA_BLOCKS.find(x=>x.label===block);
  if(!selected)throw new Error("BOARD_KEY_UNKNOWN");
- // Exact geographic boundaries are not authoritatively resolved in the
- // old D01-D20 record. Require an independently approved block-specific text.
+ // Master authorized board classification copy in Source. An optional
+ // separately approved detailed correction may override/add to that copy.
  const scope=await pool.query(
   `SELECT approved_scope_text,scope_approved_by,scope_approved_at
    FROM topic_board_posts WHERE board_key=$1 AND chat_id=$2`,
   [key,CHAT_AREA]);
- if(scope.rows.length!==1||!scope.rows[0].scope_approved_by||
-    !scope.rows[0].scope_approved_at||
-    typeof scope.rows[0].approved_scope_text!=="string"||
-    !scope.rows[0].approved_scope_text.trim())
-  throw new Error("AREA_BLOCK_SCOPE_NOT_APPROVED:"+block);
+ if(scope.rows.length!==1)throw new Error("AREA_BLOCK_NOT_BOUND:"+block);
+ const scopeRow=scope.rows[0];
+ const approvedScope=scopeRow.scope_approved_by&&scopeRow.scope_approved_at&&
+  typeof scopeRow.approved_scope_text==="string"?
+  String(scopeRow.approved_scope_text):undefined;
  const rows=await pool.query(
   `SELECT area_name,target_url FROM topic_board_area_links
    WHERE block_name=$1 AND verified_by IS NOT NULL`,[block]);
@@ -92,7 +92,7 @@ async function boardMessage(key:string):Promise<TransportMessage>{
  };
  const rendered=renderAreaBlockBoard({
   blockTitle:block+"エリアボード",
-  description:areaBlockDescription(block,String(scope.rows[0].approved_scope_text)),
+  description:areaBlockDescription(block,approvedScope),
   areaLinks,
   searchLink:control("検索","検索"),
   filterLink:control("フィルター","フィルター"),
