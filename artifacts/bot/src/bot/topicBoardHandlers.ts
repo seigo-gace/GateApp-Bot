@@ -83,6 +83,37 @@ export function registerTopicBoardHandlers(bot:Telegraf):void{
    await ctx.reply("✅ 既存Topicの実IDを案内ボードへ紐付けました。投稿はしていません。");
   }catch(e){await ctx.reply("接続を拒否しました："+(e instanceof Error?e.message:"UNKNOWN"));}
  });
+ // Adopt an already-existing Bot-authored board post instead of creating
+ // a duplicate. Replies provide the real message_id and thread_id.
+ bot.command("adopttopicboard",async ctx=>{
+  const at=await adminContext(ctx);if(!at)return;
+  const key=actionArg(ctx.message.text);
+  const reply=ctx.message.reply_to_message;
+  try{
+   if(destination(key)!==at.chatId||!reply)throw new Error("BOARD_ADOPTION_TARGET_MISSING");
+   const sameThread=(reply as {message_thread_id?:number}).message_thread_id===at.threadId;
+   const self=await ctx.telegram.getMe();
+   if(!sameThread||reply.from?.id!==self.id)throw new Error("BOARD_EXISTING_POST_NOT_BOT_OWNED");
+   const text="text" in reply&&typeof reply.text==="string"?reply.text:"";
+   const expected=key==="national"?"全国エリアボード":
+    key==="video"?"ビデオChatの掲示板":
+    key==="category"?"ゲイのための掲示板":key.slice(6);
+   if(!text.includes(expected))throw new Error("BOARD_EXISTING_POST_TITLE_MISMATCH");
+   const found=await pool.query(
+    `INSERT INTO topic_board_posts(board_key,chat_id,message_thread_id,message_id,state,verified_by)
+     VALUES($1,$2,$3,$4,'published',$5)
+     ON CONFLICT(board_key) DO UPDATE SET
+      message_id=EXCLUDED.message_id,state='published',
+      verified_by=EXCLUDED.verified_by,verified_at=NOW(),updated_at=NOW()
+     WHERE topic_board_posts.chat_id=EXCLUDED.chat_id
+       AND topic_board_posts.message_thread_id=EXCLUDED.message_thread_id
+       AND topic_board_posts.state='verified'
+       AND topic_board_posts.message_id IS NULL
+     RETURNING board_key`,[key,at.chatId,at.threadId,reply.message_id,at.adminId]);
+   if(found.rowCount!==1)throw new Error("BOARD_ALREADY_PUBLISHED_OR_CONFLICT");
+   await ctx.reply("✅ 既存のBot投稿を登録しました。新規投稿や本文変更はしていません。");
+  }catch(e){await ctx.reply("既存投稿の採用を拒否しました："+(e instanceof Error?e.message:"UNKNOWN"));}
+ });
  // Missing historical child links are recorded only after a current administrator
  // explicitly supplies the real existing Telegram destination, never guessed.
  bot.command("setboardarealink",async ctx=>{
