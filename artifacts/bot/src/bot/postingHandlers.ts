@@ -151,6 +151,21 @@ export async function startRoomEditor(telegram:Telegram,userId:number):Promise<v
   await roomPreviewScreen(telegram,userId,resumed);
   return;
  }
+ if(existing&&["preview","awaiting_text","awaiting_datetime","awaiting_room_url"].includes(existing.step)){
+  if(existing.step==="preview"){
+   await roomPreviewScreen(telegram,userId,existing);
+  }else if(existing.step==="awaiting_datetime"){
+   await showPostScreen(telegram,userId,existing,
+    "📅 予告日時を日本時間で1通送信してください。例：2026/11/20 20:00");
+  }else if(existing.step==="awaiting_room_url"){
+   await showPostScreen(telegram,userId,existing,
+    "外部ROOMのHTTPS参加URLを1通で送信してください。");
+  }else{
+   await showPostScreen(telegram,userId,existing,
+    "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
+  }
+  return;
+ }
  const draft=await beginDraft(userId,"room","awaiting_text",
   {visibility:"approved_only",profileLinked:false});
  await showPostScreen(telegram,userId,draft,
@@ -238,7 +253,12 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number):P
  }
  if(existing&&["preview","awaiting_text","awaiting_datetime"].includes(existing.step)&&
     existing.data.kind!=="recruitment"){
-  await announcementScreen(telegram,userId,existing);
+  if(existing.step==="awaiting_datetime"){
+   await showPostScreen(telegram,userId,existing,
+    "📅 日時を日本時間で1通送信してください。例：2026/11/20 20:00",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+     `post:announce:back:${existing.revision}`)]]));
+  }else await announcementScreen(telegram,userId,existing);
   return;
  }
  const draft=await beginDraft(userId,"announcement","awaiting_text",
