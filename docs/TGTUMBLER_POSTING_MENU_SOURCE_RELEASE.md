@@ -15,8 +15,8 @@ Owner: existing TGtumbler / @GayBBS_bot / GateApp-Bot. This is a release checkli
 1. `/link` または検証済み `m_` のDM入口で同一Botの対話式編集を開く。既存下書きを保持し、URL/表示名/本文を受領、無効入力なら再入力、1–3列のプレビュー→修正/戻る/取消→検証済みTopic選択→本人の最終公開確認。
 2. URLはHTTPS必須、既知短縮URL、認証情報付き、ローカル・内部宛先、IPリテラル、禁止ポートを拒否。これは遠隔ページの安全性/リダイレクトの完全判定ではない。
 3. 投稿処理は既存 `posting_deliveries` と `link_button_posts`、冪等 `request_key`、不明結果 `needs_reconcile` を使用。グループへの通常URL直接投稿を新しく許可しない。
-4. 既存投稿メニューレンダラは、承認済み5 DM入口と4 verified URLを合成、9個揃わない場合は送信しない。プロフィールや総合案内の構成は変更しない。
-5. PostgreSQL既存DB内の `board_posting_menu_links` にグループごとの静的4 URLを保存（初期値なし／既定OFF）。外部URL、秘匿Bot開始URL、未確認Topicは捏造しない。既存公開ゲート・管理者確認が必要。
+4. 既存投稿メニューレンダラは、承認済み6 DM入口と3 verified URLを合成、9個揃わない場合は送信しない。プロフィールや総合案内の構成は変更しない。
+5. PostgreSQL既存DB内の `board_posting_menu_links` にグループごとの静的3 URLを保存（初期値なし／既定OFF）。外部URL、秘匿Bot開始URL、未確認Topicは捏造しない。既存公開ゲート・管理者確認が必要。
 
 ## 検索/フィルターの共通ソース経路（2026-11-08追加）
 - 入口: 既存Bot `/search`／投稿メニューの検証済み `m_` Search token／エリアボード等で実際に認証・検証した `https://t.me/GayBBS_bot?start=search`。直接の `start=search` は閲覧専用であり、起点のグループ・Topic IDを推測も復元もしない。
@@ -26,15 +26,21 @@ Owner: existing TGtumbler / @GayBBS_bot / GateApp-Bot. This is a release checkli
 - Source検索結果は `profiles.status='published'` かつ `profile_publications.status='published'`、または `announcement_posts.kind='recruitment' AND status='published'` かつ `posting_deliveries.status='sent'` に限定。未確認送信・非公開・削除予定は出さない。**各検索時に `getChatMember` で本人の参加資格を3グループごとに照合し、加入中のグループに限定したSQLだけ実行する。** 未加入・退出・権限エラー・API通信失敗を全て除外し、ユーザーに表示される結果は本人が閲覧できる既存投稿へのリンクのみ。
 - 検索は本番feature gate `search` に従う。本番のメニュー入口や静的ボードリンクの有効化には、実機検証と証拠が必要。**Sourceのテストデータや仮URLを本番に流用しない。**
 
+## 操作説明：確定3×2レイアウト（2026-11-08追加）
+- 投稿メニューの［操作説明］は、従来の静的未確認リンクではなく、既存 `m_` Token→`help` Feature→Bot DMの `operationHelpHandlers.ts` へ接続。Feature gate `help` の実機検証と公開承認が揃うまで固定メニューを有効化しない。
+- 確定画面は **3×2**：［プロフ］［Room+募集］［告知/予告］／［🔗ボタン作成］［検索/フィルター］［戻る］。下位の説明から既存Profile/ROOM/告知/Link/Search機能を開き、機能の独立実装をしない。
+- `gaybbs_help_sessions` を既存PostgreSQL内に追加。本人・revision照合、既存共通 `showWizardScreen` を使用した同一DMメッセージ編集、戻る時の既存 `verifiedPostingMenuReturnUrl` のみ採用。未検証グループ/Topicへのリンク推測は禁止。
+- 実機では入口TokenとBot本人識別、操作説明の6ボタン位置、下位説明から各ウィザードへの接続、ページ戻り、古いCallback、複数操作後の画面ID維持、Gserver再起動後の保存・通信失敗時の復旧を検証する。
+
 ## 3. 本番一括切替時に必要な実値・確認（Source時点では入力禁止）
 
 対象3グループそれぞれ：
 
 - 公開先の既存Topic `chat_id`, `message_thread_id`, `message_id`, Bot権限、既存ピン位置。Telegramの `t.me/c/.../<message>` の末尾をthread IDとして流用しない。
-- 管理者が実際に確認した4リンクを **グループごと** に登録：
-  `クリエーター有料ビデオ投稿`／`雑談`／`紹介/招待`／`操作説明`。既存のアプリ・Topic・承認ゲートを使い、適切な宛先が未確認ならそのグループの公開は拒否。
+- 管理者が実際に確認した3リンクを **グループごと** に登録：
+  `クリエーター有料ビデオ投稿`／`雑談`／`紹介/招待`。既存のアプリ・Topic・承認ゲートを使い、適切な宛先が未確認ならそのグループの公開は拒否。
 - `board_posting_menu_links` の各行は `label,destination_url,source,verified_by,verified_at,enabled` を現物に基づき登録。TokenやSecretをコード・GitHub・Notionへ書かない。
-- 共通feature gate `gaybbs_feature_release_gates` の `announcement`, `room`, `link`, `search` はSource/CI/Gserver Runtime/実Telegram E2E証拠が全て存在し、Masterの承認を得た場合のみ有効化。**Source側から勝手にONにしない。**
+- 共通feature gate `gaybbs_feature_release_gates` の `announcement`, `room`, `link`, `search`, `help` はSource/CI/Gserver Runtime/実Telegram E2E証拠が全て存在し、Masterの承認を得た場合のみ有効化。**Source側から勝手にONにしない。**
 - `GAYBBS_PUBLIC_MENU_RELEASE` は実機受入/変更計画に沿ってのみ `enabled`。本記録は有効化命令ではない。
 - 既存パネルを `bindpanel posting` で検証→DB/リンク/公開ゲートreadback→ `publishpanel` で既存メッセージ編集優先／初回だけ送信・ピン。保留中・結果不明なら再送しない。Gserver側の既存Runtime接続/配備規則に従う。
 
