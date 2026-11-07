@@ -448,6 +448,7 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS online_gate_routes (
         card_key TEXT PRIMARY KEY CHECK(card_key IN ('area_bbs','video_chat','gay_board')),
         token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
+        start_url TEXT NOT NULL CHECK(start_url LIKE 'https://t.me/%?start=online_%'),
         chat_id BIGINT NOT NULL CHECK(chat_id IN (-1003847210571,-1002373696859,-1003770334893)),
         topic_url TEXT NOT NULL CHECK(topic_url LIKE 'https://t.me/c/%'),
         verified_by BIGINT NOT NULL,
