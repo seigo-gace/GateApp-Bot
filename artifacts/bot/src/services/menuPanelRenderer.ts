@@ -3,7 +3,7 @@
  * missing functionality or links to a disabled document.
  */
 export type NavLink={label:string;url:string;verified:boolean};
-export type EntryLink={feature:"profile"|"announcement"|"room"|"link"|"search";url:string;ready:boolean};
+export type EntryLink={feature:"announcement"|"room"|"link";label:string;url:string;ready:boolean};
 export type PanelSpec={
  type:"general_guide"|"posting";
  board:"area_bbs"|"video_chat"|"gay_board";
@@ -130,9 +130,16 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
    rows:renderApprovedLinks("general_guide",spec.links)};
  }
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
- // Existing limited feature-release gates cannot yet supply every approved
- // posting-menu button, so fail closed instead of showing an incorrect menu.
- if(spec.entryLinks.length)throw new Error("POSTING_ENTRY_LINK_MUST_MATCH_APPROVED_MENU");
+ // Reuse the existing verified DM entries alongside verified URL destinations.
+ // Labels and feature ownership must match the exact Master-approved layout.
+ const allowed:Readonly<Record<string,EntryLink["feature"]>>={
+  "相手募集":"announcement","募集+Room":"room",
+  "告知/予告":"announcement","🔗ボタン作成":"link",
+ };
+ const entries=spec.entryLinks.map(entry=>{
+  if(allowed[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
+  return {label:entry.label,url:entry.url,verified:entry.ready};
+ });
  return {text:"📝 投稿メニュー\\nボタンを選択してください。",
-   rows:renderApprovedLinks("posting",spec.links)};
+   rows:renderApprovedLinks("posting",[...spec.links,...entries])};
 }
