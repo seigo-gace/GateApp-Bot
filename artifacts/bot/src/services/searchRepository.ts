@@ -72,7 +72,7 @@ export async function findPublicSearchHits(filters:SearchFilters,offset:number,l
      ORDER BY d.updated_at DESC LIMIT 1) d ON TRUE
    JOIN posting_topics t ON t.topic_id=d.posting_topic_id AND t.enabled=TRUE
    WHERE a.kind='recruitment' AND a.status='published'
-     AND ($1::text IS NULL OR a.area_code=$1)
+     AND ($1::text IS NULL OR a.area_code=$1 OR a.profile_snapshot->>'region'=$1 OR a.conditions->>'region'=$1)
      AND ($2::text IS NULL OR a.conditions->>'position'=$2 OR a.profile_snapshot->>'position'=$2)
      AND ($3::text='' OR a.text ILIKE '%'||$3||'%')
      AND ($4::text IS NULL OR $4=ANY(a.purpose_codes))
