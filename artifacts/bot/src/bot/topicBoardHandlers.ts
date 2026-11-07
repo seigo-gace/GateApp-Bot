@@ -4,9 +4,10 @@
  */
 import type {Telegraf} from "telegraf";
 import {pool} from "../db/index.js";
-import {createTelegramDispatcher} from "../services/telegramDispatcher.js";
+import {createTelegramDispatcher,type TransportMessage} from "../services/telegramDispatcher.js";
+import {renderAreaBlockBoard,type NavLink} from "../services/menuPanelRenderer.js";
 import {
- AREA_BLOCKS,renderAreaBlock,renderNationalBoard,renderTopicBoard,
+ AREA_BLOCKS,areaBlockDescription,renderNationalBoard,renderTopicBoard,
 } from "../services/topicBoardContent.js";
 type BoardKey="video"|"category"|"national"|string;
 const CHAT_AREA=-1003847210571,CHAT_VIDEO=-1002373696859,CHAT_GAY=-1003770334893;
@@ -46,22 +47,48 @@ async function adminContext(ctx:any):Promise<{chatId:number;threadId:number;admi
  }
  return {chatId,threadId,adminId:ctx.from.id};
 }
-async function boardText(key:string):Promise<string>{
- if(key==="video"||key==="category")return renderTopicBoard(key);
- if(key==="national")return renderNationalBoard();
+async function boardMessage(key:string):Promise<TransportMessage>{
+ if(key==="video"||key==="category")return {text:renderTopicBoard(key),parseMode:"HTML"};
+ if(key==="national")return {text:renderNationalBoard(),parseMode:"HTML"};
  const block=key.slice(6);
- const found=AREA_BLOCKS.find(x=>x.label===block);
- if(!found)throw new Error("BOARD_KEY_UNKNOWN");
+ const selected=AREA_BLOCKS.find(x=>x.label===block);
+ if(!selected)throw new Error("BOARD_KEY_UNKNOWN");
  const rows=await pool.query(
-  "SELECT area_name,target_url FROM topic_board_area_links WHERE block_name=$1",
-  [block]);
- const resolved:Record<string,string>={};
+  `SELECT area_name,target_url FROM topic_board_area_links
+   WHERE block_name=$1 AND verified_by IS NOT NULL`,[block]);
+ const childUrls=new Map<string,string>();
  for(const row of rows.rows){
-  if(!areaChild(block,String(row.area_name))||!areaLink(String(row.target_url)))
-   throw new Error("AREA_LINK_INVALID");
-  resolved[`${block}/${String(row.area_name)}`]=String(row.target_url);
+  const label=String(row.area_name),url=String(row.target_url);
+  if(!areaChild(block,label)||!areaLink(url)||childUrls.has(label))
+   throw new Error("AREA_CHILD_LINK_INVALID");
+  childUrls.set(label,url);
  }
- return renderAreaBlock(block,resolved);
+ const areaLinks:NavLink[]=selected.children.map(child=>{
+  const url=childUrls.get(child.label)??child.url;
+  if(!url)throw new Error("AREA_CHILD_LINK_UNVERIFIED:"+block+"/"+child.label);
+  if(!areaLink(url))throw new Error("AREA_CHILD_LINK_INVALID");
+  return {label:child.label,url,verified:true};
+ });
+ const controls=await pool.query(
+  `SELECT label,destination_url FROM general_guide_links
+   WHERE chat_id=$1 AND label IN ('検索','フィルター','雑談','戻る')
+     AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL`,
+  [CHAT_AREA]);
+ const control=(name:string,label:string):NavLink=>{
+  const matches=controls.rows.filter(r=>r.label===name);
+  if(matches.length!==1)throw new Error("AREA_CONTROL_LINK_UNVERIFIED:"+name);
+  return {label,url:String(matches[0].destination_url),verified:true};
+ };
+ const rendered=renderAreaBlockBoard({
+  blockTitle:block+"エリアボード",
+  description:areaBlockDescription(block),
+  areaLinks,
+  searchLink:control("検索","検索"),
+  filterLink:control("フィルター","フィルター"),
+  chatLink:control("雑談","💬 フリートーク／雑談"),
+  backLink:control("戻る","↩ 総合案内に戻る"),
+ });
+ return {text:rendered.text,buttons:rendered.rows};
 }
 export function registerTopicBoardHandlers(bot:Telegraf):void{
  bot.command("bindtopicboard",async ctx=>{
@@ -140,7 +167,7 @@ export function registerTopicBoardHandlers(bot:Telegraf):void{
    if(process.env.GAYBBS_TOPIC_BOARD_RELEASE!=="enabled")
     throw new Error("TOPIC_BOARD_RELEASE_DISABLED");
    if(destination(key)!==at.chatId)throw new Error("BOARD_OWNER_MISMATCH");
-   const text=await boardText(key); // Resolve EVERY required link before claiming.
+   const message=await boardMessage(key); // Resolve all regions and controls before publishing.
    const claimed=await pool.query(
     `UPDATE topic_board_posts SET state='publishing',updated_at=NOW()
      WHERE board_key=$1 AND chat_id=$2 AND message_thread_id=$3
@@ -155,9 +182,9 @@ export function registerTopicBoardHandlers(bot:Telegraf):void{
     const target={chatId:at.chatId,threadId:at.threadId};
     deliveryStarted=true;
     if(messageId!==null){
-     await dispatch.revise(target,messageId,{text,parseMode:"HTML"});
+     await dispatch.revise(target,messageId,message);
     }else{
-     messageId=await dispatch.publish(target,{text,parseMode:"HTML"});
+     messageId=await dispatch.publish(target,message);
     }
     const ack=await pool.query(
      `UPDATE topic_board_posts SET state='published',message_id=$2,updated_at=NOW()
