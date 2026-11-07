@@ -25,20 +25,40 @@ async function buildLinks(panel:PanelRow):Promise<{
 }>{
  const chatId=Number(panel.chat_id);
  if(panel.panel_type==="general_guide"){
+  // The adopted M2 menu has 12 exact labels in 2x6 rows.
+  // Persistent guide documents are separate from the three topic boards.
   const docs=await pool.query(
    `SELECT document_type,message_id FROM general_guide_documents
     WHERE chat_id=$1 AND status='published' AND message_id IS NOT NULL
-    AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,[chatId]);
-  const labels:Record<string,string>={terms:"🛡 利用規約",rules:"📖 グループルール",
-   safety:"🛡 安全ガイドライン",privacy:"🔐 プライバシー",howto:"📋 使い方"};
-  const must=["terms","rules","safety","privacy","howto"];
-  if(must.some(name=>!docs.rows.some(r=>r.document_type===name)))
-   throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
-  const links:NavLink[]=must.map(name=>{
-   const row=docs.rows.find(r=>r.document_type===name);
-   return {label:labels[name]!,url:guideMessageUrl(chatId,Number(row.message_id)),
+      AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,[chatId]);
+  const documentLinks=[
+   {type:"terms",label:"利用規約"},
+   {type:"rules",label:"グループルール"},
+   {type:"safety",label:"安全ガイド"},
+   {type:"howto",label:"使い方"},
+  ];
+  const links:NavLink[]=documentLinks.map(d=>{
+   const found=docs.rows.filter(r=>r.document_type===d.type);
+   if(found.length!==1)throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
+   return {label:d.label,url:guideMessageUrl(chatId,Number(found[0].message_id)),
     verified:true};
   });
+  const boards=await pool.query(
+   `SELECT board_key,chat_id,message_id FROM topic_board_posts
+    WHERE board_key IN ('national','category','video')
+     AND state='published' AND message_id IS NOT NULL`);
+  const boardLabels=[
+   {key:"national",label:"全国エリアボード",chat:-1003847210571},
+   {key:"category",label:"カテゴリーボード",chat:-1003770334893},
+   {key:"video",label:"ビデオチャット/動画",chat:-1002373696859},
+  ];
+  for(const b of boardLabels){
+   const found=boards.rows.filter(r=>r.board_key===b.key);
+   if(found.length!==1||Number(found[0].chat_id)!==b.chat)
+    throw new Error("TOPIC_BOARD_NOT_PUBLISHED:"+b.key);
+   links.push({label:b.label,
+    url:guideMessageUrl(b.chat,Number(found[0].message_id)),verified:true});
+  }
   const other=await pool.query(
    `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
      AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
