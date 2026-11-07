@@ -22,6 +22,8 @@ import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roo
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
 import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
+import {beginSearch,getSearchSession,updateSearch,findPublicSearchHits} from "../src/services/searchRepository.js";
+import {initialSearchFilters} from "../src/services/searchDomain.js";
 import {activateMenuOrigin} from "../src/services/menuOriginRepository.js";
 import {newMenuToken,tokenHash} from "../src/services/menuOrigin.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
@@ -850,5 +852,63 @@ try{
   if(previousMenuRelease===undefined)delete process.env.GAYBBS_PUBLIC_MENU_RELEASE;
   else process.env.GAYBBS_PUBLIC_MENU_RELEASE=previousMenuRelease;
  }
+ // Search shares the DM text owner, and never exposes private drafts or
+ // merely saved, not actually Telegram-published profiles.
+ const seeker=881771;
+ const s0=await beginSearch(seeker);
+ assert.equal(s0.step,"home");
+ assert.equal(await currentDmTextOwner(seeker),null);
+ const s1=await updateSearch(seeker,s0.revision,"keyword",s0.filters);
+ assert.equal(await currentDmTextOwner(seeker),"search");
+ await assert.rejects(
+  ()=>updateSearch(seeker,s0.revision,"results",s0.filters),/SEARCH_SESSION_STALE/);
+ const s2=await updateSearch(seeker,s1.revision,"home",
+  {...s1.filters,keyword:"公開者"});
+ assert.equal(await currentDmTextOwner(seeker),null);
+ assert.equal((await getSearchSession(seeker))?.filters.keyword,"公開者");
+ await pool.query(
+  `INSERT INTO profiles
+  (owner_user_id,nickname,height_cm,weight_kg,age,position,region,area,status)
+  VALUES (881772,'公開者',170,70,34,'リバ','東京','新宿','published'),
+         (881773,'公開者 非公開',170,70,34,'リバ','東京','池袋','private')`);
+ await pool.query(
+  `INSERT INTO profile_publications
+   (owner_user_id,chat_id,thread_id,message_id,status)
+   VALUES (881772,-1003847210571,881774,881775,'published'),
+          (881773,-1003847210571,881774,881776,'published')`);
+ const sr=await findPublicSearchHits({...s2.filters,region:"東京",position:"リバ"},0);
+ assert.equal(sr.hits.length,1,"private profile must never be returned");
+ assert.equal(sr.hits[0].title,"公開者");
+ assert.equal(sr.hits[0].url,"https://t.me/c/3847210571/881775");
+ assert.equal((await findPublicSearchHits({...s2.filters,region:"北海道"},0)).hits.length,0);
+ const recruitment=await pool.query(
+  `INSERT INTO announcement_posts
+     (request_key,owner_user_id,kind,text,status,purpose_codes,area_code)
+   VALUES('search-recruit-1',881774,'recruitment','今夜の公開募集','published',
+     ARRAY['飲み/飯'],'東京') RETURNING announcement_id`);
+ const recruitmentId=String(recruitment.rows[0].announcement_id);
+ const searchTopic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,
+    verified_by,verified_at,enabled)
+   VALUES('area_bbs','announcement',-1003847210571,881776,'募集検索用',
+    881774,NOW(),TRUE) RETURNING topic_id`);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+    (source_type,source_id,owner_user_id,source_revision,
+     posting_topic_id,operation_key,status,telegram_message_id)
+   VALUES('announcement',$1,881774,1,$2,'search-recruit-1','sent',881777)`,
+  [recruitmentId,searchTopic.rows[0].topic_id]);
+ const rr=await findPublicSearchHits({...initialSearchFilters(),
+  kind:"recruitment",keyword:"公開募集",region:"東京",purpose:"飲み/飯"},0);
+ assert.equal(rr.hits.length,1);
+ assert.equal(rr.hits[0].url,"https://t.me/c/3847210571/881777");
+ assert.equal((await findPublicSearchHits({...initialSearchFilters(),
+  kind:"recruitment",purpose:"サシ"},0)).hits.length,0);
+ await pool.query(
+  `UPDATE posting_deliveries SET status='needs_reconcile' WHERE operation_key='search-recruit-1'`);
+ assert.equal((await findPublicSearchHits({...initialSearchFilters(),
+  kind:"recruitment"},0)).hits.length,0,
+  "ambiguous Telegram send must never appear in search");
+ console.log("GAYBBS_DB_SHARED_SEARCH_PUBLIC_VISIBILITY_AND_FILTERS=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
