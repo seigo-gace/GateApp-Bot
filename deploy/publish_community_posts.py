@@ -183,21 +183,15 @@ def publish_one(
                 "message_id": mid,
                 "url": f"https://t.me/c/{slug}/{mid}",
             }
-    fields = {
-        "chat_id": host_chat_id,
-        "message_thread_id": thread_id,
-        "caption": cap,
-        "reply_markup": markup,
+    # Existing approved community cards must be edited in place.
+    # Never sendPhoto or create replacement posts on missing/failed edits.
+    return {
+        "status": "fail",
+        "reason": "EXISTING_POST_EDIT_ONLY_RECONCILE_REQUIRED",
+        "host_chat_id": host_chat_id,
+        "thread_id": thread_id,
+        "promoted": promoted,
     }
-    resp = telegram_multipart(token, "sendPhoto", fields, {"photo": img_path})
-    if not resp.get("ok"):
-        return {"status": "fail", "reason": resp.get("description")}
-    msg = resp["result"]
-    mid = int(msg["message_id"])
-    media = (msg.get("photo") or [{}])[-1].get("file_id", "")
-    upsert_card(host_chat_id, thread_id, promoted, mid, media, img_rel, gate_url, intro_fp)
-    slug = str(host_chat_id).replace("-100", "")
-    return {"status": "published", "message_id": mid, "url": f"https://t.me/c/{slug}/{mid}"}
 
 
 def ensure_schema():
