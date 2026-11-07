@@ -29,3 +29,23 @@ test("malformed button, missing body and invalid column count are refused",()=>{
  assert.throws(()=>validateLinkDraft({text:"本文",buttons:[],columns:1}));
  assert.throws(()=>validateLinkDraft({text:"本文",buttons:[{label:"表示",url:"https://example.org"}],columns:4 as 1}));
 });
+
+// The existing LinkButton DM editor must keep its buttons interactive, not chat text.
+test("LinkButton preview offers 1–3 columns, edit and cancel in the same message",async()=>{
+ const {linkPreviewKeyboard}=await import("../src/bot/postingHandlers.js");
+ const panel=linkPreviewKeyboard({module:"link",step:"preview",revision:8,
+  data:{columns:2,buttons:[{label:"案内",url:"https://example.org"}],text:"説明"}});
+ const rows=panel.reply_markup.inline_keyboard;
+ assert.deepEqual(rows.map(row=>row.length),[3,2]);
+ assert.deepEqual(rows[0].map(button=>button.callback_data),[
+  "post:linkcols:8:1","post:linkcols:8:2","post:linkcols:8:3"]);
+ assert.ok(rows[0][1].text.startsWith("✅"));
+ assert.deepEqual(rows[1].map(button=>button.callback_data),[
+  "post:link:edit:8","post:link:cancel:8"]);
+});
+test("trailing-dot shorteners and local suffixes remain blocked",()=>{
+ for(const url of ["https://bit.ly./a","https://localhost./",
+  "https://example.local./","https://example.internal./"]){
+  assert.throws(()=>validateLinkDestination(url),url);
+ }
+});
