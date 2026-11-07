@@ -5,11 +5,9 @@
  */
 import type {Telegraf,Context,Telegram} from "telegraf";
 import {Markup} from "telegraf";
-import * as approvalRepo from "../repositories/approvalRepo.js";
 import * as blacklistRepo from "../repositories/blacklistRepo.js";
 import * as targetRepo from "../repositories/targetRepo.js";
-import {startGateFlow} from "../bot/gateHandlers.js";
-import {createInviteLink} from "./inviteService.js";
+import {commonGayBbsApproval,startGayBbsAdmission} from "../modules/gaybbsApproval/handlers.js";
 import {resolveOnlineGatePayload,rememberOnlineGateDestination,
  recallOnlineGateDestination,type OnlineRoute} from "./onlineGateRoutes.js";
 export type OnlineMember="member"|"not_member"|"unknown";
@@ -32,7 +30,6 @@ export function onlineGateDecision(member:OnlineMember,approved:boolean,blocked:
  if(!approved)return "begin_gate";
  return member==="member"?"open_topic":"join_after_approval";
 }
-const allowed=(v:unknown)=>v&&typeof v==="object"&&"status" in v;
 export async function deliverOnlineDestination(
  telegram:Telegram,userId:number,route:OnlineRoute,
 ):Promise<boolean>{
@@ -74,35 +71,19 @@ export async function handleOnlineGateStart(
   await ctx.reply("参加状態を確認できません。時間をおいて再度お試しください。");
   return true;
  }
- const approval=await approvalRepo.getLatestApproval(route.targetId,user.id);
- const decision=onlineGateDecision(member,approval?.status==="approved",false);
+ const approved=await commonGayBbsApproval(ctx.telegram,user.id,route.targetId);
+ const decision=onlineGateDecision(member,approved,false);
  await rememberOnlineGateDestination(user.id,route);
  if(decision==="open_topic"){
   if(!await deliverOnlineDestination(ctx.telegram,user.id,route))
    await ctx.reply("参加状態を再確認できませんでした。後でもう一度お試しください。");
   return true;
  }
- if(decision==="join_after_approval"){
-  // Approved by THIS target's Gate, but Telegram says user is not a member.
-  // Never send a raw Topic link before an actual membership check.
-  const inv=await createInviteLink({telegram:ctx.telegram} as Telegraf,route.targetId,route.chatId,user.id);
-  await ctx.reply(
-   "✅ このグループの承認履歴があります。参加後、目的のROOM掲示板を開けます。",
-   Markup.inlineKeyboard([
-    [Markup.button.url("🎉 グループに参加",inv.invite_link)],
-    [Markup.button.callback("✅ 参加後にROOM掲示板へ","online:check")],
-   ]));
-  return true;
- }
- if(decision==="begin_gate"){
-  await approvalRepo.createApproval({
-   target_id:route.targetId,tg_user_id:user.id,username:user.username,
-   display_name:[user.first_name,user.last_name].filter(Boolean).join(" "),
-   is_premium:(user as {is_premium?:boolean}).is_premium??false,
-   status:"pending",
-  });
-  await ctx.reply("初回の参加承認が必要です。質問に回答してからグループへの参加を進めてください。");
-  await startGateFlow(ctx.telegram,user.id,route.targetId,false);
+ if(decision==="join_after_approval"||decision==="begin_gate"){
+  // The same common Gate issues user-specific, one-use join-request links.
+  // Never use inviteService.createInviteLink here; it lacks this module's
+  // attempt/consent/user_id bound join-request ledger.
+  await startGayBbsAdmission(ctx,`gate_${target.gate_code}`);
   return true;
  }
  await ctx.reply("参加状態を確認できません。");
@@ -122,8 +103,8 @@ export function registerOnlineGateCheckHandler(bot:Telegraf):void{
    await ctx.reply("グループへの参加完了をまだ確認できません。参加後、もう一度このボタンを押してください。");
    return;
   }
-  const approval=await approvalRepo.getLatestApproval(route.targetId,ctx.from.id);
-  if(approval?.status!=="approved"){
+  const approved=await commonGayBbsApproval(ctx.telegram,ctx.from.id,route.targetId);
+  if(!approved){
    await ctx.reply("参加中でも承認質問の完了が必要です。元の参加案内から審査を始めてください。");
    return;
   }
