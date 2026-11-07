@@ -62,6 +62,8 @@ async function buildLinks(panel:PanelRow):Promise<{
   const other=await pool.query(
    `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
      AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
+     AND label IN ('お知らせ','フリートーク/雑談','検索/フィルター',
+                   'みんなのプロフ','コミュニティリンク')
      ORDER BY link_key`,[chatId]);
   links.push(...other.rows.map(r=>({label:r.label,url:r.destination_url,verified:true})));
   return {links,entries:[]};
