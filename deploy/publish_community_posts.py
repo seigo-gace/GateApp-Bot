@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish or update TGtumbler community-link image posts (idempotent)."""
+"""Publish 3x3 TGtumbler community-link intro cards (idempotent)."""
 from __future__ import annotations
 
 import hashlib
@@ -16,7 +16,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "artifacts/bot/deploy/community-post-assets.json"
 INTROS = Path(__file__).resolve().parent / "community-intro-texts.json"
-BOARD_KEY_TOPIC = {"areas_bbs": "area_bbs", "video_chat": "video_chat", "gay_board": "gay_board"}
+TOPICS = Path(__file__).resolve().parent / "community-link-topics.json"
+BOARD_TOPIC_ROW = {
+    "areas_bbs": "area_bbs",
+    "video_chat": "video_chat",
+    "gay_board": "gay_board",
+}
 
 
 def load_json(path: Path) -> dict:
@@ -24,46 +29,35 @@ def load_json(path: Path) -> dict:
 
 
 def psql(sql: str) -> list[str]:
-    env = os.environ.copy()
-    db_url = env.get(
-        "DATABASE_URL",
-        "postgresql://gace:devlocalpass123@127.0.0.1:55432/gaybbs",
-    )
-    # docker exec fallback when local psql missing
     if subprocess.run(["which", "psql"], capture_output=True).returncode != 0:
+        cmd = ["docker", "exec", "deploy-postgres-1", "psql", "-U", "gace", "-d", "gaybbs", "-t", "-A", "-c", sql]
+    else:
         cmd = [
-            "docker",
-            "exec",
-            "deploy-postgres-1",
             "psql",
-            "-U",
-            "gace",
-            "-d",
-            "gaybbs",
+            os.environ.get("DATABASE_URL", "postgresql://gace:devlocalpass123@127.0.0.1:55432/gaybbs"),
             "-t",
             "-A",
             "-c",
             sql,
         ]
-    else:
-        cmd = ["psql", db_url, "-t", "-A", "-c", sql]
     out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
     return [line for line in out.splitlines() if line.strip()]
 
 
-def telegram(token: str, method: str, **params):
-    boundary = "----tgboundary7"
+def esc(s: str) -> str:
+    return s.replace("'", "''")
+
+
+def telegram_multipart(token: str, method: str, fields: dict, files: dict | None = None):
+    boundary = "----tgboundary9"
     body = bytearray()
-    file_fields: list[tuple[str, Path, str]] = []
-    for key, val in params.items():
-        if isinstance(val, Path):
-            file_fields.append((key, val, mimetypes.guess_type(val.name)[0] or "application/octet-stream"))
-            continue
+    for key, val in fields.items():
         body.extend(f"--{boundary}\r\n".encode())
         body.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode())
         body.extend(str(val).encode())
         body.extend(b"\r\n")
-    for key, path, mime in file_fields:
+    for key, path in (files or {}).items():
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         body.extend(f"--{boundary}\r\n".encode())
         body.extend(
             f'Content-Disposition: form-data; name="{key}"; filename="{path.name}"\r\n'.encode()
@@ -96,174 +90,194 @@ def telegram_json(token: str, method: str, payload: dict):
         return json.load(resp)
 
 
-def resolve_thread(chat_id: int, board_key: str) -> int | None:
-    bk = BOARD_KEY_TOPIC.get(board_key, board_key)
-    rows = psql(
-        f"SELECT message_thread_id FROM posting_topics "
-        f"WHERE chat_id={chat_id} AND board_key='{bk}' AND purpose='link' AND enabled=TRUE "
-        f"ORDER BY verified_at DESC NULLS LAST LIMIT 1;"
+def fingerprint(intro: str, gate_url: str) -> str:
+    return hashlib.sha256((intro + "\n" + gate_url).encode()).hexdigest()[:32]
+
+
+def join_markup(gate_url: str) -> str:
+    return json.dumps(
+        {"inline_keyboard": [[{"text": "🔗参加はこちら", "url": gate_url}]]},
+        ensure_ascii=False,
     )
-    if rows:
-        return int(rows[0])
+
+
+def stored_message(host_chat_id: int, thread_id: int, promoted: str) -> int | None:
     rows = psql(
-        f"SELECT message_thread_id FROM community_link_publications "
-        f"WHERE board_key='{board_key}' AND message_thread_id IS NOT NULL LIMIT 1;"
+        f"SELECT message_id FROM community_link_topic_cards "
+        f"WHERE host_chat_id={host_chat_id} AND message_thread_id={thread_id} "
+        f"AND promoted_board_key='{esc(promoted)}' AND message_id IS NOT NULL LIMIT 1;"
     )
-    if rows:
+    if not rows:
+        return None
+    try:
         return int(rows[0])
-    rows = psql(
-        f"SELECT message_thread_id FROM general_guide_topics "
-        f"WHERE chat_id={chat_id} AND enabled=TRUE LIMIT 1;"
-    )
-    if rows:
-        return int(rows[0])
-    return None
+    except ValueError:
+        return None
 
 
-def caption(intro: str, gate_url: str) -> str:
-    join = f'<a href="{gate_url}">参加はこちら</a>'
-    return f"{intro}\n\n{join}"
-
-
-def fingerprint(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()[:32]
-
-
-def upsert_publication(
-    board_key: str,
-    chat_id: int,
+def upsert_card(
+    host_chat_id: int,
     thread_id: int,
+    promoted: str,
     message_id: int,
     media_file_id: str,
     repo_path: str,
     gate_url: str,
     intro_fp: str,
 ):
-    thread_sql = "NULL" if thread_id is None else str(int(thread_id))
     psql(
-        f"INSERT INTO community_link_publications "
-        f"(board_key,chat_id,message_thread_id,message_id,media_file_id,"
+        f"INSERT INTO community_link_topic_cards "
+        f"(host_chat_id,message_thread_id,promoted_board_key,message_id,media_file_id,"
         f"image_repo_path,gate_url,intro_fingerprint,status,posted_at,updated_at) "
-        f"VALUES ('{board_key}',{chat_id},{thread_sql},{message_id},"
-        f"'{media_file_id}','{repo_path}','{gate_url}','{intro_fp}','published',NOW(),NOW()) "
-        f"ON CONFLICT (board_key) DO UPDATE SET "
-        f"chat_id=EXCLUDED.chat_id,message_thread_id=EXCLUDED.message_thread_id,"
+        f"VALUES ({host_chat_id},{thread_id},'{esc(promoted)}',{message_id},"
+        f"'{esc(media_file_id)}','{esc(repo_path)}','{esc(gate_url)}','{esc(intro_fp)}',"
+        f"'published',NOW(),NOW()) "
+        f"ON CONFLICT (host_chat_id,message_thread_id,promoted_board_key) DO UPDATE SET "
         f"message_id=EXCLUDED.message_id,media_file_id=EXCLUDED.media_file_id,"
         f"image_repo_path=EXCLUDED.image_repo_path,gate_url=EXCLUDED.gate_url,"
         f"intro_fingerprint=EXCLUDED.intro_fingerprint,status='published',"
-        f"updated_at=NOW(),posted_at=COALESCE(community_link_publications.posted_at,NOW());"
+        f"updated_at=NOW(),posted_at=COALESCE(community_link_topic_cards.posted_at,NOW());"
+    )
+
+
+def register_posting_topic(board_key: str, chat_id: int, thread_id: int, title: str):
+    bk = BOARD_TOPIC_ROW[board_key]
+    psql(
+        f"INSERT INTO posting_topics "
+        f"(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled) "
+        f"VALUES ('{bk}','link',{chat_id},{thread_id},'{esc(title)}',8872855519,NOW(),TRUE) "
+        f"ON CONFLICT (board_key,purpose,chat_id,message_thread_id) DO UPDATE SET "
+        f"title=EXCLUDED.title,verified_at=NOW(),enabled=TRUE;"
+    )
+
+
+def publish_one(
+    token: str,
+    host_chat_id: int,
+    thread_id: int,
+    promoted: str,
+    intro: str,
+    gate_url: str,
+    img_path: Path,
+    img_rel: str,
+) -> dict:
+    cap = intro.strip()
+    intro_fp = fingerprint(intro, gate_url)
+    markup = join_markup(gate_url)
+    mid = stored_message(host_chat_id, thread_id, promoted)
+    if mid:
+        cap_res = telegram_json(
+            token,
+            "editMessageCaption",
+            {"chat_id": host_chat_id, "message_id": mid, "caption": cap},
+        )
+        markup_res = telegram_json(
+            token,
+            "editMessageReplyMarkup",
+            {"chat_id": host_chat_id, "message_id": mid, "reply_markup": json.loads(markup)},
+        )
+        if cap_res.get("ok") and markup_res.get("ok"):
+            slug = str(host_chat_id).replace("-100", "")
+            return {
+                "status": "updated",
+                "message_id": mid,
+                "url": f"https://t.me/c/{slug}/{mid}",
+            }
+    fields = {
+        "chat_id": host_chat_id,
+        "message_thread_id": thread_id,
+        "caption": cap,
+        "reply_markup": markup,
+    }
+    resp = telegram_multipart(token, "sendPhoto", fields, {"photo": img_path})
+    if not resp.get("ok"):
+        return {"status": "fail", "reason": resp.get("description")}
+    msg = resp["result"]
+    mid = int(msg["message_id"])
+    media = (msg.get("photo") or [{}])[-1].get("file_id", "")
+    upsert_card(host_chat_id, thread_id, promoted, mid, media, img_rel, gate_url, intro_fp)
+    slug = str(host_chat_id).replace("-100", "")
+    return {"status": "published", "message_id": mid, "url": f"https://t.me/c/{slug}/{mid}"}
+
+
+def ensure_schema():
+    psql(
+        """
+CREATE TABLE IF NOT EXISTS community_link_topic_cards (
+  host_chat_id BIGINT NOT NULL,
+  message_thread_id BIGINT NOT NULL,
+  promoted_board_key TEXT NOT NULL
+    CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board')),
+  message_id BIGINT,
+  media_file_id TEXT,
+  image_repo_path TEXT NOT NULL,
+  gate_url TEXT NOT NULL,
+  intro_fingerprint TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'not_verified'
+    CHECK (status IN ('not_verified','published','needs_reconcile')),
+  posted_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (host_chat_id, message_thread_id, promoted_board_key)
+);
+"""
     )
 
 
 def main() -> int:
-    token = os.environ.get("BOT_TOKEN")
-    if not token:
-        token_file = os.environ.get(
-            "BOT_TOKEN_FILE",
-            "/home/gace/server-core/projects/TGtumbler/GateApp-Bot/deploy/secrets/bot_token.txt",
-        )
-        token = Path(token_file).read_text().strip()
-    assets = load_json(ASSETS)
+    token_file = os.environ.get(
+        "BOT_TOKEN_FILE",
+        "/home/gace/server-core/projects/TGtumbler/GateApp-Bot/deploy/secrets/bot_token.txt",
+    )
+    token = os.environ.get("BOT_TOKEN") or Path(token_file).read_text().strip()
+    ensure_schema()
+    assets = {e["key"]: e for e in load_json(ASSETS)["entries"]}
     intros = load_json(INTROS)["entries"]
+    hosts = load_json(TOPICS)["hosts"]
     results = []
-    for entry in assets["entries"]:
-        key = entry["key"]
-        chat_id = int(entry["chat_id"])
-        gate_url = entry["entry_url"]
-        intro = intros.get(key, "").strip()
-        if not intro:
-            print(f"SKIP {key}: intro missing", file=sys.stderr)
-            results.append({"key": key, "status": "skip", "reason": "intro_missing"})
-            continue
-        img_rel = entry["image"]["primary"]["repo_path"]
-        img_path = ROOT / img_rel
-        if not img_path.is_file():
-            print(f"SKIP {key}: image missing {img_path}", file=sys.stderr)
-            results.append({"key": key, "status": "skip", "reason": "image_missing"})
-            continue
-        thread_id = resolve_thread(chat_id, key)
-        if thread_id is None:
-            print(f"FAIL {key}: no posting thread", file=sys.stderr)
-            results.append({"key": key, "status": "fail", "reason": "no_thread"})
-            continue
-        cap = caption(intro, gate_url)
-        intro_fp = fingerprint(intro + gate_url)
-        pub = entry.get("publication") or {}
-        message_id = pub.get("message_id")
-        rows = psql(
-            f"SELECT message_id,media_file_id FROM community_link_publications "
-            f"WHERE board_key='{key}' LIMIT 1;"
+    for host in hosts:
+        register_posting_topic(
+            host["board_key"],
+            int(host["chat_id"]),
+            int(host["message_thread_id"]),
+            host.get("topic_title_verified", "link"),
         )
-        db_msg = None
-        if rows:
-            parts = rows[0].split("|")
-            if len(parts) >= 1 and parts[0]:
-                db_msg = int(parts[0])
-        target_msg = db_msg or message_id
-        if target_msg:
-            resp = telegram_json(
-                token,
-                "editMessageCaption",
-                {
-                    "chat_id": chat_id,
-                    "message_id": int(target_msg),
-                    "caption": cap,
-                    "parse_mode": "HTML",
-                },
-            )
-            if not resp.get("ok"):
-                target_msg = None
-        if not target_msg:
-            photo_args = dict(
-                chat_id=chat_id,
-                photo=img_path,
-                caption=cap,
-                parse_mode="HTML",
-            )
-            if thread_id is not None:
-                photo_args["message_thread_id"] = thread_id
-            resp = telegram(token, "sendPhoto", **photo_args)
-            if not resp.get("ok") and "message thread not found" in str(resp.get("description", "")):
-                photo_args.pop("message_thread_id", None)
-                thread_id = None
-                resp = telegram(token, "sendPhoto", **photo_args)
-            if not resp.get("ok"):
-                print(json.dumps(resp, ensure_ascii=False), file=sys.stderr)
-                results.append({"key": key, "status": "fail", "reason": resp.get("description")})
+        for promoted in ("areas_bbs", "video_chat", "gay_board"):
+            entry = assets[promoted]
+            intro = intros.get(promoted, "").strip()
+            gate = entry["entry_url"]
+            img_rel = entry["image"]["primary"]["repo_path"]
+            img_path = ROOT / img_rel
+            if not img_path.is_file():
+                results.append(
+                    {
+                        "host": host["board_key"],
+                        "promoted": promoted,
+                        "status": "fail",
+                        "reason": "image_missing",
+                    }
+                )
                 continue
-            msg = resp["result"]
-            target_msg = msg["message_id"]
-            media_file_id = msg.get("photo", [{}])[-1].get("file_id", "")
-        else:
-            media_file_id = ""
-            if rows and len(rows[0].split("|")) > 1:
-                media_file_id = rows[0].split("|")[1]
-        slug = str(chat_id).replace("-100", "")
-        url = f"https://t.me/c/{slug}/{target_msg}"
-        upsert_publication(
-            key, chat_id, thread_id, int(target_msg), media_file_id or "unknown",
-            img_rel, gate_url, intro_fp,
-        )
-        entry.setdefault("publication", {})["status"] = "published"
-        entry["publication"]["chat_id"] = str(chat_id)
-        entry["publication"]["message_id"] = int(target_msg)
-        if thread_id is not None:
-            entry["publication"]["message_thread_id"] = thread_id
-        entry["publication"]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        results.append(
-            {
-                "key": key,
-                "status": "published",
-                "chat_id": chat_id,
-                "message_thread_id": thread_id,
-                "message_id": int(target_msg),
-                "url": url,
+            out = publish_one(
+                token,
+                int(host["chat_id"]),
+                int(host["message_thread_id"]),
+                promoted,
+                intro,
+                gate,
+                img_path,
+                img_rel,
+            )
+            row = {
+                "host_chat_id": host["chat_id"],
+                "host_board": host["board_key"],
+                "message_thread_id": host["message_thread_id"],
+                "topic_title": host.get("topic_title_verified"),
+                "promoted_board_key": promoted,
+                **out,
             }
-        )
-        print(f"OK {key} thread={thread_id} msg={target_msg} {url}")
-    assets_path = ASSETS
-    assets_path.write_text(json.dumps(assets, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    report = ROOT / "deploy" / "community-post-results.json"
+            results.append(row)
+            print(json.dumps(row, ensure_ascii=False))
+    report = Path(__file__).resolve().parent / "community-post-results.json"
     report.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     failed = [r for r in results if r.get("status") == "fail"]
     return 1 if failed else 0

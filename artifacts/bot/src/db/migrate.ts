@@ -528,6 +528,23 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS community_link_topic_cards (
+        host_chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT NOT NULL,
+        promoted_board_key TEXT NOT NULL
+          CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board')),
+        message_id BIGINT,
+        media_file_id TEXT,
+        image_repo_path TEXT NOT NULL,
+        gate_url TEXT NOT NULL,
+        intro_fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'not_verified'
+          CHECK (status IN ('not_verified','published','needs_reconcile')),
+        posted_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (host_chat_id, message_thread_id, promoted_board_key)
+      );
+
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
         state TEXT NOT NULL DEFAULT 'top',
