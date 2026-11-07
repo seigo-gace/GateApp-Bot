@@ -563,6 +563,45 @@ export async function runMigrations(): Promise<void> {
         verified_by BIGINT
       );
 
+      CREATE TABLE IF NOT EXISTS online_room_board_sets (
+        set_id BIGSERIAL PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id = -1003847210571),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        revision INTEGER NOT NULL DEFAULT 1,
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK(state IN ('verified','publishing','published','needs_reconcile')),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(chat_id,message_thread_id)
+      );
+      CREATE TABLE IF NOT EXISTS online_room_board_cards (
+        set_id BIGINT NOT NULL REFERENCES online_room_board_sets(set_id),
+        card_key TEXT NOT NULL CHECK(card_key IN ('intro','area_bbs','video_chat','gay_board')),
+        message_id BIGINT NOT NULL CHECK(message_id > 0),
+        published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(set_id,card_key),
+        UNIQUE(set_id,message_id)
+      );
+      CREATE TABLE IF NOT EXISTS online_gate_routes (
+        card_key TEXT PRIMARY KEY CHECK(card_key IN ('area_bbs','video_chat','gay_board')),
+        token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
+        start_url TEXT NOT NULL CHECK(start_url LIKE 'https://t.me/%?start=online_%'),
+        chat_id BIGINT NOT NULL,
+        topic_url TEXT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS online_gate_sessions (
+        tg_user_id BIGINT PRIMARY KEY,
+        card_key TEXT NOT NULL REFERENCES online_gate_routes(card_key),
+        target_id INTEGER NOT NULL REFERENCES targets(target_id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
         state TEXT NOT NULL DEFAULT 'top',

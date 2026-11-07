@@ -1,0 +1,75 @@
+# Gserver `scripts/gserver_apps.py` — local stack for @GayBBS_bot (TGtumbler).
+# Images are pre-built / pinned; no build or registry pull. Secrets are file-based under ./secrets/ (not committed with real values).
+services:
+  postgres:
+    image: postgres@sha256:ac838714b7d794185a866e5a6b479b954e7d8a070568aa0acac6fe07c3070bf5
+    pull_policy: never
+    environment:
+      POSTGRES_USER: gace
+      POSTGRES_DB: gaybbs
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gace -d gaybbs"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+    # PostgreSQL official entrypoint needs chown/chmod on data/socket paths; keep
+    # default image caps (do not apply cap_drop ALL here).
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 0.50
+    logging:
+      driver: local
+      options:
+        max-size: 5m
+        max-file: "3"
+
+  gaybbs:
+    image: gace-tgtumbler-gaybbs:local
+    pull_policy: never
+    command: ["node", "--import", "/app/preload/telegram-ipv4-preload.mjs", "/app/gaybbs.mjs"]
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Host networking: reach Telegram API reliably; Postgres on published localhost port.
+      DATABASE_URL: postgresql://gace:devlocalpass123@127.0.0.1:55432/gaybbs
+      BOT_TOKEN_FILE: /run/secrets/bot_token
+    secrets:
+      - bot_token
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000,mode=0700
+    init: true
+    user: "1000:1000"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 0.50
+    logging:
+      driver: local
+      options:
+        max-size: 5m
+        max-file: "3"
+
+volumes:
+  pgdata:
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  bot_token:
+    file: ./secrets/bot_token.txt

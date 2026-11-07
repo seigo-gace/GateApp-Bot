@@ -1,0 +1,25 @@
+{
+  "bot": "@GayBBS_bot",
+  "bot_id": 8872855519,
+  "enabled_at": "2026-11-08T05:00:00+09:00",
+  "routes": {
+    "area_bbs": {
+      "start_url": "https://t.me/GayBBS_bot?start=online_0n9j_LZJqU8lPihHRrUryNpl",
+      "chat_id": -1003847210571,
+      "topic_url": "https://t.me/c/3847210571/116",
+      "enabled": true
+    },
+    "video_chat": {
+      "start_url": "https://t.me/GayBBS_bot?start=online_5-MjTOLg7_hYD_t88T1A2BT4",
+      "chat_id": -1002373696859,
+      "topic_url": "https://t.me/c/2373696859/1605",
+      "enabled": true
+    },
+    "gay_board": {
+      "start_url": "https://t.me/GayBBS_bot?start=online_Yw9ihisn12KrrYhhs2LEFOmj",
+      "chat_id": -1003770334893,
+      "topic_url": "https://t.me/c/3770334893/4",
+      "enabled": true
+    }
+  }
+}

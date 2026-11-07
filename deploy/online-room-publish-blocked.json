@@ -1,0 +1,23 @@
+{
+  "schema": "tgtumbler.online-room-publish-blocked/v1",
+  "blocked_at": "2026-11-08T05:18:00+09:00",
+  "reason": "ASSET_MISSING",
+  "missing_asset": {
+    "filename": "00_ONLINE案内_1080.jpg",
+    "expected_bytes": 543343,
+    "expected_sha256": "01c2917d4d46397641b4a64b7263ea3c264dfb54c6278074abbefb9ea44c3f6b",
+    "drive_file_id": "1XGXbjGOEBsYRF4nZ4mOojRHsoD6YLm1W"
+  },
+  "evidence": {
+    "public_drive_download_bytes": 919627,
+    "public_drive_download_sha256": "b8c2c7862bf7c7249c730305f28bad450590db1f6d2e59b99aac4e936c9b43b2",
+    "note": "Public Drive URL returns a different file; do not substitute. Place TGtumbler_ONLINE_4_original_images_verified.zip on Gserver read-only mount."
+  },
+  "ready_assets": [
+    "01_エリアsBBS_1080.png",
+    "02_ビデオChat_1080.jpg",
+    "03_ゲイ掲示板_1080.jpg"
+  ],
+  "gate_routes_ready": true,
+  "topic_verification": "deploy/online-topic-verified.json"
+}

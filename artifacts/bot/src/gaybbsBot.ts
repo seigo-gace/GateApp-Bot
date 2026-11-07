@@ -1,4 +1,5 @@
 /** Dedicated @GayBBS_bot user-facing runtime. NOT the existing admin/Gate bot. */
+import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import { Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
@@ -17,17 +18,23 @@ import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
 import {suppressAreaCommandMenu} from "./services/areaMenuSuppression.js";
+import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
 
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
- const bot=new Telegraf(BOT_TOKEN);
+ const bot=new Telegraf(BOT_TOKEN,{
+  telegram:{agent:new https.Agent({keepAlive:true,family:4})},
+ });
  const me=await bot.telegram.getMe();
  if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
  await runMigrations();
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  if(ctx.startPayload?.startsWith("online_")){
+   if(await handleOnlineGateStart(ctx))return;
+  }
   if(ctx.startPayload?.startsWith("gate_")){
    await startGayBbsAdmission(ctx,ctx.startPayload);
    return;
@@ -73,6 +80,7 @@ async function main():Promise<void>{
  registerApplicationHandlers(bot);
  registerRoomHandlers(bot);
  registerGayBbsApprovalHandlers(bot);
+ registerOnlineGateCheckHandler(bot);
  try{
   const areaMenu=await suppressAreaCommandMenu(bot.telegram);
   await pool.query(

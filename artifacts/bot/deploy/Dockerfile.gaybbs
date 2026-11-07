@@ -15,7 +15,16 @@ FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/gaybbs.mjs /app/gaybbs.mjs
+# undici preload: Node fetch in Docker/WSL must prefer IPv4 for api.telegram.org
+USER root
+RUN npm install --omit=dev undici@6.21.3
+RUN mkdir -p /app/preload && printf '%s\n' \
+  '/** Prefer IPv4 for Telegram Bot API in Docker/WSL (undici dual-stack hang). */' \
+  'import { Agent, setGlobalDispatcher } from "undici";' \
+  'setGlobalDispatcher(new Agent({ connect: { family: 4, timeout: 20_000 } }));' \
+  > /app/preload/telegram-ipv4-preload.mjs
+RUN chown -R node:node /app
 USER node
 # Runtime requires separately supplied BOT_TOKEN_FILE and DATABASE_URL.
 # No real Bot is started by building the image.
-CMD ["node", "/app/gaybbs.mjs"]
+CMD ["node", "--import", "/app/preload/telegram-ipv4-preload.mjs", "/app/gaybbs.mjs"]

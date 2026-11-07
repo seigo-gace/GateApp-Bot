@@ -1,0 +1,12 @@
+{
+  "schema": "tgtumbler.online-topic-verified/v1",
+  "verified_at": "2026-11-08T05:00:00+09:00",
+  "method": "Telegram Bot API sendMessage+deleteMessage probe",
+  "topics": [
+    {"key": "online_host", "chat_id": -1003847210571, "message_thread_id": 1000, "ledger_url": "https://t.me/c/3847210571/1000"},
+    {"key": "guide_back", "chat_id": -1003847210571, "message_thread_id": 43, "ledger_url": "https://t.me/c/3847210571/43"},
+    {"key": "area_room", "chat_id": -1003847210571, "message_thread_id": 116, "ledger_url": "https://t.me/c/3847210571/116"},
+    {"key": "video_room", "chat_id": -1002373696859, "message_thread_id": 1605, "ledger_url": "https://t.me/c/2373696859/1605"},
+    {"key": "gay_miseai", "chat_id": -1003770334893, "message_thread_id": 4, "ledger_url": "https://t.me/c/3770334893/4"}
+  ]
+}
