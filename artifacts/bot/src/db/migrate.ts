@@ -133,6 +133,25 @@ export async function runMigrations(): Promise<void> {
         PRIMARY KEY(chat_id,link_key),
         CHECK(NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
       );
+      CREATE TABLE IF NOT EXISTS topic_board_posts (
+        board_key TEXT PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        message_id BIGINT CHECK(message_id > 0),
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK(state IN ('verified','publishing','published','needs_reconcile')),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS topic_board_area_links (
+        block_name TEXT NOT NULL,
+        area_name TEXT NOT NULL,
+        target_url TEXT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(block_name,area_name)
+      );
       CREATE TABLE IF NOT EXISTS board_menu_panels (
         panel_id BIGSERIAL PRIMARY KEY,
         chat_id BIGINT NOT NULL CHECK(chat_id < 0),
