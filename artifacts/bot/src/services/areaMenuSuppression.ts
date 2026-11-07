@@ -52,17 +52,9 @@ export async function suppressAreaCommandMenu(
   try {
     const member = await telegram.getChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID);
     legacyBotStatus = member.status;
-    if (member.status === "member" || member.status === "restricted") {
-      await telegram.banChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID, {
-        revoke_messages: false,
-      });
-      await telegram.unbanChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID, {
-        only_if_banned: true,
-      });
-      legacyBotRemoved = true;
-      const after = await telegram.getChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID);
-      legacyBotStatus = after.status;
-    }
+    // Group membership inspection only; never ban/kick/rejoin existing bots
+    // as a side-effect of suppressing this bot's own command menu.
+
   } catch {
     legacyBotStatus = "lookup_failed";
   }
