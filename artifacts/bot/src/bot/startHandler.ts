@@ -8,6 +8,7 @@ import { startGateFlow } from "./gateHandlers.js";
 import { sendLog } from "../services/loggingService.js";
 import { ADMIN_USER_IDS } from "../config/env.js";
 import { topMenuKeyboard } from "./keyboards.js";
+import {handleOnlineGateStart} from "../services/onlineGateAccess.js";
 
 export function registerStartHandler(bot: Telegraf): void {
   bot.start(async (ctx) => {
@@ -20,6 +21,9 @@ export function registerStartHandler(bot: Telegraf): void {
     const username = ctx.from.username;
     const displayName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ");
     const payload = ctx.startPayload;
+
+    // ONLINE cross-group entry retains the intended ROOM topic for return.
+    if (await handleOnlineGateStart(ctx)) return;
 
     // Gate flow
     if (payload.startsWith("gate_")) {
