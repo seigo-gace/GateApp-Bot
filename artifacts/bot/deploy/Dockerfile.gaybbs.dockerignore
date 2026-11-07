@@ -1,0 +1,24 @@
+# Restrict this one Docker build context; do not change other app builds.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.json
+!tsconfig.base.json
+!artifacts/
+!artifacts/bot/
+!artifacts/bot/**
+!lib/
+!lib/**
+!scripts/
+!scripts/**
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+**/.git
+**/backups
+**/logs
+**/secrets
+**/*.key
+**/*.pem

@@ -513,6 +513,21 @@ export async function runMigrations(): Promise<void> {
       CREATE INDEX IF NOT EXISTS gate_consents_target_user_idx
         ON gate_consents(target_id,tg_user_id,accepted_at DESC);
 
+      CREATE TABLE IF NOT EXISTS community_link_publications (
+        board_key TEXT PRIMARY KEY CHECK (board_key IN ('areas_bbs','video_chat','gay_board')),
+        chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT,
+        message_id BIGINT,
+        media_file_id TEXT,
+        image_repo_path TEXT NOT NULL,
+        gate_url TEXT NOT NULL,
+        intro_fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'not_verified'
+          CHECK (status IN ('not_verified','published','needs_reconcile')),
+        posted_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
         state TEXT NOT NULL DEFAULT 'top',
