@@ -34,7 +34,7 @@ export function groupAboutText(key:GroupAboutKey,link:VerifiedNavigationLink,off
   throw new Error("GROUP_ABOUT_GATE_NOT_VERIFIED");
  if(!official.verified||official.key!==key||!official.text.trim()||!official.source.trim())
   throw new Error("GROUP_ABOUT_OFFICIAL_TEXT_NOT_VERIFIED");
- const about=official.text.trim()+"\n\n🔗参加はこちら\n"+link.url;
+ const about=official.text.trim()+"\n\n🔗 参加はこちらから\n"+link.url;
  if([...about].length>255)throw new Error("GROUP_DESCRIPTION_LIMIT_255");
  return about;
 }
