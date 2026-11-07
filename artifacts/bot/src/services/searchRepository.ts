@@ -1,7 +1,7 @@
 /** Searches only records with a published Telegram receipt, never private drafts. */
 import {pool} from "../db/index.js";
 import {initialSearchFilters,validateSearch,type SearchFilters,telegramPublishedMessageUrl} from "./searchDomain.js";
-export type SearchSession={revision:number;step:"home"|"keyword"|"region"|"position"|"purpose"|"results";screenMessageId:number|null;filters:SearchFilters};
+export type SearchSession={revision:number;step:"home"|"keyword"|"age"|"region"|"position"|"purpose"|"hair"|"body"|"like"|"love"|"results";screenMessageId:number|null;filters:SearchFilters};
 export type SearchHit={title:string;description:string;url:string};
 const validId=(id:number)=>{if(!Number.isSafeInteger(id)||id<=0)throw Error("SEARCH_USER_INVALID");return id;};
 export async function getSearchSession(id:number):Promise<SearchSession|null>{
@@ -33,6 +33,9 @@ export async function findPublicSearchHits(filters:SearchFilters,offset:number,l
  if(!Number.isSafeInteger(offset)||offset<0||offset>1000||limit<1||limit>10)throw Error("SEARCH_PAGE_INVALID");
  if(allowedChats.some(id=>!Number.isSafeInteger(id)||id>=0))throw Error("SEARCH_CHAT_UNVERIFIED");
  if(!allowedChats.length)return {hits:[],hasNext:false};
+ // Filters for profile-only fields never broaden recruitment results.
+ if(f.kind==="recruitment"&&(f.hair||f.body||f.ageMin!==null||f.like||f.love))
+  return {hits:[],hasNext:false};
  let rows:Record<string,unknown>[];
  if(f.kind==="profile"){
   const r=await pool.query(`SELECT p.nickname,p.age,p.position,p.region,p.area,p.body,
@@ -47,8 +50,17 @@ export async function findPublicSearchHits(filters:SearchFilters,offset:number,l
     AND ($3::text='' OR p.nickname ILIKE '%'||$3||'%' OR p.area ILIKE '%'||$3||'%')
     AND ($4::text IS NULL OR EXISTS(SELECT 1 FROM profile_tags t
        WHERE t.owner_user_id=p.owner_user_id AND t.purpose='like' AND t.tag=$4))
+    AND p.age BETWEEN COALESCE($8::int,18) AND COALESCE($9::int,89)
+    AND ($10::text IS NULL OR p.hair=$10)
+    AND ($11::text IS NULL OR p.body=$11)
+    AND ($12::text IS NULL OR EXISTS(SELECT 1 FROM profile_tags x
+       WHERE x.owner_user_id=p.owner_user_id AND x.purpose='like' AND x.category=$12 AND x.tag=$13))
+    AND ($14::text IS NULL OR EXISTS(SELECT 1 FROM profile_tags y
+       WHERE y.owner_user_id=p.owner_user_id AND y.purpose='love' AND y.category=$14 AND y.tag=$15))
    ORDER BY p.updated_at DESC,p.owner_user_id DESC LIMIT $5 OFFSET $6`,
-   [f.region,f.position,f.keyword,f.purpose,limit+1,offset,allowedChats]);rows=r.rows;
+   [f.region,f.position,f.keyword,f.purpose,limit+1,offset,allowedChats,
+    f.ageMin,f.ageMax,f.hair,f.body,f.like?.category??null,f.like?.tag??null,
+    f.love?.category??null,f.love?.tag??null]);rows=r.rows;
  }else{
   const r=await pool.query(`SELECT a.text,a.kind,d.telegram_message_id AS message_id,
    t.chat_id FROM announcement_posts a
