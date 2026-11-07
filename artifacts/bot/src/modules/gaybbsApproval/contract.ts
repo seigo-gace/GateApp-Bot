@@ -12,19 +12,24 @@ export const APPROVAL_DOC_KEYS = ["guideline", "terms", "privacy", "rules"] as c
 export type ApprovalDocKey = typeof APPROVAL_DOC_KEYS[number];
 export const APPROVAL_QUESTIONS = [
   {
-    stage: "q1", consent: "question1", title: "質問1：参加条件への承諾",
-    text: "当グループは18歳以上で、性自認が男性（FTMを含む）、男性と性的関係を持てる方を対象とします。女性・参加条件を満たさない異性愛者、および営業・勧誘・金銭取引などの商用目的で参加する方は対象外です。参加資格をすべて満たし、商用目的ではなく、虚偽なく申請していますか？",
-    yes: "✅条件を満たし承諾する",
-    no: "❌条件を満たさない／承諾しない",
+    stage: "q1", consent: "question1", title: "🌈 参加資格の確認",
+    text: "こちらは男性同士の交流を目的としたゲイコミュニティです。\n\n参加対象は、18歳以上で、男性（FTMの方を含む）として男性との性的な関係を持てる方です。\n\n女性の方、参加条件に該当しない異性愛者の方、営業・勧誘・金銭目的で参加する方は対象外です。\n\nあなたはすべての参加条件を満たし、商用目的ではなく参加しますか？",
+    yes: "✅ はい、参加条件を満たしています",
+    no: "❌ いいえ、条件を満たしていません",
   },
   {
-    stage: "q2", consent: "question2", title: "質問2：規約・規則の遵守への承諾",
-    text: "利用者同士の交流は自己責任です。法令・Telegram規約・当コミュニティの規約を遵守し、管理Botによるグループ内投稿のモニタリングと違反履歴管理について、②規約・③Privacy Policyの全文を確認し承諾しますか？",
-    yes: "✅確認して承諾する",
-    no: "❌承諾しない",
+    stage: "q2", consent: "question2", title: "📜 規約・規則への承諾",
+    text: "当コミュニティでは、皆さんが安心して交流できるよう、利用規約・禁止事項・プライバシーポリシーを定めています。\n\n参加前に、以下のリンクから規約・規則の全文をご確認ください。\n\n規約・規則の内容を確認し、すべて遵守することに同意しますか？",
+    yes: "✅ はい、確認して同意します",
+    no: "❌ いいえ、同意しません",
   },
 ] as const;
-export const RULES_CONSENT_QUESTION = "画像・動画のスポイラー、性的嗜好に関する過激な表現（NGワード）はそのまま使わず「変態」という言葉に置き換えること、URL直接投稿禁止、無許可販売・誘導禁止、スパム禁止、通常違反5段階、重大違反・虚偽申告の即時BANを理解し、④グループルールの全文を確認して遵守しますか？";
+export const GROUP_RULES_INTRO =
+  "このコミュニティには3つのグループがあり、それぞれ利用目的に応じたルールがあります。\n\n参加する前に、各グループのルールをご確認ください。";
+export const GROUP_RULES_POLICY =
+  "画像・動画のスポイラー、性的嗜好に関する過激な表現（NGワード）はそのまま使わず「変態」という言葉に置き換えること、URL直接投稿禁止、無許可販売・誘導禁止、スパム禁止、通常違反5段階、重大違反・虚偽申告の即時BANを理解してください。運営が正式に許可したCreators Video・Stars販売は、無許可の営業勧誘と混同しないでください。";
+export const RULES_CONSENT_QUESTION =
+  "3グループすべてのルールを確認し、遵守することに同意しますか？";
 export const APPROVAL_SUMMARY =
   "① ガイドライン：安全と相互尊重\n" +
   "② 規約・参加条件：参加資格と利用責任\n" +
@@ -82,7 +87,8 @@ export function admissionDocumentVersion(
   throw new Error("GATE_DOCUMENT_VERSION_UNSAFE");
  }
  const digest = createHash("sha256").update(JSON.stringify([
-  ADMISSION_VERSION,ADMISSION_STAGES,targetId,APPROVAL_QUESTIONS,RULES_CONSENT_QUESTION,
+  ADMISSION_VERSION,ADMISSION_STAGES,targetId,APPROVAL_QUESTIONS,
+  GROUP_RULES_INTRO,GROUP_RULES_POLICY,RULES_CONSENT_QUESTION,
   rulesText,...APPROVAL_DOC_KEYS.map(key => [key,links[key]]),
  ])).digest("hex");
  return ADMISSION_VERSION + ":" + digest;

@@ -17,8 +17,8 @@ test("Master order eligibility, terms, group-rule consent, then bot challenge", 
  assert.match(APPROVAL_QUESTIONS[0]!.text, /男性と性的関係/);
  assert.match(APPROVAL_QUESTIONS[0]!.text, /商用目的/);
  assert.match(APPROVAL_QUESTIONS[1]!.title, /規約・規則/);
- assert.match(APPROVAL_QUESTIONS[1]!.text, /Privacy Policy/);
- assert.match(RULES_CONSENT_QUESTION, /グループルール/);
+ assert.match(APPROVAL_QUESTIONS[1]!.text, /利用規約・禁止事項・プライバシーポリシー/);
+ assert.match(RULES_CONSENT_QUESTION, /3グループすべてのルール/);
  assert.match(RULES_CONSENT_QUESTION, /過激な表現/);
  assert.match(RULES_CONSENT_QUESTION, /「変態」という言葉に置き換える/);
 });

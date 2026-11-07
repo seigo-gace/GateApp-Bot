@@ -15,7 +15,8 @@ import {generateChallenge, type ChallengeQuestion} from "../../services/challeng
 import {showWizardScreen} from "../../services/dmWizardScreen.js";
 import {pool} from "../../db/index.js";
 import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
- APPROVAL_SUMMARY,RULES_CONSENT_QUESTION,hasAdoptedQuestions,isSafeDocUrl,
+ GROUP_RULES_INTRO,GROUP_RULES_POLICY,RULES_CONSENT_QUESTION,
+ hasAdoptedQuestions,isSafeDocUrl,
  ADMISSION_BOARD_CHAT_IDS,sharedAdmissionDocumentVersion} from "./contract.js";
 import {openAttempt,readAttempt,rememberScreen,transition,consentsComplete,
  saveIssuedInvites,currentIssuedInvites,verifiedApprovalDocumentLinks,getRequestEligibility,
@@ -121,24 +122,22 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
  if(a.step==="challenge"){
   const q=a.challenge_data as ChallengeQuestion|null;
   if(!q || !Array.isArray(q.options) || !Number.isInteger(q.correctIndex))throw new Error("GATE_CHALLENGE_MISSING");
-  text=`【3グループ共通・Bot対策】\nBotによる自動参加を防ぐため、問題に答えてください。\n\n${q.text}`;
+  text=`🤖 最後にBot対策の確認です\n\n自動プログラムによる不正参加を防ぐため、計算問題に回答してください。\n\n次の計算問題の正しい答えを選んでください。\n\n${q.text}`;
   rows=[q.options.map((o,i)=>Markup.button.callback(o,action(a,String(i))))];
  }else if(a.step==="q1"||a.step==="q2"){
   const q=APPROVAL_QUESTIONS[a.step==="q1"?0:1];
-  text=`【3グループ共通】\n${q.title}\n\n${q.text}`;
+  text=`${q.title}\n\n${q.text}`;
   if(a.step==="q2"){
-   // Use the already verified published policy page, as a single clickable
-   // TEXT URL in the question body; no URL buttons or invented URL registry.
    const url=cfg.boards[0]?.links.terms;
    if(!url||!isSafeDocUrl(url))throw new Error("GATE_TERMS_URL_UNVERIFIED");
-   text+="\n\n🔗 規約・規則の全文はこちら\n"+url;
+   text+="\n\n🔗 利用規約・規則を確認する\n"+url;
   }
   rows=[[Markup.button.callback(q.yes,action(a,"yes")),
    Markup.button.callback(q.no,action(a,"no"))]];
  }else if(a.step==="rules"){
-  text=`【質問3：各グループのルールを守れるか】\n${RULES_CONSENT_QUESTION}\n\n${cfg.boards.map((b,i)=>`【${i+1}．${b.target.title} のルール】\n${b.ruleText}`).join("\n\n")}`;
-  rows=[[Markup.button.callback("✅規則・ルールを承諾する",action(a,"yes")),
-   Markup.button.callback("❌承諾しない",action(a,"no"))]];
+  text=`📋 グループルールへの承諾\n\n${GROUP_RULES_INTRO}\n\n${GROUP_RULES_POLICY}\n\n${cfg.boards.map((b,i)=>`【${i+1}．${b.target.title} のルール】\n${b.ruleText}`).join("\n\n")}\n\n${RULES_CONSENT_QUESTION}`;
+  rows=[[Markup.button.callback("✅ はい、すべてのルールを守ります",action(a,"yes")),
+   Markup.button.callback("❌ いいえ、同意しません",action(a,"no"))]];
  }else{return}
  // Telegram text messages have a 4096-character limit: never silently truncate rules.
  if(text.length>4096)throw new Error("GATE_DOCUMENT_EXCEEDS_TELEGRAM_LIMIT");

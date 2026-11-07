@@ -1,0 +1,8 @@
+{
+  "schema": "tgtumbler.policy-url-readback/v1",
+  "checked_at": "2026-11-08T07:45:00+09:00",
+  "hentaigay_org_dns_from_gserver": "NXDOMAIN (Could not resolve host)",
+  "formal_public_target_domain": "hentaigay.org",
+  "runtime_verified_terms_url": "https://tgtumbler-docs.pages.dev/terms.html",
+  "note": "general_guide_links unchanged until hentaigay.org resolves and Master attaches Pages custom domain. Q2 embeds verified DB terms URL as plain text only."
+}

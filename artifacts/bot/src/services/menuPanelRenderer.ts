@@ -68,7 +68,8 @@ function safeUrl(url:string):boolean{
   const x=new URL(url);
   return x.protocol==="https:"&&!x.username&&!x.password&&
    (x.hostname==="t.me"||x.hostname==="telegram.me"||
-    x.hostname.endsWith(".pages.dev")||x.hostname==="g-acebot.com"||
+    x.hostname.endsWith(".pages.dev")||x.hostname==="hentaigay.org"||
+    x.hostname.endsWith(".hentaigay.org")||x.hostname==="g-acebot.com"||
     x.hostname.endsWith(".g-acebot.com"));
  }catch{return false;}
 }
