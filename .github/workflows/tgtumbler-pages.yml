@@ -1,14 +1,12 @@
-# TGtumbler docs → Cloudflare Pages (wrangler deploy from GitHub Actions).
+# TGtumbler policy docs → Cloudflare Pages (wrangler) from GitHub Actions.
 #
-# Repo secret (required): CLOUDFLARE_API_TOKEN
-#   Create: Cloudflare Dashboard → My Profile → API Tokens → Create Token → Templates →
-#   "Edit Cloudflare Workers" OR custom with Account · Cloudflare Pages · Edit (and Zone · DNS · Read if attaching custom domain later).
+# Secrets (repository):
+#   CLOUDFLARE_API_TOKEN — required for deploy
+#   CLOUDFLARE_ACCOUNT_ID — optional (wrangler uses env if needed)
+# Variables (optional):
+#   CLOUDFLARE_PAGES_PROJECT_NAME — default tgtumbler-docs
 #
-# Repo secret (optional): CLOUDFLARE_ACCOUNT_ID — Dashboard right sidebar "Account ID" copy/paste.
-#
-# Repo variable (optional): CLOUDFLARE_PAGES_PROJECT_NAME — default tgtumbler-docs (wrangler creates project on first deploy).
-#
-# hentaigay.org: Pages project → Custom domains (after Master approves public). Do not change other projects' zones from here.
+# hentaigay.org: Custom domain only after Master approves public (Privacy gate). Preview on *.pages.dev.
 name: tgtumbler-pages
 
 on:
@@ -27,10 +25,11 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -47,35 +46,24 @@ jobs:
         working-directory: docs/tgtumbler-pages
         run: test -f dist/index.html && test -f dist/guidelines.html
 
-  deploy:
-    needs: build
-    # Do not use `secrets.*` in job-level `if` (breaks workflow parsing).
-    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        working-directory: docs/tgtumbler-pages
-        run: npm ci
-
-      - name: Build and deploy to Cloudflare Pages
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
+      - name: Deploy to Cloudflare Pages (production branches only)
+        if: github.event_name != 'pull_request'
         working-directory: docs/tgtumbler-pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
         run: |
-          npm run build
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] || [ "${GITHUB_REF}" = "refs/heads/main" ] || [ "${GITHUB_REF}" = "refs/heads/master" ]; then
+            :
+          else
+            echo "Skip deploy: not production ref (${GITHUB_REF})"
+            exit 0
+          fi
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Skip deploy: CLOUDFLARE_API_TOKEN secret not set"
+            exit 0
+          fi
           PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT_NAME:-tgtumbler-docs}"
           npx wrangler pages deploy dist --project-name="$PROJECT_NAME"
-
-      - name: Skip deploy (missing CLOUDFLARE_API_TOKEN or not production branch)
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' || (github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master') }}
-        run: echo 'CLOUDFLARE_API_TOKEN not set or non-production ref — build-only; add secret and push to main/master to enable wrangler pages deploy.'
