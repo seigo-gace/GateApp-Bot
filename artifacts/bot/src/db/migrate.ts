@@ -139,7 +139,7 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS gaybbs_search_sessions (
         owner_user_id BIGINT PRIMARY KEY CHECK(owner_user_id > 0),
         step TEXT NOT NULL DEFAULT 'home'
-          CHECK(step IN ('home','keyword','region','position','purpose','results')),
+          CHECK(step IN ('home','keyword','age','region','position','purpose','hair','body','like','love','results')),
         filters JSONB NOT NULL DEFAULT '{}'::jsonb,
         revision INTEGER NOT NULL DEFAULT 1,
         screen_message_id BIGINT,
