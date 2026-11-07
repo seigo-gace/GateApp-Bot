@@ -5,7 +5,7 @@
 import type {Telegraf} from "telegraf";
 import {pool} from "../db/index.js";
 import {publishExistingMenuPanel} from "../services/menuPanelPublisher.js";
-import {suppressAreaCommandMenu} from "../services/areaMenuSuppression.js";
+import {suppressAreaCommandMenu,suppressGroupCommandMenu,GAY_BOARD_CHAT_ID} from "../services/areaMenuSuppression.js";
 
 const GROUPS=new Set([-1003847210571,-1002373696859,-1003770334893]);
 async function checked(ctx:any):Promise<{chatId:number;threadId:number;adminId:number}|null>{
@@ -89,6 +89,20 @@ export function registerMenuPanelHandlers(bot:Telegraf):void{
   }catch(e){
    const message=e instanceof Error?e.message:"UNKNOWN";
    await ctx.reply("コマンドメニュー抑止を確認できませんでした："+message);
+  }
+ });
+ // Same shared implementation for the gay board, no bespoke Bot suppression code.
+ bot.command("removegaycommands",async ctx=>{
+  const where=await checked(ctx);if(!where)return;
+  if(where.chatId!==GAY_BOARD_CHAT_ID){
+   await ctx.reply("ゲイのための掲示板♂以外は対象外です。");return;
+  }
+  try{
+   const cleared=await suppressGroupCommandMenu(ctx.telegram,where.chatId);
+   await ctx.reply("✅ このBotのグループ限定コマンド設定を確認しました："+cleared.join(",")+
+    "。他のBotやTelegram標準表示が原因の場合はその設定を別途確認してください。");
+  }catch(e){
+   await ctx.reply("コマンド設定を確認できませんでした："+(e instanceof Error?e.message:"UNKNOWN"));
   }
  });
  bot.command("bindpanel",async ctx=>{
