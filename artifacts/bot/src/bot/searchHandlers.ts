@@ -8,6 +8,7 @@ import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {beginSearch,getSearchSession,updateSearch,bindSearchScreen,findPublicSearchHits,type SearchSession} from "../services/searchRepository.js";
 import {setSearchFilter,initialSearchFilters} from "../services/searchDomain.js";
+import {authorizedSearchGroupIds} from "../services/searchAccess.js";
 const dm=(c:any)=>c.chat?.type==="private";
 const button=(text:string,data:string)=>Markup.button.callback(text,data);
 async function show(t:Telegram,id:number,s:SearchSession,text:string,rows:any[][]){
@@ -49,7 +50,8 @@ async function filter(t:Telegram,id:number,s:SearchSession){
 }
 async function results(t:Telegram,id:number,s:SearchSession,page:number){
  const offset=page*5;
- const found=await findPublicSearchHits(s.filters,offset);
+ const allowed=await authorizedSearchGroupIds(t,id);
+ const found=await findPublicSearchHits(s.filters,offset,5,allowed);
  const rows:any[][]=found.hits.map((hit,i)=>[Markup.button.url((offset+i+1)+". "+hit.title,hit.url)]);
  const nav=[] as any[];
  if(page>0)nav.push(button("◀ 前へ",`search:page:${s.revision}:${page-1}`));
@@ -57,7 +59,8 @@ async function results(t:Telegram,id:number,s:SearchSession,page:number){
  if(nav.length)rows.push(nav);
  rows.push([button("🎛 条件変更",`search:filter:${s.revision}`),button("↩ 戻る",`search:back:${s.revision}`)]);
  const detail=found.hits.map((h,i)=>(offset+i+1)+". "+h.title+"｜"+h.description).join("\n");
- await show(t,id,s,summary(s)+"\n\n検索結果\n"+(detail||"該当する公開投稿はありません。"),rows);
+ await show(t,id,s,summary(s)+"\n\n検索結果（参加済みグループ内）\n"+
+  (detail||"該当する公開投稿はありません。"),rows);
 }
 export async function startSearchEditor(t:Telegram,id:number){
  const old=await getSearchSession(id);
