@@ -12,7 +12,7 @@
   ],
   "storage_policy": {
     "source_of_truth": "Google Drive",
-    "runtime_media_requirement": "Sync original file bytes to a persistent Bot-owned asset directory before publishing; Drive view URLs and unauthenticated Telegram fetch are not substitutes for image bytes.",
+    "runtime_media_requirement": "The repository bundles byte-identical primary and alternate images at each image.repo_path. During deployment, copy the bundled image bytes into the running Bot asset mount or include them in the Bot image; post with upload/sendPhoto (do not use a private Drive URL as Telegram photo URL).",
     "no_public_file_permission_changes": true,
     "post_idempotency": "Store Telegram posted chat_id, message_id, media file_id and timestamp upon live confirmation; do not blindly repost."
   },
@@ -26,12 +26,14 @@
         "primary": {
           "drive_id": "1KZgfk8WlkUnFBbuLxQ5-fjezYO7oFCZu",
           "name": "01_エリアsBBS_1080.png",
-          "mime_type": "image/png"
+          "mime_type": "image/png",
+          "repo_path": "artifacts/bot/deploy/community-media/01_エリアsBBS_1080.png"
         },
         "alternate": {
           "drive_id": "1BasKwdKsUHzCqvRSHsX_eZs9wTNK7t5M",
           "name": "01_エリアsBBS_1375.png",
-          "mime_type": "image/png"
+          "mime_type": "image/png",
+          "repo_path": "artifacts/bot/deploy/community-media/01_エリアsBBS_1375.png"
         }
       },
       "approved_introduction_source": "Existing adopted TGtumbler community description/Notion minutes; not reproduced without source readback",
@@ -50,12 +52,14 @@
         "primary": {
           "drive_id": "1jf-7v4xxeJSOggF-lMQ7AEc7TDkWydrM",
           "name": "02_ビデオChat_1080.jpg",
-          "mime_type": "image/jpeg"
+          "mime_type": "image/jpeg",
+          "repo_path": "artifacts/bot/deploy/community-media/02_ビデオChat_1080.jpg"
         },
         "alternate": {
           "drive_id": "1CD1x3Rh9m-XIONfxOHR3xmCw4aYx2WXb",
           "name": "02_ビデオChat_1367.jpg",
-          "mime_type": "image/jpeg"
+          "mime_type": "image/jpeg",
+          "repo_path": "artifacts/bot/deploy/community-media/02_ビデオChat_1367.jpg"
         }
       },
       "approved_introduction_source": "Existing adopted TGtumbler community description/Notion minutes; not reproduced without source readback",
@@ -74,12 +78,14 @@
         "primary": {
           "drive_id": "1hdR5hr_u7A_AK6kS2f_QVj_1YisGrxj9",
           "name": "03_ゲイ掲示板_1080.jpg",
-          "mime_type": "image/jpeg"
+          "mime_type": "image/jpeg",
+          "repo_path": "artifacts/bot/deploy/community-media/03_ゲイ掲示板_1080.jpg"
         },
         "alternate": {
           "drive_id": "1tbBz2HKQiHcpO_8Ws9lF4YyylpUBpj8a",
           "name": "03_ゲイ掲示板_1392.jpg",
-          "mime_type": "image/jpeg"
+          "mime_type": "image/jpeg",
+          "repo_path": "artifacts/bot/deploy/community-media/03_ゲイ掲示板_1392.jpg"
         }
       },
       "approved_introduction_source": "Existing adopted TGtumbler community description/Notion minutes; not reproduced without source readback",
