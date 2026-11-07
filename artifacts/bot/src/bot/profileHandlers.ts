@@ -244,7 +244,7 @@ function canUseProfile(ctx: {chat?: {type: string}; from?: {username?: string}})
 }
 
 /** Shared entrypoint for /profile and validated M2 Topic→DM start links. */
-export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRepo):Promise<void>{
+export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRepo,screenId?:number):Promise<void>{
  if(ctx.chat?.type!=="private"||!ctx.from)return;
  if(!canUseProfile(ctx)){
   await ctx.reply("Telegram設定でusernameを登録してから操作してください。");
@@ -252,6 +252,10 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
  }
  const existing=await repo.getProfile(ctx.from.id);
  const previous=await repo.getDraft(ctx.from.id);
+ if(screenId&&previous){
+   await repo.bindScreenMessage(ctx.from.id,previous.revision,screenId);
+   previous.data.screenMessageId=screenId;
+ }
  // Preserve the active profile draft when a start link is reopened, including
  // after a Bot restart. Never reset an in-progress wizard on /profile.
  if(previous){
@@ -285,7 +289,7 @@ export async function startProfileEditor(ctx:Context,repo:ProfileRepo=profileRep
      previous.step==="preview"?"HTML":undefined);
    return;
  }
- const lastId=await repo.getLastScreenMessageId(ctx.from.id);
+ const lastId=screenId??await repo.getLastScreenMessageId(ctx.from.id);
  if(existing){
    if(existing.status==="private"||existing.status==="published"){
      const draft=await repo.putDraft(ctx.from.id,"preview",{
