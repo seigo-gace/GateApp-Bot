@@ -518,7 +518,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    if(current.module==="link"){
     const parsed=parseLinkInput(input);
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
-      {...current.data,...parsed,columns:1});
+      {...current.data,...parsed,columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
     await render(updated,"公開前プレビュー\n"+preview("link",updated)+
       "\n\nボタンの表示列数を選択してください。",
       linkPreviewKeyboard(updated));
@@ -558,8 +558,15 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
   }catch(e){
    if(e instanceof Error&&e.message==="POST_DRAFT_STALE")throw e;
-   await render(current,(e instanceof Error?e.message:"入力内容を確認してください。")+
-     "\n内容を修正して、もう一度送信してください。");
+   const errorText=(e instanceof Error?e.message:"入力内容を確認してください。")+
+     "\n内容を修正して、もう一度送信してください。";
+   await render(current,errorText,current.module==="link"?
+    Markup.inlineKeyboard([
+     ...(Array.isArray(current.data.buttons)&&current.data.buttons.length?
+       [[Markup.button.callback("↩ プレビューに戻る",
+        "post:link:back:"+current.revision)]]:[]),
+     [Markup.button.callback("キャンセル","post:link:cancel:"+current.revision)]
+    ]):undefined);
   }
  });
  bot.action(/^room:save:(\d+)$/,async ctx=>{
