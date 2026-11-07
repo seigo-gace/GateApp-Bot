@@ -9,11 +9,11 @@ export const GROUP_ABOUT_TARGETS={
  gay_board:{chatId:-1003770334893,communityTopicUrl:"https://t.me/c/3770334893/18"},
 } as const;
 export type GroupAboutKey=keyof typeof GROUP_ABOUT_TARGETS;
-export const GROUP_ABOUT_INTROS:Readonly<Record<GroupAboutKey,string>>={
- area_bbs:"エリア’s BBS｜地域別に友達・交流相手を探せる掲示板。",
- video_chat:"ビデオChat｜交流・画像・動画投稿と動画出品の掲示板。",
- gay_board:"ゲイのための掲示板♂｜目的・カテゴリー別の友達探し。",
-};
+/** The formal texts were supplied by Master in the Telegram introduction drafting
+ * conversation. Do NOT substitute generated summaries. Runtime caller MUST
+ * provide a verified exact approved copy and its source evidence.
+ */
+export type VerifiedOfficialAbout={key:GroupAboutKey;text:string;verified:boolean;source:string};
 export const FOUR_NAV_LABELS=[
  "🔗エリアｓ",
  "🔗ビデオチャットの掲示板",
@@ -27,12 +27,14 @@ export const FOUR_NAV_KEYS=["area_bbs","video_chat","gay_board","online"] as con
  * A verified existing group-level Gate link must be supplied from Runtime,
  * never an ONLINE topic or unprotected t.me/c invite.
  */
-export function groupAboutText(key:GroupAboutKey,link:VerifiedNavigationLink):string{
+export function groupAboutText(key:GroupAboutKey,link:VerifiedNavigationLink,official:VerifiedOfficialAbout):string{
  if(!GROUP_ABOUT_TARGETS[key])throw new Error("GROUP_ABOUT_UNKNOWN_GROUP");
  if(link.key!==key)throw new Error("GROUP_ABOUT_WRONG_GATE_TARGET");
  if(!link.verified||!isGateStartUrl(link.url))
   throw new Error("GROUP_ABOUT_GATE_NOT_VERIFIED");
- const about=GROUP_ABOUT_INTROS[key]+"\n\n🔗参加はこちら\n"+link.url;
+ if(!official.verified||official.key!==key||!official.text.trim()||!official.source.trim())
+  throw new Error("GROUP_ABOUT_OFFICIAL_TEXT_NOT_VERIFIED");
+ const about=official.text.trim()+"\n\n🔗参加はこちら\n"+link.url;
  if([...about].length>255)throw new Error("GROUP_DESCRIPTION_LIMIT_255");
  return about;
 }
