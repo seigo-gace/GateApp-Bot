@@ -21,7 +21,7 @@ function board(chatId:number):"area_bbs"|"video_chat"|"gay_board"{
  return result;
 }
 async function buildLinks(panel:PanelRow):Promise<{
- links:NavLink[];entries:EntryLink[];
+ links:NavLink[];entries:EntryLink[];tokenHashes:string[];
 }>{
  const chatId=Number(panel.chat_id);
  if(panel.panel_type==="general_guide"){
@@ -44,7 +44,7 @@ async function buildLinks(panel:PanelRow):Promise<{
      AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
      ORDER BY link_key`,[chatId]);
   links.push(...other.rows.map(r=>({label:r.label,url:r.destination_url,verified:true})));
-  return {links,entries:[]};
+  return {links,entries:[],tokenHashes:[]};
  }
  // The other five URLs are provided only from a verified existing-project
  // registry. Never make up a destination, Bot link or feature-release receipt.
@@ -82,9 +82,11 @@ async function buildLinks(panel:PanelRow):Promise<{
   {label:"検索/フィルター",feature:"search",prefix:"m_"},
  ] as const;
  const entries:EntryLink[]=[];
+ const tokenHashes:string[]=[];
  for(const entry of entrySpecs){
   const token=newMenuToken();
   const hash=tokenHash(token);
+  tokenHashes.push(hash);
   await pool.query(
    `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at,enabled)
     VALUES($1,$2,$3,NOW()+INTERVAL '365 days',TRUE)`,
@@ -92,7 +94,7 @@ async function buildLinks(panel:PanelRow):Promise<{
   entries.push({feature:entry.feature,label:entry.label,
    url:"https://t.me/GayBBS_bot?start="+entry.prefix+token,ready:true});
  }
- return {links,entries};
+ return {links,entries,tokenHashes};
 }
 async function markUnknown(id:string,messageId:number|null):Promise<void>{
  await pool.query(
@@ -121,8 +123,11 @@ export async function publishExistingMenuPanel(
  let messageId=panel.message_id?Number(panel.message_id):null;
  const updating=messageId!==null;
  let deliveryAttempted=false;
+ let tokenHashes:string[]=[];
  try{
-  const {links,entries}=await buildLinks(panel);
+  const resolved=await buildLinks(panel);
+  const {links,entries}=resolved;
+  tokenHashes=resolved.tokenHashes;
   const rendered=renderMenuPanel({
    type:panel.panel_type,board:board(chatId),links,entryLinks:entries,
   });
@@ -145,12 +150,24 @@ export async function publishExistingMenuPanel(
     revision=revision+1,updated_at=NOW() WHERE panel_id=$1 AND state='publishing'
     RETURNING panel_id`,[panel.panel_id,messageId]);
   if(commit.rows.length!==1)throw new Error("PANEL_ACK_CONFLICT");
+  if(panel.panel_type==="posting"&&tokenHashes.length){
+   // Disable superseded menu links only AFTER Telegram edit/send and
+   // durable publication receipt have both succeeded. Older DM sessions
+   // must explicitly re-enter from the new pinned menu.
+   await pool.query(
+    `UPDATE board_menu_entry_tokens SET enabled=FALSE
+     WHERE panel_id=$1 AND enabled=TRUE AND NOT(token_hash=ANY($2::text[]))`,
+    [panel.panel_id,tokenHashes]);
+  }
   return {messageId,updatedExisting:updating};
  }catch(e){
   if(deliveryAttempted){
    // A Telegram send/edit/pin can have succeeded even if its ACK failed.
    await markUnknown(panel.panel_id,messageId);
   }else{
+   if(tokenHashes.length)await pool.query(
+    "UPDATE board_menu_entry_tokens SET enabled=FALSE WHERE panel_id=$1 AND token_hash=ANY($2::text[])",
+    [panel.panel_id,tokenHashes]);
    // Validation/configuration failures happened before any external side
    // effect: preserve the previous state so admin can fix links and retry.
    await pool.query(
