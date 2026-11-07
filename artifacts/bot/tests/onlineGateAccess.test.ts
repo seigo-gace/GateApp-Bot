@@ -32,6 +32,7 @@ test("approved member sees topic, approved nonmember gets join, unapproved gets 
 });
 test("ONLINE deep link bot identity is read from runtime and never assumed",()=>{
  assert.equal(requireOnlineBotUsername("ExistingGate_bot"),"ExistingGate_bot");
+ assert.equal(requireOnlineBotUsername("ExistingGateBot"),"ExistingGateBot");
  assert.throws(()=>requireOnlineBotUsername(""),/IDENTITY_UNVERIFIED/);
  assert.throws(()=>requireOnlineBotUsername("https://t.me/Test_bot"),/IDENTITY_UNVERIFIED/);
  assert.throws(()=>requireOnlineBotUsername("UserNotBot"),/IDENTITY_UNVERIFIED/);
