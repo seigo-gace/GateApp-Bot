@@ -798,7 +798,7 @@ try{
    (chat_id,message_thread_id,panel_type,state,verified_by,verified_at)
    VALUES($1,$2,'posting','verified',880001,NOW()) RETURNING panel_id`,
   [menuChat,menuThread]);
- const panelId=Number(panelRow.rows[0].panel_id);
+ const postingPanelId=Number(panelRow.rows[0].panel_id);
  const previousMenuRelease=process.env.GAYBBS_PUBLIC_MENU_RELEASE;
  process.env.GAYBBS_PUBLIC_MENU_RELEASE="enabled";
  const menuCalls:Array<{chatId:number;opts:any}>=[];
@@ -815,7 +815,7 @@ try{
    ()=>publishExistingMenuPanel(fakeMenuTelegram,menuChat,menuThread,880001),
    /POSTING_NAV_LINKS_NOT_VERIFIED/);
   assert.equal(menuCalls.length,0);
-  const before=await pool.query("SELECT state FROM board_menu_panels WHERE panel_id=$1",[panelId]);
+  const before=await pool.query("SELECT state FROM board_menu_panels WHERE panel_id=$1",[postingPanelId]);
   assert.equal(before.rows[0].state,"verified");
   const names=["クリエーター有料ビデオ投稿","検索/フィルター","雑談","紹介/招待","操作説明"];
   for(let i=0;i<names.length;i++)await pool.query(
@@ -841,9 +841,9 @@ try{
   assert.match(keys[0][0].url,/start=r_/);
   assert.match(keys[2][0].url,/start=m_/);
   const count=await pool.query(
-   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1",[panelId]);
+   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1",[postingPanelId]);
   assert.equal(count.rows[0].n,4);
-  const state=await pool.query("SELECT state,message_id,pinned FROM board_menu_panels WHERE panel_id=$1",[panelId]);
+  const state=await pool.query("SELECT state,message_id,pinned FROM board_menu_panels WHERE panel_id=$1",[postingPanelId]);
   assert.deepEqual(state.rows[0],{state:"published",message_id:"970011",pinned:true});
   console.log("GAYBBS_DB_POSTING_MENU_VERIFIED_LINKS_AND_DM_ENTRIES=PASS");
  }finally{
