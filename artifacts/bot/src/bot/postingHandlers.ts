@@ -274,7 +274,7 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number,sc
   return;
  }
  const draft=await beginDraft(userId,"announcement","awaiting_text",
-  {kind:"announcement",profileLinked:false});
+  {kind:"announcement",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
  await announcementScreen(telegram,userId,draft);
 }
 export function registerPostingHandlers(bot:Telegraf):void{
