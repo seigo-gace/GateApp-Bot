@@ -93,12 +93,16 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   if(op==="topic"){
    await show(ctx.telegram,ctx.from.id,await advance(ctx.from.id,rev,topic));return;
   }
-  // Delegate to the existing owned editor; never reimplement the feature.
-  if(topic==="profile")await startProfileEditor(ctx);
-  else if(topic==="room")await startRoomEditor(ctx.telegram,ctx.from.id);
-  else if(topic==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
-  else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
-  else await startSearchEditor(ctx.telegram,ctx.from.id);
+  // Invalidate the help callback generation BEFORE handing off the exact
+  // Bot-owned message to another wizard. No new message or editor copy.
+  const screenId=s.screenMessageId??undefined;
+  if(!screenId){await startOperationHelp(ctx.telegram,ctx.from.id);return;}
+  await advance(ctx.from.id,rev,"home");
+  if(topic==="profile")await startProfileEditor(ctx,undefined,screenId);
+  else if(topic==="room")await startRoomEditor(ctx.telegram,ctx.from.id,screenId);
+  else if(topic==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id,screenId);
+  else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id,screenId);
+  else await startSearchEditor(ctx.telegram,ctx.from.id,screenId);
  });
  bot.action(/^help:(home|back):(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
