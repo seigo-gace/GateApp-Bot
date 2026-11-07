@@ -961,6 +961,40 @@ try{
  await tap("help:open:4:room");
  assert.ok(helpAnswers.at(-1)?.includes("古い操作"),
   "help button becomes stale after entering existing ROOM wizard");
+ // Every help section must hand off the same Bot DM screen to its
+ // existing editor, with no extra sendMessage. Old help buttons go stale.
+ for(const [index,section] of (["profile","announcement","link","search"] as const).entries()){
+  const id=882100+index;
+  const calls:Array<{action:string;mid?:number}>=[];
+  const mockTelegram={
+   sendMessage:async(_id:number,_text:string,_opts:any)=>{
+    calls.push({action:"send"});return {message_id:882200+index};
+   },
+   editMessageText:async(_id:number,mid:number,_inline:unknown,_text:string,_opts?:any)=>{
+    calls.push({action:"edit",mid});return true;
+   },
+  } as unknown as Telegram;
+  await startOperationHelp(mockTelegram,id);
+  const callbacks=helpCallbacks;
+  const invoke=async(value:string)=>{
+   const candidate=callbacks.map(x=>({x,match:value.match(x.pattern)})).find(x=>x.match);
+   assert.ok(candidate,"help must register "+value);
+   await candidate.x.handle({
+    chat:{id,type:"private"},
+    from:{id,username:"help_test_user"},
+    match:candidate.match,
+    telegram:mockTelegram,
+    answerCbQuery:async()=>{},
+    reply:async()=>{throw Error("HELP_UNEXPECTED_NEW_REPLY");},
+   });
+  };
+  await invoke("help:topic:1:"+section);
+  await invoke("help:open:2:"+section);
+  assert.equal(calls.filter(x=>x.action==="send").length,1,
+   section+" added an unwanted second Bot message");
+  assert.equal(calls.at(-1)?.action,"edit");
+  assert.equal(calls.at(-1)?.mid,882200+index);
+ }
  console.log("GAYBBS_DB_OPERATION_HELP_3X2_REVISION_AND_RETURN=PASS");
  // A cancelled final confirmation is tied to the original private revision.
  // Replayed Telegram callbacks cannot publish after explicit cancellation.
