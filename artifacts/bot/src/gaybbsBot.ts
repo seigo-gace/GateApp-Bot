@@ -115,11 +115,6 @@ async function main():Promise<void>{
   else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
   else await startOperationHelp(ctx.telegram,ctx.from.id);
  });
- bot.action(/^dm:profile$/,async ctx=>{
-  if(ctx.chat?.type!=="private"||!ctx.from)return;
-  await ctx.answerCbQuery();
-  await startProfileEditor(ctx);
- });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
