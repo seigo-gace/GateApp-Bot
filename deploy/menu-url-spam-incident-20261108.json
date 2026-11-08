@@ -1,0 +1,26 @@
+{
+  "schema": "tgtumbler.menu-url-spam-incident/v1",
+  "stopped_at": "2026-11-08T10:45:00+09:00",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6715750438",
+  "cause": "deploy/apply_menu_ledger_and_publish.py used sendMessage with plain URL text instead of menuPanelPublisher inline_keyboard path",
+  "telegram_cleanup": {
+    "area_bbs": {
+      "chat_id": -1003847210571,
+      "attempted_delete_message_ids": [1151, 1152, 1153, 1154, 1155],
+      "delete_api_result": "message to delete not found (already absent or never visible to bot)"
+    },
+    "video_chat": {
+      "chat_id": -1002373696859,
+      "deleted_message_ids": [4552],
+      "delete_api_result": "ok"
+    }
+  },
+  "db_cleanup": {
+    "general_guide_documents_deleted": 6,
+    "fabricated_document_rows_removed": true
+  },
+  "protection": {
+    "apply_menu_ledger_and_publish.py": "sendMessage document seeding disabled; do not auto-retry publish",
+    "canonical_publish_path": "menuPanelPublisher → menuPanelRenderer → telegramDispatcher inline_keyboard only"
+  }
+}

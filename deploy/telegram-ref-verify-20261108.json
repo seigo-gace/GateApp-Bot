@@ -1,0 +1,76 @@
+{
+  "schema": "tgtumbler.telegram-ref-verify/v1",
+  "method": "forwardMessage_to_admin_dm_then_delete",
+  "admin_telegram_id": 7880448530,
+  "results": [
+    {
+      "key": "posting_intro_area",
+      "chat_id": -1003847210571,
+      "message_id": 1118,
+      "forward_ok": true,
+      "error": null
+    },
+    {
+      "key": "posting_freetalk_area",
+      "chat_id": -1003847210571,
+      "message_id": 116,
+      "forward_ok": false,
+      "error": {
+        "ok": false,
+        "error_code": 400,
+        "description": "Bad Request: the message can't be forwarded"
+      }
+    },
+    {
+      "key": "posting_intro_video",
+      "chat_id": -1002373696859,
+      "message_id": 4531,
+      "forward_ok": true,
+      "error": null
+    },
+    {
+      "key": "posting_freetalk_video",
+      "chat_id": -1002373696859,
+      "message_id": 1605,
+      "forward_ok": false,
+      "error": {
+        "ok": false,
+        "error_code": 400,
+        "description": "Bad Request: the message can't be forwarded"
+      }
+    },
+    {
+      "key": "posting_intro_gay",
+      "chat_id": -1003770334893,
+      "message_id": 1028,
+      "forward_ok": false,
+      "error": {
+        "ok": false,
+        "error_code": 400,
+        "description": "Bad Request: message has protected content and can't be forwarded"
+      }
+    },
+    {
+      "key": "posting_freetalk_gay",
+      "chat_id": -1003770334893,
+      "message_id": 4,
+      "forward_ok": false,
+      "error": {
+        "ok": false,
+        "error_code": 400,
+        "description": "Bad Request: message has protected content and can't be forwarded"
+      }
+    },
+    {
+      "key": "creator_paid_video",
+      "chat_id": -1002373696859,
+      "message_id": 1695,
+      "forward_ok": false,
+      "error": {
+        "ok": false,
+        "error_code": 400,
+        "description": "Bad Request: the message can't be forwarded"
+      }
+    }
+  ]
+}

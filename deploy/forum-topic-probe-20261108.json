@@ -1,0 +1,98 @@
+{
+  "schema": "tgtumbler.forum-topic-probe/v1",
+  "verified_at": "2026-11-08T09:12:45.907277+09:00",
+  "method": "sendMessage+deleteMessage",
+  "note": "Probe success means Bot can post in the forum thread; not automatic 総合案内/投稿メニュー assignment.",
+  "topics": [
+    {
+      "key": "online_host",
+      "chat_id": -1003847210571,
+      "message_thread_id": 1000,
+      "source": "https://t.me/c/3847210571/1000",
+      "ok": true,
+      "probe_message_id": 1146,
+      "deleted": true
+    },
+    {
+      "key": "guide_back",
+      "chat_id": -1003847210571,
+      "message_thread_id": 43,
+      "source": "https://t.me/c/3847210571/43",
+      "ok": true,
+      "probe_message_id": 1147,
+      "deleted": true
+    },
+    {
+      "key": "area_room",
+      "chat_id": -1003847210571,
+      "message_thread_id": 116,
+      "source": "https://t.me/c/3847210571/116",
+      "ok": true,
+      "probe_message_id": 1148,
+      "deleted": true
+    },
+    {
+      "key": "video_room",
+      "chat_id": -1002373696859,
+      "message_thread_id": 1605,
+      "source": "https://t.me/c/2373696859/1605",
+      "ok": true,
+      "probe_message_id": 4549,
+      "deleted": true
+    },
+    {
+      "key": "gay_miseai",
+      "chat_id": -1003770334893,
+      "message_thread_id": 4,
+      "source": "https://t.me/c/3770334893/4",
+      "ok": true,
+      "probe_message_id": 1043,
+      "deleted": true
+    },
+    {
+      "key": "community_area",
+      "chat_id": -1003847210571,
+      "message_thread_id": 273,
+      "source": "community-link-topics.json",
+      "ok": true,
+      "probe_message_id": 1149,
+      "deleted": true
+    },
+    {
+      "key": "community_video",
+      "chat_id": -1002373696859,
+      "message_thread_id": 1724,
+      "source": "community-link-topics.json",
+      "ok": true,
+      "probe_message_id": 4550,
+      "deleted": true
+    },
+    {
+      "key": "community_gay",
+      "chat_id": -1003770334893,
+      "message_thread_id": 18,
+      "source": "community-link-topics.json",
+      "ok": true,
+      "probe_message_id": 1044,
+      "deleted": true
+    },
+    {
+      "key": "notion_general_guide_video",
+      "chat_id": -1002373696859,
+      "message_thread_id": 1723,
+      "source": "notion_topic_ledger_record_only",
+      "ok": true,
+      "probe_message_id": 4551,
+      "deleted": true
+    },
+    {
+      "key": "notion_general_guide_gay",
+      "chat_id": -1003770334893,
+      "message_thread_id": 783,
+      "source": "notion_topic_ledger_record_only",
+      "ok": true,
+      "probe_message_id": 1045,
+      "deleted": true
+    }
+  ]
+}

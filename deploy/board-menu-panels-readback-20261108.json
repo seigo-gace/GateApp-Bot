@@ -1,0 +1,80 @@
+{
+  "schema": "tgtumbler.board-menu-panels-readback/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6720002874",
+  "source_head": "f3a5d8b11c64530237a71889f9560fbc59179599",
+  "design_source": [
+    "deploy/menu-topic-ledger-v1.json",
+    "docs/TGTUMBLER_ONLINE_ROOM_BOARD.md (L0 総合案内 vs L2 ROOM掲示板)",
+    "docs/TGTUMBLER_ONLINE_COMPOSER_RUNBOOK.md"
+  ],
+  "mapping_rule": {
+    "general_guide_L0": "general_guide_topics → panel_type general_guide only",
+    "posting_L2": "posting_menu_topics → panel_type posting only",
+    "anti_pattern": "posting panel on message_thread_id 43/1723/783 is NOT adopted"
+  },
+  "db_readback": [
+    {
+      "panel_id": 1,
+      "board_key": "area_bbs",
+      "chat_id": -1003847210571,
+      "message_thread_id": 43,
+      "panel_type": "general_guide",
+      "state": "verified",
+      "ledger_key": "guide_back",
+      "adopted": true
+    },
+    {
+      "panel_id": 3,
+      "board_key": "video_chat",
+      "chat_id": -1002373696859,
+      "message_thread_id": 1723,
+      "panel_type": "general_guide",
+      "state": "verified",
+      "ledger_key": "notion_general_guide_video",
+      "adopted": true
+    },
+    {
+      "panel_id": 4,
+      "board_key": "gay_board",
+      "chat_id": -1003770334893,
+      "message_thread_id": 783,
+      "panel_type": "general_guide",
+      "state": "verified",
+      "ledger_key": "notion_general_guide_gay",
+      "adopted": true
+    },
+    {
+      "panel_id": 5,
+      "board_key": "area_bbs",
+      "chat_id": -1003847210571,
+      "message_thread_id": 116,
+      "panel_type": "posting",
+      "state": "verified",
+      "ledger_key": "area_room",
+      "adopted": true
+    },
+    {
+      "panel_id": 6,
+      "board_key": "video_chat",
+      "chat_id": -1002373696859,
+      "message_thread_id": 1605,
+      "panel_type": "posting",
+      "state": "verified",
+      "ledger_key": "video_room",
+      "adopted": true
+    },
+    {
+      "panel_id": 7,
+      "board_key": "gay_board",
+      "chat_id": -1003770334893,
+      "message_thread_id": 4,
+      "panel_type": "posting",
+      "state": "verified",
+      "ledger_key": "gay_miseai",
+      "adopted": true
+    }
+  ],
+  "verdict": "ALL_SIX_PANELS_MATCH_ADOPTED_L0_L2_SPLIT",
+  "posting_on_guide_topics_count": 0,
+  "note": "6件は L0×3 + L2×3。総合案内Topicへの posting 混在なし。"
+}
