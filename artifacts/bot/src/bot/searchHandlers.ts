@@ -229,7 +229,8 @@ export function registerSearchHandlers(bot:Telegraf){
   if(!dm(ctx)||ctx.message.text.startsWith("/"))return goNext();
   const s=await getSearchSession(ctx.from.id);
   if(!s||!["keyword","age"].includes(s.step))return goNext();
-  if(await currentDmTextOwner(ctx.from.id)!=="search")return goNext();
+  // Search owns its own session; never consume input owned by another active wizard.
+   if(await currentDmTextOwner(ctx.from.id)!==null)return goNext();
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
   const input=ctx.message.text.trim();
   let filters=s.filters;
