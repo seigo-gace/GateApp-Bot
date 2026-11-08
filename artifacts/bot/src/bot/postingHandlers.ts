@@ -12,7 +12,7 @@ import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createR
  createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
-import { currentTopicDmEntry } from "../services/topicDmEntry.js";
+import { currentTopicDmEntry,assertTopicDmEntryDestination } from "../services/topicDmEntry.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
@@ -683,6 +683,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     text=preview(module,d);
    }
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
+   await assertTopicDmEntryDestination(ctx.from.id,selected.chatId,selected.threadId);
    if(module==="announcement"){
     const d=await getDraft(ctx.from.id,"announcement");
     if(!d||d.step!=="preview"||d.revision!==rev)throw new Error("ANNOUNCEMENT_DRAFT_STALE");
@@ -735,6 +736,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const revision=Number(ctx.match[2]);const topicId=Number(ctx.match[3]);
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
+   const destination=await getVerifiedTopic(topicId,module as PostPurpose);
+   await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
    let sourceId:string;let text:string;
    let hostJoinUrl:string|null=null;
    let isScheduledRoom=false;
