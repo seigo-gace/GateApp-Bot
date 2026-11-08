@@ -2,7 +2,7 @@
  * approved board. No parallel "guide" document, topic or additional bot.
  * State is persisted in the existing GayBBS PostgreSQL database.
  */
-import type {Telegraf,type Telegram} from "telegraf";
+import type {Telegraf,Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {createTelegramDispatcher} from "../services/telegramDispatcher.js";
 import {
