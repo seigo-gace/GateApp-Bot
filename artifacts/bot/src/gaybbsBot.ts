@@ -31,6 +31,7 @@ import {
   defaultBareStartChatId,
 } from "./services/dmBareStartPostingMenu.js";
 import { currentMenuOrigin } from "./services/menuOriginRepository.js";
+import { activateTopicDmEntry, currentTopicDmEntry } from "./services/topicDmEntry.js";
 
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
@@ -43,6 +44,16 @@ async function main():Promise<void>{
  await runMigrations();
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  if(ctx.startPayload?.startsWith("p_")){
+   try {
+    const origin=await activateTopicDmEntry(ctx.from.id,ctx.startPayload,ctx.telegram);
+    const keyboard=await bareStartPostingExtra(origin.chatId);
+    await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
+   }catch{
+    await ctx.reply("このトピックの投稿入口を確認できません。元の固定ボタンを利用してください。");
+   }
+   return;
+  }
   if(ctx.startPayload?.startsWith("online_")){
    if(await handleOnlineGateStart(ctx))return;
   }
@@ -92,7 +103,8 @@ async function main():Promise<void>{
    return;
   }
   const origin=ctx.from?await currentMenuOrigin(ctx.from.id):null;
-  const chatId=defaultBareStartChatId(origin?.chatId);
+  const topicOrigin=origin?null:await currentTopicDmEntry(ctx.from.id);
+  const chatId=defaultBareStartChatId(origin?.chatId??topicOrigin?.chatId);
   const keyboard=await bareStartPostingExtra(chatId);
   await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
  });
