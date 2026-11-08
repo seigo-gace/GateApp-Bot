@@ -1,0 +1,16 @@
+{
+  "schema": "tgtumbler.menu-ui-fix-readback/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6720973333",
+  "source_fixes": [
+    "gaybbsBot.ts: bare /start → short text + inline_keyboard (no command list)",
+    "menuPanelRenderer.ts: literal \\\\n → real newlines in panel body",
+    "areaMenuSuppression.ts: default + all_private_chats + video group scopes",
+    "operationHelpHandlers.ts: Room help copy trimmed to contract-aligned steps"
+  ],
+  "posting_menus_edited_in_place": [
+    {"chat_id": -1003847210571, "message_id": 1160, "updated_existing": true},
+    {"chat_id": -1003770334893, "message_id": 1051, "updated_existing": true},
+    {"chat_id": -1002373696859, "message_id": 4560, "updated_existing": true}
+  ],
+  "general_guide_L0": "still unpublished (documents incomplete except video safety@1726)"
+}

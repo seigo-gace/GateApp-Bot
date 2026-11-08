@@ -1,7 +1,7 @@
 /** Dedicated @GayBBS_bot user-facing runtime. NOT the existing admin/Gate bot. */
 import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
-import { Telegraf } from "telegraf";
+import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
@@ -20,7 +20,8 @@ import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
-import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
+import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
+ suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
 
@@ -79,7 +80,22 @@ async function main():Promise<void>{
    }
    return;
   }
-  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/recruit — 相手募集\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/search — 検索/フィルター\n/help — 操作説明\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
+  await ctx.reply(
+   "📌 各掲示板の固定メニュー（総合案内・投稿メニュー）から利用を開始してください。",
+   Markup.inlineKeyboard([
+    [Markup.button.callback("プロフ", "dm:profile"),
+     Markup.button.callback("検索/フィルター", "dm:search")],
+    [Markup.button.callback("操作説明", "dm:help")],
+   ]),
+  );
+ });
+ bot.action(/^dm:(profile|search|help)$/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery();
+  const kind=ctx.match[1];
+  if(kind==="profile")await startProfileEditor(ctx);
+  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
+  else await startOperationHelp(ctx.telegram,ctx.from.id);
  });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
@@ -112,6 +128,20 @@ async function main():Promise<void>{
     " legacy_status="+areaMenu.legacyBotStatus);
  }catch(error){
   console.error("GAYBBS_AREA_MENU_SUPPRESSION_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
+ try{
+  const dmScopes=await suppressBotDmCommandMenu(bot.telegram);
+  console.log("GAYBBS_DM_COMMAND_MENU_SUPPRESSED scopes="+dmScopes.join(","));
+ }catch(error){
+  console.error("GAYBBS_DM_COMMAND_SUPPRESSION_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
+ try{
+  const videoScopes=await suppressGroupCommandMenu(bot.telegram,VIDEO_CHAT_CHAT_ID);
+  console.log("GAYBBS_VIDEO_CHAT_MENU_SUPPRESSED scopes="+videoScopes.join(","));
+ }catch(error){
+  console.error("GAYBBS_VIDEO_CHAT_MENU_SUPPRESSION_FAILED",
     error instanceof Error?error.message:"unknown");
  }
  try{

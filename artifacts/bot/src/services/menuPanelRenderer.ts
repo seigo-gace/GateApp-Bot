@@ -126,7 +126,7 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
   throw new Error("PANEL_BOARD_INVALID");
  if(spec.type==="general_guide"){
   if(spec.entryLinks.length)throw new Error("GUIDE_EDITOR_ENTRY_FORBIDDEN");
-  return {text:"📌 総合案内\\n各ボタンから案内やトピックへ移動できます。",
+  return {text:"📌 総合案内\n各ボタンから案内やトピックへ移動できます。",
    rows:renderApprovedLinks("general_guide",spec.links)};
  }
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
@@ -141,6 +141,6 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
   if(allowed[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
   return {label:entry.label,url:entry.url,verified:entry.ready};
  });
- return {text:"📝 投稿メニュー\\nボタンを選択してください。",
+ return {text:"📝 投稿メニュー\nボタンを選択してください。",
    rows:renderApprovedLinks("posting",[...spec.links,...entries])};
 }
