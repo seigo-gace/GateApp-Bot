@@ -59,6 +59,15 @@ export async function currentTopicDmEntry(userId:number):Promise<TopicEntryOrigi
  return {chatId,threadId};
 }
 
+/** Reject stale/foreign callback targets after returning from an editor. */
+export async function assertTopicDmEntryDestination(
+ userId:number,chatId:number,threadId:number,
+):Promise<void>{
+ const pinned=await currentTopicDmEntry(userId);
+ if(pinned&&(pinned.chatId!==chatId||pinned.threadId!==threadId))
+  throw Error("TOPIC_ENTRY_DESTINATION_MISMATCH");
+}
+
 /** Uses the existing pinned message ID on reruns. Any ambiguous Telegram result
  * is recorded needs_reconcile: never automatically send a duplicate.
  */
