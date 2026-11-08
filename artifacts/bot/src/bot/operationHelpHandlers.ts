@@ -98,7 +98,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   const screenId=s.screenMessageId??undefined;
   if(!screenId){await startOperationHelp(ctx.telegram,ctx.from.id);return;}
   await advance(ctx.from.id,rev,"home");
-  if(topic==="profile")await startProfileEditor(ctx,undefined,screenId);
+  if(topic==="profile")await startProfileEditor(ctx);
   else if(topic==="room")await startRoomEditor(ctx.telegram,ctx.from.id,screenId);
   else if(topic==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id,screenId);
   else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id,screenId);
