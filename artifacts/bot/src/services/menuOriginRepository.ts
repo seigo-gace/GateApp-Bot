@@ -30,6 +30,8 @@ export async function activateMenuOrigin(
       token_hash=EXCLUDED.token_hash,feature=EXCLUDED.feature,
       created_at=NOW(),expires_at=EXCLUDED.expires_at`,
    [telegramUserId,digest,origin.feature]);
+  // A new validated M2 entry supersedes any earlier pinned Topic doorway.
+  await c.query("DELETE FROM topic_dm_entry_sessions WHERE owner_user_id=$1",[telegramUserId]);
   await c.query("COMMIT");
   return origin;
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
