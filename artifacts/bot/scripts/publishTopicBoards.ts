@@ -10,7 +10,13 @@ import { readConfiguredBotToken } from "../src/config/botToken.js";
 import { pool, closePool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { publishVerifiedTopicBoard } from "../src/bot/topicBoardHandlers.js";
-import { AREA_BLOCKS } from "../src/services/topicBoardContent.js";
+import {
+  AREA_BLOCKS,
+  AREA_CHAT_ID,
+  blockBoardKey,
+  messageIdFromBoardUrl,
+  resolveBlockChildUrls,
+} from "../src/services/topicBoardContent.js";
 import { guideMessageUrl } from "../src/services/guideMessageUrl.js";
 
 const ADMIN = Number(process.env.MENU_PUBLISH_ADMIN_ID ?? "7880448530");
@@ -59,6 +65,63 @@ async function main(): Promise<void> {
     telegram: { agent: new https.Agent({ keepAlive: true, family: 4 }) },
   });
   const areaSeeded = await seedAreaLinks();
+  const dbRows = await pool.query("SELECT block_name, area_name, target_url FROM topic_board_area_links");
+  const dbMap: Record<string, string> = {};
+  for (const row of dbRows.rows) {
+    dbMap[`${row.block_name}/${row.area_name}`] = String(row.target_url);
+  }
+  const blockResults: Record<string, number> = {};
+  const nationalEntry = LEDGER.boards.find((b) => b.board_key === "national")!;
+  await pool.query(
+    `INSERT INTO topic_board_posts(board_key,chat_id,message_thread_id,verified_by,state)
+     VALUES ($1,$2,$3,$4,'verified')
+     ON CONFLICT(board_key) DO NOTHING`,
+    ["national", nationalEntry.chat_id, nationalEntry.message_thread_id, ADMIN],
+  );
+  const nationalWarm = await publishVerifiedTopicBoard(
+    bot.telegram,
+    "national",
+    nationalEntry.chat_id,
+    nationalEntry.message_thread_id,
+    ADMIN,
+  );
+  console.log(JSON.stringify({ phase: "national_warm", message_id: nationalWarm.messageId }));
+  for (const block of AREA_BLOCKS) {
+    try {
+      resolveBlockChildUrls(block.label, dbMap);
+    } catch {
+      console.log(JSON.stringify({ block_skipped: block.label, reason: "AREA_CHILD_LINK_UNVERIFIED" }));
+      continue;
+    }
+    const key = blockBoardKey(block.label);
+    const threadId = messageIdFromBoardUrl(block.url);
+    await pool.query(
+      `INSERT INTO topic_board_posts(board_key,chat_id,message_thread_id,verified_by,state)
+       VALUES ($1,$2,$3,$4,'verified')
+       ON CONFLICT(board_key) DO UPDATE SET
+         chat_id=EXCLUDED.chat_id,message_thread_id=EXCLUDED.message_thread_id,
+         verified_by=EXCLUDED.verified_by,verified_at=NOW(),updated_at=NOW()
+       WHERE topic_board_posts.state IN ('verified','published','needs_reconcile')`,
+      [key, AREA_CHAT_ID, threadId, ADMIN],
+    );
+    const result = await publishVerifiedTopicBoard(
+      bot.telegram,
+      key,
+      AREA_CHAT_ID,
+      threadId,
+      ADMIN,
+    );
+    blockResults[block.label] = result.messageId;
+    console.log(
+      JSON.stringify({
+        board_key: key,
+        chat_id: AREA_CHAT_ID,
+        message_thread_id: threadId,
+        message_id: result.messageId,
+        inline_keyboard_rows: "renderAreaBlockBoard",
+      }),
+    );
+  }
   const published: Record<string, { message_id: number; destination_url: string }> = {};
   for (const board of LEDGER.boards) {
     await pool.query(
@@ -101,7 +164,13 @@ async function main(): Promise<void> {
       );
     }
   }
-  console.log(JSON.stringify({ area_links_seeded: areaSeeded, l0_nav_synced: published }));
+  console.log(
+    JSON.stringify({
+      area_links_seeded: areaSeeded,
+      area_blocks_published: blockResults,
+      l0_nav_synced: published,
+    }),
+  );
   await closePool();
 }
 

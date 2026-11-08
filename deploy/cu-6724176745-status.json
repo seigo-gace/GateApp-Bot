@@ -1,0 +1,33 @@
+{
+  "cu": "6724176745",
+  "issue": 7,
+  "fix": "L1 uses telegramDispatcher buttons (URL inline_keyboard); renderAreaBlockBoard for block guides",
+  "docker_image": "sha256:02003ddbfd82ac4ecf0c19eeb409598da99291c90e8d6b4ca3a7b16af33cb884",
+  "edited_message_ids": {
+    "national": {
+      "message_id": 1166,
+      "thread": 43,
+      "rows": "13 block URL buttons (2 col); destinations=block guide msgs when published else block parent"
+    },
+    "video": { "message_id": 4565, "thread": 1723, "rows": "7 topic buttons (2 col)" },
+    "category": { "message_id": 1058, "thread": 783, "rows": "9 category buttons (2 col)" }
+  },
+  "area_block_guides_published": {
+    "北海道": 1167,
+    "関西": 1168,
+    "中国": 1169,
+    "四国": 1170,
+    "九州": 1171,
+    "沖縄": 1172
+  },
+  "area_block_guides_skipped_missing_child_urls": [
+    "東北", "甲信越", "北陸", "北関東", "東京", "南関東", "東海"
+  ],
+  "each_published_block_includes": "child area 2-col buttons + 検索/フィルター + 雑談/全国へ戻る",
+  "l0_general_guide": { "message_id": null, "blocker": "GUIDE_DOCUMENTS 0/4" },
+  "master_device_verify_required": [
+    "national 1166 reply_markup tap",
+    "block guides child buttons",
+    "video 4565 / category 1058 buttons"
+  ]
+}

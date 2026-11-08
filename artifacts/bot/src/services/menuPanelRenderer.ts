@@ -54,7 +54,7 @@ export function renderAreaBlockBoard(spec:AreaBlockBoardSpec):RenderedPanel{
  const chat=checked(spec.chatLink);
  const back=checked(spec.backLink);
  return {
-  text:spec.blockTitle+"\\n"+spec.description,
+  text:spec.blockTitle+"\n"+spec.description,
   rows:[
    ...packButtonRows(regions,2),
    [search,filter],

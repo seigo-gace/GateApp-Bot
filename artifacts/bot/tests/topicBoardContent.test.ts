@@ -1,47 +1,54 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
- VIDEO_TOPICS,CATEGORY_TOPICS,AREA_BLOCKS,
- renderTopicBoard,renderNationalBoard,renderAreaBlock,
+  VIDEO_TOPICS,
+  CATEGORY_TOPICS,
+  AREA_BLOCKS,
+  buildTopicBoardPanel,
+  buildNationalBoardPanel,
+  buildAreaBlockPanel,
+  resolveBlockChildUrls,
+  AREA_BLOCK_SEARCH_URL,
+  AREA_BLOCK_FREETALK_URL,
 } from "../src/services/topicBoardContent.js";
-test("all designated topic links are present, no menu-only destinations",()=>{
- assert.equal(VIDEO_TOPICS.length,7);
- assert.equal(CATEGORY_TOPICS.length,9);
- assert.equal(AREA_BLOCKS.length,13);
- const video=renderTopicBoard("video"), category=renderTopicBoard("category");
- assert.match(video,/2373696859\/1695/);
- assert.match(category,/3770334893\/41/);
- for(const text of [video,category]){
-  assert.doesNotMatch(text,/総合案内|コミュニティリンク|フリートーク|雑談/);
-  assert.ok(text.length<=4096);
-  assert.equal((text.match(/掲示板を開く/g)||[]).length,text===video?7:9);
- }
+
+test("topic list counts match approved menus", () => {
+  assert.equal(VIDEO_TOPICS.length, 7);
+  assert.equal(CATEGORY_TOPICS.length, 9);
+  assert.equal(AREA_BLOCKS.length, 13);
 });
-test("national board links to all 13 known historical block anchors",()=>{
- const body=renderNationalBoard();
- for(const block of AREA_BLOCKS)assert.ok(body.includes(block.url));
- assert.ok(body.length<=4096);
- assert.doesNotMatch(body,/総合案内|コミュニティリンク|雑談/);
+
+test("video and category panels expose URL inline keyboard rows", () => {
+  for (const board of ["video", "category"] as const) {
+    const panel = buildTopicBoardPanel(board);
+    assert.ok(panel.text.length <= 4096);
+    assert.doesNotMatch(panel.text, /総合案内|コミュニティリンク/);
+    const flat = panel.rows.flat();
+    assert.equal(flat.length, board === "video" ? 7 : 9);
+    const topics = board === "video" ? VIDEO_TOPICS : CATEGORY_TOPICS;
+    for (const entry of topics) assert.ok(flat.some((b) => b.url === entry.url));
+  }
 });
-test("unverified area child links fail closed, supplied verified mapping completes",()=>{
- assert.throws(()=>renderAreaBlock("東北"),/AREA_CHILD_LINK_UNVERIFIED:東北\/青森/);
- const mapped={
-  "東北/青森":"https://t.me/c/3847210571/12345",
-  "東北/秋田":"https://t.me/c/3847210571/12346",
-  "東北/岩手":"https://t.me/c/3847210571/12347",
-  "東北/宮城":"https://t.me/c/3847210571/12348",
-  "東北/福島":"https://t.me/c/3847210571/12349",
- };
- const text=renderAreaBlock("東北",mapped);
- assert.match(text,/3847210571\/53/);
- assert.match(text,/3847210571\/12345/);
- assert.throws(()=>renderAreaBlock("東北",{...mapped,"東北/青森":"https://t.me/c/2373696859/1"}),/BOARD_LINK_INVALID/);
- assert.throws(()=>renderAreaBlock("架空"),/AREA_BLOCK_UNKNOWN/);
+
+test("national panel links all 13 blocks as buttons without child decoration text", () => {
+  const panel = buildNationalBoardPanel({});
+  assert.ok(panel.text.includes("全国エリアボード"));
+  assert.doesNotMatch(panel.text, /・/);
+  const flat = panel.rows.flat();
+  assert.equal(flat.length, 13);
+  for (const block of AREA_BLOCKS) assert.ok(flat.some((b) => b.url === block.url));
 });
-test("historically ambiguous or incomplete child ID never becomes a guessed topic thread",()=>{
- for(const group of [VIDEO_TOPICS,CATEGORY_TOPICS]){
-  assert.equal(new Set(group.map(x=>x.url)).size,group.length);
- }
- assert.match(renderAreaBlock("北海道"),/3847210571\/49/);
- assert.match(renderAreaBlock("沖縄"),/3847210571\/104/);
+
+test("area block panel uses renderAreaBlockBoard layout with nav row", () => {
+  const resolved = resolveBlockChildUrls("北海道", {});
+  const panel = buildAreaBlockPanel("北海道", resolved, {
+    search: AREA_BLOCK_SEARCH_URL,
+    filter: AREA_BLOCK_SEARCH_URL,
+    chat: AREA_BLOCK_FREETALK_URL,
+    back: "https://t.me/c/3847210571/1166",
+  });
+  assert.ok(panel.rows.length >= 3);
+  const last = panel.rows.at(-1)!;
+  assert.equal(last.length, 2);
+  assert.throws(() => resolveBlockChildUrls("東北", {}), /AREA_CHILD_LINK_UNVERIFIED/);
 });

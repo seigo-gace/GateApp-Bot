@@ -6,8 +6,12 @@ import type {Telegraf,type Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {createTelegramDispatcher} from "../services/telegramDispatcher.js";
 import {
- AREA_BLOCKS,renderAreaBlock,renderNationalBoard,renderTopicBoard,
+ AREA_BLOCKS,AREA_BLOCK_FREETALK_URL,AREA_BLOCK_SEARCH_URL,AREA_CHAT_ID,
+ buildAreaBlockPanel,buildNationalBoardPanel,buildTopicBoardPanel,
+ blockBoardKey,messageIdFromBoardUrl,resolveBlockChildUrls,
+ type TopicBoardPanel,
 } from "../services/topicBoardContent.js";
+import { guideMessageUrl } from "../services/guideMessageUrl.js";
 type BoardKey="video"|"category"|"national"|string;
 const CHAT_AREA=-1003847210571,CHAT_VIDEO=-1002373696859,CHAT_GAY=-1003770334893;
 function destination(key:string):number {
@@ -46,22 +50,52 @@ async function adminContext(ctx:any):Promise<{chatId:number;threadId:number;admi
  }
  return {chatId,threadId,adminId:ctx.from.id};
 }
-async function boardText(key:string):Promise<string>{
- if(key==="video"||key==="category")return renderTopicBoard(key);
- if(key==="national")return renderNationalBoard();
- const block=key.slice(6);
- const found=AREA_BLOCKS.find(x=>x.label===block);
- if(!found)throw new Error("BOARD_KEY_UNKNOWN");
+async function loadDbAreaLinks():Promise<Record<string,string>>{
  const rows=await pool.query(
-  "SELECT area_name,target_url FROM topic_board_area_links WHERE block_name=$1",
-  [block]);
- const resolved:Record<string,string>={};
+  "SELECT block_name,area_name,target_url FROM topic_board_area_links");
+ const map:Record<string,string>={};
  for(const row of rows.rows){
-  if(!areaChild(block,String(row.area_name))||!areaLink(String(row.target_url)))
+  const block=String(row.block_name),child=String(row.area_name);
+  if(!areaChild(block,child)||!areaLink(String(row.target_url)))
    throw new Error("AREA_LINK_INVALID");
-  resolved[`${block}/${String(row.area_name)}`]=String(row.target_url);
+  map[`${block}/${child}`]=String(row.target_url);
  }
- return renderAreaBlock(block,resolved);
+ return map;
+}
+async function nationalBackUrl():Promise<string>{
+ const r=await pool.query(
+  `SELECT message_id FROM topic_board_posts WHERE board_key='national'
+   AND state='published' AND message_id IS NOT NULL`);
+ if(r.rows.length!==1)throw new Error("NATIONAL_BOARD_BACK_UNKNOWN");
+ return guideMessageUrl(AREA_CHAT_ID,Number(r.rows[0].message_id));
+}
+async function blockGuideUrls():Promise<Record<string,string>>{
+ const r=await pool.query(
+  `SELECT board_key,message_id FROM topic_board_posts
+   WHERE board_key LIKE 'block:%' AND state='published' AND message_id IS NOT NULL`);
+ const out:Record<string,string>={};
+ for(const row of r.rows){
+  const label=String(row.board_key).slice(6);
+  out[label]=guideMessageUrl(AREA_CHAT_ID,Number(row.message_id));
+ }
+ return out;
+}
+async function boardPanel(key:string):Promise<TopicBoardPanel>{
+ if(key==="video"||key==="category")return buildTopicBoardPanel(key);
+ if(key==="national"){
+  const guides=await blockGuideUrls();
+  return buildNationalBoardPanel(guides);
+ }
+ if(!key.startsWith("block:"))throw new Error("BOARD_KEY_UNKNOWN");
+ const block=key.slice(6);
+ if(!AREA_BLOCKS.some(x=>x.label===block))throw new Error("BOARD_KEY_UNKNOWN");
+ const resolved=resolveBlockChildUrls(block,await loadDbAreaLinks());
+ return buildAreaBlockPanel(block,resolved,{
+  search:AREA_BLOCK_SEARCH_URL,
+  filter:AREA_BLOCK_SEARCH_URL,
+  chat:AREA_BLOCK_FREETALK_URL,
+  back:await nationalBackUrl(),
+ });
 }
 export function registerTopicBoardHandlers(bot:Telegraf):void{
  bot.command("bindtopicboard",async ctx=>{
@@ -95,10 +129,10 @@ export function registerTopicBoardHandlers(bot:Telegraf):void{
    const self=await ctx.telegram.getMe();
    if(!sameThread||reply.from?.id!==self.id)throw new Error("BOARD_EXISTING_POST_NOT_BOT_OWNED");
    const text="text" in reply&&typeof reply.text==="string"?reply.text:"";
-   const expected=key==="national"?"全国エリアボード":
-    key==="video"?"ビデオChatの掲示板":
-    key==="category"?"ゲイのための掲示板":key.slice(6);
-   if(!text.includes(expected))throw new Error("BOARD_EXISTING_POST_TITLE_MISMATCH");
+   const expected=key==="national"?"全国エリア":
+    key==="video"?"ビデオChat":
+    key==="category"?"ゲイのための掲示板":key.startsWith("block:")?"エリアボード":"";
+   if(expected&&!text.includes(expected))throw new Error("BOARD_EXISTING_POST_TITLE_MISMATCH");
    const found=await pool.query(
     `INSERT INTO topic_board_posts(board_key,chat_id,message_thread_id,message_id,state,verified_by)
      VALUES($1,$2,$3,$4,'published',$5)
@@ -155,7 +189,7 @@ export async function publishVerifiedTopicBoard(
  if(process.env.GAYBBS_TOPIC_BOARD_RELEASE!=="enabled")
   throw new Error("TOPIC_BOARD_RELEASE_DISABLED");
  if(destination(key)!==chatId)throw new Error("BOARD_OWNER_MISMATCH");
- const text=await boardText(key);
+ const panel=await boardPanel(key);
  const claimed=await pool.query(
   `UPDATE topic_board_posts SET state='publishing',updated_at=NOW()
    WHERE board_key=$1 AND chat_id=$2 AND message_thread_id=$3
@@ -170,9 +204,9 @@ export async function publishVerifiedTopicBoard(
   const target={chatId,threadId};
   deliveryStarted=true;
   if(messageId!==null){
-   await dispatch.revise(target,messageId,{text,parseMode:"HTML"});
+   await dispatch.revise(target,messageId,{text:panel.text,buttons:panel.rows});
   }else{
-   messageId=await dispatch.publish(target,{text,parseMode:"HTML"});
+   messageId=await dispatch.publish(target,{text:panel.text,buttons:panel.rows});
   }
   const ack=await pool.query(
    `UPDATE topic_board_posts SET state='published',message_id=$2,updated_at=NOW()
