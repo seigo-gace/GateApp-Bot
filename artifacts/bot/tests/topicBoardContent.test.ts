@@ -19,23 +19,24 @@ test("topic list counts match approved menus", () => {
   assert.equal(AREA_BLOCKS.length, 13);
 });
 
-test("L1 video/category indexes use HTML body links", () => {
+test("L1 video/category indexes link topic titles in HTML body", () => {
   for (const board of ["video", "category"] as const) {
     const html = buildTopicBoardHtml(board);
     assert.ok(html.length <= 4096);
-    assert.doesNotMatch(html, /総合案内|コミュニティリンク/);
+    assert.doesNotMatch(html, /総合案内|コミュニティリンク|掲示板を開く/);
     const topics = board === "video" ? VIDEO_TOPICS : CATEGORY_TOPICS;
-    for (const entry of topics) assert.ok(html.includes(entry.url));
-    assert.equal((html.match(/掲示板を開く/g) || []).length, topics.length);
+    for (const entry of topics) {
+      assert.ok(html.includes(entry.url));
+      assert.match(html, new RegExp(`<a href="${entry.url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
+    }
   }
 });
 
-test("national index links verified children only (no fabricated URLs)", () => {
+test("national index links all child areas including 静岡/77", () => {
   const html = buildNationalBoardHtml({});
-  assert.ok(html.includes("https://t.me/c/3847210571/53"));
-  assert.ok(html.includes("山形"));
-  assert.doesNotMatch(html, /href="[^"]*3847210571[^"]*">青森/);
-  assert.ok(html.includes("青森"));
+  assert.ok(html.includes("https://t.me/c/3847210571/50"));
+  assert.ok(html.includes("https://t.me/c/3847210571/77"));
+  assert.ok(html.includes("静岡"));
 });
 
 test("partial block resolve matches Master-verified DB rows", () => {

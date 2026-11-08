@@ -12,7 +12,7 @@ const AREA = -1003847210571;
 const VIDEO = -1002373696859;
 const GAY = -1003770334893;
 
-/** Master readback 2026-11-09: gay 1063, video 4570 general-guide posts. */
+/** Fallback when topic_board_posts is not published yet. */
 const PEER_GENERAL_GUIDE_MESSAGE: Readonly<Record<number, number>> = {
   [GAY]: 1063,
   [VIDEO]: 4570,
@@ -37,6 +37,17 @@ async function nationalAreaGuideUrl(): Promise<string> {
 }
 
 async function peerGeneralGuideUrl(chatId: number): Promise<string> {
+  const boardKey = chatId === GAY ? "category" : chatId === VIDEO ? "video" : null;
+  if (boardKey) {
+    const board = await pool.query(
+      `SELECT message_id FROM topic_board_posts
+       WHERE board_key=$1 AND chat_id=$2 AND state='published' AND message_id IS NOT NULL`,
+      [boardKey, chatId],
+    );
+    if (board.rows.length === 1) {
+      return guideMessageUrl(chatId, Number(board.rows[0].message_id));
+    }
+  }
   const fixed = PEER_GENERAL_GUIDE_MESSAGE[chatId];
   if (fixed) return guideMessageUrl(chatId, fixed);
   const panel = await pool.query(

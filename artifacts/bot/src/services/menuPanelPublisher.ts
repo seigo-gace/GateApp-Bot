@@ -125,7 +125,7 @@ export async function publishExistingMenuPanel(
   assertInlineKeyboard(rendered.rows);
   const dispatcher=createTelegramDispatcher(telegram);
   const target={chatId,threadId};
-  const body={text:rendered.text,buttons:rendered.rows};
+  const body={text:rendered.text,parseMode:"HTML" as const,buttons:rendered.rows};
   if(messageId!==null){
    deliveryAttempted=true;
    await dispatcher.revise(target,messageId,body);

@@ -7,12 +7,16 @@ import {pool} from "../db/index.js";
 import {createTelegramDispatcher} from "../services/telegramDispatcher.js";
 import {
  AREA_BLOCKS,AREA_BLOCK_FREETALK_URL,AREA_BLOCK_SEARCH_URL,AREA_CHAT_ID,
- buildAreaBlockPanel,buildL1IndexDelivery,buildNationalCombinedPanel,
- blockBoardKey,messageIdFromBoardUrl,resolveBlockChildUrlsPartial,
+ buildAreaBlockPanel,buildL1CombinedPanel,buildNationalCombinedPanel,
+ blockBoardKey,messageIdFromBoardUrl,resolveBlockChildUrls,
  type TopicBoardPanel,
 } from "../services/topicBoardContent.js";
 import { guideMessageUrl } from "../services/guideMessageUrl.js";
-import { loadGeneralGuideNavLinks } from "../services/generalGuideNavLinks.js";
+import {
+  commitGeneralGuideDmTokens,
+  mintGeneralGuideDmLinks,
+  rollbackGeneralGuideDmTokens,
+} from "../services/generalGuideDmLinks.js";
 type BoardKey="video"|"category"|"national"|string;
 const CHAT_AREA=-1003847210571,CHAT_VIDEO=-1002373696859,CHAT_GAY=-1003770334893;
 function destination(key:string):number {
@@ -70,22 +74,33 @@ async function nationalBackUrl():Promise<string>{
  if(r.rows.length!==1)throw new Error("NATIONAL_BOARD_BACK_UNKNOWN");
  return guideMessageUrl(AREA_CHAT_ID,Number(r.rows[0].message_id));
 }
-async function boardPanel(key:string):Promise<TopicBoardPanel>{
- if(key==="video"||key==="category")return buildL1IndexDelivery(key);
+type CombinedGuideBundle={panel:TopicBoardPanel;guideDm:{panelId:number;tokenHashes:string[]}|null};
+async function boardPanel(key:string):Promise<CombinedGuideBundle>{
+ if(key==="video"){
+  const dm=await mintGeneralGuideDmLinks(CHAT_VIDEO);
+  return {panel:buildL1CombinedPanel("video",dm.links),
+   guideDm:{panelId:dm.panelId,tokenHashes:dm.tokenHashes}};
+ }
+ if(key==="category"){
+  const dm=await mintGeneralGuideDmLinks(CHAT_GAY);
+  return {panel:buildL1CombinedPanel("category",dm.links),
+   guideDm:{panelId:dm.panelId,tokenHashes:dm.tokenHashes}};
+ }
  if(key==="national"){
-  const nav=await loadGeneralGuideNavLinks(AREA_CHAT_ID);
-  return buildNationalCombinedPanel(await loadDbAreaLinks(),nav);
+  const dm=await mintGeneralGuideDmLinks(AREA_CHAT_ID);
+  return {panel:buildNationalCombinedPanel(await loadDbAreaLinks(),dm.links),
+   guideDm:{panelId:dm.panelId,tokenHashes:dm.tokenHashes}};
  }
  if(!key.startsWith("block:"))throw new Error("BOARD_KEY_UNKNOWN");
  const block=key.slice(6);
  if(!AREA_BLOCKS.some(x=>x.label===block))throw new Error("BOARD_KEY_UNKNOWN");
- const resolved=resolveBlockChildUrlsPartial(block,await loadDbAreaLinks());
- return buildAreaBlockPanel(block,resolved,{
+ const resolved=resolveBlockChildUrls(block,await loadDbAreaLinks());
+ return {panel:buildAreaBlockPanel(block,resolved,{
   search:AREA_BLOCK_SEARCH_URL,
   filter:AREA_BLOCK_SEARCH_URL,
   chat:AREA_BLOCK_FREETALK_URL,
   back:await nationalBackUrl(),
- });
+ }),guideDm:null};
 }
 export function registerTopicBoardHandlers(bot:Telegraf):void{
  bot.command("bindtopicboard",async ctx=>{
@@ -179,7 +194,7 @@ export async function publishVerifiedTopicBoard(
  if(process.env.GAYBBS_TOPIC_BOARD_RELEASE!=="enabled")
   throw new Error("TOPIC_BOARD_RELEASE_DISABLED");
  if(destination(key)!==chatId)throw new Error("BOARD_OWNER_MISMATCH");
- const panel=await boardPanel(key);
+ const {panel,guideDm}=await boardPanel(key);
  const claimed=await pool.query(
   `UPDATE topic_board_posts SET state='publishing',updated_at=NOW()
    WHERE board_key=$1 AND chat_id=$2 AND message_thread_id=$3
@@ -193,9 +208,11 @@ export async function publishVerifiedTopicBoard(
   const dispatch=createTelegramDispatcher(telegram);
   const target={chatId,threadId};
   deliveryStarted=true;
-  const body=panel.rows.length
-   ? {text:panel.text,buttons:panel.rows}
-   : {text:panel.text,parseMode:"HTML" as const};
+  const body={
+   text:panel.text,
+   parseMode:"HTML" as const,
+   ...(panel.rows.length?{buttons:panel.rows}:{}),
+  };
   if(messageId!==null){
    try{
     await dispatch.revise(target,messageId,body);
@@ -209,8 +226,10 @@ export async function publishVerifiedTopicBoard(
    `UPDATE topic_board_posts SET state='published',message_id=$2,updated_at=NOW()
     WHERE board_key=$1 AND state='publishing' RETURNING board_key`,[key,messageId]);
   if(ack.rows.length!==1)throw new Error("BOARD_ACK_CONFLICT");
+  if(guideDm)await commitGeneralGuideDmTokens(guideDm.panelId,guideDm.tokenHashes);
   return {messageId,updatedExisting:existing};
  }catch(e){
+  if(guideDm&&deliveryStarted)await rollbackGeneralGuideDmTokens(guideDm.panelId,guideDm.tokenHashes);
   await pool.query(
    `UPDATE topic_board_posts SET state=$3,message_id=COALESCE($2,message_id),
     updated_at=NOW() WHERE board_key=$1 AND state='publishing'`,

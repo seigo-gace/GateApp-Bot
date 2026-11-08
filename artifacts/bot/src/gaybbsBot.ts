@@ -25,6 +25,12 @@ import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
  suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
+import {
+  BARE_START_POSTING_TEXT,
+  bareStartPostingExtra,
+  defaultBareStartChatId,
+} from "./services/dmBareStartPostingMenu.js";
+import { currentMenuOrigin } from "./services/menuOriginRepository.js";
 
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
@@ -85,22 +91,33 @@ async function main():Promise<void>{
    }
    return;
   }
-  await ctx.reply(
-   "📌 各掲示板の固定メニュー（総合案内・投稿メニュー）から利用を開始してください。",
-   Markup.inlineKeyboard([
-    [Markup.button.callback("プロフ", "dm:profile"),
-     Markup.button.callback("検索/フィルター", "dm:search")],
-    [Markup.button.callback("操作説明", "dm:help")],
-   ]),
+  const origin=ctx.from?await currentMenuOrigin(ctx.from.id):null;
+  const chatId=defaultBareStartChatId(origin?.chatId);
+  const keyboard=await bareStartPostingExtra(chatId);
+  await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
+ });
+ bot.action(/^dm:blocked:(announcement|room|link|search|help)$/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery(
+   "この機能は現在準備中です。各掲示板の固定投稿メニューからお試しください。",
+   { show_alert: true },
   );
  });
- bot.action(/^dm:(profile|search|help)$/,async ctx=>{
+ bot.action(/^dm:(recruit|room|announcement|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery();
   const kind=ctx.match[1];
-  if(kind==="profile")await startProfileEditor(ctx);
+  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
   else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
   else await startOperationHelp(ctx.telegram,ctx.from.id);
+ });
+ bot.action(/^dm:profile$/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery();
+  await startProfileEditor(ctx);
  });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);

@@ -15,7 +15,7 @@ import {
   AREA_CHAT_ID,
   blockBoardKey,
   messageIdFromBoardUrl,
-  resolveBlockChildUrlsPartial,
+  resolveBlockChildUrls,
 } from "../src/services/topicBoardContent.js";
 import { guideMessageUrl } from "../src/services/guideMessageUrl.js";
 
@@ -93,9 +93,16 @@ async function main(): Promise<void> {
     [nationalEntry.chat_id, nationalWarm.messageId, nationalEntry.message_thread_id],
   );
   for (const block of AREA_BLOCKS) {
-    const resolved = resolveBlockChildUrlsPartial(block.label, dbMap);
-    if (Object.keys(resolved).length === 0) {
-      console.log(JSON.stringify({ block_skipped: block.label, reason: "AREA_BLOCK_NO_VERIFIED_CHILDREN" }));
+    let resolved: Record<string, string>;
+    try {
+      resolved = resolveBlockChildUrls(block.label, dbMap);
+    } catch (err) {
+      console.log(
+        JSON.stringify({
+          block_skipped: block.label,
+          reason: err instanceof Error ? err.message : "AREA_CHILD_LINK_UNVERIFIED",
+        }),
+      );
       continue;
     }
     const key = blockBoardKey(block.label);
@@ -164,14 +171,22 @@ async function main(): Promise<void> {
         destination_url: url,
       }),
     );
+    if (board.board_key === "video" || board.board_key === "category") {
+      await pool.query(
+        `UPDATE board_menu_panels SET state='published',message_id=$2,pinned=TRUE,
+          revision=revision+1,updated_at=NOW()
+         WHERE chat_id=$1 AND panel_type='general_guide' AND message_thread_id=$3`,
+        [board.chat_id, result.messageId, board.message_thread_id],
+      );
+    }
   }
   for (const [linkKey, meta] of Object.entries(published)) {
     const label = LEDGER.boards.find((b) => b.guide_link_key === linkKey)?.guide_label;
     if (!label) continue;
     for (const chatId of LEDGER.guide_chats) {
       await pool.query(
-        `UPDATE general_guide_links SET destination_url=$3,verified_by=$4,verified_at=NOW()
-         WHERE chat_id=$1 AND link_key=$2 AND enabled=TRUE`,
+        `UPDATE general_guide_links SET destination_url=$3,enabled=TRUE,verified_by=$4,verified_at=NOW()
+         WHERE chat_id=$1 AND link_key=$2`,
         [chatId, linkKey, meta.destination_url, ADMIN],
       );
     }

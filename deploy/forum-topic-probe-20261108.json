@@ -1,6 +1,6 @@
 {
   "schema": "tgtumbler.forum-topic-probe/v1",
-  "verified_at": "2026-11-08T20:03:46.255195+09:00",
+  "verified_at": "2026-11-09T05:40:45.167783+09:00",
   "method": "sendMessage+deleteMessage",
   "note": "Probe success means Bot can post in the forum thread; not automatic 総合案内/投稿メニュー assignment.",
   "topics": [
@@ -10,17 +10,16 @@
       "message_thread_id": 1000,
       "source": "https://t.me/c/3847210571/1000",
       "ok": true,
-      "probe_message_id": 1156,
+      "probe_message_id": 1374,
       "deleted": true
     },
     {
       "key": "guide_back",
       "chat_id": -1003847210571,
-      "message_thread_id": 43,
-      "source": "https://t.me/c/3847210571/43",
+      "message_thread_id": 1379,
+      "source": "https://t.me/c/3847210571/1379",
       "ok": true,
-      "probe_message_id": 1157,
-      "deleted": true
+      "note": "2026-11-09 Master: 旧43失効→📌総合案内1379を正本"
     },
     {
       "key": "area_room",
@@ -28,7 +27,7 @@
       "message_thread_id": 116,
       "source": "https://t.me/c/3847210571/116",
       "ok": true,
-      "probe_message_id": 1158,
+      "probe_message_id": 1375,
       "deleted": true
     },
     {
@@ -37,7 +36,7 @@
       "message_thread_id": 1605,
       "source": "https://t.me/c/2373696859/1605",
       "ok": true,
-      "probe_message_id": 4557,
+      "probe_message_id": 4591,
       "deleted": true
     },
     {
@@ -46,7 +45,7 @@
       "message_thread_id": 4,
       "source": "https://t.me/c/3770334893/4",
       "ok": true,
-      "probe_message_id": 1048,
+      "probe_message_id": 1081,
       "deleted": true
     },
     {
@@ -55,7 +54,7 @@
       "message_thread_id": 273,
       "source": "community-link-topics.json",
       "ok": true,
-      "probe_message_id": 1159,
+      "probe_message_id": 1376,
       "deleted": true
     },
     {
@@ -64,7 +63,7 @@
       "message_thread_id": 1724,
       "source": "community-link-topics.json",
       "ok": true,
-      "probe_message_id": 4558,
+      "probe_message_id": 4592,
       "deleted": true
     },
     {
@@ -73,7 +72,7 @@
       "message_thread_id": 18,
       "source": "community-link-topics.json",
       "ok": true,
-      "probe_message_id": 1049,
+      "probe_message_id": 1082,
       "deleted": true
     },
     {
@@ -82,7 +81,7 @@
       "message_thread_id": 1723,
       "source": "notion_topic_ledger_record_only",
       "ok": true,
-      "probe_message_id": 4559,
+      "probe_message_id": 4593,
       "deleted": true
     },
     {
@@ -91,7 +90,7 @@
       "message_thread_id": 783,
       "source": "notion_topic_ledger_record_only",
       "ok": true,
-      "probe_message_id": 1050,
+      "probe_message_id": 1083,
       "deleted": true
     }
   ]

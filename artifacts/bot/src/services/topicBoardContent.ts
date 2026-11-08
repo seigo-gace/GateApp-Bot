@@ -47,13 +47,79 @@ export const CATEGORY_TOPICS: readonly BoardEntry[] = [
 
 export const AREA_BLOCKS: readonly AreaBlock[] = [
   { label: "北海道", url: c(AREA, 49), children: [{ label: "北海道", url: c(AREA, 49) }] },
-  { label: "東北", url: c(AREA, 621), children: [{ label: "青森" }, { label: "秋田" }, { label: "岩手" }, { label: "山形", url: c(AREA, 53) }, { label: "宮城" }, { label: "福島" }] },
-  { label: "甲信越", url: c(AREA, 990), children: [{ label: "新潟" }, { label: "長野" }, { label: "山梨" }] },
-  { label: "北陸", url: c(AREA, 991), children: [{ label: "富山" }, { label: "石川", url: c(AREA, 60) }, { label: "福井" }] },
-  { label: "北関東", url: c(AREA, 992), children: [{ label: "群馬" }, { label: "栃木" }, { label: "茨城" }] },
-  { label: "東京", url: c(AREA, 993), children: [{ label: "池袋" }, { label: "新宿", url: c(AREA, 66) }, { label: "渋谷" }, { label: "品川" }, { label: "都心", url: c(AREA, 69) }, { label: "区東部", url: c(AREA, 70) }, { label: "都下" }] },
-  { label: "南関東", url: c(AREA, 994), children: [{ label: "千葉" }, { label: "埼玉" }, { label: "横須賀・湘南・小田原", url: c(AREA, 74) }, { label: "横浜・川崎" }, { label: "町田・相模原・厚木" }] },
-  { label: "東海", url: c(AREA, 995), children: [{ label: "静岡" }, { label: "愛知", url: c(AREA, 78) }, { label: "岐阜", url: c(AREA, 79) }, { label: "三重", url: c(AREA, 80) }] },
+  {
+    label: "東北",
+    url: c(AREA, 621),
+    children: [
+      { label: "青森", url: c(AREA, 50) },
+      { label: "秋田", url: c(AREA, 51) },
+      { label: "岩手", url: c(AREA, 52) },
+      { label: "山形", url: c(AREA, 53) },
+      { label: "宮城", url: c(AREA, 54) },
+      { label: "福島", url: c(AREA, 55) },
+    ],
+  },
+  {
+    label: "甲信越",
+    url: c(AREA, 990),
+    children: [
+      { label: "新潟", url: c(AREA, 56) },
+      { label: "長野", url: c(AREA, 57) },
+      { label: "山梨", url: c(AREA, 58) },
+    ],
+  },
+  {
+    label: "北陸",
+    url: c(AREA, 991),
+    children: [
+      { label: "富山", url: c(AREA, 59) },
+      { label: "石川", url: c(AREA, 60) },
+      { label: "福井", url: c(AREA, 61) },
+    ],
+  },
+  {
+    label: "北関東",
+    url: c(AREA, 992),
+    children: [
+      { label: "群馬", url: c(AREA, 62) },
+      { label: "栃木", url: c(AREA, 63) },
+      { label: "茨城", url: c(AREA, 64) },
+    ],
+  },
+  {
+    label: "東京",
+    url: c(AREA, 993),
+    children: [
+      { label: "池袋", url: c(AREA, 65) },
+      { label: "新宿", url: c(AREA, 66) },
+      { label: "渋谷", url: c(AREA, 67) },
+      { label: "品川", url: c(AREA, 68) },
+      { label: "都心", url: c(AREA, 69) },
+      { label: "区東部", url: c(AREA, 70) },
+      { label: "都下", url: c(AREA, 71) },
+    ],
+  },
+  {
+    label: "南関東",
+    url: c(AREA, 994),
+    children: [
+      { label: "千葉", url: c(AREA, 72) },
+      { label: "埼玉", url: c(AREA, 73) },
+      { label: "横須賀・湘南・小田原", url: c(AREA, 74) },
+      { label: "横浜・川崎", url: c(AREA, 75) },
+      { label: "町田・相模原・厚木", url: c(AREA, 76) },
+    ],
+  },
+  {
+    label: "東海",
+    url: c(AREA, 995),
+    children: [
+      { label: "静岡", url: c(AREA, 77) },
+      { label: "愛知", url: c(AREA, 78) },
+      { label: "岐阜", url: c(AREA, 79) },
+      { label: "三重", url: c(AREA, 80) },
+    ],
+  },
   { label: "関西", url: c(AREA, 996), children: [{ label: "滋賀", url: c(AREA, 81) }, { label: "京都", url: c(AREA, 82) }, { label: "大阪キタ", url: c(AREA, 83) }, { label: "大阪ミナミ", url: c(AREA, 84) }, { label: "兵庫", url: c(AREA, 85) }, { label: "奈良", url: c(AREA, 86) }, { label: "和歌山", url: c(AREA, 87) }] },
   { label: "中国", url: c(AREA, 997), children: [{ label: "鳥取", url: c(AREA, 88) }, { label: "島根", url: c(AREA, 89) }, { label: "岡山", url: c(AREA, 90) }, { label: "広島", url: c(AREA, 91) }, { label: "山口", url: c(AREA, 92) }] },
   { label: "四国", url: c(AREA, 998), children: [{ label: "徳島", url: c(AREA, 93) }, { label: "香川", url: c(AREA, 94) }, { label: "愛媛", url: c(AREA, 95) }, { label: "高知", url: c(AREA, 96) }] },
@@ -65,30 +131,8 @@ export const AREA_BLOCK_SEARCH_URL = "https://t.me/GayBBS_bot?start=search";
 export const AREA_BLOCK_FREETALK_URL = "https://t.me/c/3847210571/116";
 
 /** Master #6725069736: no verified t.me URL in repo/DB yet (do not fabricate). */
-export const AREA_CHILD_URL_PENDING = [
-  "東北/青森",
-  "東北/秋田",
-  "東北/岩手",
-  "東北/宮城",
-  "東北/福島",
-  "甲信越/新潟",
-  "甲信越/長野",
-  "甲信越/山梨",
-  "北陸/富山",
-  "北陸/福井",
-  "北関東/群馬",
-  "北関東/栃木",
-  "北関東/茨城",
-  "東京/池袋",
-  "東京/渋谷",
-  "東京/品川",
-  "東京/都下",
-  "南関東/千葉",
-  "南関東/埼玉",
-  "南関東/横浜・川崎",
-  "南関東/町田・相模原・厚木",
-  "東海/静岡",
-] as const;
+/** All child area URLs canonical in AREA_BLOCKS + deploy/area-child-url-canonical-probe-v1.json */
+export const AREA_CHILD_URL_PENDING = [] as const;
 
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -172,7 +216,7 @@ export function buildTopicBoardHtml(board: "video" | "category"): string {
       : "趣味・好み・交流目的に合わせて、気になるカテゴリーから友達や仲間を探しましょう。";
   const body = entries.map((entry) => {
     ensureLink(entry.url, group);
-    return `<b>${escapeHtml(entry.label)}</b>\n${escapeHtml(entry.description)}\n${htmlLink("🔗 掲示板を開く", entry.url)}`;
+    return `${htmlLink(entry.label, entry.url)}\n${escapeHtml(entry.description)}`;
   });
   const text = `<b>${escapeHtml(title)}</b>\n\n${escapeHtml(intro)}\n\n${body.join("\n\n")}`;
   if (text.length > 4096) throw new Error("BOARD_TEXT_TOO_LONG");
@@ -220,6 +264,17 @@ export function buildL1IndexDelivery(
   kind: "video" | "category",
 ): TopicBoardPanel {
   return { text: buildTopicBoardHtml(kind), rows: [] };
+}
+
+/** L0 総合案内13ボタン + L1カテゴリ/ビデオ案内本文を1投稿に統合（エリア全国板と同型）。 */
+export function buildL1CombinedPanel(
+  kind: "video" | "category",
+  navLinks: readonly NavLink[],
+): TopicBoardPanel {
+  return {
+    text: buildTopicBoardHtml(kind),
+    rows: renderApprovedLinks("general_guide", navLinks),
+  };
 }
 
 export function buildAreaBlockPanel(

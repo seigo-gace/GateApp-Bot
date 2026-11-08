@@ -40,13 +40,18 @@ async function main(): Promise<void> {
   );
   if (!panels.rows.length) throw new Error("NO_VERIFIED_PANELS");
   const AREA = -1003847210571;
+  const VIDEO = -1002373696859;
+  const GAY = -1003770334893;
   for (const row of panels.rows) {
-    if (Number(row.chat_id) === AREA && row.panel_type === "general_guide") {
+    if (
+      row.panel_type === "general_guide" &&
+      [AREA, VIDEO, GAY].includes(Number(row.chat_id))
+    ) {
       console.log(
         JSON.stringify({
-          chat_id: AREA,
+          chat_id: Number(row.chat_id),
           panel_type: "general_guide",
-          skipped: "area_general_guide_on_national_message_1166",
+          skipped: "general_guide_on_l1_combined_topic_board",
         }),
       );
       continue;
