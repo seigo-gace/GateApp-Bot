@@ -1,0 +1,51 @@
+{
+  "schema": "tgtumbler.guide-document-visibility-inventory/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6720049968",
+  "methods_used": [
+    "Postgres general_guide_documents (0 rows)",
+    "getChat pinned_message (group-level, not forum-topic scoped)",
+    "copyMessage protected ONLINE cards only",
+    "Repository Notion markdown under docs/tgtumbler-pages (text without Telegram message_id)"
+  ],
+  "per_board": [
+    {
+      "board_key": "area_bbs",
+      "general_guide_thread_id": 43,
+      "visible_via_bot_api": {
+        "group_pinned_in_guide_thread": null,
+        "indexed_in_db": []
+      },
+      "inference": "No Bot-visible legal post inside thread 43; client must confirm whether 5常設文書 exist before bind"
+    },
+    {
+      "board_key": "video_chat",
+      "general_guide_thread_id": 1723,
+      "visible_via_bot_api": {
+        "group_pinned_message_id": 1697,
+        "group_pinned_thread_id": 1696,
+        "pin_in_general_guide_thread": false,
+        "copyMessage_pin_probe": "HTTP 400 (protected or not copyable)"
+      },
+      "inference": "Pin 1697 is outside thread 1723 — not auto-bindable as M1 document"
+    },
+    {
+      "board_key": "gay_board",
+      "general_guide_thread_id": 783,
+      "visible_via_bot_api": {
+        "group_pinned_message_id": 211,
+        "group_pinned_thread_id": 210,
+        "pin_in_general_guide_thread": false,
+        "copyMessage_pin_probe": "HTTP 400"
+      },
+      "inference": "Pin 211 is outside thread 783 — not auto-bindable as M1 document"
+    }
+  ],
+  "minimal_master_operations_not_fifteen_blind_binds": {
+    "step_1": "Telegram client: open each general_guide topic (43/1723/783) and note whether distinct posts exist for 利用規約・グループルール・安全ガイド・プライバシー・使い方",
+    "step_2_if_posts_exist": "Only for each visible post: reply + /bindguidemessage <type> (max 5 per board, only types that match content)",
+    "step_2_if_missing": "Stop — no SQL INSERT; report missing types to Master (not Composer fabricate)",
+    "composer_cannot": "Impersonate admin DM for Phase A or read forum thread history"
+  },
+  "phase_a_template": "deploy/phase-a-admin-dm-e2e-template.json",
+  "phase_a_gate_recorder": "deploy/record_phase_a_gates.py (fails closed until template filled)"
+}

@@ -1,0 +1,73 @@
+{
+  "schema": "tgtumbler.phase-a-admin-dm-e2e/v1",
+  "status": "NOT_EXECUTED_BY_COMPOSER",
+  "bot": "@GayBBS_bot",
+  "actor": "MENU_PUBLISH_ADMIN_ID private chat only",
+  "master_ref": "issues/7#issuecomment-6720049968",
+  "safety_rules": [
+    "Do not press final group publish on /recruit /announce /room /link",
+    "Stop at DM preview or cancel; recruitment publish requires explicit topic publish step",
+    "No new group messages except existing protected IDs"
+  ],
+  "source_dm_paths": "artifacts/bot/src/gaybbsBot.ts commands — independent of m_ tokens",
+  "commands": [
+    {
+      "feature": "announcement",
+      "command": "/recruit",
+      "safe_stop": "Preview screen showing 未投稿; cancel via inline キャンセル",
+      "group_publish_avoid": "Do not confirm 投稿 to topic",
+      "evidence_fields": {
+        "dm_message_id": null,
+        "observed_buttons": [],
+        "observed_at_utc": null
+      }
+    },
+    {
+      "feature": "announcement",
+      "command": "/announce",
+      "safe_stop": "Wizard before topic delivery",
+      "group_publish_avoid": "Do not complete publishPost",
+      "evidence_fields": {
+        "dm_message_id": null,
+        "observed_at_utc": null
+      }
+    },
+    {
+      "feature": "room",
+      "command": "/room",
+      "safe_stop": "Draft editor first screen",
+      "evidence_fields": {
+        "dm_message_id": null,
+        "observed_at_utc": null
+      }
+    },
+    {
+      "feature": "link",
+      "command": "/link",
+      "safe_stop": "Draft editor first screen",
+      "evidence_fields": {
+        "dm_message_id": null,
+        "observed_at_utc": null
+      }
+    },
+    {
+      "feature": "search",
+      "command": "/search",
+      "safe_stop": "Search editor opened",
+      "evidence_fields": {
+        "dm_message_id": null,
+        "observed_at_utc": null
+      }
+    },
+    {
+      "feature": "help",
+      "command": "/help",
+      "safe_stop": "Operation help 3x2 DM keyboard visible",
+      "evidence_fields": {
+        "dm_message_id": null,
+        "observed_at_utc": null
+      }
+    }
+  ],
+  "gate_insertion": "Run deploy/record_phase_a_gates.py only after all evidence_fields filled with real values"
+}
