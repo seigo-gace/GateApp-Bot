@@ -9,7 +9,7 @@ import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js"
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
 import {currentMenuOrigin,verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
-import {currentTopicDmEntry} from "../services/topicDmEntry.js";
+import {currentTopicDmEntry,assertTopicDmEntryDestination} from "../services/topicDmEntry.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost} from "../services/publishService.js";
@@ -371,6 +371,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   try{
    await ctx.answerCbQuery("投稿しています");
    if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d))return;
+   const selected=await getVerifiedTopic(Number(ctx.match[2]),"announcement");
+   await assertTopicDmEntryDestination(ctx.from.id,selected.chatId,selected.threadId);
    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]));
    await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+sent.chatId+
     " / Topic "+sent.threadId+"\n投稿ID："+sent.messageId);
