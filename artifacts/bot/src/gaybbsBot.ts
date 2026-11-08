@@ -96,18 +96,19 @@ async function main():Promise<void>{
   const keyboard=await bareStartPostingExtra(chatId);
   await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
  });
- bot.action(/^dm:blocked:(announcement|room|link|search|help)$/,async ctx=>{
+ bot.action(/^dm:blocked:(profile|announcement|room|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery(
    "この機能は現在準備中です。各掲示板の固定投稿メニューからお試しください。",
    { show_alert: true },
   );
  });
- bot.action(/^dm:(recruit|room|announcement|link|search|help)$/,async ctx=>{
+ bot.action(/^dm:(profile|recruit|room|announcement|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery();
   const kind=ctx.match[1];
-  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
+  if(kind==="profile")await startProfileEditor(ctx);
+  else if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
   else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id);
   else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
   else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
