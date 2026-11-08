@@ -9,6 +9,7 @@ import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js"
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
 import {currentMenuOrigin,verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
+import {currentTopicDmEntry} from "../services/topicDmEntry.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost} from "../services/publishService.js";
@@ -65,7 +66,7 @@ function inputInstructions(linked:boolean){
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
  const profile=input.mode==="linked"?await getProfile(id):null;
- const origin=await currentMenuOrigin(id);
+ const origin=(await currentTopicDmEntry(id))??(await currentMenuOrigin(id));
  const destinations=await listVerifiedTopics("announcement");
  const current=origin?destinations.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
  const rawDestination=current?"投稿先："+current.board+" / "+current.title:
@@ -339,7 +340,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    validateRecruitmentReady(asInput(d),
     asInput(d).mode==="linked"?await getProfile(ctx.from.id):null);
    const options=await listVerifiedTopics("announcement");
-   const origin=await currentMenuOrigin(ctx.from.id);
+   const origin=(await currentTopicDmEntry(ctx.from.id))??(await currentMenuOrigin(ctx.from.id));
    const preferred=origin?options.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
    if(preferred){
     await ctx.answerCbQuery("投稿処理を確認しています");
