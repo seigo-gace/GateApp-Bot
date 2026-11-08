@@ -37,7 +37,8 @@ export async function activateTopicDmEntry(
   throw Error("TOPIC_ENTRY_NOT_REGISTERED");
  // Prove the user is still a member of the originating forum.
  const membership=await telegram.getChatMember(chatId,userId);
- if(["left","kicked"].includes(membership.status))
+ if(membership.status==="left"||membership.status==="kicked"||
+    (membership.status==="restricted"&&!membership.is_member))
   throw Error("TOPIC_ENTRY_MEMBERSHIP_REQUIRED");
  await pool.query(
   `INSERT INTO topic_dm_entry_sessions(owner_user_id,chat_id,message_thread_id,token_hash,expires_at)
