@@ -62,7 +62,10 @@ function preview(module:Module,draft:EditorDraft):string {
   placeCodes:Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[]}));
 }
 async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:number}},module:Module,revision:number,board?:BoardKey):Promise<void>{
- const options=(await listVerifiedTopics(module as PostPurpose)).filter(x=>!board||x.board===board);
+ const pinned=ctx.from?.id?await currentTopicDmEntry(ctx.from.id):null;
+ const options=(await listVerifiedTopics(module as PostPurpose))
+  .filter(x=>(!board||x.board===board)&&
+   (!pinned||(x.chatId===pinned.chatId&&x.threadId===pinned.threadId)));
  if(!options.length){
   const message="投稿先の実Topic IDがまだ確認されていません。管理者によるトピック接続後に公開できます。下書きは保持しています。";
   const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
@@ -72,8 +75,7 @@ async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:n
   else await ctx.reply(message);
   return;
  }
- const topicEntry=ctx.from?.id?await currentTopicDmEntry(ctx.from.id):null;
- const origin=topicEntry??(ctx.from?.id?await currentMenuOrigin(ctx.from.id):null);
+ const origin=pinned??(ctx.from?.id?await currentMenuOrigin(ctx.from.id):null);
  // N14: the topic a member came from is their default. It may not be a
  // suitable purpose/board (e.g. Profile has its own dedicated topic).
  // No guessed destination or silently substituted topic.
