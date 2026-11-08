@@ -3,7 +3,7 @@
  * missing functionality or links to a disabled document.
  */
 export type NavLink={label:string;url:string;verified:boolean};
-export type EntryLink={feature:"announcement"|"room"|"link"|"search"|"help";label:string;url:string;ready:boolean};
+export type EntryLink={feature:"profile"|"announcement"|"room"|"link"|"search"|"help";label:string;url:string;ready:boolean};
 export type PanelSpec={
  type:"general_guide"|"posting";
  board:"area_bbs"|"video_chat"|"gay_board";
@@ -81,7 +81,7 @@ function assertPublishedLink(link:NavLink|EntryLink):void{
  */
 export const APPROVED_POSTING_ROWS = [
  ["相手募集","募集+Room","告知/予告"],
- ["クリエーター有料ビデオ投稿"],
+ ["プロフ作成","クリエーター有料ビデオ投稿"],
  ["🔗ボタン作成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
 ] as const;
@@ -146,6 +146,7 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  // Labels and feature ownership must match the exact Master-approved layout.
  const allowed:Readonly<Record<string,EntryLink["feature"]>>={
   "相手募集":"announcement","募集+Room":"room",
+  "プロフ作成":"profile",
   "告知/予告":"announcement","🔗ボタン作成":"link",
   "検索/フィルター":"search","操作説明":"help",
  };
