@@ -10,12 +10,12 @@ const makeLinks=(labels:readonly (readonly string[])[]) =>
   label,url:"https://t.me/c/3847210571/"+(i+100),verified:true
  }));
 
-test("Master-approved posting rows remain exactly 3/1/2/3, without profile or filler",()=>{
+test("Master-approved posting rows remain exactly 3/2/2/3, with profile creation and no filler",()=>{
  const result=renderMenuPanel({type:"posting",board:"area_bbs",
   links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
  assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_POSTING_ROWS.map(r=>[...r]));
- assert.deepEqual(result.rows.map(r=>r.length),[3,1,2,3]);
- assert.ok(!result.rows.flat().some(x=>x.text.includes("プロフ")));
+ assert.deepEqual(result.rows.map(r=>r.length),[3,2,2,3]);
+ assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエーター有料ビデオ投稿"]);
 });
 test("Master-approved general-guide rows remain exactly 3/3/3/4",()=>{
  const result=renderMenuPanel({type:"general_guide",board:"gay_board",
@@ -32,11 +32,11 @@ test("Master-approved help rows remain exactly two rows of three",()=>{
 test("publishing incomplete or unverified menu is rejected, not auto-padded",()=>{
  const links=makeLinks(APPROVED_POSTING_ROWS);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
-  links:links.slice(0,8),entryLinks:[]}),/MISSING_VERIFIED/);
+  links:links.slice(0,-1),entryLinks:[]}),/MISSING_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
   links:[...links,{...links[0]!}],entryLinks:[]}),/DUPLICATE/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
-  links:[...links.slice(0,8),{...links[8]!,verified:false}],entryLinks:[]}),/NOT_VERIFIED/);
+  links:[...links.slice(0,-1),{...links.at(-1)!,verified:false}],entryLinks:[]}),/NOT_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
   links:[],entryLinks:[{feature:"link",label:"検索/フィルター",
    url:"https://t.me/GayBBS_bot",ready:true}]}),/POSTING_ENTRY_NOT_APPROVED/);
@@ -58,7 +58,7 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
  assert.deepEqual(result.rows.at(-2)?.map(x=>x.text),["検索","フィルター"]);
 });
 
-test("posting panel merges six verified DM editors and three verified navigation URLs",()=>{
+test("posting panel merges seven verified DM editors and three verified navigation URLs",()=>{
  const staticLabels=["クリエーター有料ビデオ投稿",
   "雑談","紹介/招待"];
  const links=staticLabels.map((label,i)=>({label,
@@ -67,6 +67,7 @@ test("posting panel merges six verified DM editors and three verified navigation
   {label:"相手募集",feature:"announcement",url:"https://t.me/GayBBS_bot?start=r_123",ready:true},
   {label:"募集+Room",feature:"room",url:"https://t.me/GayBBS_bot?start=m_123",ready:true},
   {label:"告知/予告",feature:"announcement",url:"https://t.me/GayBBS_bot?start=m_456",ready:true},
+  {label:"プロフ作成",feature:"profile",url:"https://t.me/GayBBS_bot?start=m_457",ready:true},
   {label:"🔗ボタン作成",feature:"link",url:"https://t.me/GayBBS_bot?start=m_789",ready:true},
   {label:"検索/フィルター",feature:"search",url:"https://t.me/GayBBS_bot?start=m_900",ready:true},
   {label:"操作説明",feature:"help",url:"https://t.me/GayBBS_bot?start=m_901",ready:true},
@@ -75,8 +76,9 @@ test("posting panel merges six verified DM editors and three verified navigation
   entryLinks:[...entryLinks]});
  assert.deepEqual(result.rows.map(row=>row.map(x=>x.text)),
   APPROVED_POSTING_ROWS.map(row=>[...row]));
- assert.deepEqual(result.rows.map(row=>row.length),[3,1,2,3]);
+ assert.deepEqual(result.rows.map(row=>row.length),[3,2,2,3]);
  assert.ok(result.rows[0][0]!.url.includes("start=r_"));
+ assert.equal(result.rows[1][0]!.text,"プロフ作成");
  assert.equal(result.rows[2][0]!.text,"🔗ボタン作成");
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:entryLinks.slice(0,3) as any}),/MISSING_VERIFIED/);
