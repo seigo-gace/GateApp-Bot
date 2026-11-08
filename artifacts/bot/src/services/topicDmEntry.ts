@@ -77,27 +77,28 @@ export async function publishTopicDmEntry(
  if(botMember.status!=="creator"&&botMember.status!=="administrator"||
     (botMember.status==="administrator"&&!botMember.can_pin_messages))
   throw Error("TOPIC_ENTRY_BOT_PIN_PERMISSION_REQUIRED");
+ const old=await pool.query(
+  `SELECT message_id,state,pinned FROM topic_dm_entry_pins
+   WHERE chat_id=$1 AND message_thread_id=$2`,[chatId,threadId]);
+ if(old.rows.length){
+  if(old.rows[0].state==="published"&&old.rows[0].pinned===true&&
+     Number(old.rows[0].message_id)>0)
+   return {messageId:Number(old.rows[0].message_id),updatedExisting:true};
+  if(old.rows[0].state!=="verified"||old.rows[0].message_id!==null)
+   throw Error("TOPIC_ENTRY_NEEDS_RECONCILE");
+ }
  const token=newMenuToken(),hash=tokenHash(token);
  const claimed=await pool.query(
   `INSERT INTO topic_dm_entry_pins(chat_id,message_thread_id,title,token_hash,verified_by,state)
    VALUES($1,$2,$3,$4,$5,'publishing')
    ON CONFLICT(chat_id,message_thread_id) DO UPDATE SET
+    title=EXCLUDED.title,token_hash=EXCLUDED.token_hash,
     state='publishing',updated_at=NOW()
-   WHERE topic_dm_entry_pins.state IN ('verified','published')
+   WHERE topic_dm_entry_pins.state='verified'
+     AND topic_dm_entry_pins.message_id IS NULL
    RETURNING token_hash,message_id,pinned,state`,
   [chatId,threadId,title,hash,adminId]);
  if(claimed.rows.length!==1)throw Error("TOPIC_ENTRY_NEEDS_RECONCILE");
- const existing=claimed.rows[0];
- // Existing token cannot be recovered from the one-way hash. The unrotated
- // URL must be stored encrypted or a fresh token must be issued for an edit.
- // Existing pinned entries are therefore never blindly re-rendered here.
- if(existing.message_id!==null){
-  await pool.query(
-   `UPDATE topic_dm_entry_pins SET state='needs_reconcile',updated_at=NOW()
-     WHERE chat_id=$1 AND message_thread_id=$2 AND state='publishing'`,
-   [chatId,threadId]);
-  throw Error("TOPIC_ENTRY_EXISTING_TOKEN_RECOVERY_REQUIRED");
- }
  let sent=false;
  try {
   const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
