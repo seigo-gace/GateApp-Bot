@@ -306,6 +306,7 @@ export async function runMigrations(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE room_posts ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
       CREATE TABLE IF NOT EXISTS room_host_sessions (
         owner_user_id BIGINT PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
