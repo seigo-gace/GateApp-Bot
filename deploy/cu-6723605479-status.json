@@ -1,0 +1,25 @@
+{
+  "cu": "6723605479",
+  "issue": 7,
+  "branch": "integrate/profile-menu-merge-online-20261108",
+  "remote_before": "f3a5d8b11c64530237a71889f9560fbc59179599",
+  "actions": [
+    "L0 publisher gate: require terms/rules/safety/howto only (privacy no longer blocks 2x6)",
+    "DM user strings: remove /room /announce /help command hints in posting and help handlers",
+    "docker rebuild gace-tgtumbler-gaybbs:local"
+  ],
+  "docker_image": "sha256:704bd223f9f5cca6a05fef8ab75336ab99f3a5dc797d9306f4a7121812fcb651",
+  "posting_menu_message_ids": {
+    "area_bbs": 1160,
+    "gay_board": 1051,
+    "video_chat": 4560
+  },
+  "l0_blocker": {
+    "general_guide_documents_rows": 0,
+    "required_display_docs": ["terms", "rules", "safety", "howto"],
+    "general_guide_links_verified": true,
+    "note": "privacy remains bindable for compliance; not shown as L0 button"
+  },
+  "telegram_device_acceptance": "NOT_RUN_BY_COMPOSER",
+  "master_minimal_for_l0": "Per chat: bind existing topic posts for 4 display doc types via /bindguidemessage; then /publishpanel general_guide (edit if message_id exists)"
+}

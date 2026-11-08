@@ -43,8 +43,10 @@ async function buildLinks(panel:PanelRow):Promise<{
   const panelLabels:Record<string,string>={
    terms:"利用規約",rules:"グループルール",safety:"安全ガイド",howto:"使い方",
   };
-  const must=["terms","rules","safety","privacy","howto"];
-  if(must.some(name=>!docs.rows.some(r=>r.document_type===name)))
+  /** L0 2×6 renders four document buttons only; privacy is indexed for
+   * approval/compliance but must not block the approved 12-button layout. */
+  const l0DisplayDocs=["terms","rules","safety","howto"] as const;
+  if(l0DisplayDocs.some(name=>!docs.rows.some(r=>r.document_type===name)))
    throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
   const links:NavLink[]=Object.entries(panelLabels).map(([name,label])=>{
    const row=docs.rows.find(r=>r.document_type===name);

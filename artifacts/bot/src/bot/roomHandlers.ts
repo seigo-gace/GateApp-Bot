@@ -59,7 +59,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
   const r=await pool.query(
    `SELECT room_id,title,status,revision,join_visibility FROM room_posts
     WHERE owner_user_id=$1 ORDER BY updated_at DESC LIMIT 20`,[ctx.from.id]);
-  if(!r.rows.length){await ctx.reply("ROOMはまだありません。/room で下書きから作成できます。");return;}
+  if(!r.rows.length){await ctx.reply("ROOMはまだありません。投稿メニューから作成できます。");return;}
   for(const x of r.rows){
    await ctx.reply("🎬 "+String(x.title)+"\n状態："+String(x.status)+
     "\nROOM #"+x.room_id,actions(Number(x.room_id),Number(x.revision),x.status,x.join_visibility));

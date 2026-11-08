@@ -281,7 +281,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("publishprofile",async ctx=>{
   if(!privateDM(ctx))return;
   const p=await getProfile(ctx.from.id);
-  if(!p){await ctx.reply("先に /profile で登録してください。");return;}
+  if(!p){await ctx.reply("先にプロフを登録してください。投稿メニューまたは操作説明から進められます。");return;}
   await destinationMenu(ctx,"profile",p.revision);
  });
  bot.command("room",async ctx=>{
@@ -293,7 +293,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const op=ctx.match[1],rev=Number(ctx.match[2]),choice=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"room");
   if(!d||d.step!=="preview"||d.revision!==rev){
-   await ctx.answerCbQuery("操作が古くなりました。/room から再開してください。");return;
+   await ctx.answerCbQuery("操作が古くなりました。投稿メニューから再度お試しください。");return;
   }
   try{
    if(op==="mode"){
@@ -350,10 +350,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
      previous??{cancelled:true});
     await ctx.answerCbQuery("ROOMの作成を中止しました");
     await ctx.editMessageText("ROOM作成をキャンセルしました。"+
-     (previous?"\n以前に保存した下書きは保持されています。/room から再開できます。":""));
+     (previous?"\n以前に保存した下書きは保持されています。投稿メニューから再開できます。":""));
    }
   }catch{
-   await ctx.answerCbQuery("操作できません。/room から確認してください。");
+   await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
  });
  bot.command("link",async ctx=>{
@@ -371,7 +371,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const d=await getDraft(ctx.from.id,"announcement");
   if(!d||d.revision!==rev||!["preview","awaiting_text","awaiting_datetime"].includes(d.step)||
      d.data.kind==="recruitment"){
-   await ctx.answerCbQuery("古い操作です。/announce から再開してください。");return;
+   await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");return;
   }
   try{
    if(op==="kind"){
@@ -425,7 +425,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else if(op==="save"){
     await saveAnnouncementEditorDraft(ctx.from.id,rev);
     await ctx.answerCbQuery("下書きを保存しました");
-    await ctx.editMessageText("✅ 告知/予告を非公開保存しました。/announce から再開できます。");
+    await ctx.editMessageText("✅ 告知/予告を非公開保存しました。投稿メニューから再開できます。");
    }else if(op==="cancel"){
     const old=d.data.savedTemplate;
     const saved=old&&typeof old==="object"&&!Array.isArray(old)?
@@ -437,7 +437,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
      (saved?"\n以前の保存済み下書きは残っています。":""));
    }
   }catch{
-   await ctx.answerCbQuery("操作できません。/announce から内容を確認してください。");
+   await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
  });
  bot.action(/^post:kind:(\d+):(announcement|preview|recruitment)$/,async ctx=>{
@@ -445,7 +445,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const rev=Number(ctx.match[1]);const kind=ctx.match[2] as AnnouncementKind;
   const draft=await getDraft(ctx.from.id,"announcement");
   if(!draft||draft.revision!==rev||draft.step!=="awaiting_kind"){
-   await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
+   await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");return;
   }
   const updated=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_text",{...draft.data,kind});
   await ctx.answerCbQuery();
@@ -458,7 +458,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const rev=Number(ctx.match[1]), i=Number(ctx.match[2]);
   const d=await getDraft(ctx.from.id,"announcement");
   if(!d||d.step!=="awaiting_tags"||d.revision!==rev||i>=PURPOSE_TAGS.length){
-   await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
+   await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");return;
   }
   const tag=PURPOSE_TAGS[i]!;
   const values=Array.isArray(d.data.purposeCodes)?d.data.purposeCodes as string[]:[];
@@ -474,7 +474,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const rev=Number(ctx.match[1]),index=Number(ctx.match[2]);
   const d=await getDraft(ctx.from.id,"announcement");
   if(!d||d.step!=="awaiting_tags"||d.revision!==rev){
-   await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
+   await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");return;
   }
   const current=Array.isArray(d.data.placeCodes)?d.data.placeCodes as string[]:[];
   const place=index===0?"場所あり":index===1?"場所なし":null;
@@ -494,7 +494,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const rev=Number(ctx.match[1]);
   const d=await getDraft(ctx.from.id,"announcement");
   if(!d||d.step!=="awaiting_tags"||d.revision!==rev){
-   await ctx.answerCbQuery("古い操作です。/announce で再開してください。");return;
+   await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");return;
   }
   const purposeCodes=Array.isArray(d.data.purposeCodes)?d.data.purposeCodes as string[]:[];
   const placeCodes=Array.isArray(d.data.placeCodes)?d.data.placeCodes as string[]:[];
@@ -606,15 +606,15 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const rev=Number(ctx.match[1]);
   const d=await getDraft(ctx.from.id,"room");
   if(!d||d.step!=="preview"||d.revision!==rev){
-   await ctx.answerCbQuery("古い操作です。/room から再開してください。");
+   await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");
    return;
   }
   try{
    parseRoomDetails(String(d.data.title||"")+"\n"+String(d.data.description||""));
    await saveRoomEditorDraft(ctx.from.id,rev);
    await ctx.answerCbQuery("下書き保存済み");
-   await ctx.editMessageText("✅ ROOMのタイトル・説明・設定を非公開保存しました。\n/room から再利用できます。");
-  }catch{await ctx.answerCbQuery("保存に失敗しました。/room から確認してください。");}
+   await ctx.editMessageText("✅ ROOMのタイトル・説明・設定を非公開保存しました。\n投稿メニューから再利用できます。");
+  }catch{await ctx.answerCbQuery("保存に失敗しました。投稿メニューから再度お試しください。");}
  });
  bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
@@ -714,7 +714,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }else{
    const d=await getDraft(ctx.from.id,module);
    if(!d||d.revision!==rev||d.step!=="preview"){
-    await ctx.answerCbQuery("古い操作です。/room、/announce、/linkから再開してください。");return;
+    await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");return;
    }
    // Preserve all private draft fields, but advance the revision so an old
    // confirmation tap cannot publish after the owner cancelled it.

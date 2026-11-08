@@ -87,7 +87,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   const s=await load(ctx.from.id);
   if(!s||s.revision!==rev||(op==="open"&&s.section!==topic)||
    (op==="topic"&&s.section!=="home")){
-   await ctx.answerCbQuery("古い操作です。/help から再開してください。");return;
+   await ctx.answerCbQuery("古い操作です。投稿メニューの操作説明から再度お試しください。");return;
   }
   await ctx.answerCbQuery();
   if(op==="topic"){
@@ -108,7 +108,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),s=await load(ctx.from.id);
   if(!s||s.revision!==rev){
-   await ctx.answerCbQuery("古い操作です。/help から再開してください。");return;
+   await ctx.answerCbQuery("古い操作です。投稿メニューの操作説明から再度お試しください。");return;
   }
   await ctx.answerCbQuery();
   const next=await advance(ctx.from.id,rev,"home");

@@ -25,14 +25,14 @@ async function generalGuideLinks(chatId: number): Promise<NavLink[]> {
     safety: "安全ガイド",
     howto: "使い方",
   };
-  const must = ["terms", "rules", "safety", "privacy", "howto"];
+  const l0DisplayDocs = ["terms", "rules", "safety", "howto"] as const;
   const links: NavLink[] = [];
   for (const [name, label] of Object.entries(panelLabels)) {
     const row = docs.rows.find((r) => r.document_type === name);
     if (!row) continue;
     links.push({ label, url: guideMessageUrl(chatId, Number(row.message_id)), verified: true });
   }
-  const missingDocs = must.some((name) => !docs.rows.some((r) => r.document_type === name));
+  const missingDocs = l0DisplayDocs.some((name) => !docs.rows.some((r) => r.document_type === name));
   const other = await pool.query(
     `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
        AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
