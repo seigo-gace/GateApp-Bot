@@ -15,15 +15,18 @@ const ALLOWED_CHATS = new Set<number>([
   BOARD_GROUP_CHAT_IDS.area_bbs, BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
 const tokenPattern=/^p_([A-Za-z0-9_-]{32})$/;
+export function parseTopicEntryPayload(payload:string):string{
+ const match=tokenPattern.exec(payload);
+ if(!match)throw Error("TOPIC_ENTRY_PAYLOAD_INVALID");
+ return match[1]!;
+}
 export type TopicEntryOrigin = {chatId:number;threadId:number};
 
 export async function activateTopicDmEntry(
  userId:number,payload:string,telegram:Telegram,
 ):Promise<TopicEntryOrigin>{
  if(!Number.isSafeInteger(userId)||userId<=0)throw Error("TOPIC_ENTRY_ACTOR_INVALID");
- const match=tokenPattern.exec(payload);
- if(!match)throw Error("TOPIC_ENTRY_PAYLOAD_INVALID");
- const hash=tokenHash(match[1]!);
+ const hash=tokenHash(parseTopicEntryPayload(payload));
  const row=await pool.query(
   `SELECT chat_id,message_thread_id FROM topic_dm_entry_pins
    WHERE token_hash=$1 AND state='published' AND pinned=TRUE`,[hash]);
