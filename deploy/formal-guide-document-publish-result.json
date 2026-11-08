@@ -1,0 +1,64 @@
+{
+  "published": [
+    {
+      "chat_id": -1003847210571,
+      "document_type": "terms",
+      "message_id": 1173
+    },
+    {
+      "chat_id": -1003847210571,
+      "document_type": "rules",
+      "message_id": 1174
+    },
+    {
+      "chat_id": -1003847210571,
+      "document_type": "safety",
+      "message_id": 1175
+    },
+    {
+      "chat_id": -1003847210571,
+      "document_type": "howto",
+      "message_id": 1176
+    },
+    {
+      "chat_id": -1002373696859,
+      "document_type": "terms",
+      "message_id": 4566
+    },
+    {
+      "chat_id": -1002373696859,
+      "document_type": "rules",
+      "message_id": 4567
+    },
+    {
+      "chat_id": -1002373696859,
+      "document_type": "safety",
+      "message_id": 4568
+    },
+    {
+      "chat_id": -1002373696859,
+      "document_type": "howto",
+      "message_id": 4569
+    },
+    {
+      "chat_id": -1003770334893,
+      "document_type": "terms",
+      "message_id": 1059
+    },
+    {
+      "chat_id": -1003770334893,
+      "document_type": "rules",
+      "message_id": 1060
+    },
+    {
+      "chat_id": -1003770334893,
+      "document_type": "safety",
+      "message_id": 1061
+    },
+    {
+      "chat_id": -1003770334893,
+      "document_type": "howto",
+      "message_id": 1062
+    }
+  ]
+}

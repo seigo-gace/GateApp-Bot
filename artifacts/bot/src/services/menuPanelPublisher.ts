@@ -5,9 +5,9 @@
 import type { Telegram } from "telegraf";
 import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
-import { guideMessageUrl } from "./guideMessageUrl.js";
 import {newMenuToken,tokenHash} from "./menuOrigin.js";
-import {renderMenuPanel,approvedLayoutRows,type ButtonSpec,type NavLink,type EntryLink} from "./menuPanelRenderer.js";
+import {loadGeneralGuideNavLinks} from "./generalGuideNavLinks.js";
+import {renderMenuPanel,type ButtonSpec,type EntryLink,type NavLink} from "./menuPanelRenderer.js";
 
 /** Panel menus must be URL inline_keyboard only — never URL body lists. */
 function assertInlineKeyboard(rows:readonly (readonly ButtonSpec[])[]):void{
@@ -36,31 +36,8 @@ async function buildLinks(panel:PanelRow):Promise<{
 }>{
  const chatId=Number(panel.chat_id);
  if(panel.panel_type==="general_guide"){
-  const panelLabels:Record<string,string>={
-   terms:"利用規約",rules:"グループルール",safety:"安全ガイド",howto:"使い方",
-  };
-  const docLabels=new Set(Object.values(panelLabels));
-  const navLabels=approvedLayoutRows("general_guide").flat().filter(l=>!docLabels.has(l));
-  const nav=await pool.query(
-   `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
-     AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
-     ORDER BY link_key`,[chatId]);
-  const navLinks:NavLink[]=nav.rows.map(r=>({
-   label:String(r.label),url:String(r.destination_url),verified:true}));
-  if(navLabels.some(label=>!navLinks.some(x=>x.label===label)))
-   throw new Error("GUIDE_NAV_LINKS_NOT_VERIFIED");
-  const docs=await pool.query(
-   `SELECT document_type,message_id FROM general_guide_documents
-    WHERE chat_id=$1 AND status='published' AND message_id IS NOT NULL
-    AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,[chatId]);
-  const l0DisplayDocs=["terms","rules","safety","howto"] as const;
-  if(l0DisplayDocs.some(name=>!docs.rows.some(r=>r.document_type===name)))
-   throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
-  const docLinks:NavLink[]=Object.entries(panelLabels).map(([name,label])=>{
-   const row=docs.rows.find(r=>r.document_type===name);
-   return {label,url:guideMessageUrl(chatId,Number(row!.message_id)),verified:true};
-  });
-  return {links:[...navLinks,...docLinks],entries:[],tokenHashes:[]};
+  const links=await loadGeneralGuideNavLinks(chatId);
+  return {links,entries:[],tokenHashes:[]};
  }
  const staticLabels=["クリエーター有料ビデオ投稿",
   "雑談","紹介/招待"] as const;

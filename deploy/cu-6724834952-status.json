@@ -1,0 +1,32 @@
+{
+  "schema": "tgtumbler.issue7-comment-status/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6724834952",
+  "code_changes": [
+    "L0: general_guide_documents 非依存。GUIDE_PAGES_URLS + GUIDE_BOT_DM_URLS + general_guide_links",
+    "gaybbsBot: ?start=help → startOperationHelp",
+    "peer L0: カテゴリ 1063 / ビデオ 4570（Master指定）",
+    "deploy/sync_l0_url_ledger_6724834952.sql"
+  ],
+  "telegram_readback": {
+    "gay_general_guide": { "message_id": 1063, "updated_existing": true },
+    "video_general_guide": { "message_id": 4570, "updated_existing": true },
+    "area_national_1166_combined": "NOT_PUBLISHED (AREA_CHILD_LINK_UNVERIFIED, 22 children)",
+    "l2": { "area": 1160, "gay": 1051, "video": 4560 }
+  },
+  "pages_row4": {
+    "規約": "https://tgtumbler-docs.pages.dev/terms.html",
+    "規則": "https://tgtumbler-docs.pages.dev/privacy.html",
+    "ルール": "https://tgtumbler-docs.pages.dev/group-rules.html",
+    "ガイドライン": "https://tgtumbler-docs.pages.dev/guidelines.html"
+  },
+  "unverified_area_row1": {
+    "みんなのプロフ": "DB still points to video 1613 — needs Gserver/Notion ledger URL",
+    "雑談": "DB https://t.me/c/3847210571/116 — needs Master/台帳 confirm vs dedicated 雑談 Topic"
+  },
+  "next": [
+    "Register remaining 22 topic_board_area_links from ledger",
+    "publishTopicBoards → edit 1166 (national HTML + 13 URL buttons)",
+    "Fix area profile/freetalk URLs in general_guide_links when ledger confirmed",
+    "Master E2E: 1166 body links, 13 buttons, Pages/Bot DM taps"
+  ]
+}

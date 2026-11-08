@@ -52,6 +52,10 @@ async function main():Promise<void>{
    await startSearchEditor(ctx.telegram,ctx.from.id);
    return;
   }
+  if(ctx.startPayload==="help"){
+   await startOperationHelp(ctx.telegram,ctx.from.id);
+   return;
+  }
   if(ctx.startPayload?.startsWith("a_")){
    await startApplicationEditor(ctx,ctx.startPayload);
    return;

@@ -56,7 +56,7 @@ export function renderAreaBlockBoard(spec:AreaBlockBoardSpec):RenderedPanel{
  return {
   text:spec.blockTitle+"\n"+spec.description,
   rows:[
-   ...packButtonRows(regions,2),
+   ...packButtonRows(regions,3),
    [search,filter],
    [chat,back],
   ],
@@ -85,13 +85,25 @@ export const APPROVED_POSTING_ROWS = [
  ["🔗ボタン作成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
 ] as const;
+/** Cloudflare Pages — L0 row 4 only (not Telegram doc posts). */
+export const GUIDE_PAGES_URLS = {
+  規約: "https://tgtumbler-docs.pages.dev/terms.html",
+  規則: "https://tgtumbler-docs.pages.dev/privacy",
+  ルール: "https://tgtumbler-docs.pages.dev/group-rules.html",
+  ガイドライン: "https://tgtumbler-docs.pages.dev/guidelines.html",
+} as const;
+
+/** Verified @GayBBS_bot DM deep links (handlers in gaybbsBot.ts). */
+export const GUIDE_BOT_DM_URLS = {
+  "検索/フィルター": "https://t.me/GayBBS_bot?start=search",
+  使い方: "https://t.me/GayBBS_bot?start=help",
+} as const;
+
 export const APPROVED_GUIDE_ROWS = [
- ["お知らせ","フリートーク/雑談"],
- ["全国エリアボード","カテゴリーボード"],
- ["ビデオチャット/動画","検索/フィルター"],
- ["みんなのプロフ","コミュニティリンク"],
- ["グループルール","使い方"],
- ["安全ガイド","利用規約"],
+ ["お知らせ","雑談","みんなのプロフ"],
+ ["全国ボード","カテゴリーボード","ビデオ/動画"],
+ ["検索/フィルター","使い方","リンク"],
+ ["規約","規則","ルール","ガイドライン"],
 ] as const;
 export const APPROVED_HELP_ROWS = [
  ["プロフ","Room+募集","告知/予告"],

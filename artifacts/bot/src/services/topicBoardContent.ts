@@ -3,6 +3,7 @@
  */
 import {
   packButtonRows,
+  renderApprovedLinks,
   renderAreaBlockBoard,
   type ButtonSpec,
   type NavLink,
@@ -63,6 +64,32 @@ export const AREA_BLOCKS: readonly AreaBlock[] = [
 export const AREA_BLOCK_SEARCH_URL = "https://t.me/GayBBS_bot?start=search";
 export const AREA_BLOCK_FREETALK_URL = "https://t.me/c/3847210571/116";
 
+/** Master #6725069736: no verified t.me URL in repo/DB yet (do not fabricate). */
+export const AREA_CHILD_URL_PENDING = [
+  "東北/青森",
+  "東北/秋田",
+  "東北/岩手",
+  "東北/宮城",
+  "東北/福島",
+  "甲信越/新潟",
+  "甲信越/長野",
+  "甲信越/山梨",
+  "北陸/富山",
+  "北陸/福井",
+  "北関東/群馬",
+  "北関東/栃木",
+  "北関東/茨城",
+  "東京/池袋",
+  "東京/渋谷",
+  "東京/品川",
+  "東京/都下",
+  "南関東/千葉",
+  "南関東/埼玉",
+  "南関東/横浜・川崎",
+  "南関東/町田・相模原・厚木",
+  "東海/静岡",
+] as const;
+
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const ensureLink = (url: string, expected: number): void => {
@@ -83,7 +110,23 @@ export function blockBoardKey(label: string): string {
   return `block:${label}`;
 }
 
-export function resolveBlockChildUrls(
+export function resolveChildAreaUrl(
+  blockLabel: string,
+  childLabel: string,
+  dbLinks: Readonly<Record<string, string>>,
+): string | undefined {
+  const block = AREA_BLOCKS.find((b) => b.label === blockLabel);
+  if (!block) throw new Error("AREA_BLOCK_UNKNOWN");
+  const child = block.children.find((c) => c.label === childLabel);
+  if (!child) throw new Error("AREA_CHILD_UNKNOWN");
+  const url = child.url ?? dbLinks[`${blockLabel}/${childLabel}`];
+  if (!url) return undefined;
+  ensureLink(url, AREA);
+  return url;
+}
+
+/** Verified URLs only — safe for HTML 🔗 and inline buttons (no fabricated links). */
+export function resolveBlockChildUrlsPartial(
   blockLabel: string,
   dbLinks: Readonly<Record<string, string>>,
 ): Record<string, string> {
@@ -92,15 +135,31 @@ export function resolveBlockChildUrls(
   const resolved: Record<string, string> = {};
   for (const child of block.children) {
     const key = `${blockLabel}/${child.label}`;
-    const url = child.url ?? dbLinks[key];
-    if (!url) throw new Error(`AREA_CHILD_LINK_UNVERIFIED:${key}`);
-    ensureLink(url, AREA);
-    resolved[key] = url;
+    const url = resolveChildAreaUrl(blockLabel, child.label, dbLinks);
+    if (url) resolved[key] = url;
   }
   return resolved;
 }
 
-export function buildTopicBoardPanel(board: "video" | "category"): TopicBoardPanel {
+export function resolveBlockChildUrls(
+  blockLabel: string,
+  dbLinks: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const block = AREA_BLOCKS.find((b) => b.label === blockLabel);
+  if (!block) throw new Error("AREA_BLOCK_UNKNOWN");
+  const resolved = resolveBlockChildUrlsPartial(blockLabel, dbLinks);
+  for (const child of block.children) {
+    const key = `${blockLabel}/${child.label}`;
+    if (!resolved[key]) throw new Error(`AREA_CHILD_LINK_UNVERIFIED:${key}`);
+  }
+  return resolved;
+}
+
+const htmlLink = (label: string, url: string) =>
+  `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+
+/** L1 index posts: description plus tappable HTML links (not L0 13-button menu). */
+export function buildTopicBoardHtml(board: "video" | "category"): string {
   const entries = board === "video" ? VIDEO_TOPICS : CATEGORY_TOPICS;
   const group = board === "video" ? VIDEO : GAY;
   const title =
@@ -111,29 +170,56 @@ export function buildTopicBoardPanel(board: "video" | "category"): TopicBoardPan
     board === "video"
       ? "動画・画像・ビデオチャット・作品の出品など、目的に合わせて掲示板を選んで交流しましょう。"
       : "趣味・好み・交流目的に合わせて、気になるカテゴリーから友達や仲間を探しましょう。";
-  const buttons: ButtonSpec[] = entries.map((entry) => {
+  const body = entries.map((entry) => {
     ensureLink(entry.url, group);
-    return { text: entry.label, url: entry.url };
+    return `<b>${escapeHtml(entry.label)}</b>\n${escapeHtml(entry.description)}\n${htmlLink("🔗 掲示板を開く", entry.url)}`;
   });
+  const text = `<b>${escapeHtml(title)}</b>\n\n${escapeHtml(intro)}\n\n${body.join("\n\n")}`;
+  if (text.length > 4096) throw new Error("BOARD_TEXT_TOO_LONG");
+  return text;
+}
+
+const SINGLE_AREA_BLOCK = new Set(["北海道", "沖縄"]);
+
+export function buildNationalBoardHtml(
+  dbLinks: Readonly<Record<string, string>> = {},
+): string {
+  const sections: string[] = [];
+  for (const block of AREA_BLOCKS) {
+    ensureLink(block.url, AREA);
+    if (SINGLE_AREA_BLOCK.has(block.label)) {
+      sections.push(htmlLink("📍 " + block.label, block.url));
+      continue;
+    }
+    const childLinks = block.children.map((child) => {
+      const url = resolveChildAreaUrl(block.label, child.label, dbLinks);
+      return url ? htmlLink(child.label, url) : escapeHtml(child.label);
+    });
+    sections.push(
+      `${htmlLink("📍 " + block.label, block.url)}\n${childLinks.join(" · ")}`,
+    );
+  }
+  const text =
+    `<b>🗾 全国エリアボード</b>\n\nお住まいの地域や旅先のエリアを選び、地域の掲示板へ移動できます。\n\n${sections.join("\n\n")}`;
+  if (text.length > 4096) throw new Error("BOARD_TEXT_TOO_LONG");
+  return text;
+}
+
+/** Master 2026-11-08: national message 1166 body + 13 inline buttons on one post. */
+export function buildNationalCombinedPanel(
+  dbLinks: Readonly<Record<string, string>>,
+  navLinks: readonly NavLink[],
+): TopicBoardPanel {
   return {
-    text: `${title}\n\n${intro}\n\n下のボタンから掲示板を開けます。`,
-    rows: packButtonRows(buttons, 2),
+    text: buildNationalBoardHtml(dbLinks),
+    rows: renderApprovedLinks("general_guide", navLinks),
   };
 }
 
-/** National index: 13 block buttons only (no decorative child text). */
-export function buildNationalBoardPanel(
-  blockDestinations: Readonly<Record<string, string>>,
+export function buildL1IndexDelivery(
+  kind: "video" | "category",
 ): TopicBoardPanel {
-  const buttons: ButtonSpec[] = AREA_BLOCKS.map((block) => {
-    const url = blockDestinations[block.label] ?? block.url;
-    ensureLink(url, AREA);
-    return { text: `📍 ${block.label}`, url };
-  });
-  return {
-    text: "🗾 全国エリアボード\n\nお住まいの地域や旅先のブロックを選び、配下エリアの案内へ移動できます。",
-    rows: packButtonRows(buttons, 2),
-  };
+  return { text: buildTopicBoardHtml(kind), rows: [] };
 }
 
 export function buildAreaBlockPanel(
@@ -143,31 +229,34 @@ export function buildAreaBlockPanel(
 ): TopicBoardPanel {
   const block = AREA_BLOCKS.find((b) => b.label === blockLabel);
   if (!block) throw new Error("AREA_BLOCK_UNKNOWN");
-  const areaLinks: NavLink[] = block.children.map((child) => {
-    const key = `${blockLabel}/${child.label}`;
-    const url = resolved[key] ?? child.url;
-    if (!url) throw new Error(`AREA_CHILD_LINK_UNVERIFIED:${key}`);
-    ensureLink(url, AREA);
-    return { label: child.label, url, verified: true };
-  });
+  const areaLinks: NavLink[] = [];
+  const pending: string[] = [];
+  for (const child of block.children) {
+    const url = resolved[`${blockLabel}/${child.label}`] ?? resolveChildAreaUrl(blockLabel, child.label, resolved);
+    if (url) areaLinks.push({ label: child.label, url, verified: true });
+    else pending.push(child.label);
+  }
+  if (areaLinks.length === 0) throw new Error("AREA_BLOCK_NO_VERIFIED_CHILDREN");
+  const pendingNote =
+    pending.length > 0 ? `\n（未公開リンク: ${pending.map(escapeHtml).join(" · ")}）` : "";
   return renderAreaBlockBoard({
     blockTitle: `📍 ${blockLabel}｜エリアボード`,
-    description: "地域を選んで、各掲示板へ移動できます。",
+    description: "地域を選んで、各掲示板へ移動できます。" + pendingNote,
     areaLinks,
     searchLink: { label: "🔍 検索", url: nav.search, verified: true },
     filterLink: { label: "📋 フィルター", url: nav.filter, verified: true },
-    chatLink: { label: "フリートーク/雑談", url: nav.chat, verified: true },
+    chatLink: { label: "雑談", url: nav.chat, verified: true },
     backLink: { label: "↩ 全国へ戻る", url: nav.back, verified: true },
   });
 }
 
-/* Legacy HTML builders (tests / migration only). */
 export function renderTopicBoard(board: "video" | "category"): string {
-  const panel = buildTopicBoardPanel(board);
-  return panel.text;
+  return buildTopicBoardHtml(board);
 }
-export function renderNationalBoard(): string {
-  return buildNationalBoardPanel({}).text;
+export function renderNationalBoard(
+  dbLinks: Readonly<Record<string, string>> = {},
+): string {
+  return buildNationalBoardHtml(dbLinks);
 }
 export function renderAreaBlock(label: string, resolved: Readonly<Record<string, string>> = {}): string {
   return buildAreaBlockPanel(label, resolved, {

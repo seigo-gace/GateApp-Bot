@@ -7,11 +7,12 @@ import {pool} from "../db/index.js";
 import {createTelegramDispatcher} from "../services/telegramDispatcher.js";
 import {
  AREA_BLOCKS,AREA_BLOCK_FREETALK_URL,AREA_BLOCK_SEARCH_URL,AREA_CHAT_ID,
- buildAreaBlockPanel,buildNationalBoardPanel,buildTopicBoardPanel,
- blockBoardKey,messageIdFromBoardUrl,resolveBlockChildUrls,
+ buildAreaBlockPanel,buildL1IndexDelivery,buildNationalCombinedPanel,
+ blockBoardKey,messageIdFromBoardUrl,resolveBlockChildUrlsPartial,
  type TopicBoardPanel,
 } from "../services/topicBoardContent.js";
 import { guideMessageUrl } from "../services/guideMessageUrl.js";
+import { loadGeneralGuideNavLinks } from "../services/generalGuideNavLinks.js";
 type BoardKey="video"|"category"|"national"|string;
 const CHAT_AREA=-1003847210571,CHAT_VIDEO=-1002373696859,CHAT_GAY=-1003770334893;
 function destination(key:string):number {
@@ -69,27 +70,16 @@ async function nationalBackUrl():Promise<string>{
  if(r.rows.length!==1)throw new Error("NATIONAL_BOARD_BACK_UNKNOWN");
  return guideMessageUrl(AREA_CHAT_ID,Number(r.rows[0].message_id));
 }
-async function blockGuideUrls():Promise<Record<string,string>>{
- const r=await pool.query(
-  `SELECT board_key,message_id FROM topic_board_posts
-   WHERE board_key LIKE 'block:%' AND state='published' AND message_id IS NOT NULL`);
- const out:Record<string,string>={};
- for(const row of r.rows){
-  const label=String(row.board_key).slice(6);
-  out[label]=guideMessageUrl(AREA_CHAT_ID,Number(row.message_id));
- }
- return out;
-}
 async function boardPanel(key:string):Promise<TopicBoardPanel>{
- if(key==="video"||key==="category")return buildTopicBoardPanel(key);
+ if(key==="video"||key==="category")return buildL1IndexDelivery(key);
  if(key==="national"){
-  const guides=await blockGuideUrls();
-  return buildNationalBoardPanel(guides);
+  const nav=await loadGeneralGuideNavLinks(AREA_CHAT_ID);
+  return buildNationalCombinedPanel(await loadDbAreaLinks(),nav);
  }
  if(!key.startsWith("block:"))throw new Error("BOARD_KEY_UNKNOWN");
  const block=key.slice(6);
  if(!AREA_BLOCKS.some(x=>x.label===block))throw new Error("BOARD_KEY_UNKNOWN");
- const resolved=resolveBlockChildUrls(block,await loadDbAreaLinks());
+ const resolved=resolveBlockChildUrlsPartial(block,await loadDbAreaLinks());
  return buildAreaBlockPanel(block,resolved,{
   search:AREA_BLOCK_SEARCH_URL,
   filter:AREA_BLOCK_SEARCH_URL,
@@ -193,7 +183,7 @@ export async function publishVerifiedTopicBoard(
  const claimed=await pool.query(
   `UPDATE topic_board_posts SET state='publishing',updated_at=NOW()
    WHERE board_key=$1 AND chat_id=$2 AND message_thread_id=$3
-     AND state IN ('verified','published') RETURNING message_id,state`,
+     AND state IN ('verified','published','needs_reconcile') RETURNING message_id,state`,
   [key,chatId,threadId]);
  if(claimed.rows.length!==1)throw new Error("BOARD_NOT_VERIFIED_OR_RECONCILE_REQUIRED");
  let messageId=claimed.rows[0].message_id===null?null:Number(claimed.rows[0].message_id);
@@ -203,10 +193,17 @@ export async function publishVerifiedTopicBoard(
   const dispatch=createTelegramDispatcher(telegram);
   const target={chatId,threadId};
   deliveryStarted=true;
+  const body=panel.rows.length
+   ? {text:panel.text,buttons:panel.rows}
+   : {text:panel.text,parseMode:"HTML" as const};
   if(messageId!==null){
-   await dispatch.revise(target,messageId,{text:panel.text,buttons:panel.rows});
+   try{
+    await dispatch.revise(target,messageId,body);
+   }catch(e){
+    if(!(e instanceof Error&&/message is not modified/i.test(e.message)))throw e;
+   }
   }else{
-   messageId=await dispatch.publish(target,{text:panel.text,buttons:panel.rows});
+   messageId=await dispatch.publish(target,body);
   }
   const ack=await pool.query(
    `UPDATE topic_board_posts SET state='published',message_id=$2,updated_at=NOW()

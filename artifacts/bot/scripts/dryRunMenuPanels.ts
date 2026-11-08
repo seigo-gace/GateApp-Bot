@@ -1,7 +1,7 @@
 /** Dry-run menu render from DB. No Telegram API calls. */
 import { pool } from "../src/db/index.js";
-import { guideMessageUrl } from "../src/services/guideMessageUrl.js";
-import { renderMenuPanel, approvedLayoutRows, type NavLink, type EntryLink } from "../src/services/menuPanelRenderer.js";
+import { loadGeneralGuideNavLinks } from "../src/services/generalGuideNavLinks.js";
+import { renderMenuPanel, type NavLink, type EntryLink } from "../src/services/menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS, type BoardKey } from "../src/services/topicRouting.js";
 
 const CHATS = Object.values(BOARD_GROUP_CHAT_IDS);
@@ -13,41 +13,7 @@ function boardKey(chatId: number): BoardKey {
 }
 
 async function generalGuideLinks(chatId: number): Promise<NavLink[]> {
-  const panelLabels: Record<string, string> = {
-    terms: "利用規約",
-    rules: "グループルール",
-    safety: "安全ガイド",
-    howto: "使い方",
-  };
-  const docLabels = new Set(Object.values(panelLabels));
-  const navLabels = approvedLayoutRows("general_guide").flat().filter((l) => !docLabels.has(l));
-  const nav = await pool.query(
-    `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
-       AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
-       ORDER BY link_key`,
-    [chatId],
-  );
-  const navLinks: NavLink[] = nav.rows.map((r) => ({
-    label: String(r.label),
-    url: String(r.destination_url),
-    verified: true,
-  }));
-  if (navLabels.some((label) => !navLinks.some((x) => x.label === label)))
-    throw new Error("GUIDE_NAV_LINKS_NOT_VERIFIED");
-  const docs = await pool.query(
-    `SELECT document_type,message_id FROM general_guide_documents
-     WHERE chat_id=$1 AND status='published' AND message_id IS NOT NULL
-       AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,
-    [chatId],
-  );
-  const l0DisplayDocs = ["terms", "rules", "safety", "howto"] as const;
-  if (l0DisplayDocs.some((name) => !docs.rows.some((r) => r.document_type === name)))
-    throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
-  const docLinks: NavLink[] = Object.entries(panelLabels).map(([name, label]) => {
-    const row = docs.rows.find((r) => r.document_type === name);
-    return { label, url: guideMessageUrl(chatId, Number(row!.message_id)), verified: true };
-  });
-  return [...navLinks, ...docLinks];
+  return loadGeneralGuideNavLinks(chatId);
 }
 
 async function postingLinks(chatId: number): Promise<{ links: NavLink[]; entries: EntryLink[] }> {
@@ -61,80 +27,62 @@ async function postingLinks(chatId: number): Promise<{ links: NavLink[]; entries
     url: String(row.destination_url),
     verified: true,
   }));
-  const gates = await pool.query(
-    `SELECT feature FROM gaybbs_feature_release_gates
-     WHERE feature IN ('announcement','room','link','search','help')
-       AND enabled=TRUE AND length(source_commit)=40
-       AND length(trim(ci_evidence))>0
-       AND length(trim(gserver_runtime_evidence))>0
-       AND length(trim(telegram_e2e_evidence))>0
-       AND approved_by IS NOT NULL`,
-  );
-  const ready = new Set(gates.rows.map((x) => String(x.feature)));
-  if (!["announcement", "room", "link", "search", "help"].every((x) => ready.has(x))) {
-    throw new Error("POSTING_DM_FEATURES_NOT_RELEASED");
-  }
-  const entrySpecs = [
-    { label: "相手募集", feature: "announcement" as const },
-    { label: "募集+Room", feature: "room" as const },
-    { label: "告知/予告", feature: "announcement" as const },
-    { label: "🔗ボタン作成", feature: "link" as const },
-    { label: "検索/フィルター", feature: "search" as const },
-    { label: "操作説明", feature: "help" as const },
+  const entries: EntryLink[] = [
+    { feature: "announcement", label: "相手募集", url: "https://t.me/GayBBS_bot?start=r_dry", ready: true },
+    { feature: "room", label: "募集+Room", url: "https://t.me/GayBBS_bot?start=m_dry", ready: true },
+    { feature: "announcement", label: "告知/予告", url: "https://t.me/GayBBS_bot?start=m_dry2", ready: true },
+    { feature: "link", label: "🔗ボタン作成", url: "https://t.me/GayBBS_bot?start=m_dry3", ready: true },
+    { feature: "search", label: "検索/フィルター", url: "https://t.me/GayBBS_bot?start=m_dry4", ready: true },
+    { feature: "help", label: "操作説明", url: "https://t.me/GayBBS_bot?start=m_dry5", ready: true },
   ];
-  const entries: EntryLink[] = entrySpecs.map((e) => ({
-    feature: e.feature,
-    label: e.label,
-    url: "https://t.me/GayBBS_bot?start=m_dryrun",
-    ready: true,
-  }));
   return { links, entries };
 }
 
 async function main(): Promise<void> {
-  const report: Record<string, unknown> = { panels: [] as unknown[] };
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL_REQUIRED");
   for (const chatId of CHATS) {
     const board = boardKey(chatId);
     for (const panelType of ["general_guide", "posting"] as const) {
-      const row = { chat_id: chatId, board, panel_type: panelType };
       try {
         if (panelType === "general_guide") {
           const links = await generalGuideLinks(chatId);
           const rendered = renderMenuPanel({ type: "general_guide", board, links, entryLinks: [] });
-          (report.panels as unknown[]).push({
-            ...row,
-            ok: true,
-            text: rendered.text,
-            inline_keyboard: rendered.rows,
-            button_count: rendered.rows.flat().length,
-          });
+          console.log(
+            JSON.stringify({
+              chat_id: chatId,
+              panel_type: panelType,
+              rows: rendered.rows.map((r) => r.map((b) => b.text)),
+              ok: true,
+            }),
+          );
         } else {
           const { links, entries } = await postingLinks(chatId);
           const rendered = renderMenuPanel({ type: "posting", board, links, entryLinks: entries });
-          (report.panels as unknown[]).push({
-            ...row,
-            ok: true,
-            text: rendered.text,
-            inline_keyboard: rendered.rows,
-            button_count: rendered.rows.flat().length,
-          });
+          console.log(
+            JSON.stringify({
+              chat_id: chatId,
+              panel_type: panelType,
+              rows: rendered.rows.map((r) => r.map((b) => b.text)),
+              ok: true,
+            }),
+          );
         }
-      } catch (e) {
-        (report.panels as unknown[]).push({
-          ...row,
-          ok: false,
-          error: e instanceof Error ? e.message : String(e),
-        });
+      } catch (error) {
+        console.log(
+          JSON.stringify({
+            chat_id: chatId,
+            panel_type: panelType,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
     }
   }
-  console.log(JSON.stringify(report, null, 2));
+  await pool.end();
 }
 
-void main()
-  .then(() => pool.end())
-  .catch((e) => {
-    console.error(e);
-    void pool.end();
-    process.exit(1);
-  });
+main().catch((error) => {
+  console.error("DRY_RUN_FAILED", error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

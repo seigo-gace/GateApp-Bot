@@ -4,10 +4,11 @@ import {
   VIDEO_TOPICS,
   CATEGORY_TOPICS,
   AREA_BLOCKS,
-  buildTopicBoardPanel,
-  buildNationalBoardPanel,
+  buildTopicBoardHtml,
+  buildNationalBoardHtml,
   buildAreaBlockPanel,
   resolveBlockChildUrls,
+  resolveBlockChildUrlsPartial,
   AREA_BLOCK_SEARCH_URL,
   AREA_BLOCK_FREETALK_URL,
 } from "../src/services/topicBoardContent.js";
@@ -18,28 +19,36 @@ test("topic list counts match approved menus", () => {
   assert.equal(AREA_BLOCKS.length, 13);
 });
 
-test("video and category panels expose URL inline keyboard rows", () => {
+test("L1 video/category indexes use HTML body links", () => {
   for (const board of ["video", "category"] as const) {
-    const panel = buildTopicBoardPanel(board);
-    assert.ok(panel.text.length <= 4096);
-    assert.doesNotMatch(panel.text, /総合案内|コミュニティリンク/);
-    const flat = panel.rows.flat();
-    assert.equal(flat.length, board === "video" ? 7 : 9);
+    const html = buildTopicBoardHtml(board);
+    assert.ok(html.length <= 4096);
+    assert.doesNotMatch(html, /総合案内|コミュニティリンク/);
     const topics = board === "video" ? VIDEO_TOPICS : CATEGORY_TOPICS;
-    for (const entry of topics) assert.ok(flat.some((b) => b.url === entry.url));
+    for (const entry of topics) assert.ok(html.includes(entry.url));
+    assert.equal((html.match(/掲示板を開く/g) || []).length, topics.length);
   }
 });
 
-test("national panel links all 13 blocks as buttons without child decoration text", () => {
-  const panel = buildNationalBoardPanel({});
-  assert.ok(panel.text.includes("全国エリアボード"));
-  assert.doesNotMatch(panel.text, /・/);
-  const flat = panel.rows.flat();
-  assert.equal(flat.length, 13);
-  for (const block of AREA_BLOCKS) assert.ok(flat.some((b) => b.url === block.url));
+test("national index links verified children only (no fabricated URLs)", () => {
+  const html = buildNationalBoardHtml({});
+  assert.ok(html.includes("https://t.me/c/3847210571/53"));
+  assert.ok(html.includes("山形"));
+  assert.doesNotMatch(html, /href="[^"]*3847210571[^"]*">青森/);
+  assert.ok(html.includes("青森"));
 });
 
-test("area block panel uses renderAreaBlockBoard layout with nav row", () => {
+test("partial block resolve matches Master-verified DB rows", () => {
+  const db = {
+    "東北/山形": "https://t.me/c/3847210571/53",
+    "東京/新宿": "https://t.me/c/3847210571/66",
+  };
+  const tohoku = resolveBlockChildUrlsPartial("東北", db);
+  assert.equal(Object.keys(tohoku).length, 1);
+  assert.throws(() => resolveBlockChildUrls("東北", db), /AREA_CHILD_LINK_UNVERIFIED:東北\/青森/);
+});
+
+test("area block L1 uses inline keyboard via renderAreaBlockBoard", () => {
   const resolved = resolveBlockChildUrls("北海道", {});
   const panel = buildAreaBlockPanel("北海道", resolved, {
     search: AREA_BLOCK_SEARCH_URL,
@@ -48,7 +57,5 @@ test("area block panel uses renderAreaBlockBoard layout with nav row", () => {
     back: "https://t.me/c/3847210571/1166",
   });
   assert.ok(panel.rows.length >= 3);
-  const last = panel.rows.at(-1)!;
-  assert.equal(last.length, 2);
   assert.throws(() => resolveBlockChildUrls("東北", {}), /AREA_CHILD_LINK_UNVERIFIED/);
 });

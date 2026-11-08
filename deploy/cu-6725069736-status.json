@@ -1,0 +1,23 @@
+{
+  "schema": "tgtumbler.issue7-comment-status/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6725069736",
+  "artifacts": [
+    "deploy/area-topic-url-master-6725069736.json",
+    "deploy/seed_area_child_links_master_6725069736.sql",
+    "artifacts/bot/src/services/topicBoardContent.ts (AREA_CHILD_URL_PENDING)"
+  ],
+  "verified_seeded_children": 34,
+  "pending_children": 22,
+  "pages_kisoku_url": "https://tgtumbler-docs.pages.dev/privacy",
+  "pages_kisoku_evidence": "tgtumbler-docs.pages.dev index lists privacy.html; HTTP 308→/privacy 200",
+  "blockers_1166": [
+    "AREA_CHILD_LINK_UNVERIFIED (22 keys in AREA_CHILD_URL_PENDING)",
+    "GUIDE_URL_UNVERIFIED:みんなのプロフ (area profile; video/1613 flow prohibited)"
+  ],
+  "area_l0_row1_master": {
+    "お知らせ": "https://t.me/c/3847210571/1",
+    "雑談": "https://t.me/c/3847210571/116",
+    "みんなのプロフ": "NOT_IN_REPO"
+  },
+  "l0_preserved": { "gay": 1063, "video": 4570, "l2": "1160/1051/4560" }
+}

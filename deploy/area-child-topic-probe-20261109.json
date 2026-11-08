@@ -1,0 +1,116 @@
+{
+  "status": "candidate_id_probe_only_not_topic_title_verified",
+  "chat_id": -1003847210571,
+  "rows": [
+    {
+      "candidate_topic_id": 50,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 51,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 52,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 54,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 55,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 56,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 57,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 58,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 59,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 61,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 62,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 63,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 64,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 65,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 67,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 68,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 71,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 72,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 73,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 75,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 76,
+      "ok": true,
+      "deleted": true
+    },
+    {
+      "candidate_topic_id": 77,
+      "ok": false,
+      "deleted": false
+    }
+  ]
+}

@@ -15,7 +15,7 @@ import {
   AREA_CHAT_ID,
   blockBoardKey,
   messageIdFromBoardUrl,
-  resolveBlockChildUrls,
+  resolveBlockChildUrlsPartial,
 } from "../src/services/topicBoardContent.js";
 import { guideMessageUrl } from "../src/services/guideMessageUrl.js";
 
@@ -86,11 +86,16 @@ async function main(): Promise<void> {
     ADMIN,
   );
   console.log(JSON.stringify({ phase: "national_warm", message_id: nationalWarm.messageId }));
+  await pool.query(
+    `UPDATE board_menu_panels SET state='published',message_id=$2,pinned=TRUE,
+      revision=revision+1,updated_at=NOW()
+     WHERE chat_id=$1 AND panel_type='general_guide' AND message_thread_id=$3`,
+    [nationalEntry.chat_id, nationalWarm.messageId, nationalEntry.message_thread_id],
+  );
   for (const block of AREA_BLOCKS) {
-    try {
-      resolveBlockChildUrls(block.label, dbMap);
-    } catch {
-      console.log(JSON.stringify({ block_skipped: block.label, reason: "AREA_CHILD_LINK_UNVERIFIED" }));
+    const resolved = resolveBlockChildUrlsPartial(block.label, dbMap);
+    if (Object.keys(resolved).length === 0) {
+      console.log(JSON.stringify({ block_skipped: block.label, reason: "AREA_BLOCK_NO_VERIFIED_CHILDREN" }));
       continue;
     }
     const key = blockBoardKey(block.label);
@@ -110,6 +115,13 @@ async function main(): Promise<void> {
       AREA_CHAT_ID,
       threadId,
       ADMIN,
+    );
+    console.log(
+      JSON.stringify({
+        block_published: block.label,
+        verified_child_links: Object.keys(resolved).length,
+        pending_child_links: block.children.length - Object.keys(resolved).length,
+      }),
     );
     blockResults[block.label] = result.messageId;
     console.log(

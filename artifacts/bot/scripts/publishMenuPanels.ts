@@ -39,7 +39,18 @@ async function main(): Promise<void> {
          ORDER BY chat_id,panel_type`,
   );
   if (!panels.rows.length) throw new Error("NO_VERIFIED_PANELS");
+  const AREA = -1003847210571;
   for (const row of panels.rows) {
+    if (Number(row.chat_id) === AREA && row.panel_type === "general_guide") {
+      console.log(
+        JSON.stringify({
+          chat_id: AREA,
+          panel_type: "general_guide",
+          skipped: "area_general_guide_on_national_message_1166",
+        }),
+      );
+      continue;
+    }
     const chatId = Number(row.chat_id);
     const threadId = Number(row.message_thread_id);
     const result = await publishExistingMenuPanel(bot.telegram, chatId, threadId, ADMIN);
