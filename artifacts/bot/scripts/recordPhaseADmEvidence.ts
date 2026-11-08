@@ -37,6 +37,11 @@ async function probe(
 }
 
 async function main(): Promise<void> {
+  if (process.env.PHASE_A_DM_RECORD !== "1") {
+    console.error("ABORT: set PHASE_A_DM_RECORD=1 to run; no probe spam by default");
+    process.exitCode = 3;
+    return;
+  }
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL_REQUIRED");
   await runMigrations();
   const bot = new Telegraf(readConfiguredBotToken(), {

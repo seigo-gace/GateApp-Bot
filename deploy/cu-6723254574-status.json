@@ -1,0 +1,41 @@
+{
+  "schema": "tgtumbler.cu-status/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6723254574",
+  "source_sha": "pending_commit",
+  "docker_image": "gace-tgtumbler-gaybbs:local sha256:1eeb0bc382fdd09d3c6e6e3cfd6dc3830c96462a45137d2cde804a6900d4024c",
+  "posting_handlers_restore": {
+    "base": "origin/chat/tgtumbler-profile-a05-20261104 postingHandlers.ts (47,889 bytes)",
+    "also_restored": [
+      "roomJoinLinks.ts",
+      "roomLifecycle.ts",
+      "postingDomain.ts",
+      "publicPostRepository.ts",
+      "profilePublicView.ts"
+    ],
+    "callbacks_restored_examples": [
+      "room:(mode|joinmode|profile|edit|plan|board|cancel)",
+      "post:announce:(kind|edit|date|profile|destination|topics|back|publish|save|cancel)",
+      "post:link:(edit|cancel|back)",
+      "post:cancel:(profile|room|announcement|link)"
+    ]
+  },
+  "posting_menus_telegram": [
+    {"board": "area", "thread": 116, "message_id": 1160, "state": "published"},
+    {"board": "gay", "thread": 4, "message_id": 1051, "state": "published"},
+    {"board": "video", "thread": 1605, "message_id": 4560, "state": "published"}
+  ],
+  "general_guide_L0": [
+    {"board": "area", "thread": 43, "panel_message_id": null, "documents": "missing 5/5"},
+    {"board": "video", "thread": 1723, "panel_message_id": null, "documents": "missing 5/5 (retracted wrong safety@1726)"},
+    {"board": "gay", "thread": 783, "panel_message_id": null, "documents": "missing 5/5"}
+  ],
+  "documents_by_type": {
+    "terms": "missing (all boards)",
+    "rules": "missing",
+    "safety": "missing (1726 retracted: 不祥事報告文)",
+    "privacy": "missing",
+    "howto": "missing"
+  },
+  "master_minimum_bind": "各Topic内の承認済み常設投稿へ返信 + /bindguidemessage（5種×存在する投稿のみ）",
+  "phase_a_dm_probe": "disabled unless PHASE_A_DM_RECORD=1"
+}

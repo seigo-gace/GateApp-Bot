@@ -1,20 +1,23 @@
 import { Markup, type Telegraf, type Telegram } from "telegraf";
+import {pool} from "../db/index.js";
 import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
-import {makeProfileViewerButtons} from "../services/profilePublicView.js";
+import {makeProfileViewerButtons,existingPublishedProfileUrl} from "../services/profilePublicView.js";
 import {revisePublishedProfile} from "../services/profilePublicationUpdate.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
 import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
-  validateRoom,assertHttpsMeetingUrl,parseJstDateTime,type AnnouncementKind } from "../services/postingDomain.js";
+  validateRoom,assertHttpsMeetingUrl,parseJstDateTime,parseRoomDetails,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createRoom,createLinkButton,markRoomDraftSaved,
- createAnnouncement,markDraftPublished,markPostSourcePublished,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
-import type { PostPurpose } from "../services/topicRouting.js";
+ createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
+import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
+import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
+import {updateRoomState} from "../services/roomLifecycle.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 
 async function showPostScreen(
@@ -37,10 +40,19 @@ function preview(module:Module,draft:EditorDraft):string {
  }
  if(module==="room"){
   const title=String(draft.data.title||"");
-  const url=draft.data.externalUrl ? String(draft.data.externalUrl) : undefined;
-  return buildRoomCard(validateRoom({ownerId:1,name:title,mode:url?"external":"jitsi",
-   externalUrl:url,status:"ready"}),url||"");
- }
+  const description=String(draft.data.description||"");
+  const externalUrl=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
+  validateRoom({ownerId:1,name:title,mode:externalUrl?"external":"jitsi",
+   externalUrl,status:"draft"});
+  const when=draft.data.startAt?new Date(String(draft.data.startAt)):null;
+  return ["🎬 ROOM："+escapeProfileHtml(title),
+    escapeProfileHtml(description),
+    "方式："+(externalUrl?"URL持込":"無料Jitsi"),
+    "開催："+(when?when.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）":"今すぐ"),
+    "参加："+(draft.data.visibility==="public"?"自由参加":"応募受付"),
+    "プロフ連携："+(draft.data.profileLinked?"あり":"なし"),
+    "状態："+(when?"📅 予告中":"🔴 LIVE中")].join("\n");
+  }
  const kind=draft.data.kind as AnnouncementKind;
  return buildAnnouncementCard(validateAnnouncement({ownerId:1,kind,
   text:String(draft.data.text||""),
@@ -48,12 +60,14 @@ function preview(module:Module,draft:EditorDraft):string {
   purposeCodes:Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[],
   placeCodes:Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[]}));
 }
-async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:number}},module:Module,revision:number):Promise<void>{
- const options=await listVerifiedTopics(module as PostPurpose);
+async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:number}},module:Module,revision:number,board?:BoardKey):Promise<void>{
+ const options=(await listVerifiedTopics(module as PostPurpose)).filter(x=>!board||x.board===board);
  if(!options.length){
   const message="投稿先の実Topic IDがまだ確認されていません。管理者によるトピック接続後に公開できます。下書きは保持しています。";
   const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
-  if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,message);
+  if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,
+   module==="link"?message+"\n\n"+preview("link",draft):message,
+   module==="link"?linkPreviewKeyboard(draft):undefined);
   else await ctx.reply(message);
   return;
  }
@@ -68,9 +82,12 @@ async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:n
   "✅ 元のトピックを候補の先頭に表示しています。":
   "元のトピックはこの投稿種別に未登録です。別の実Topicを明示選択してください。"):
   "元のトピックが不明なため、実Topicを明示選択してください。";
- const keyboard=Markup.inlineKeyboard(sorted.slice(0,30).map(t=>[
-   Markup.button.callback((matched?.id===t.id?"📍 ":"")+t.title+" / "+t.board,
-    `post:choose:${module}:${revision}:${t.id}`)]));
+ const rows=sorted.slice(0,30).map(t=>[
+   Markup.button.callback((matched?.id===t.id?"📍 ":"")+BOARD_TITLES[t.board]+" / "+t.title,
+    `post:choose:${module}:${revision}:${t.id}`)]);
+ if(module==="link")rows.push([Markup.button.callback("↩ プレビューに戻る",
+  `post:link:back:${revision}`)]);
+ const keyboard=Markup.inlineKeyboard(rows);
  const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
  if(draft&&ctx.from)await showPostScreen(ctx.telegram,ctx.from.id,draft,prefix+"\n投稿先を選択してください。まだ公開しません。",keyboard);
  else await ctx.reply(prefix+"\n投稿先を選択してください。まだ公開しません。",keyboard);
@@ -92,26 +109,173 @@ function tagPanel(draft:EditorDraft) {
  return Markup.inlineKeyboard(rows);
 }
 /** The same editor is called from /room and an authenticated M2 entry. */
-export async function startRoomEditor(telegram:Telegram,userId:number):Promise<void>{
- const draft=await beginDraft(userId,"room","awaiting_text");
+function roomOptions(d:EditorDraft){
+ const revision=d.revision;
+ const external=Boolean(d.data.externalUrl);
+ const publicJoin=d.data.visibility==="public";
+ return Markup.inlineKeyboard([
+  [Markup.button.callback(external?"▫️ 無料Jitsi":"✅ 無料Jitsi",
+    `room:mode:${revision}:jitsi`),
+   Markup.button.callback(external?"✅ URL持込":"▫️ URL持込",
+    `room:mode:${revision}:external`)],
+  [Markup.button.callback(publicJoin?"✅ 自由参加":"▫️ 自由参加",
+    `room:joinmode:${revision}:public`),
+   Markup.button.callback(!publicJoin?"✅ 応募受付":"▫️ 応募受付",
+    `room:joinmode:${revision}:approved_only`)],
+  [Markup.button.callback("📝 タイトル・説明を修正",`room:edit:${revision}`),
+   Markup.button.callback(d.data.profileLinked?"✅ プロフ連携":"▫️ プロフ連携",
+    `room:profile:${revision}`)],
+  [Markup.button.callback("▶ 開始する",`room:plan:${revision}:now`),
+   Markup.button.callback("📅 予告する",`room:plan:${revision}:scheduled`)],
+  [Markup.button.callback("下書き保存",`room:save:${revision}`),
+   Markup.button.callback("キャンセル",`room:cancel:${revision}`)],
+ ]);
+}
+async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,
+  "ROOM内容（まだ公開していません）\n"+preview("room",d),
+  roomOptions(d));
+}
+async function roomBoardMenu(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,"投稿先グループを選択してください。",
+  Markup.inlineKeyboard([BOARD_KEYS.map((key,index)=>
+   Markup.button.callback(BOARD_TITLES[key],`room:board:${d.revision}:${index}`))]));
+}
+/** Entry shared by /room and the verified ROOM topic menu. */
+export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
+ const existing=await getDraft(userId,"room");
+ if(screenId&&existing){
+  await bindDraftScreen(userId,"room",existing.revision,screenId);
+  existing.data.screenMessageId=screenId;
+ }
+ if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
+  const {savedTemplate:_unused,...template}=existing.data;
+  const resumed=await updateDraft(userId,"room",existing.revision,"preview",
+   {...template,savedTemplate:template,startAt:null});
+  await roomPreviewScreen(telegram,userId,resumed);
+  return;
+ }
+ if(existing&&["preview","awaiting_text","awaiting_datetime","awaiting_room_url"].includes(existing.step)){
+  if(existing.step==="preview"){
+   await roomPreviewScreen(telegram,userId,existing);
+  }else if(existing.step==="awaiting_datetime"){
+   await showPostScreen(telegram,userId,existing,
+    "📅 予告日時を日本時間で1通送信してください。例：2026/11/20 20:00");
+  }else if(existing.step==="awaiting_room_url"){
+   await showPostScreen(telegram,userId,existing,
+    "外部ROOMのHTTPS参加URLを1通で送信してください。");
+  }else{
+   await showPostScreen(telegram,userId,existing,
+    "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
+  }
+  return;
+ }
+ const draft=await beginDraft(userId,"room","awaiting_text",
+  {visibility:"approved_only",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
  await showPostScreen(telegram,userId,draft,
-  "🎬 ROOM名を入力してください。持込URLを使う場合は「ROOM名 | https://...」と1通で送れます。URL省略時はJitsiを生成します。");
+  "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
 }
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
-export async function startLinkEditor(telegram:Telegram,userId:number):Promise<void>{
- const draft=await beginDraft(userId,"link","awaiting_text");
- await showPostScreen(telegram,userId,draft,
-  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。");
+export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
+ const rev=d.revision;
+ return Markup.inlineKeyboard([
+  [1,2,3].map(i=>Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
+    "post:linkcols:"+rev+":"+i)),
+  [Markup.button.callback("📝 内容を修正","post:link:edit:"+rev),
+   Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
+ ]);
 }
-/** Announcement category editor shared by command and Topic deep link. */
-export async function startAnnouncementEditor(telegram:Telegram,userId:number):Promise<void>{
- const draft=await beginDraft(userId,"announcement","awaiting_kind");
- await showPostScreen(telegram,userId,draft,"📢 投稿の種類を選択してください。",
+export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
+ const prior=await getDraft(userId,"link");
+ if(screenId&&prior){
+  await bindDraftScreen(userId,"link",prior.revision,screenId);
+  prior.data.screenMessageId=screenId;
+ }
+ // Reopening /link must not erase a still-private, valid editor. Other
+ // draft modules and published receipts are never touched.
+ if(prior?.step==="preview"){
+  await showPostScreen(telegram,userId,prior,"公開前プレビュー\n"+preview("link",prior)+
+   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(prior));
+  return;
+ }
+ const draft=prior?.step==="awaiting_text"?prior:
+  await beginDraft(userId,"link","awaiting_text",screenId?{screenMessageId:screenId}:{});
+ await showPostScreen(telegram,userId,draft,
+  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。",
+  Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+   "post:link:cancel:"+draft.revision)]]));
+}
+/** One shared Bot DM message for the approved 告知/予告 layout. */
+export function announcementPanel(d:EditorDraft):WizardKeyboard{
+ const rev=d.revision;
+ const kind=d.data.kind==="preview"?"preview":"announcement";
+ return Markup.inlineKeyboard([
+  [Markup.button.callback(kind==="announcement"?"✅ 📢 告知":"▫️ 📢 告知",
+    `post:announce:kind:${rev}:announcement`),
+   Markup.button.callback(kind==="preview"?"✅ 📅 予告":"▫️ 📅 予告",
+    `post:announce:kind:${rev}:preview`)],
+  [Markup.button.callback("📝 本文編集",`post:announce:edit:${rev}`),
+   Markup.button.callback("📅 日時・受付",`post:announce:date:${rev}`)],
+  [Markup.button.callback(d.data.profileLinked?"✅ 🔗 プロフ連携":"▫️ 🔗 プロフ連携",
+    `post:announce:profile:${rev}`),
+   Markup.button.callback("📍 投稿先",`post:announce:destination:${rev}`)],
+  [Markup.button.callback("✅ 投稿",typeof d.data.topicId==="number"?
+   `post:publish:announcement:${rev}:${d.data.topicId}`:`post:announce:publish:${rev}`),
+   Markup.button.callback("下書き保存",`post:announce:save:${rev}`)],
+  [Markup.button.callback("キャンセル",`post:announce:cancel:${rev}`)],
+ ]);
+}
+export function announcementSummary(d:EditorDraft):string{
+ const kind=d.data.kind==="preview"?"preview":"announcement";
+ const value=String(d.data.text||"").trim();
+ const date=d.data.eventAt?new Date(String(d.data.eventAt)):undefined;
+ const message=value&&!(kind==="preview"&&!date)?
+  buildAnnouncementCard({ownerId:1,kind,text:value,eventAt:date}):
+  value?(kind==="preview"?"📅 予告":"📢 告知")+"\n"+escapeProfileHtml(value)+"\n開催日時：未指定":
+  (kind==="preview"?"📅 予告":"📢 告知")+"\n本文を1通で入力してください。";
+ return "📢 告知/予告\n"+message+
+  "\n投稿先："+(typeof d.data.destinationLabel==="string"?d.data.destinationLabel:"未選択")+
+  "\nプロフ連携："+(d.data.profileLinked?"あり":"なし")+
+  "\n\n必要な項目だけ選択して編集できます。";
+}
+async function announcementScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,announcementSummary(d),announcementPanel(d));
+}
+async function announcementDestinationPicker(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ await showPostScreen(telegram,userId,d,announcementSummary(d)+"\n\n公開先を選択してください。",
   Markup.inlineKeyboard([
-   [Markup.button.callback("告知",`post:kind:${draft.revision}:announcement`)],
-   [Markup.button.callback("予告",`post:kind:${draft.revision}:preview`)],
-   [Markup.button.callback("募集",`post:kind:${draft.revision}:recruitment`)],
+   [Markup.button.callback("📍 検証済みTopicから選択",`post:announce:topics:${d.revision}`)],
+   [Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]
   ]));
+}
+/** Announcement is selected by its menu, not by an extra mandatory kind page. */
+export async function startAnnouncementEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
+ const existing=await getDraft(userId,"announcement");
+ if(screenId&&existing){
+  await bindDraftScreen(userId,"announcement",existing.revision,screenId);
+  existing.data.screenMessageId=screenId;
+ }
+ if(existing?.step==="saved"&&existing.data.kind!=="recruitment"){
+  const {savedTemplate:_previous,...template}=existing.data;
+  const resumed=await updateDraft(userId,"announcement",existing.revision,
+   String(template.text||"").trim()?"preview":"awaiting_text",
+   {...template,savedTemplate:template});
+  await announcementScreen(telegram,userId,resumed);
+  return;
+ }
+ if(existing&&["preview","awaiting_text","awaiting_datetime"].includes(existing.step)&&
+    existing.data.kind!=="recruitment"){
+  if(existing.step==="awaiting_datetime"){
+   await showPostScreen(telegram,userId,existing,
+    "📅 日時を日本時間で1通送信してください。例：2026/11/20 20:00",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+     `post:announce:back:${existing.revision}`)]]));
+  }else await announcementScreen(telegram,userId,existing);
+  return;
+ }
+ const draft=await beginDraft(userId,"announcement","awaiting_text",
+  {kind:"announcement",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
+ await announcementScreen(telegram,userId,draft);
 }
 export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("publishprofile",async ctx=>{
@@ -124,6 +288,74 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   await startRoomEditor(ctx.telegram,ctx.from.id);
  });
+ bot.action(/^room:(mode|joinmode|profile|edit|plan|board|cancel):(\d+)(?::([a-z_0-9]+))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]),choice=ctx.match[3]||"";
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.step!=="preview"||d.revision!==rev){
+   await ctx.answerCbQuery("操作が古くなりました。/room から再開してください。");return;
+  }
+  try{
+   if(op==="mode"){
+    if(choice!=="jitsi"&&choice!=="external")throw new Error("ROOM_MODE_INVALID");
+    if(choice==="external"){
+     const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_room_url",d.data);
+     await ctx.answerCbQuery();
+     await showPostScreen(ctx.telegram,ctx.from.id,next,
+      "外部ROOMのHTTPS参加URLを1通で送信してください。");
+     return;
+    }
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,externalUrl:null});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="joinmode"){
+    if(choice!=="public"&&choice!=="approved_only")throw new Error("ROOM_VISIBILITY_INVALID");
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",{...d.data,visibility:choice});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="profile"){
+    if(!d.data.profileLinked&&!await existingPublishedProfileUrl(ctx.from.id)){
+     await ctx.answerCbQuery("公開済みのプロフィールがありません。");return;
+    }
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,profileLinked:!d.data.profileLinked});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="edit"){
+    const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_text",d.data);
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,next,
+     "タイトルと説明文を再入力してください。\n1行目：タイトル／2行目以降：説明文");
+   }else if(op==="plan"){
+    if(choice==="scheduled"){
+     const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
+      {...d.data,startAt:null});
+     await ctx.answerCbQuery();
+     await showPostScreen(ctx.telegram,ctx.from.id,next,
+      "予告日時を日本時間で1通送信してください。例：2026/11/20 20:00");
+    }else if(choice==="now"){
+     const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+      {...d.data,startAt:null});
+     await ctx.answerCbQuery();await roomBoardMenu(ctx.telegram,ctx.from.id,next);
+    }else throw new Error("ROOM_PLAN_INVALID");
+   }else if(op==="board"){
+    const boardIndex=Number(choice);
+    if(!Number.isInteger(boardIndex)||boardIndex<0||boardIndex>=BOARD_KEYS.length)
+     throw new Error("ROOM_BOARD_INVALID");
+    await ctx.answerCbQuery();
+    await destinationMenu(ctx,"room",rev,BOARD_KEYS[boardIndex]);
+   }else if(op==="cancel"){
+    const template=d.data.savedTemplate;
+    const previous=template&&typeof template==="object"&&!Array.isArray(template)?
+     template as Record<string,unknown>:null;
+    await updateDraft(ctx.from.id,"room",rev,previous?"saved":"cancelled",
+     previous??{cancelled:true});
+    await ctx.answerCbQuery("ROOMの作成を中止しました");
+    await ctx.editMessageText("ROOM作成をキャンセルしました。"+
+     (previous?"\n以前に保存した下書きは保持されています。/room から再開できます。":""));
+   }
+  }catch{
+   await ctx.answerCbQuery("操作できません。/room から確認してください。");
+  }
+ });
  bot.command("link",async ctx=>{
   if(!privateDM(ctx))return;
   await startLinkEditor(ctx.telegram,ctx.from.id);
@@ -131,6 +363,82 @@ export function registerPostingHandlers(bot:Telegraf):void{
  bot.command("announce",async ctx=>{
   if(!privateDM(ctx))return;
   await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+ });
+ bot.action(/^post:announce:(kind|edit|date|profile|destination|topics|back|publish|save|cancel):(\d+)(?::(announcement|preview))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]);
+  const kindChoice=ctx.match[3];
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!d||d.revision!==rev||!["preview","awaiting_text","awaiting_datetime"].includes(d.step)||
+     d.data.kind==="recruitment"){
+   await ctx.answerCbQuery("古い操作です。/announce から再開してください。");return;
+  }
+  try{
+   if(op==="kind"){
+    if(kindChoice!=="announcement"&&kindChoice!=="preview")throw new Error("ANNOUNCEMENT_KIND_INVALID");
+    const next=await updateDraft(ctx.from.id,"announcement",rev,d.step,{
+     ...d.data,kind:kindChoice,eventAt:kindChoice==="announcement"?null:d.data.eventAt});
+    await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="edit"){
+    const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_text",d.data);
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,next,
+     "📝 告知本文を1通で送信してください。元の入力項目は保持します。",
+     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+      `post:announce:back:${next.revision}`)]]));
+   }else if(op==="date"){
+    const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_datetime",d.data);
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,next,
+     "📅 日時を日本時間で1通送信してください。例：2026/11/20 20:00",
+     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+      `post:announce:back:${next.revision}`)]]));
+   }else if(op==="profile"){
+    if(!d.data.profileLinked&&!await existingPublishedProfileUrl(ctx.from.id)){
+     await ctx.answerCbQuery("利用可能な公開プロフィールがありません。");return;
+    }
+    const next=await updateDraft(ctx.from.id,"announcement",rev,d.step,
+     {...d.data,profileLinked:!d.data.profileLinked});
+    await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="destination"||op==="publish"){
+    if(op==="publish"&&(!String(d.data.text||"").trim()||
+       (d.data.kind==="preview"&&!d.data.eventAt))){
+     await ctx.answerCbQuery("本文と必要な日時を入力してください。");return;
+    }
+    await ctx.answerCbQuery();
+    await announcementDestinationPicker(ctx.telegram,ctx.from.id,d);
+   }else if(op==="topics"){
+    if(!String(d.data.text||"").trim()||
+       (d.data.kind==="preview"&&!d.data.eventAt)){
+     await ctx.answerCbQuery("本文と必要な開催日時を入力してください。");return;
+    }
+    const current=await getDraft(ctx.from.id,"announcement");
+    if(!current||current.revision!==rev||current.step!=="preview"){
+     await ctx.answerCbQuery("本文の入力を完了してから選択してください。");return;
+    }
+    await ctx.answerCbQuery();
+    await destinationMenu(ctx,"announcement",rev);
+   }else if(op==="back"){
+    const next=await updateDraft(ctx.from.id,"announcement",rev,
+     String(d.data.text||"").trim()?"preview":"awaiting_text",d.data);
+    await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="save"){
+    await saveAnnouncementEditorDraft(ctx.from.id,rev);
+    await ctx.answerCbQuery("下書きを保存しました");
+    await ctx.editMessageText("✅ 告知/予告を非公開保存しました。/announce から再開できます。");
+   }else if(op==="cancel"){
+    const old=d.data.savedTemplate;
+    const saved=old&&typeof old==="object"&&!Array.isArray(old)?
+     old as Record<string,unknown>:null;
+    await updateDraft(ctx.from.id,"announcement",rev,saved?"saved":"cancelled",
+     saved??{cancelled:true});
+    await ctx.answerCbQuery("作成をキャンセルしました");
+    await ctx.editMessageText("作成をキャンセルしました。公開済み投稿は変更していません。"+
+     (saved?"\n以前の保存済み下書きは残っています。":""));
+   }
+  }catch{
+   await ctx.answerCbQuery("操作できません。/announce から内容を確認してください。");
+  }
  });
  bot.action(/^post:kind:(\d+):(announcement|preview|recruitment)$/,async ctx=>{
   if(!privateDM(ctx))return;
@@ -217,38 +525,50 @@ export function registerPostingHandlers(bot:Telegraf):void{
    let data:Record<string,unknown>;
    if(current.step==="awaiting_datetime"){
     const date=parseJstDateTime(input);
+    if(current.module==="room"){
+     const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
+      {...current.data,startAt:date.toISOString()});
+     await roomBoardMenu(ctx.telegram,ctx.from.id,updated);
+     return;
+    }
     data={...current.data,eventAt:date.toISOString()};
     validateAnnouncement({ownerId:ctx.from.id,
       kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
-    await destinationMenu(ctx,current.module,updated.revision);
+    if(current.module==="announcement"&&data.kind!=="recruitment"){
+     await announcementScreen(ctx.telegram,ctx.from.id,updated);
+    }else await destinationMenu(ctx,current.module,updated.revision);
+    return;
+   }
+   if(current.module==="room"&&current.step==="awaiting_room_url"){
+    const externalUrl=assertHttpsMeetingUrl(input);
+    const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
+     {...current.data,externalUrl});
+    await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
     return;
    }
    if(current.module==="link"){
     const parsed=parseLinkInput(input);
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
-      {...current.data,...parsed,columns:1});
+      {...current.data,...parsed,columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
     await render(updated,"公開前プレビュー\n"+preview("link",updated)+
       "\n\nボタンの表示列数を選択してください。",
-      Markup.inlineKeyboard([[1,2,3].map(i=>Markup.button.callback(
-        i+"列","post:linkcols:"+updated.revision+":"+i))]));
+      linkPreviewKeyboard(updated));
     return;
    }
    if(current.module==="room"){
-    const parts=input.split(" | ");
-    if(parts.length>2)throw new Error("ROOM名とURLは「 | 」で区切ってください。");
-    const name=parts[0]?.trim()||"";
-    const externalUrl=parts.length===2?assertHttpsMeetingUrl(parts[1]!):undefined;
-    validateRoom({ownerId:ctx.from.id,name,mode:externalUrl?"external":"jitsi",
-     externalUrl,status:"ready"});
-    data={...current.data,title:name,externalUrl:externalUrl||null};
+    const {title,description}=parseRoomDetails(input);
+    const externalUrl=current.data.externalUrl?String(current.data.externalUrl):undefined;
+    validateRoom({ownerId:ctx.from.id,name:title,mode:externalUrl?"external":"jitsi",
+     externalUrl,status:"draft"});
+    data={...current.data,title,description};
    }else{
     if(!current.data.kind)throw new Error("投稿種別が未選択です。");
     const kind=current.data.kind as AnnouncementKind;
-    if(kind==="preview"){
-     const next=await updateDraft(ctx.from.id,current.module,current.revision,"awaiting_datetime",
+    if(kind==="preview"&&!current.data.eventAt){
+     const next=await updateDraft(ctx.from.id,current.module,current.revision,"preview",
        {...current.data,text:input});
-     await render(next,"開催日時を1通で入力してください（日本時間）。例：2026/11/20 20:00");
+     await announcementScreen(ctx.telegram,ctx.from.id,next);
      return;
     }
     if(kind==="recruitment"){
@@ -262,43 +582,74 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
    if(current.module==="room"){
-    await render(updated,"プレビュー（まだ投稿していません）\n"+preview(current.module,updated)+
-      "\n\nROOMはまだ公開されていません。内容を確認して非公開保存してください。",
-      Markup.inlineKeyboard([[Markup.button.callback("✅ 非公開ROOMとして保存",
-        "room:save:"+updated.revision)]]));
+    await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
+   }else if(current.module==="announcement"&&updated.data.kind!=="recruitment"){
+    await announcementScreen(ctx.telegram,ctx.from.id,updated);
    }else{
     await destinationMenu(ctx,current.module,updated.revision);
    }
   }catch(e){
    if(e instanceof Error&&e.message==="POST_DRAFT_STALE")throw e;
-   await render(current,(e instanceof Error?e.message:"入力内容を確認してください。")+
-     "\n内容を修正して、もう一度送信してください。");
+   const errorText=(e instanceof Error?e.message:"入力内容を確認してください。")+
+     "\n内容を修正して、もう一度送信してください。";
+   await render(current,errorText,current.module==="link"?
+    Markup.inlineKeyboard([
+     ...(Array.isArray(current.data.buttons)&&current.data.buttons.length?
+       [[Markup.button.callback("↩ プレビューに戻る",
+        "post:link:back:"+current.revision)]]:[]),
+     [Markup.button.callback("キャンセル","post:link:cancel:"+current.revision)]
+    ]):undefined);
   }
  });
  bot.action(/^room:save:(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const rev=Number(ctx.match[1]);
-  const draft=await getDraft(ctx.from.id,"room");
-  if(!draft||draft.step!=="preview"||draft.revision!==rev){
-   await ctx.answerCbQuery("下書きが更新されました。/room から再開してください。");
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.step!=="preview"||d.revision!==rev){
+   await ctx.answerCbQuery("古い操作です。/room から再開してください。");
    return;
   }
   try{
-   const title=String(draft.data.title||"");
-   const url=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
-   const saved=await createRoom(ctx.from.id,rev,title,url);
-   // ROOM is private until a separate Announcement/MPB release gate passes.
-   const announcementText=preview("room",draft);
-   await createAnnouncement(ctx.from.id,rev,"announcement",announcementText,
-     undefined,[],[],Number(saved.sourceId));
-   await markRoomDraftSaved(ctx.from.id,rev,Number(saved.sourceId));
-   await ctx.answerCbQuery("非公開保存しました");
-   await ctx.editMessageText("✅ ROOMを非公開保存しました。\nROOM #"+saved.sourceId+
-     "\n/myrooms で準備・開始・延期・終了を管理できます。"+
-     "\n募集・案内はまだ公開していません。");
-  }catch{
-   await ctx.answerCbQuery("保存状態を確認してください");
+   parseRoomDetails(String(d.data.title||"")+"\n"+String(d.data.description||""));
+   await saveRoomEditorDraft(ctx.from.id,rev);
+   await ctx.answerCbQuery("下書き保存済み");
+   await ctx.editMessageText("✅ ROOMのタイトル・説明・設定を非公開保存しました。\n/room から再利用できます。");
+  }catch{await ctx.answerCbQuery("保存に失敗しました。/room から確認してください。");}
+ });
+ bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==rev||!["awaiting_text","preview"].includes(d.step)){
+   await ctx.answerCbQuery("古い操作です。/link から再開してください。");return;
   }
+  if(op==="cancel"){
+   await updateDraft(ctx.from.id,"link",rev,"cancelled",{cancelled:true});
+   await ctx.answerCbQuery("作成をキャンセルしました");
+   await ctx.editMessageText("🔗 ボタン作成をキャンセルしました。公開済みの投稿は変更していません。");
+   return;
+  }
+  if(op==="edit"){
+   if(d.step!=="preview"){
+    await ctx.answerCbQuery("先にURLと表示名を入力してください。");return;
+   }
+   const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",d.data);
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,next,
+    "📝 本文とリンクをまとめて再入力してください。\n1行目：本文\n2行目以降：表示名 | https://URL\n以前の入力は確定するまで保持します。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
+     "post:link:back:"+next.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]]));
+   return;
+  }
+  if(!Array.isArray(d.data.buttons)||!d.data.buttons.length){
+   await ctx.answerCbQuery("先にリンクを入力してください。");return;
+  }
+  const next=d.step==="awaiting_text"?
+   await updateDraft(ctx.from.id,"link",rev,"preview",d.data):d;
+  await ctx.answerCbQuery();
+  await showPostScreen(ctx.telegram,ctx.from.id,next,"公開前プレビュー\n"+preview("link",next)+
+   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(next));
  });
  bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
   if(!privateDM(ctx))return;
@@ -310,7 +661,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const data={...d.data,columns:cols};
   const next=await updateDraft(ctx.from.id,"link",rev,"preview",data);
   await ctx.answerCbQuery("列数を保存しました");
-  await ctx.editMessageText("公開前プレビュー\n"+preview("link",next));
   await destinationMenu(ctx,"link",next.revision);
  });
  bot.action(/^post:choose:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
@@ -329,6 +679,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
     text=preview(module,d);
    }
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
+   if(module==="announcement"){
+    const d=await getDraft(ctx.from.id,"announcement");
+    if(!d||d.step!=="preview"||d.revision!==rev)throw new Error("ANNOUNCEMENT_DRAFT_STALE");
+    if(d.data.kind==="announcement"||d.data.kind==="preview"){
+     const next=await updateDraft(ctx.from.id,"announcement",rev,"preview",
+      {...d.data,topicId,destinationLabel:BOARD_TITLES[selected.board]+" / "+selected.title});
+     await ctx.answerCbQuery();
+     await announcementScreen(ctx.telegram,ctx.from.id,next);
+     return;
+    }
+   }
    await ctx.answerCbQuery();
    await ctx.editMessageText(
     "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+
@@ -336,15 +697,33 @@ export function registerPostingHandlers(bot:Telegraf):void{
     "\nこの宛先に公開する場合だけボタンを押してください。",
     {parse_mode:"HTML",...Markup.inlineKeyboard([
      [Markup.button.callback("✅ この内容を公開",`post:publish:${module}:${rev}:${topicId}`)],
-     [Markup.button.callback("キャンセル（非公開のまま）","post:cancel")],
+     [Markup.button.callback("キャンセル（非公開のまま）",`post:cancel:${module}:${rev}`)],
     ])}
    );
   }catch(e){await ctx.answerCbQuery("対象を確認できません。最初からやり直してください。");}
  });
- bot.action("post:cancel",async ctx=>{
+ bot.action(/^post:cancel:(profile|room|announcement|link):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
+  const module=ctx.match[1] as Module;
+  const rev=Number(ctx.match[2]);
+  if(module==="profile"){
+   const profile=await getProfile(ctx.from.id);
+   if(!profile||profile.revision!==rev){
+    await ctx.answerCbQuery("古い操作です。公開前の画面を開き直してください。");return;
+   }
+  }else{
+   const d=await getDraft(ctx.from.id,module);
+   if(!d||d.revision!==rev||d.step!=="preview"){
+    await ctx.answerCbQuery("古い操作です。/room、/announce、/linkから再開してください。");return;
+   }
+   // Preserve all private draft fields, but advance the revision so an old
+   // confirmation tap cannot publish after the owner cancelled it.
+   await updateDraft(ctx.from.id,module,rev,"preview",d.data);
+  }
   await ctx.answerCbQuery("公開しません");
-  await ctx.editMessageText("公開は取り消しました。下書きは保存されています。");
+  await ctx.editMessageText("公開は取り消しました。"+
+    (module==="profile"?"保存済みのプロフィールは変更していません。":
+     "入力した下書きは保存されています。"));
  });
  bot.action(/^post:publish:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
@@ -353,6 +732,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
    let sourceId:string;let text:string;
+   let hostJoinUrl:string|null=null;
+   let isScheduledRoom=false;
    let buttons:ReadonlyArray<ReadonlyArray<{text:string;url:string}>>|undefined;
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
@@ -371,6 +752,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const draft=await getDraft(ctx.from.id,module);
     if(!draft||draft.step!=="preview"||draft.revision!==revision)
      throw new Error("投稿下書きが変更されています。");
+    if(module==="announcement"&&(draft.data.kind==="announcement"||draft.data.kind==="preview")&&
+      draft.data.topicId!==topicId)
+      throw new Error("ANNOUNCEMENT_DESTINATION_STALE");
     if(module==="link"){
      const payload=draft.data as LinkDraft;
      const link=await createLinkButton(ctx.from.id,revision,payload);
@@ -378,10 +762,39 @@ export function registerPostingHandlers(bot:Telegraf):void{
      text=renderLinkCard(payload);
      buttons=buttonGrid(payload).map(row=>row.map(b=>({text:b.label,url:b.url})));
     }else if(module==="room"){
-     // ROOM v2: join_visibility=approved_only by default. Never leak a
-     // Jitsi/external URL to a public Topic before approved-only DM delivery
-     // and ROOM→Announcement→MPB crosslinks pass their acceptance gates.
-     throw new Error("ROOM_PRIVATE_JOIN_FLOW_NOT_VERIFIED");
+     const title=String(draft.data.title||"");
+     const description=String(draft.data.description||"");
+     parseRoomDetails(title+"\n"+description);
+     const externalUrl=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
+     const startAt=draft.data.startAt?new Date(String(draft.data.startAt)):undefined;
+     const visibility=draft.data.visibility==="public"?"public":"approved_only";
+     const room=await createRoom(ctx.from.id,revision,title,externalUrl,{
+      description,scheduledAt:startAt,visibility});
+     const roomId=Number(room.sourceId);
+     hostJoinUrl=room.joinUrl;
+     isScheduledRoom=Boolean(startAt);
+     await makeRoomJoinLink(ctx.from.id,roomId);
+     // Announcement owns applications and public card. ROOM owns meeting state,
+     // MPB owns the only Telegram send. No duplicate business module.
+     const ann=await createAnnouncement(ctx.from.id,revision,"recruitment",
+      title+"\n"+description,startAt,[],[],roomId);
+     sourceId=ann.sourceId;
+     text=preview("room",draft);
+     const rows:{text:string;url:string}[][]=[];
+     if(visibility==="approved_only"){
+      // Applicants must be able to request approval for both scheduled and
+      // immediate ROOMs; a join button alone never grants private access.
+      rows.push([{text:"📨 参加希望",url:await makeApplicationLink(ctx.from.id,Number(sourceId))}]);
+     }
+     if(!startAt){
+      rows.push([{text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)}]);
+     }
+     if(draft.data.profileLinked){
+      const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
+      if(!profileUrl)throw new Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
+      rows.push([{text:"🪪 プロフを見る",url:profileUrl}]);
+     }
+     buttons=rows;
     }else{
      const kind=draft.data.kind as AnnouncementKind;
      const value=String(draft.data.text);
@@ -392,6 +805,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
        purposeCodes,placeCodes);
      sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,
        kind,text:value,eventAt,purposeCodes,placeCodes});
+     if(kind!=="recruitment"&&draft.data.profileLinked){
+      const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
+      if(!profileUrl)throw new Error("ANNOUNCEMENT_PROFILE_NOT_AVAILABLE");
+      buttons=[[{text:"🪪 プロフを見る",url:profileUrl}]];
+     }
      if(kind==="recruitment"){
       const link=await makeApplicationLink(ctx.from.id,Number(sourceId));
       buttons=[[{text:"📨 応募する（Bot DM）",url:link}]];
@@ -399,7 +817,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }
    }
    const result=await publishPost(ctx.telegram,{
-    sourceType:module,
+    sourceType:module==="room"?"announcement":module,
     destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,
     buttons,approved:true,
    });
@@ -407,13 +825,34 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(module==="profile")
      await recordProfilePublication(ctx.from.id,revision,result.chatId,result.threadId,result.messageId);
     else{
-     await markPostSourcePublished(ctx.from.id,module,sourceId);
-     await markDraftPublished(ctx.from.id,module,revision);
+     await markPostSourcePublished(ctx.from.id,module==="room"?"announcement":module,sourceId);
+     if(module==="room"){
+      const source=await pool.query(
+       "SELECT room_id FROM announcement_posts WHERE announcement_id=$1 AND owner_user_id=$2",
+       [sourceId,ctx.from.id]);
+      if(source.rows.length!==1||!source.rows[0].room_id)
+       throw new Error("ROOM_SOURCE_NOT_LINKED");
+      const roomId=Number(source.rows[0].room_id);
+      const room=await pool.query(
+       "SELECT status,revision FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
+       [roomId,ctx.from.id]);
+      if(room.rows.length!==1)throw new Error("ROOM_SOURCE_NOT_OWNED");
+      if(room.rows[0].status==="draft")
+       await updateRoomState(ctx.from.id,roomId,Number(room.rows[0].revision),"start");
+      // Persist the template for the next ROOM rather than deleting it.
+      await saveRoomEditorDraft(ctx.from.id,revision);
+     }else await markDraftPublished(ctx.from.id,module,revision);
     }
    }catch{
     throw new Error("POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE");
    }
-   await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
+   if(module==="room"){
+    await ctx.editMessageText("✅ ROOMを公開しました。\n投稿先："+result.chatId+
+     " / Topic "+result.threadId+"\n投稿ID："+result.messageId+
+     (isScheduledRoom?"\n📅 予告中です。開催時には /myrooms から［開始する］を押してください。":"\n🔴 LIVE中"),
+     hostJoinUrl&&!isScheduledRoom?Markup.inlineKeyboard([
+      [Markup.button.url("🎥 ROOMに入る",hostJoinUrl)]]):undefined);
+   }else await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
    const msg=e instanceof Error?e.message:"投稿失敗";
