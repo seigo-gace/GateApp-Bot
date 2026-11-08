@@ -36,7 +36,7 @@ export function registerMenuPanelHandlers(bot:Telegraf):void{
    await ctx.reply("エリアまたはカテゴリートピックの管理操作のみ対応します。");
    return;
   }
-  const title=ctx.message.text.replace(/^\\/\\S+(?:@\\w+)?\\s*/,"").trim();
+  const title=ctx.message.text.replace(/^\/\S+(?:@\w+)?\s*/,"").trim();
   if(!title||title.length>100){
    await ctx.reply("このトピックの正式名称を指定してください。例：/pinpostentry 新宿");
    return;
