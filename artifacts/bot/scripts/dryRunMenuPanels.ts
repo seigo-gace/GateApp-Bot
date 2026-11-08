@@ -1,7 +1,7 @@
 /** Dry-run menu render from DB. No Telegram API calls. */
 import { pool } from "../src/db/index.js";
 import { guideMessageUrl } from "../src/services/guideMessageUrl.js";
-import { renderMenuPanel, type NavLink, type EntryLink } from "../src/services/menuPanelRenderer.js";
+import { renderMenuPanel, approvedLayoutRows, type NavLink, type EntryLink } from "../src/services/menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS, type BoardKey } from "../src/services/topicRouting.js";
 
 const CHATS = Object.values(BOARD_GROUP_CHAT_IDS);
@@ -13,35 +13,41 @@ function boardKey(chatId: number): BoardKey {
 }
 
 async function generalGuideLinks(chatId: number): Promise<NavLink[]> {
-  const docs = await pool.query(
-    `SELECT document_type,message_id FROM general_guide_documents
-     WHERE chat_id=$1 AND status='published' AND message_id IS NOT NULL
-       AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,
-    [chatId],
-  );
   const panelLabels: Record<string, string> = {
     terms: "利用規約",
     rules: "グループルール",
     safety: "安全ガイド",
     howto: "使い方",
   };
-  const l0DisplayDocs = ["terms", "rules", "safety", "howto"] as const;
-  const links: NavLink[] = [];
-  for (const [name, label] of Object.entries(panelLabels)) {
-    const row = docs.rows.find((r) => r.document_type === name);
-    if (!row) continue;
-    links.push({ label, url: guideMessageUrl(chatId, Number(row.message_id)), verified: true });
-  }
-  const missingDocs = l0DisplayDocs.some((name) => !docs.rows.some((r) => r.document_type === name));
-  const other = await pool.query(
+  const docLabels = new Set(Object.values(panelLabels));
+  const navLabels = approvedLayoutRows("general_guide").flat().filter((l) => !docLabels.has(l));
+  const nav = await pool.query(
     `SELECT label,destination_url FROM general_guide_links WHERE chat_id=$1
        AND enabled=TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL
        ORDER BY link_key`,
     [chatId],
   );
-  links.push(...other.rows.map((r) => ({ label: String(r.label), url: String(r.destination_url), verified: true })));
-  if (missingDocs) throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
-  return links;
+  const navLinks: NavLink[] = nav.rows.map((r) => ({
+    label: String(r.label),
+    url: String(r.destination_url),
+    verified: true,
+  }));
+  if (navLabels.some((label) => !navLinks.some((x) => x.label === label)))
+    throw new Error("GUIDE_NAV_LINKS_NOT_VERIFIED");
+  const docs = await pool.query(
+    `SELECT document_type,message_id FROM general_guide_documents
+     WHERE chat_id=$1 AND status='published' AND message_id IS NOT NULL
+       AND approved_by IS NOT NULL AND approved_at IS NOT NULL`,
+    [chatId],
+  );
+  const l0DisplayDocs = ["terms", "rules", "safety", "howto"] as const;
+  if (l0DisplayDocs.some((name) => !docs.rows.some((r) => r.document_type === name)))
+    throw new Error("GUIDE_DOCUMENTS_NOT_APPROVED");
+  const docLinks: NavLink[] = Object.entries(panelLabels).map(([name, label]) => {
+    const row = docs.rows.find((r) => r.document_type === name);
+    return { label, url: guideMessageUrl(chatId, Number(row!.message_id)), verified: true };
+  });
+  return [...navLinks, ...docLinks];
 }
 
 async function postingLinks(chatId: number): Promise<{ links: NavLink[]; entries: EntryLink[] }> {

@@ -1,0 +1,36 @@
+{
+  "schema": "tgtumbler.topic-board-ledger/v1",
+  "admin_telegram_id": 7880448530,
+  "sources": [
+    "deploy/menu-topic-ledger-v1.json",
+    "deploy/forum-topic-probe-20261108.json",
+    "artifacts/bot/src/services/topicBoardContent.ts"
+  ],
+  "boards": [
+    {
+      "board_key": "national",
+      "chat_id": -1003847210571,
+      "message_thread_id": 43,
+      "guide_link_key": "national",
+      "guide_label": "全国エリアボード",
+      "evidence": "エリア総合案内Topic 43（L1案内はL0固定パネルと別message_id）"
+    },
+    {
+      "board_key": "video",
+      "chat_id": -1002373696859,
+      "message_thread_id": 1723,
+      "guide_link_key": "video",
+      "guide_label": "ビデオチャット/動画",
+      "evidence": "forum-topic-probe notion_general_guide_video"
+    },
+    {
+      "board_key": "category",
+      "chat_id": -1003770334893,
+      "message_thread_id": 783,
+      "guide_link_key": "category",
+      "guide_label": "カテゴリーボード",
+      "evidence": "forum-topic-probe notion_general_guide_gay"
+    }
+  ],
+  "guide_chats": [-1003847210571, -1002373696859, -1003770334893]
+}

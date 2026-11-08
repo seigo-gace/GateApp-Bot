@@ -19,7 +19,7 @@ GUIDE_NAV: dict[int, list[tuple[str, str, str]]] = {
     -1003847210571: [
         ("news", "お知らせ", "https://t.me/c/3847210571/1"),
         ("freetalk", "フリートーク/雑談", "https://t.me/c/3847210571/116"),
-        ("national", "全国エリアボード", "https://t.me/c/3847210571/993"),
+        ("national", "全国エリアボード", "https://t.me/c/3847210571/1166"),
         ("category", "カテゴリーボード", "https://t.me/c/3770334893/1"),
         ("video", "ビデオチャット/動画", "https://t.me/c/2373696859/1634"),
         ("search", "検索/フィルター", "https://t.me/GayBBS_bot?start=search"),
@@ -28,7 +28,7 @@ GUIDE_NAV: dict[int, list[tuple[str, str, str]]] = {
     -1002373696859: [
         ("news", "お知らせ", "https://t.me/c/2373696859/1"),
         ("freetalk", "フリートーク/雑談", "https://t.me/c/2373696859/1605"),
-        ("national", "全国エリアボード", "https://t.me/c/3847210571/993"),
+        ("national", "全国エリアボード", "https://t.me/c/3847210571/1166"),
         ("category", "カテゴリーボード", "https://t.me/c/3770334893/1"),
         ("video", "ビデオチャット/動画", "https://t.me/c/2373696859/1634"),
         ("search", "検索/フィルター", "https://t.me/GayBBS_bot?start=search"),
@@ -37,7 +37,7 @@ GUIDE_NAV: dict[int, list[tuple[str, str, str]]] = {
     -1003770334893: [
         ("news", "お知らせ", "https://t.me/c/3770334893/1"),
         ("freetalk", "フリートーク/雑談", "https://t.me/c/3770334893/4"),
-        ("national", "全国エリアボード", "https://t.me/c/3847210571/993"),
+        ("national", "全国エリアボード", "https://t.me/c/3847210571/1166"),
         ("category", "カテゴリーボード", "https://t.me/c/3770334893/2"),
         ("video", "ビデオチャット/動画", "https://t.me/c/2373696859/1634"),
         ("search", "検索/フィルター", "https://t.me/GayBBS_bot?start=search"),

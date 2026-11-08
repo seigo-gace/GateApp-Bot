@@ -47,6 +47,7 @@ services:
       DATABASE_URL: postgresql://gace:devlocalpass123@127.0.0.1:55432/gaybbs
       BOT_TOKEN_FILE: /run/secrets/bot_token
       GAYBBS_PUBLIC_MENU_RELEASE: enabled
+      GAYBBS_TOPIC_BOARD_RELEASE: enabled
       MENU_PUBLISH_ADMIN_ID: "7880448530"
     secrets:
       - bot_token
