@@ -16,6 +16,8 @@ export async function activateMenuOrigin(
       AND p.state='published'`,[digest]);
   if(found.rows.length!==1)throw new Error("MENU_ORIGIN_NOT_VERIFIED");
   const item=found.rows[0];
+  if(startPayload.startsWith("r_")&&item.feature!=="announcement")
+   throw new Error("RECRUITMENT_MENU_FEATURE_NOT_VERIFIED");
   const origin:MenuOrigin={
    panelId:Number(item.panel_id),feature:item.feature,
    chatId:Number(item.chat_id),threadId:Number(item.message_thread_id)

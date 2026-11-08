@@ -7,9 +7,12 @@ import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileVie
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
 import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
+import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "./bot/recruitmentHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
+import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js";
+import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
 import { runMigrations } from "./db/migrate.js";
@@ -43,23 +46,31 @@ async function main():Promise<void>{
    await startProfileViewer(ctx,ctx.startPayload);
    return;
   }
+  if(ctx.startPayload==="search"){
+   await startSearchEditor(ctx.telegram,ctx.from.id);
+   return;
+  }
   if(ctx.startPayload?.startsWith("a_")){
    await startApplicationEditor(ctx,ctx.startPayload);
    return;
   }
-  if(ctx.startPayload?.startsWith("m_")){
+  if(ctx.startPayload && /^(?:m|r)_/.test(ctx.startPayload)){
    try{
     const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
-    // N14 requires the Topic menu button itself to open the shared DM editor,
-    // not another instruction requiring a second /command.
     if(origin.feature==="profile"){
      await startProfileEditor(ctx);
     }else if(origin.feature==="room"){
      await startRoomEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="announcement"){
-     await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+     if(ctx.startPayload.startsWith("r_"))
+      await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
+     else await startAnnouncementEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="link"){
      await startLinkEditor(ctx.telegram,ctx.from.id);
+    }else if(origin.feature==="search"){
+     await startSearchEditor(ctx.telegram,ctx.from.id);
+    }else if(origin.feature==="help"){
+     await startOperationHelp(ctx.telegram,ctx.from.id);
     }else{
      await ctx.reply("この機能の公開準備が完了していません。");
     }
@@ -68,15 +79,18 @@ async function main():Promise<void>{
    }
    return;
   }
-  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
+  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/recruit — 相手募集\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/search — 検索/フィルター\n/help — 操作説明\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
  });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
+ registerCompactRecruitmentHandlers(bot);
  registerPostingHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
  registerMenuPanelHandlers(bot);
+ registerSearchHandlers(bot);
+ registerOperationHelpHandlers(bot);
  registerApplicationHandlers(bot);
  registerRoomHandlers(bot);
  registerGayBbsApprovalHandlers(bot);

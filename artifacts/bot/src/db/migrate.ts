@@ -133,6 +133,34 @@ export async function runMigrations(): Promise<void> {
         PRIMARY KEY(chat_id,link_key),
         CHECK(NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
       );
+      CREATE TABLE IF NOT EXISTS gaybbs_help_sessions (
+        owner_user_id BIGINT PRIMARY KEY CHECK(owner_user_id > 0),
+        revision INTEGER NOT NULL DEFAULT 1,
+        section TEXT NOT NULL DEFAULT 'home'
+          CHECK(section IN ('home','profile','room','announcement','link','search')),
+        screen_message_id BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS gaybbs_search_sessions (
+        owner_user_id BIGINT PRIMARY KEY CHECK(owner_user_id > 0),
+        step TEXT NOT NULL DEFAULT 'home'
+          CHECK(step IN ('home','keyword','age','filter','region','position','purpose','hair','body','like','love','results')),
+        filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+        revision INTEGER NOT NULL DEFAULT 1,
+        screen_message_id BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS board_posting_menu_links (
+        chat_id BIGINT NOT NULL CHECK (chat_id < 0),
+        label TEXT NOT NULL CHECK (length(trim(label)) > 0),
+        destination_url TEXT NOT NULL CHECK (length(trim(destination_url)) > 0),
+        source TEXT NOT NULL CHECK (length(trim(source)) > 0),
+        verified_by BIGINT,
+        verified_at TIMESTAMPTZ,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        PRIMARY KEY (chat_id,label),
+        CHECK (NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
+      );
       CREATE TABLE IF NOT EXISTS board_menu_panels (
         panel_id BIGSERIAL PRIMARY KEY,
         chat_id BIGINT NOT NULL CHECK(chat_id < 0),
@@ -149,7 +177,7 @@ export async function runMigrations(): Promise<void> {
         UNIQUE(chat_id,message_thread_id,panel_type)
       );
       CREATE TABLE IF NOT EXISTS gaybbs_feature_release_gates (
-        feature TEXT PRIMARY KEY CHECK(feature IN ('profile','announcement','room','link','search')),
+        feature TEXT PRIMARY KEY CHECK(feature IN ('profile','announcement','room','link','search','help')),
         source_commit TEXT NOT NULL CHECK(length(source_commit)=40),
         ci_evidence TEXT NOT NULL,
         gserver_runtime_evidence TEXT NOT NULL,
@@ -161,11 +189,19 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS board_menu_entry_tokens (
         token_hash TEXT PRIMARY KEY,
         panel_id BIGINT NOT NULL REFERENCES board_menu_panels(panel_id),
-        feature TEXT NOT NULL CHECK(feature IN ('profile','announcement','room','link','search')),
+        feature TEXT NOT NULL CHECK(feature IN ('profile','announcement','room','link','search','help')),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL,
         enabled BOOLEAN NOT NULL DEFAULT TRUE
       );
+      ALTER TABLE gaybbs_feature_release_gates
+        DROP CONSTRAINT IF EXISTS gaybbs_feature_release_gates_feature_check;
+      ALTER TABLE gaybbs_feature_release_gates ADD CONSTRAINT gaybbs_feature_release_gates_feature_check
+        CHECK(feature IN ('profile','announcement','room','link','search','help'));
+      ALTER TABLE board_menu_entry_tokens
+        DROP CONSTRAINT IF EXISTS board_menu_entry_tokens_feature_check;
+      ALTER TABLE board_menu_entry_tokens ADD CONSTRAINT board_menu_entry_tokens_feature_check
+        CHECK(feature IN ('profile','announcement','room','link','search','help'));
       CREATE TABLE IF NOT EXISTS board_menu_sessions (
         owner_user_id BIGINT PRIMARY KEY,
         token_hash TEXT NOT NULL REFERENCES board_menu_entry_tokens(token_hash),

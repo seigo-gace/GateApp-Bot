@@ -38,7 +38,8 @@ test("publishing incomplete or unverified menu is rejected, not auto-padded",()=
  assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
   links:[...links.slice(0,8),{...links[8]!,verified:false}],entryLinks:[]}),/NOT_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"area_bbs",
-  links:[],entryLinks:[{feature:"profile",url:"https://t.me/GayBBS_bot",ready:true}]}),/MUST_MATCH/);
+  links:[],entryLinks:[{feature:"link",label:"検索/フィルター",
+   url:"https://t.me/GayBBS_bot",ready:true}]}),/POSTING_ENTRY_NOT_APPROVED/);
 });
 test("guide requires published official links and rejects guessed ones",()=>{
  const links=makeLinks(APPROVED_GUIDE_ROWS);
@@ -55,4 +56,30 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
   chatLink:link("雑談",106),backLink:link("戻る",107)});
  assert.deepEqual(result.rows.map(row=>row.length),[2,1,2,2]);
  assert.deepEqual(result.rows.at(-2)?.map(x=>x.text),["検索","フィルター"]);
+});
+
+test("posting panel merges six verified DM editors and three verified navigation URLs",()=>{
+ const staticLabels=["クリエーター有料ビデオ投稿",
+  "雑談","紹介/招待"];
+ const links=staticLabels.map((label,i)=>({label,
+  url:"https://t.me/c/3847210571/"+(500+i),verified:true}));
+ const entryLinks=[
+  {label:"相手募集",feature:"announcement",url:"https://t.me/GayBBS_bot?start=r_123",ready:true},
+  {label:"募集+Room",feature:"room",url:"https://t.me/GayBBS_bot?start=m_123",ready:true},
+  {label:"告知/予告",feature:"announcement",url:"https://t.me/GayBBS_bot?start=m_456",ready:true},
+  {label:"🔗ボタン作成",feature:"link",url:"https://t.me/GayBBS_bot?start=m_789",ready:true},
+  {label:"検索/フィルター",feature:"search",url:"https://t.me/GayBBS_bot?start=m_900",ready:true},
+  {label:"操作説明",feature:"help",url:"https://t.me/GayBBS_bot?start=m_901",ready:true},
+ ] as const;
+ const result=renderMenuPanel({type:"posting",board:"video_chat",links,
+  entryLinks:[...entryLinks]});
+ assert.deepEqual(result.rows.map(row=>row.map(x=>x.text)),
+  APPROVED_POSTING_ROWS.map(row=>[...row]));
+ assert.deepEqual(result.rows.map(row=>row.length),[3,1,2,3]);
+ assert.ok(result.rows[0][0]!.url.includes("start=r_"));
+ assert.equal(result.rows[2][0]!.text,"🔗ボタン作成");
+ assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
+  entryLinks:entryLinks.slice(0,3) as any}),/MISSING_VERIFIED/);
+ assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
+  entryLinks:[...entryLinks.slice(0,3),{...entryLinks[3],ready:false}]}),/NOT_VERIFIED/);
 });
