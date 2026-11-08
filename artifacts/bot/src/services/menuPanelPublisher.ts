@@ -54,19 +54,20 @@ async function buildLinks(panel:PanelRow):Promise<{
    throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
  const gates=await pool.query(
   `SELECT feature FROM gaybbs_feature_release_gates
-   WHERE feature IN ('announcement','room','link','search','help')
+   WHERE feature IN ('profile','announcement','room','link','search','help')
      AND enabled=TRUE AND length(source_commit)=40
      AND length(trim(ci_evidence))>0
      AND length(trim(gserver_runtime_evidence))>0
      AND length(trim(COALESCE(telegram_dm_e2e_evidence,telegram_e2e_evidence)))>0
      AND approved_by IS NOT NULL`);
  const ready=new Set(gates.rows.map(x=>String(x.feature)));
- if(!["announcement","room","link","search","help"].every(x=>ready.has(x)))
+ if(!["profile","announcement","room","link","search","help"].every(x=>ready.has(x)))
   throw new Error("POSTING_DM_FEATURES_NOT_RELEASED");
  const entrySpecs=[
   {label:"相手募集",feature:"announcement",prefix:"r_"},
   {label:"募集+Room",feature:"room",prefix:"m_"},
   {label:"告知/予告",feature:"announcement",prefix:"m_"},
+  {label:"プロフ作成",feature:"profile",prefix:"m_"},
   {label:"🔗ボタン作成",feature:"link",prefix:"m_"},
   {label:"検索/フィルター",feature:"search",prefix:"m_"},
   {label:"操作説明",feature:"help",prefix:"m_"},
