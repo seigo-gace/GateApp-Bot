@@ -236,6 +236,28 @@ export async function runMigrations(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS topic_dm_entry_pins (
+        chat_id BIGINT NOT NULL CHECK (chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK (message_thread_id > 0),
+        title TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        message_id BIGINT CHECK (message_id > 0),
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK (state IN ('verified','publishing','published','needs_reconcile')),
+        pinned BOOLEAN NOT NULL DEFAULT FALSE,
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(chat_id,message_thread_id)
+      );
+      CREATE TABLE IF NOT EXISTS topic_dm_entry_sessions (
+        owner_user_id BIGINT PRIMARY KEY,
+        chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT NOT NULL,
+        token_hash TEXT NOT NULL REFERENCES topic_dm_entry_pins(token_hash),
+        expires_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS posting_topics (
         topic_id BIGSERIAL PRIMARY KEY,
         board_key TEXT NOT NULL CHECK (board_key IN ('area_bbs','video_chat','gay_board')),
