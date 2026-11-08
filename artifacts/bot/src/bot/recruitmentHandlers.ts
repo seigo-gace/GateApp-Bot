@@ -339,8 +339,10 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    }
    validateRecruitmentReady(asInput(d),
     asInput(d).mode==="linked"?await getProfile(ctx.from.id):null);
-   const options=await listVerifiedTopics("announcement");
-   const origin=(await currentTopicDmEntry(ctx.from.id))??(await currentMenuOrigin(ctx.from.id));
+   const pinned=await currentTopicDmEntry(ctx.from.id);
+   const allOptions=await listVerifiedTopics("announcement");
+   const options=pinned?allOptions.filter(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):allOptions;
+   const origin=pinned??(await currentMenuOrigin(ctx.from.id));
    const preferred=origin?options.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
    if(preferred){
     await ctx.answerCbQuery("投稿処理を確認しています");
