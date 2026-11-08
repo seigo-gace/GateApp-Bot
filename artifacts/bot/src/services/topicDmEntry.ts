@@ -40,13 +40,23 @@ export async function activateTopicDmEntry(
  if(membership.status==="left"||membership.status==="kicked"||
     (membership.status==="restricted"&&!membership.is_member))
   throw Error("TOPIC_ENTRY_MEMBERSHIP_REQUIRED");
- await pool.query(
-  `INSERT INTO topic_dm_entry_sessions(owner_user_id,chat_id,message_thread_id,token_hash,expires_at)
-   VALUES($1,$2,$3,$4,NOW()+INTERVAL '24 hours')
-   ON CONFLICT(owner_user_id) DO UPDATE SET chat_id=EXCLUDED.chat_id,
-    message_thread_id=EXCLUDED.message_thread_id,token_hash=EXCLUDED.token_hash,
-    expires_at=EXCLUDED.expires_at,updated_at=NOW()`,
-  [userId,chatId,threadId,hash]);
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  await client.query(
+   `INSERT INTO topic_dm_entry_sessions(owner_user_id,chat_id,message_thread_id,token_hash,expires_at)
+    VALUES($1,$2,$3,$4,NOW()+INTERVAL '24 hours')
+    ON CONFLICT(owner_user_id) DO UPDATE SET chat_id=EXCLUDED.chat_id,
+     message_thread_id=EXCLUDED.message_thread_id,token_hash=EXCLUDED.token_hash,
+     expires_at=EXCLUDED.expires_at,updated_at=NOW()`,
+   [userId,chatId,threadId,hash]);
+  // The newest authenticated doorway owns the DM posting destination.
+  await client.query("DELETE FROM board_menu_sessions WHERE owner_user_id=$1",[userId]);
+  await client.query("COMMIT");
+ }catch(error){
+  await client.query("ROLLBACK");
+  throw error;
+ }finally{client.release();}
  return {chatId,threadId};
 }
 
