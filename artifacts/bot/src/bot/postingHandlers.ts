@@ -12,6 +12,7 @@ import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createR
  createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
+import { currentTopicDmEntry } from "../services/topicDmEntry.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
@@ -71,7 +72,8 @@ async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:n
   else await ctx.reply(message);
   return;
  }
- const origin=ctx.from?.id?await currentMenuOrigin(ctx.from.id):null;
+ const topicEntry=ctx.from?.id?await currentTopicDmEntry(ctx.from.id):null;
+ const origin=topicEntry??(ctx.from?.id?await currentMenuOrigin(ctx.from.id):null);
  // N14: the topic a member came from is their default. It may not be a
  // suitable purpose/board (e.g. Profile has its own dedicated topic).
  // No guessed destination or silently substituted topic.
