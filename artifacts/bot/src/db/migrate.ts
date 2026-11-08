@@ -198,6 +198,14 @@ export async function runMigrations(): Promise<void> {
         DROP CONSTRAINT IF EXISTS gaybbs_feature_release_gates_feature_check;
       ALTER TABLE gaybbs_feature_release_gates ADD CONSTRAINT gaybbs_feature_release_gates_feature_check
         CHECK(feature IN ('profile','announcement','room','link','search','help'));
+      ALTER TABLE gaybbs_feature_release_gates
+        ADD COLUMN IF NOT EXISTS telegram_dm_e2e_evidence TEXT;
+      ALTER TABLE gaybbs_feature_release_gates
+        ADD COLUMN IF NOT EXISTS telegram_panel_origin_e2e_evidence TEXT;
+      UPDATE gaybbs_feature_release_gates
+        SET telegram_dm_e2e_evidence = telegram_e2e_evidence
+        WHERE telegram_dm_e2e_evidence IS NULL
+          AND length(trim(telegram_e2e_evidence)) > 0;
       ALTER TABLE board_menu_entry_tokens
         DROP CONSTRAINT IF EXISTS board_menu_entry_tokens_feature_check;
       ALTER TABLE board_menu_entry_tokens ADD CONSTRAINT board_menu_entry_tokens_feature_check

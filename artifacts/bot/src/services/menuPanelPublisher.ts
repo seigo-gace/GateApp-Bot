@@ -7,7 +7,19 @@ import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
 import { guideMessageUrl } from "./guideMessageUrl.js";
 import {newMenuToken,tokenHash} from "./menuOrigin.js";
-import {renderMenuPanel,type NavLink,type EntryLink} from "./menuPanelRenderer.js";
+import {renderMenuPanel,type ButtonSpec,type NavLink,type EntryLink} from "./menuPanelRenderer.js";
+
+/** Panel menus must be URL inline_keyboard only — never URL body lists. */
+function assertInlineKeyboard(rows:readonly (readonly ButtonSpec[])[]):void{
+ if(!rows.length)throw new Error("INLINE_KEYBOARD_EMPTY");
+ for(const row of rows){
+  if(!row.length)throw new Error("INLINE_KEYBOARD_EMPTY_ROW");
+  for(const cell of row){
+   if(!cell.text?.trim()||!cell.url?.trim())throw new Error("INLINE_KEYBOARD_EMPTY_CELL");
+  }
+ }
+ if(rows.flat().some(b=>b.url.includes("\n")))throw new Error("INLINE_KEYBOARD_URL_BODY_FORBIDDEN");
+}
 import {BOARD_GROUP_CHAT_IDS,type BoardKey} from "./topicRouting.js";
 type PanelRow={
  panel_id:string;chat_id:string;message_thread_id:string;panel_type:"general_guide"|"posting";
@@ -64,7 +76,7 @@ async function buildLinks(panel:PanelRow):Promise<{
      AND enabled=TRUE AND length(source_commit)=40
      AND length(trim(ci_evidence))>0
      AND length(trim(gserver_runtime_evidence))>0
-     AND length(trim(telegram_e2e_evidence))>0
+     AND length(trim(COALESCE(telegram_dm_e2e_evidence,telegram_e2e_evidence)))>0
      AND approved_by IS NOT NULL`);
  const ready=new Set(gates.rows.map(x=>String(x.feature)));
  if(!["announcement","room","link","search","help"].every(x=>ready.has(x)))
@@ -128,6 +140,7 @@ export async function publishExistingMenuPanel(
   const rendered=renderMenuPanel({
    type:panel.panel_type,board:board(chatId),links,entryLinks:entries,
   });
+  assertInlineKeyboard(rendered.rows);
   const dispatcher=createTelegramDispatcher(telegram);
   const target={chatId,threadId};
   const body={text:rendered.text,buttons:rendered.rows};
