@@ -1,4 +1,4 @@
-/** DM /start fallback: full posting menu (APPROVED_POSTING_ROWS 3/1/2/3), not the old 3-button stub. */
+/** DM /start fallback: full posting menu (APPROVED_POSTING_ROWS 3/2/2/3), not the old 3-button stub. */
 import { Markup } from "telegraf";
 import { APPROVED_POSTING_ROWS } from "./menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
@@ -11,6 +11,7 @@ const STATIC_URL_LABELS = new Set([
 
 const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   相手募集: "dm:recruit",
+  "プロフ作成": "dm:profile",
   "募集+Room": "dm:room",
   "告知/予告": "dm:announcement",
   "🔗ボタン作成": "dm:link",
@@ -20,6 +21,7 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
 
 const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
   相手募集: "announcement",
+  "プロフ作成": "profile",
   "募集+Room": "room",
   "告知/予告": "announcement",
   "🔗ボタン作成": "link",
@@ -28,6 +30,7 @@ const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
 };
 
 const POSTING_DM_FEATURES = [
+  "profile",
   "announcement",
   "room",
   "link",
@@ -37,7 +40,7 @@ const POSTING_DM_FEATURES = [
 
 export const BARE_START_POSTING_TEXT =
   "📌 各掲示板の固定メニュー（総合案内・投稿メニュー）から利用を開始してください。\n" +
-  "下の投稿メニュー（9ボタン）から機能を選べます。各掲示板の固定メニューから開くと投稿先の文脈が付きます。";
+  "下の投稿メニュー（10ボタン）から機能を選べます。各掲示板の固定メニューから開くと投稿先の文脈が付きます。";
 
 async function postingDmFeaturesReady(): Promise<ReadonlySet<string>> {
   const { pool } = await import("../db/index.js");
