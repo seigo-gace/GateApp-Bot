@@ -5,6 +5,7 @@
 import type {Telegraf} from "telegraf";
 import {pool} from "../db/index.js";
 import {publishExistingMenuPanel} from "../services/menuPanelPublisher.js";
+import {publishTopicDmEntry} from "../services/topicDmEntry.js";
 import {suppressAreaCommandMenu,suppressGroupCommandMenu,GAY_BOARD_CHAT_ID} from "../services/areaMenuSuppression.js";
 
 const GROUPS=new Set([-1003847210571,-1002373696859,-1003770334893]);
@@ -26,6 +27,31 @@ async function checked(ctx:any):Promise<{chatId:number;threadId:number;adminId:n
  return {chatId:ctx.chat.id,threadId:thread,adminId:ctx.from.id};
 }
 export function registerMenuPanelHandlers(bot:Telegraf):void{
+ // Per-forum doorway only. Telegram supplies the actual current thread ID;
+ // never use a URL suffix or create an alternate Topic.
+ bot.command("pinpostentry",async ctx=>{
+  const where=await checked(ctx);
+  if(!where)return;
+  if(![-1003847210571,-1003770334893].includes(where.chatId)){
+   await ctx.reply("エリアまたはカテゴリートピックの管理操作のみ対応します。");
+   return;
+  }
+  const title=ctx.message.text.replace(/^\\/\\S+(?:@\\w+)?\\s*/,"").trim();
+  if(!title||title.length>100){
+   await ctx.reply("このトピックの正式名称を指定してください。例：/pinpostentry 新宿");
+   return;
+  }
+  try{
+   const result=await publishTopicDmEntry(
+    ctx.telegram,where.chatId,where.threadId,title,where.adminId);
+   await ctx.reply(result.updatedExisting?
+    "✅ このTopicの既存DM入口は登録済みです。重複投稿していません。":
+    "✅ このTopicにBot DMへの入口ボタンを投稿・固定しました。");
+  }catch(e){
+   await ctx.reply("DM入口の公開を確定できません："+(e instanceof Error?e.message:"UNKNOWN")+
+    "。成否不明時は再投稿せず、既存ピンと台帳を照合してください。");
+  }
+ });
  // Remove the obsolete Area BBS reply keyboard from the Telegram input area.
  // Does not delete pinned posts or affect other groups. Idempotent via DB ledger.
  bot.command("removeareakeyboard",async ctx=>{
