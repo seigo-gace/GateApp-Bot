@@ -136,7 +136,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    const restored=await updateDraft(userId,"announcement",previous.revision,returnStep,
     {...previous.data,recruitPanel:null,recruitPanelReturnStep:null,editField:null});
    if(returnStep==="awaiting_text"){
-    await show(telegram,userId,restored,inputInstructions(false),initialKeyboard(restored));
+    await show(telegram,userId,restored,inputInstructions(restored.data.mode==="linked"),initialKeyboard(restored));
    }else{
     await showPreview(telegram,userId,restored);
    }
@@ -397,7 +397,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    {...d.data,recruitPanel:null,recruitPanelReturnStep:null});
   await ctx.answerCbQuery();
   if(returnStep==="awaiting_text"){
-   await show(ctx.telegram,ctx.from.id,next,inputInstructions(false),initialKeyboard(next));
+   await show(ctx.telegram,ctx.from.id,next,inputInstructions(next.data.mode==="linked"),initialKeyboard(next));
   }else{
    await showPreview(ctx.telegram,ctx.from.id,next);
   }

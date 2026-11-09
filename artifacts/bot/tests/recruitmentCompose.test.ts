@@ -49,6 +49,16 @@ test("recruitment input rejects incomplete and unsafe text",()=>{
  assert.match(preview,/&amp;/);
 });
 
+test("manual recruitment merges prior tag choices when parsing fresh input",()=>{
+ const prior={purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const parsed=parseRecruitmentMessage("テスト\nテスト\n170 80 40\nテスト",false);
+ const merged={...parsed,...prior,position:"タチ"};
+ assert.deepEqual(merged.purposeCodes,["サシ"]);
+ assert.deepEqual(merged.placeCodes,["場所あり"]);
+ assert.equal(merged.position,"タチ");
+ assert.equal(merged.body,"テスト");
+});
+
 test("Master four-line manual input renders into recruitment preview",()=>{
  const d=parseRecruitmentMessage("テスト\nテスト\n170 80 40\nテスト",false);
  assert.equal(d.mode,"manual");
