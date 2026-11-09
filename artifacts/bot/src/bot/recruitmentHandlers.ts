@@ -56,6 +56,15 @@ function keyboard(d:EditorDraft){
   b("キャンセル",`recruit:cancel:${rev}`)]);
  return Markup.inlineKeyboard(rows);
 }
+function initialKeyboard(d:EditorDraft){
+ const rev=d.revision;
+ return Markup.inlineKeyboard([
+  [b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
+   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
+   b("場所選択",`recruit:panel:${rev}:place`,"danger")],
+  [b("キャンセル",`recruit:cancel:${rev}`)]
+ ]);
+}
 function inputInstructions(linked:boolean){
  return linked?
   "📢 相手募集を作成\n保存済みプロフィールと連動します。募集内容だけを1通で送信してください。\n\n"+
@@ -122,12 +131,20 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    await showPreview(telegram,userId,previous);return;
   }
   if(["awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)){
-   const restored=await updateDraft(userId,"announcement",previous.revision,"preview",
-    {...previous.data,recruitPanel:null,editField:null});
-   await showPreview(telegram,userId,restored);return;
+   const returnStep=previous.step==="awaiting_tags"&&
+     previous.data.recruitPanelReturnStep==="awaiting_text"?"awaiting_text":"preview";
+   const restored=await updateDraft(userId,"announcement",previous.revision,returnStep,
+    {...previous.data,recruitPanel:null,recruitPanelReturnStep:null,editField:null});
+   if(returnStep==="awaiting_text"){
+    await show(telegram,userId,restored,inputInstructions(false),initialKeyboard(restored));
+   }else{
+    await showPreview(telegram,userId,restored);
+   }
+   return;
   }
   if(previous.step==="awaiting_text"){
    await show(telegram,userId,previous,inputInstructions(previous.data.mode==="linked"),
+    previous.data.mode==="manual"?initialKeyboard(previous):
     Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${previous.revision}`)]]));return;
   }
  }
@@ -144,7 +161,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   ...(entry?{entryChatId:entry.chatId,entryThreadId:entry.threadId}:{}),
  });
  await show(telegram,userId,d,inputInstructions(linked),
-  Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]));
+  linked?Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]):initialKeyboard(d));
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number
@@ -228,7 +245,10 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    if(d.step==="awaiting_text"){
     const input=parseRecruitmentMessage(ctx.message.text,d.data.mode==="linked");
     const updated=await updateDraft(ctx.from.id,"announcement",d.revision,"preview",{
-     ...d.data,...input,editField:null});
+     ...d.data,...input,
+     purposeCodes:d.data.purposeCodes??[],placeCodes:d.data.placeCodes??[],
+     position:input.mode==="manual"?(d.data.position??input.position):input.position,
+     editField:null});
     await showPreview(ctx.telegram,ctx.from.id,updated,warning);
    }else{
     const field=d.data.editField as EditField;
@@ -275,11 +295,12 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
   const rev=Number(ctx.match[1]),panel=ctx.match[2];
-  if(!active(d,rev,"preview")||(panel==="position"&&asInput(d).mode!=="manual")){
+  if(!active(d,rev)||!["preview","awaiting_text"].includes(d.step)||
+    (panel==="position"&&asInput(d).mode!=="manual")){
    await ctx.answerCbQuery("古い操作です");return;
   }
   const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
-   ...d.data,recruitPanel:panel});
+   ...d.data,recruitPanel:panel,recruitPanelReturnStep:d.step});
   await ctx.answerCbQuery();
   await renderPanel(ctx.telegram,ctx.from.id,next);
  });
@@ -343,9 +364,15 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   if(!active(d,Number(ctx.match[1]),"awaiting_tags")){
    await ctx.answerCbQuery("古い操作です");return;
   }
-  const next=await updateDraft(ctx.from.id,"announcement",d.revision,"preview",
-   {...d.data,recruitPanel:null});
-  await ctx.answerCbQuery();await showPreview(ctx.telegram,ctx.from.id,next);
+  const returnStep=d.data.recruitPanelReturnStep==="awaiting_text"?"awaiting_text":"preview";
+  const next=await updateDraft(ctx.from.id,"announcement",d.revision,returnStep,
+   {...d.data,recruitPanel:null,recruitPanelReturnStep:null});
+  await ctx.answerCbQuery();
+  if(returnStep==="awaiting_text"){
+   await show(ctx.telegram,ctx.from.id,next,inputInstructions(false),initialKeyboard(next));
+  }else{
+   await showPreview(ctx.telegram,ctx.from.id,next);
+  }
  });
  bot.action(/^recruit:post:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
