@@ -109,6 +109,10 @@ async function main():Promise<void>{
   const keyboard=await bareStartPostingExtra(chatId);
   await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
  });
+ bot.action("dm:nav-unavailable",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery("このリンクはまだ確認できません。", {show_alert:true});
+ });
  bot.action(/^dm:blocked:(profile|announcement|room|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery(
