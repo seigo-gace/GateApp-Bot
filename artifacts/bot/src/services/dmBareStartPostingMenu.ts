@@ -85,6 +85,13 @@ export function defaultBareStartChatId(menuOriginChatId?: number | null): number
   return BOARD_GROUP_CHAT_IDS.area_bbs;
 }
 
+/** Opening a private recruitment draft does not grant permission to publish it.
+ * publishPost still enforces the announcement release gate before any Telegram post.
+ */
+export function canOpenPostingEditor(label: string, featureReady: boolean): boolean {
+  return label === "相手募集" || featureReady;
+}
+
 /** Missing optional navigation URLs cannot block the caller's return to the menu. */
 export function navigationButton(label: string, verifiedUrl?: string) {
   return verifiedUrl
@@ -109,7 +116,7 @@ export async function bareStartPostingExtra(chatId: number) {
       const data = CALLBACK_BY_LABEL[label];
       if (!data) throw new Error("POSTING_CALLBACK_LABEL_UNKNOWN:" + label);
       const feature = FEATURE_BY_LABEL[label];
-      if (feature && !ready.has(feature)) {
+      if (feature && !canOpenPostingEditor(label, ready.has(feature))) {
         return Markup.button.callback(label, "dm:blocked:" + feature);
       }
       return Markup.button.callback(label, data);
