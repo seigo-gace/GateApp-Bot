@@ -263,9 +263,14 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     await showPreview(ctx.telegram,ctx.from.id,updated,warning);
    }
   }catch(e){
-   await show(ctx.telegram,ctx.from.id,d,
-    "入力内容を確認してください。\n"+(e instanceof Error?e.message:"入力エラー")+
-    "\n再入力してください。"+(warning?"\n"+warning:""));
+   const message="入力内容を確認してください。\n"+
+    escapeProfileHtml(e instanceof Error?e.message:"入力エラー")+
+    "\n再入力してください。"+(warning?"\n"+escapeProfileHtml(warning):"");
+   const buttons=d.step==="awaiting_recruitment_edit"?
+    Markup.inlineKeyboard([[b("↩ 編集をやめる",`recruit:editcancel:${d.revision}`)]]):
+    d.data.mode==="manual"?initialKeyboard(d):
+    Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]);
+   await show(ctx.telegram,ctx.from.id,d,message,buttons,true);
   }
  });
  bot.action(/^recruit:edit:(\d+):(title|nickname|stats|body)$/,async ctx=>{
