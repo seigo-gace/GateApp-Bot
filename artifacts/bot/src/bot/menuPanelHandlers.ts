@@ -32,8 +32,8 @@ export function registerMenuPanelHandlers(bot:Telegraf):void{
  bot.command("pinpostentry",async ctx=>{
   const where=await checked(ctx);
   if(!where)return;
-  if(![-1003847210571,-1003770334893].includes(where.chatId)){
-   await ctx.reply("エリアまたはカテゴリートピックの管理操作のみ対応します。");
+  if(!GROUPS.has(where.chatId)){
+   await ctx.reply("対象外のグループです。");
    return;
   }
   const title=ctx.message.text.replace(/^\/\S+(?:@\w+)?\s*/,"").trim();

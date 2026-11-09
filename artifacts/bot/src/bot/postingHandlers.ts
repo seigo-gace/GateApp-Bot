@@ -20,6 +20,7 @@ import {makeApplicationLink} from "../services/applicationLinks.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {updateRoomState} from "../services/roomLifecycle.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
+import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 
 async function showPostScreen(
  telegram:Telegram,userId:number,draft:EditorDraft,text:string,keyboard?:WizardKeyboard,
@@ -352,9 +353,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
      template as Record<string,unknown>:null;
     await updateDraft(ctx.from.id,"room",rev,previous?"saved":"cancelled",
      previous??{cancelled:true});
-    await ctx.answerCbQuery("ROOMの作成を中止しました");
-    await ctx.editMessageText("ROOM作成をキャンセルしました。"+
-     (previous?"\n以前に保存した下書きは保持されています。投稿メニューから再開できます。":""));
+    await ctx.answerCbQuery();
+    await editMessageToDmPostingMenu(ctx,ctx.from.id);
    }
   }catch{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
@@ -436,9 +436,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
      old as Record<string,unknown>:null;
     await updateDraft(ctx.from.id,"announcement",rev,saved?"saved":"cancelled",
      saved??{cancelled:true});
-    await ctx.answerCbQuery("作成をキャンセルしました");
-    await ctx.editMessageText("作成をキャンセルしました。公開済み投稿は変更していません。"+
-     (saved?"\n以前の保存済み下書きは残っています。":""));
+    await ctx.answerCbQuery();
+    await editMessageToDmPostingMenu(ctx,ctx.from.id);
    }
   }catch{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
@@ -629,8 +628,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   if(op==="cancel"){
    await updateDraft(ctx.from.id,"link",rev,"cancelled",{cancelled:true});
-   await ctx.answerCbQuery("作成をキャンセルしました");
-   await ctx.editMessageText("🔗 ボタン作成をキャンセルしました。公開済みの投稿は変更していません。");
+   await ctx.answerCbQuery();
+   await editMessageToDmPostingMenu(ctx,ctx.from.id);
    return;
   }
   if(op==="edit"){
@@ -725,10 +724,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    // confirmation tap cannot publish after the owner cancelled it.
    await updateDraft(ctx.from.id,module,rev,"preview",d.data);
   }
-  await ctx.answerCbQuery("公開しません");
-  await ctx.editMessageText("公開は取り消しました。"+
-    (module==="profile"?"保存済みのプロフィールは変更していません。":
-     "入力した下書きは保存されています。"));
+  await ctx.answerCbQuery();
+  await editMessageToDmPostingMenu(ctx,ctx.from.id);
  });
  bot.action(/^post:publish:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;

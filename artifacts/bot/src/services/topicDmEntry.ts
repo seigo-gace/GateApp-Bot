@@ -12,7 +12,9 @@ export const TOPIC_ENTRY_TEXT =
 export const TOPIC_ENTRY_BUTTON = "📝 投稿メニューを開く";
 
 const ALLOWED_CHATS = new Set<number>([
-  BOARD_GROUP_CHAT_IDS.area_bbs, BOARD_GROUP_CHAT_IDS.gay_board,
+  BOARD_GROUP_CHAT_IDS.area_bbs,
+  BOARD_GROUP_CHAT_IDS.video_chat,
+  BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
 const tokenPattern=/^p_([A-Za-z0-9_-]{32})$/;
 export function parseTopicEntryPayload(payload:string):string{

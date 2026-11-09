@@ -45,12 +45,14 @@ export async function currentMenuOrigin(userId:number):Promise<MenuOrigin|null>{
    WHERE s.owner_user_id=$1 AND s.expires_at>NOW()
       AND t.enabled=TRUE AND t.expires_at>NOW() AND p.state='published'`,
   [userId]);
- if(r.rows.length!==1)return null;
- const x=r.rows[0];
- const origin:MenuOrigin={panelId:Number(x.panel_id),chatId:Number(x.chat_id),
-  threadId:Number(x.message_thread_id),feature:x.feature};
- assertMenuOrigin(origin);
- return origin;
+ if(r.rows.length===1){
+  const x=r.rows[0];
+  const origin:MenuOrigin={panelId:Number(x.panel_id),chatId:Number(x.chat_id),
+   threadId:Number(x.message_thread_id),feature:x.feature};
+  assertMenuOrigin(origin);
+  return origin;
+ }
+ return null;
 }
 
 /** Return to the exact existing posting menu that opened this Bot DM.

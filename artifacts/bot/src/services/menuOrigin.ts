@@ -20,6 +20,6 @@ export function decodeMenuStartPayload(payload:string):string{
 export function assertMenuOrigin(o:MenuOrigin):void{
  if(!Number.isSafeInteger(o.chatId)||o.chatId>=0||
     !Number.isSafeInteger(o.threadId)||o.threadId<=0||
-    !Number.isSafeInteger(o.panelId)||o.panelId<=0||
+    !Number.isSafeInteger(o.panelId)||o.panelId<0||
     !MENU_FEATURES.includes(o.feature))throw new Error("MENU_ORIGIN_INVALID");
 }

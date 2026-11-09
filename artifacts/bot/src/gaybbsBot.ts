@@ -30,6 +30,7 @@ import {
   bareStartPostingExtra,
   defaultBareStartChatId,
 } from "./services/dmBareStartPostingMenu.js";
+import { DM_POSTING_MENU_SCREEN_TEXT } from "./services/dmPostingMenuRestore.js";
 import { currentMenuOrigin } from "./services/menuOriginRepository.js";
 import { activateTopicDmEntry, currentTopicDmEntry } from "./services/topicDmEntry.js";
 
@@ -48,7 +49,7 @@ async function main():Promise<void>{
    try {
     const origin=await activateTopicDmEntry(ctx.from.id,ctx.startPayload,ctx.telegram);
     const keyboard=await bareStartPostingExtra(origin.chatId);
-    await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
+    await ctx.reply(DM_POSTING_MENU_SCREEN_TEXT,keyboard);
    }catch{
     await ctx.reply("このトピックの投稿入口を確認できません。元の固定ボタンを利用してください。");
    }

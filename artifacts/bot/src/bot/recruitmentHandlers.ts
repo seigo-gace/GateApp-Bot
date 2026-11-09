@@ -8,8 +8,8 @@ import {PROFILE_POSITIONS,escapeProfileHtml,isProfilePosition} from "../services
 import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js";
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
-import {currentMenuOrigin,verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
-import {currentTopicDmEntry,assertTopicDmEntryDestination} from "../services/topicDmEntry.js";
+import {currentMenuOrigin} from "../services/menuOriginRepository.js";
+import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost} from "../services/publishService.js";
@@ -66,7 +66,7 @@ function inputInstructions(linked:boolean){
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
  const profile=input.mode==="linked"?await getProfile(id):null;
- const origin=(await currentTopicDmEntry(id))??(await currentMenuOrigin(id));
+ const origin=await currentMenuOrigin(id);
  const destinations=await listVerifiedTopics("announcement");
  const current=origin?destinations.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
  const rawDestination=current?"投稿先："+current.board+" / "+current.title:
@@ -339,10 +339,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    }
    validateRecruitmentReady(asInput(d),
     asInput(d).mode==="linked"?await getProfile(ctx.from.id):null);
-   const pinned=await currentTopicDmEntry(ctx.from.id);
-   const allOptions=await listVerifiedTopics("announcement");
-   const options=pinned?allOptions.filter(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):allOptions;
-   const origin=pinned??(await currentMenuOrigin(ctx.from.id));
+   const options=await listVerifiedTopics("announcement");
+   const origin=await currentMenuOrigin(ctx.from.id);
    const preferred=origin?options.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
    if(preferred){
     await ctx.answerCbQuery("投稿処理を確認しています");
@@ -371,8 +369,6 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   try{
    await ctx.answerCbQuery("投稿しています");
    if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d))return;
-   const selected=await getVerifiedTopic(Number(ctx.match[2]),"announcement");
-   await assertTopicDmEntryDestination(ctx.from.id,selected.chatId,selected.threadId);
    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]));
    await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+sent.chatId+
     " / Topic "+sent.threadId+"\n投稿ID："+sent.messageId);
@@ -392,10 +388,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   await updateDraft(ctx.from.id,"announcement",d.revision,"cancelled",{
    recruitmentFlow:"compact",cancelled:true,screenMessageId:d.data.screenMessageId,
   });
-  await ctx.answerCbQuery("募集の作成をキャンセルしました");
-  const url=await verifiedPostingMenuReturnUrl(ctx.from.id);
-  await ctx.editMessageText("募集の作成をキャンセルしました。今回の入力は破棄しました。"+
-   "\n保存済みプロフィールや公開済み投稿には影響しません。",
-   url?Markup.inlineKeyboard([[Markup.button.url("投稿メニューへ",url)]]):undefined);
+  await ctx.answerCbQuery();
+  await editMessageToDmPostingMenu(ctx,ctx.from.id);
  });
 }
