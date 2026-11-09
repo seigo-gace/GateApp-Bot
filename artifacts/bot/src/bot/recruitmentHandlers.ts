@@ -395,7 +395,15 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]));
    await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+sent.chatId+
     " / Topic "+sent.threadId+"\n投稿ID："+sent.messageId);
-  }catch{
+  }catch(e){
+   const reason=e instanceof Error?e.message:"";
+   if(reason.startsWith("TOPIC_ENTRY_")||reason==="FEATURE_RELEASE_NOT_VERIFIED"){
+    await showPreview(ctx.telegram,ctx.from.id,d,
+     reason==="FEATURE_RELEASE_NOT_VERIFIED"
+      ?"公開許可が確認できません。下書きを保持しました。"
+      :"元Topicの投稿先が一致しません。この下書きからは別Topicへ公開できません。");
+    return;
+   }
    await ctx.reply("投稿を確認できませんでした。送信状態が不明な場合は再送せず照合してください。");
   }
  });
