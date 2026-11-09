@@ -16,7 +16,7 @@ import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
-import {recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
+import {recruitmentDecisionRow,recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
  renderRecruitmentPreview,validateRecruitmentReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
@@ -32,6 +32,9 @@ async function show(telegram:Telegram,id:number,d:EditorDraft,text:string,keyboa
 }
 function b(text:string,id:string,style?:"primary"|"success"|"danger"){
  return {...Markup.button.callback(text,id),...(style?{style}:{})};
+}
+function decisionRow(revision:number){
+ return recruitmentDecisionRow(revision).map(item=>b(item.text,item.callback_data,"style" in item?item.style:undefined));
 }
 function keyboard(d:EditorDraft){
  const rev=d.revision;
@@ -51,8 +54,7 @@ function keyboard(d:EditorDraft){
   rows.push([b("目的タグ",`recruit:panel:${rev}:purpose`,"success"),
    b("場所タグ",`recruit:panel:${rev}:place`,"primary")]);
  }
- rows.push([b("✅ 投稿する",`recruit:post:${rev}`,"success"),
-  b("キャンセル",`recruit:cancel:${rev}`)]);
+ rows.push(decisionRow(rev));
  return Markup.inlineKeyboard(rows);
 }
 function initialKeyboard(d:EditorDraft){
@@ -61,8 +63,7 @@ function initialKeyboard(d:EditorDraft){
   [b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
    b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
    b("場所選択",`recruit:panel:${rev}:place`,"danger")],
-  [b("✅ 投稿する",`recruit:post:${rev}`,"success"),
-   b("キャンセル",`recruit:cancel:${rev}`)]
+  decisionRow(rev)
  ]);
 }
 function inputInstructions(linked:boolean){
@@ -145,7 +146,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   if(previous.step==="awaiting_text"){
    await show(telegram,userId,previous,inputInstructions(previous.data.mode==="linked"),
     previous.data.mode==="manual"?initialKeyboard(previous):
-    Markup.inlineKeyboard([[b("✅ 投稿する",`recruit:post:${previous.revision}`,"success"),b("キャンセル",`recruit:cancel:${previous.revision}`)]]));return;
+    Markup.inlineKeyboard([decisionRow(previous.revision)]));return;
   }
  }
  const profile=await getProfile(userId);
@@ -165,7 +166,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   d.data.screenMessageId=Number(menuMessageId);
  }
  await show(telegram,userId,d,inputInstructions(linked),
-  linked?Markup.inlineKeyboard([[b("✅ 投稿する",`recruit:post:${d.revision}`,"success"),b("キャンセル",`recruit:cancel:${d.revision}`)]]):initialKeyboard(d));
+  linked?Markup.inlineKeyboard([decisionRow(d.revision)]):initialKeyboard(d));
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number
@@ -340,8 +341,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
   rows.push([b("📋 プレビュー",`recruit:panelback:${rev}`)]);
-  rows.push([b("✅ 投稿する",`recruit:post:${rev}`,"success"),
-   b("キャンセル",`recruit:cancel:${rev}`)]);
+  rows.push(decisionRow(rev));
   const ready=!!data.title?.trim()&&!!data.body?.trim();
   const profile=ready&&data.mode==="linked"?await getProfile(id):null;
   const preview=ready?renderRecruitmentPreview(data,profile):

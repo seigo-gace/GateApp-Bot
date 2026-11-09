@@ -21,12 +21,13 @@ export function buildRecruitmentRichPreview(
  if(d.mode==="manual"){
   blocks.push(paragraph(["ニックネーム："+(d.nickname??"")," ",edit(revision,"nickname")]));
   blocks.push(paragraph([
-   d.heightCm+"cm | "+d.weightKg+"kg | "+d.age+"歳"," ",edit(revision,"stats"),
+   [d.heightCm+"cm",d.weightKg+"kg",d.age+"歳",d.position??""].filter(Boolean).join(" | "),
+   " ",edit(revision,"stats"),
   ]));
  }
  blocks.push({type:"divider"});
  blocks.push(paragraph([{type:"bold",text:"募集内容"}," ",edit(revision,"body")]));
- blocks.push(paragraph(d.body));
+ for(const line of d.body.split("\n"))blocks.push(paragraph(line));
  if(d.mode==="linked"&&profile){
   blocks.push(paragraph("🪪 "+profile.nickname));
   blocks.push(paragraph(profile.heightCm+"cm | "+profile.weightKg+"kg | "+profile.age+"歳 | "+(profile.position??"")));

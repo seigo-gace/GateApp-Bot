@@ -4,6 +4,8 @@ import {
  parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,
  validateRecruitmentReady,
 } from "../src/services/recruitmentCompose.js";
+import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
+import {recruitmentDecisionRow} from "../src/services/recruitmentButtonLayout.js";
 
 test("manual recruitment preserves body lines and does not write a profile",()=>{
  const d=parseRecruitmentMessage("今夜の募集\nゼロ\n175 80 40\n集合場所は相談\n時間は夜",false);
@@ -74,4 +76,22 @@ test("Master four-line manual input renders into recruitment preview",()=>{
  assert.match(preview,/170cm.*80kg.*40歳/);
  assert.match(preview,/募集内容<\/b>\nテスト/);
  assert.throws(()=>validateRecruitmentReady(d),/ポジション/);
+ const trailing=parseRecruitmentMessage("テスト\nテスト\n170 80 40\nテスト\n",false);
+ assert.equal(trailing.body,"テスト");
+ const multiline=parseRecruitmentMessage("テスト\nテスト\n170 80 40\n上の行\n最終行",false);
+ multiline.position="タチ";
+ multiline.purposeCodes=["サシ"];
+ multiline.placeCodes=["場所あり"];
+ const rich=buildRecruitmentRichPreview(multiline,1,"投稿先：未選択");
+ const encoded=JSON.stringify(rich);
+ assert.match(encoded,/最終行/);
+ assert.match(encoded,/タチ/);
+ assert.match(encoded,/サシ/);
+ assert.match(encoded,/場所あり/);
+ assert.match(renderRecruitmentPreview(multiline),/タチ/);
+ assert.match(renderRecruitmentPreview(multiline),/最終行/);
+ const row=recruitmentDecisionRow(1);
+ assert.equal(row.length,2);
+ assert.equal(row[0]?.text,"✅ 投稿する");
+ assert.equal(row[1]?.text,"キャンセル");
 });
