@@ -124,7 +124,7 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
   "\n\n📝各項目を変更しても他の入力は保持します。"+
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
 }
-export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number){
+export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
  const previous=await getDraft(userId,"announcement");
  if(previous?.data.recruitmentFlow==="compact"){
   if(previous.step==="preview"){
@@ -160,6 +160,10 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   purposeCodes:[],placeCodes:[],
   ...(entry?{entryChatId:entry.chatId,entryThreadId:entry.threadId}:{}),
  });
+ if(Number.isSafeInteger(menuMessageId)&&Number(menuMessageId)>0){
+  await bindDraftScreen(userId,"announcement",d.revision,Number(menuMessageId));
+  d.data.screenMessageId=Number(menuMessageId);
+ }
  await show(telegram,userId,d,inputInstructions(linked),
   linked?Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]):initialKeyboard(d));
 }
