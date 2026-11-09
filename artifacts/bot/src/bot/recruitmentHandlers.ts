@@ -15,7 +15,6 @@ import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.j
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
-import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
 import {recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
@@ -240,7 +239,6 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
  });
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||ctx.message.text.startsWith("/"))return next();
-  if(await currentDmTextOwner(ctx.from.id)!=="announcement")return next();
   const d=await getDraft(ctx.from.id,"announcement");
   if(!d||d.data.recruitmentFlow!=="compact"||
      !["awaiting_text","awaiting_recruitment_edit"].includes(d.step))return next();
