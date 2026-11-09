@@ -85,7 +85,14 @@ export function defaultBareStartChatId(menuOriginChatId?: number | null): number
   return BOARD_GROUP_CHAT_IDS.area_bbs;
 }
 
-/** Builds the authoritative 3/1/2/3 inline keyboard for bare /start in DM. */
+/** Missing optional navigation URLs cannot block the caller's return to the menu. */
+export function navigationButton(label: string, verifiedUrl?: string) {
+  return verifiedUrl
+    ? Markup.button.url(label, verifiedUrl)
+    : Markup.button.callback(label, "dm:nav-unavailable");
+}
+
+/** Builds the authoritative 3/2/2/3 inline keyboard for bare /start in DM. */
 export async function bareStartPostingExtra(chatId: number) {
   const [ready, urls] = await Promise.all([
     postingDmFeaturesReady(),
@@ -97,9 +104,7 @@ export async function bareStartPostingExtra(chatId: number) {
         const url = urls.get(label);
         // An unavailable link must never prevent the rest of the posting menu
         // (including a cancel -> menu return) from being rendered.
-        return url
-          ? Markup.button.url(label, url)
-          : Markup.button.callback(label, "dm:nav-unavailable");
+        return navigationButton(label, url);
       }
       const data = CALLBACK_BY_LABEL[label];
       if (!data) throw new Error("POSTING_CALLBACK_LABEL_UNKNOWN:" + label);
