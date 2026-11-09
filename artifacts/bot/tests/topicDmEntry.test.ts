@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseTopicEntryPayload,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry} from "../src/services/topicDmEntry.js";
+import {parseTopicEntryPayload,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin} from "../src/services/topicDmEntry.js";
 import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 
 test("a forum topic has one DM doorway, not a group-side editor keyboard",()=>{
@@ -27,4 +27,18 @@ test("pinned entry recruitment may publish only to the bound and still active To
  assert.throws(()=>assertBoundTopicDmEntry(area,area,other),/TOPIC_ENTRY_DESTINATION_MISMATCH/);
  assert.throws(()=>assertBoundTopicDmEntry(null,area,other),/TOPIC_ENTRY_DESTINATION_MISMATCH/);
  assert.doesNotThrow(()=>assertBoundTopicDmEntry(null,null,other));
+});
+
+test("saved negative Telegram chat ID remains binding and invalid context fails closed",()=>{
+ const area={chatId:-1003847210571,threadId:65};
+ const next={chatId:-1003847210571,threadId:66};
+ assert.deepEqual(draftTopicEntryOrigin(area.chatId,area.threadId),area);
+ assert.deepEqual(draftTopicEntryOrigin(String(area.chatId),String(area.threadId)),area);
+ assert.equal(draftTopicEntryOrigin(undefined,undefined),null);
+ assert.throws(()=>draftTopicEntryOrigin(area.chatId,undefined),/TOPIC_ENTRY_DRAFT_CONTEXT_INVALID/);
+ assert.throws(()=>draftTopicEntryOrigin(1003847210571,65),/TOPIC_ENTRY_DRAFT_CONTEXT_INVALID/);
+ assert.throws(()=>draftTopicEntryOrigin(-1001234567890,65),/TOPIC_ENTRY_DRAFT_CONTEXT_INVALID/);
+ assert.throws(()=>draftTopicEntryOrigin(area.chatId,0),/TOPIC_ENTRY_DRAFT_CONTEXT_INVALID/);
+ assert.throws(()=>assertBoundTopicDmEntry(draftTopicEntryOrigin(area.chatId,area.threadId),next,next),/TOPIC_ENTRY_CONTEXT_CHANGED/);
+ assert.doesNotThrow(()=>assertBoundTopicDmEntry(draftTopicEntryOrigin(area.chatId,area.threadId),area,area));
 });
