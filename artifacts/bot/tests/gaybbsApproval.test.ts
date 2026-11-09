@@ -39,12 +39,18 @@ test("durable admission has stage CAS, three consent receipts and user-bound inv
    VALUES($1,1,'entry_group',$2,'test gate',$3)`,[targetId,chatId,code]);
   started=true;
   const {attempt}=await openAttempt(userId,targetId,"aaaaaaaaaaaaaaaaaa");
-  assert.equal(attempt.step,"q1");
+  assert.equal(attempt.step,"intro");
   assert.equal(attempt.document_version,ADMISSION_VERSION);
   assert.equal(await rememberScreen(attempt,123),true);
+  const intro=await readAttempt(userId);
+  assert.ok(intro);
+  assert.equal(await transition({attempt:intro,messageId:123,next:"challenge",
+   newToken:"bbbbbbbbbbbbbbbbbb",challengeData:{text:"2+2=?",options:["4","3"],correctIndex:0}}),true);
+  assert.equal(await transition({attempt:intro,messageId:123,next:"challenge",
+   newToken:"cccccccccccccccccc"}),false,"old callback cannot advance");
   let s=await readAttempt(userId);assert.ok(s);
-  assert.equal(await transition({attempt:s,messageId:123,next:"challenge",
-   newToken:"bbbbbbbbbbbbbbbbbb"}),false,"cannot skip the two questions and rules");
+  assert.equal(await transition({attempt:s,messageId:123,next:"q1",newToken:"cccccccccccccccccc"}),true);
+  s=await readAttempt(userId);assert.ok(s);
   assert.equal(await transition({attempt:s,messageId:999,next:"q2",
    newToken:"dddddddddddddddddd",consent:{stage:"question1",accepted:true}}),false,
    "wrong message id must be rejected");
@@ -55,13 +61,10 @@ test("durable admission has stage CAS, three consent receipts and user-bound inv
   assert.equal(await transition({attempt:s,messageId:123,next:"rules",
    newToken:"eeeeeeeeeeeeeeeeee",consent:{stage:"question2",accepted:true}}),true);
   s=await readAttempt(userId);assert.ok(s);
-  assert.equal(await transition({attempt:s,messageId:123,next:"challenge",
+  assert.equal(await transition({attempt:s,messageId:123,next:"issuing",
    newToken:"ffffffffffffffffff",consent:{stage:"rules",accepted:true}}),true);
   s=await readAttempt(userId);assert.ok(s);
   assert.equal(await consentsComplete(s),true);
-  assert.equal(await transition({attempt:s,messageId:123,next:"issuing",
-   newToken:"gggggggggggggggggg"}),true);
-  s=await readAttempt(userId);assert.ok(s);
   const expires=new Date(Date.now()+3600_000);
   assert.equal(await saveIssuedInvite(s,url,expires),true);
   const approved=await readAttempt(userId);assert.ok(approved);
