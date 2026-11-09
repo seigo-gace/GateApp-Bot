@@ -9,6 +9,7 @@ import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js"
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
+import {currentTopicDmEntry,assertTopicDmEntryDestination} from "../services/topicDmEntry.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
@@ -66,10 +67,18 @@ function inputInstructions(linked:boolean){
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
  const profile=input.mode==="linked"?await getProfile(id):null;
- const origin=await currentMenuOrigin(id);
+ const pinned=await currentTopicDmEntry(id);
+ const origin=pinned?null:await currentMenuOrigin(id);
  const destinations=await listVerifiedTopics("announcement");
- const current=origin?destinations.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
- const rawDestination=current?"投稿先："+current.board+" / "+current.title:
+ const boundChat=Number(d.data.entryChatId??0),boundThread=Number(d.data.entryThreadId??0);
+ const changed=boundChat>0&&boundThread>0&&
+   (!pinned||pinned.chatId!==boundChat||pinned.threadId!==boundThread);
+ const current=changed?null:
+   pinned?destinations.find(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):
+   origin?destinations.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
+ const rawDestination=changed?"投稿先：元Topicの入口が変更されています。この下書きからは公開できません。":
+   current?"投稿先："+current.board+" / "+current.title:
+   pinned?"投稿先：元Topicがこの投稿用途では未認証のため公開できません。":
    "投稿先：未選択。［投稿］で検証済みTopicを選択できます。";
  const fullKeyboard=keyboard(d);
  // The Rich editor has buttons beside the field text. Keep only the shared
@@ -123,12 +132,14 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   }
  }
  const profile=await getProfile(userId);
+ const pinned=await currentTopicDmEntry(userId);
  const linked=!!profile&&isProfilePosition(profile.position??"");
  const d=await beginDraft(userId,"announcement","awaiting_text",{
   kind:"recruitment",recruitmentFlow:"compact",
   recruitmentMode:linked?"linked":"manual",
   mode:linked?"linked":"manual",profileRevision:linked?profile!.revision:null,
   purposeCodes:[],placeCodes:[],
+  ...(pinned?{entryChatId:pinned.chatId,entryThreadId:pinned.threadId}:{}),
  });
  await show(telegram,userId,d,inputInstructions(linked),
   Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]));
@@ -142,6 +153,15 @@ async function publishRecruitment(
  if(data.mode==="linked"&&profile?.revision!==d.data.profileRevision)
   throw new Error("プロフィールが更新されています。更新後の内容を再確認してください。");
  const topic=await getVerifiedTopic(topicId,"announcement");
+ const pinned=await currentTopicDmEntry(owner);
+ const boundChat=Number(d.data.entryChatId??0),boundThread=Number(d.data.entryThreadId??0);
+ if(boundChat>0&&boundThread>0&&
+    (!pinned||pinned.chatId!==boundChat||pinned.threadId!==boundThread))
+  throw Error("TOPIC_ENTRY_CONTEXT_CHANGED");
+ await assertTopicDmEntryDestination(owner,topic.chatId,topic.threadId);
+ if(boundChat>0&&boundThread>0&&
+    (topic.chatId!==boundChat||topic.threadId!==boundThread))
+  throw Error("TOPIC_ENTRY_DESTINATION_MISMATCH");
  // The posted message is rendered exclusively by the Bot, never forwarded.
  const text=renderRecruitmentPreview(data,profile);
  const snapshot=profile?{
@@ -340,8 +360,11 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    validateRecruitmentReady(asInput(d),
     asInput(d).mode==="linked"?await getProfile(ctx.from.id):null);
    const options=await listVerifiedTopics("announcement");
-   const origin=await currentMenuOrigin(ctx.from.id);
-   const preferred=origin?options.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
+   const pinned=await currentTopicDmEntry(ctx.from.id);
+   const origin=pinned?null:await currentMenuOrigin(ctx.from.id);
+   const preferred=pinned?options.find(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):
+     origin?options.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
+   if(pinned&&!preferred)throw Error("元Topicが募集投稿先として認証されていません。");
    if(preferred){
     await ctx.answerCbQuery("投稿処理を確認しています");
     const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,preferred.id);
