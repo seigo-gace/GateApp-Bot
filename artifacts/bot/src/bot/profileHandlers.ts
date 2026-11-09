@@ -357,7 +357,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("古い画面です。最新の画面から操作してください。");
       return;
     }
-    await ctx.answerCbQuery("キャンセルしました");
+    await ctx.answerCbQuery();
     await returnToPostingMenu(ctx);
   });
 
@@ -503,7 +503,7 @@ export function registerProfileHandlers(
     if(action==="cancel"){
       const cancelled=await repo.discardDraft(ctx.from.id,draft.revision);
       if(!cancelled){await ctx.answerCbQuery("古い操作です");return;}
-      await ctx.answerCbQuery("キャンセルしました");
+      await ctx.answerCbQuery();
       await returnToPostingMenu(ctx);
       return;
     }
