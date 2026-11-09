@@ -199,19 +199,21 @@ async function main():Promise<void>{
   console.error("[GAYBBS_ERROR]",ctx.updateType,
     error instanceof Error?error.name:"unknown");
  });
- await bot.launch({
-  dropPendingUpdates:false,
-  allowedUpdates:["message","callback_query","chat_join_request"],
- });
- console.log("GAYBBS_BOT_READY bot_id="+me.id);
- const stopWorkers=startGayBbsWorkers(bot.telegram);
+ let stopWorkers:(()=>void)|undefined;
  const stop=async(signal:string)=>{
-  stopWorkers();
+  stopWorkers?.();
   bot.stop(signal);
   await closePool();
  };
  process.once("SIGINT",()=>{void stop("SIGINT")});
  process.once("SIGTERM",()=>{void stop("SIGTERM")});
+ await bot.launch({
+  dropPendingUpdates:false,
+  allowedUpdates:["message","callback_query","chat_join_request"],
+ },()=>{
+  console.log("GAYBBS_BOT_READY bot_id="+me.id);
+  stopWorkers=startGayBbsWorkers(bot.telegram);
+ });
 }
 main().catch(error=>{
  console.error("GAYBBS_STARTUP_FAILED",error instanceof Error?error.message:"unknown");
