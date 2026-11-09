@@ -9,10 +9,10 @@ export async function currentDmTextOwner(userId:number):Promise<DmTextOwner|null
  const result=await pool.query(
   `SELECT module FROM (
      SELECT 'profile'::text AS module,updated_at,1 AS priority
-       FROM profile_drafts WHERE owner_user_id=$1 AND step IN ('awaiting_basic','media')
+       FROM profile_drafts WHERE owner_user_id=$1 AND step <> 'cancelled'
      UNION ALL
      SELECT module,updated_at,2 AS priority
-       FROM public_post_drafts WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_recruitment_edit','awaiting_datetime','awaiting_room_url')
+       FROM public_post_drafts WHERE owner_user_id=$1
      UNION ALL
      SELECT 'room_host'::text AS module,updated_at,3 AS priority
        FROM room_host_sessions
