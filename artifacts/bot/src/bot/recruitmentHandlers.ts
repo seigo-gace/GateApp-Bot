@@ -9,7 +9,7 @@ import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js"
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
-import {currentTopicDmEntry,assertTopicDmEntryDestination} from "../services/topicDmEntry.js";
+import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntry} from "../services/topicDmEntry.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
@@ -155,13 +155,11 @@ async function publishRecruitment(
  const topic=await getVerifiedTopic(topicId,"announcement");
  const pinned=await currentTopicDmEntry(owner);
  const boundChat=Number(d.data.entryChatId??0),boundThread=Number(d.data.entryThreadId??0);
- if(boundChat>0&&boundThread>0&&
-    (!pinned||pinned.chatId!==boundChat||pinned.threadId!==boundThread))
-  throw Error("TOPIC_ENTRY_CONTEXT_CHANGED");
+ assertBoundTopicDmEntry(
+  boundChat>0&&boundThread>0?{chatId:boundChat,threadId:boundThread}:null,
+  pinned,{chatId:topic.chatId,threadId:topic.threadId},
+ );
  await assertTopicDmEntryDestination(owner,topic.chatId,topic.threadId);
- if(boundChat>0&&boundThread>0&&
-    (topic.chatId!==boundChat||topic.threadId!==boundThread))
-  throw Error("TOPIC_ENTRY_DESTINATION_MISMATCH");
  // The posted message is rendered exclusively by the Bot, never forwarded.
  const text=renderRecruitmentPreview(data,profile);
  const snapshot=profile?{
