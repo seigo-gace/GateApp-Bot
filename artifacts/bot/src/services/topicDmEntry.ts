@@ -24,6 +24,20 @@ export function parseTopicEntryPayload(payload:string):string{
 }
 export type TopicEntryOrigin = {chatId:number;threadId:number};
 
+/** A private draft created through a pinned Topic cannot silently move to another Topic.
+ * Returning to a menu does not call this guard; only publication does.
+ */
+export function assertBoundTopicDmEntry(
+ draft:TopicEntryOrigin|null,current:TopicEntryOrigin|null,destination:TopicEntryOrigin,
+):void{
+ if(draft&&(!current||draft.chatId!==current.chatId||draft.threadId!==current.threadId))
+  throw Error("TOPIC_ENTRY_CONTEXT_CHANGED");
+ if((draft&&(draft.chatId!==destination.chatId||draft.threadId!==destination.threadId))||
+    (current&&(current.chatId!==destination.chatId||current.threadId!==destination.threadId)))
+  throw Error("TOPIC_ENTRY_DESTINATION_MISMATCH");
+}
+
+
 export async function activateTopicDmEntry(
  userId:number,payload:string,telegram:Telegram,
 ):Promise<TopicEntryOrigin>{
