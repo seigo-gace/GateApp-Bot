@@ -3,7 +3,7 @@ import { Markup } from "telegraf";
 import { APPROVED_POSTING_ROWS } from "./menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
 
-const STATIC_URL_LABELS = new Set([
+export const STATIC_URL_LABELS = new Set([
   "クリエーター有料ビデオ投稿",
   "雑談",
   "紹介/招待",
@@ -95,8 +95,11 @@ export async function bareStartPostingExtra(chatId: number) {
     row.map((label) => {
       if (STATIC_URL_LABELS.has(label)) {
         const url = urls.get(label);
-        if (!url) throw new Error("POSTING_NAV_URL_MISSING:" + label);
-        return Markup.button.url(label, url);
+        // An unavailable link must never prevent the rest of the posting menu
+        // (including a cancel -> menu return) from being rendered.
+        return url
+          ? Markup.button.url(label, url)
+          : Markup.button.callback(label, "dm:nav-unavailable");
       }
       const data = CALLBACK_BY_LABEL[label];
       if (!data) throw new Error("POSTING_CALLBACK_LABEL_UNKNOWN:" + label);
