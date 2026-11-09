@@ -339,7 +339,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    escapeProfileHtml(inputInstructions(data.mode==="linked"));
   const selected="選択済み：\n"+
    "ポジション："+escapeProfileHtml(data.mode==="linked"?
-    (profile?.position??"プロフィール参照"):(data.position??"未選択"))+"\n"+
+    (profile&&"position" in profile&&typeof profile.position==="string"?profile.position:"プロフィール参照"):(data.position??"未選択"))+"\n"+
    "目的："+escapeProfileHtml(data.purposeCodes?.join("、")||"未選択")+"\n"+
    "場所："+escapeProfileHtml(data.placeCodes?.join("、")||"未選択");
   const heading=panel==="position"?"ポジションを選択してください（1つ必須）。":
