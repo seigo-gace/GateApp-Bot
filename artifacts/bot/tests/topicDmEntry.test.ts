@@ -42,3 +42,14 @@ test("saved negative Telegram chat ID remains binding and invalid context fails 
  assert.throws(()=>assertBoundTopicDmEntry(draftTopicEntryOrigin(area.chatId,area.threadId),next,next),/TOPIC_ENTRY_CONTEXT_CHANGED/);
  assert.doesNotThrow(()=>assertBoundTopicDmEntry(draftTopicEntryOrigin(area.chatId,area.threadId),area,area));
 });
+
+test("M2 recruitment origin is bound just like a pinned forum entry",()=>{
+ const fromMenu={chatId:-1003847210571,threadId:65};
+ const changedMenu={chatId:-1003847210571,threadId:66};
+ const otherBoard={chatId:-1003770334893,threadId:210};
+ const saved=draftTopicEntryOrigin(String(fromMenu.chatId),String(fromMenu.threadId));
+ assert.doesNotThrow(()=>assertBoundTopicDmEntry(saved,fromMenu,fromMenu));
+ assert.throws(()=>assertBoundTopicDmEntry(saved,changedMenu,changedMenu),/TOPIC_ENTRY_CONTEXT_CHANGED/);
+ assert.throws(()=>assertBoundTopicDmEntry(saved,null,fromMenu),/TOPIC_ENTRY_CONTEXT_CHANGED/);
+ assert.throws(()=>assertBoundTopicDmEntry(saved,fromMenu,otherBoard),/TOPIC_ENTRY_DESTINATION_MISMATCH/);
+});
