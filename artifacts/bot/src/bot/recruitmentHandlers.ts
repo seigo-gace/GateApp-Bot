@@ -295,12 +295,12 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
   const rev=Number(ctx.match[1]),panel=ctx.match[2];
-  if(!active(d,rev)||!["preview","awaiting_text"].includes(d.step)||
+  if(!active(d,rev)||!["preview","awaiting_text","awaiting_tags"].includes(d.step)||
     (panel==="position"&&asInput(d).mode!=="manual")){
    await ctx.answerCbQuery("古い操作です");return;
   }
   const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
-   ...d.data,recruitPanel:panel,recruitPanelReturnStep:d.step});
+   ...d.data,recruitPanel:panel,recruitPanelReturnStep:d.step==="awaiting_tags"?d.data.recruitPanelReturnStep:d.step});
   await ctx.answerCbQuery();
   await renderPanel(ctx.telegram,ctx.from.id,next);
  });
@@ -324,11 +324,30 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     b((data.placeCodes?.includes(p)?"✅ ":"▫️ ")+p,
       `recruit:select:${d.revision}:place:${items.indexOf(p)}`)));
   }
-  rows.push([b("↩ プレビューに戻る",`recruit:panelback:${d.revision}`)]);
-  await show(telegram,id,d,
-   panel==="position"?"ポジションを選択してください（1つ必須）。":
+  const rev=d.revision;
+  rows.push(data.mode==="manual"?[
+   b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
+   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
+   b("場所選択",`recruit:panel:${rev}:place`,"danger")]:[
+   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
+   b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
+  rows.push([b("📋 プレビュー",`recruit:panelback:${rev}`),
+   b("キャンセル",`recruit:cancel:${rev}`)]);
+  const ready=!!data.title?.trim()&&!!data.body?.trim();
+  const profile=ready&&data.mode==="linked"?await getProfile(id):null;
+  const preview=ready?renderRecruitmentPreview(data,profile):
+   escapeProfileHtml(inputInstructions(data.mode==="linked"));
+  const selected="選択済み：\n"+
+   "ポジション："+escapeProfileHtml(data.mode==="linked"?
+    (profile?.position??"プロフィール参照"):(data.position??"未選択"))+"\n"+
+   "目的："+escapeProfileHtml(data.purposeCodes?.join("、")||"未選択")+"\n"+
+   "場所："+escapeProfileHtml(data.placeCodes?.join("、")||"未選択");
+  const heading=panel==="position"?"ポジションを選択してください（1つ必須）。":
    panel==="purpose"?"目的タグを選択してください（複数選択可能）。":
-   "場所あり／なしは択一、足ありは独立して選択できます。",Markup.inlineKeyboard(rows));
+   "場所あり／なしは択一、足ありは独立して選択できます。";
+  await show(telegram,id,d,"📢 募集プレビュー（未投稿）\n"+preview+
+   "\n\n"+selected+"\n\n"+escapeProfileHtml(heading),
+   Markup.inlineKeyboard(rows),true);
  }
  bot.action(/^recruit:select:(\d+):(position|purpose|place):(\d{1,2})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
