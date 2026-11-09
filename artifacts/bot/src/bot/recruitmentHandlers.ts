@@ -69,13 +69,13 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  const profile=input.mode==="linked"?await getProfile(id):null;
  const pinned=await currentTopicDmEntry(id);
  const origin=pinned?null:await currentMenuOrigin(id);
+ const activeOrigin=pinned??origin;
  const destinations=await listVerifiedTopics("announcement");
  const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
  const changed=!!bound&&
-   (!pinned||pinned.chatId!==bound.chatId||pinned.threadId!==bound.threadId);
+   (!activeOrigin||activeOrigin.chatId!==bound.chatId||activeOrigin.threadId!==bound.threadId);
  const current=changed?null:
-   pinned?destinations.find(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):
-   origin?destinations.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
+   activeOrigin?destinations.find(t=>t.chatId===activeOrigin.chatId&&t.threadId===activeOrigin.threadId):null;
  const rawDestination=changed?"投稿先：元Topicの入口が変更されています。この下書きからは公開できません。":
    current?"投稿先："+current.board+" / "+current.title:
    pinned?"投稿先：元Topicがこの投稿用途では未認証のため公開できません。":
@@ -133,13 +133,15 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
  }
  const profile=await getProfile(userId);
  const pinned=await currentTopicDmEntry(userId);
+ const origin=pinned?null:await currentMenuOrigin(userId);
+ const entry=pinned??origin;
  const linked=!!profile&&isProfilePosition(profile.position??"");
  const d=await beginDraft(userId,"announcement","awaiting_text",{
   kind:"recruitment",recruitmentFlow:"compact",
   recruitmentMode:linked?"linked":"manual",
   mode:linked?"linked":"manual",profileRevision:linked?profile!.revision:null,
   purposeCodes:[],placeCodes:[],
-  ...(pinned?{entryChatId:pinned.chatId,entryThreadId:pinned.threadId}:{}),
+  ...(entry?{entryChatId:entry.chatId,entryThreadId:entry.threadId}:{}),
  });
  await show(telegram,userId,d,inputInstructions(linked),
   Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]));
@@ -154,8 +156,9 @@ async function publishRecruitment(
   throw new Error("プロフィールが更新されています。更新後の内容を再確認してください。");
  const topic=await getVerifiedTopic(topicId,"announcement");
  const pinned=await currentTopicDmEntry(owner);
+ const origin=pinned?null:await currentMenuOrigin(owner);
  const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
- assertBoundTopicDmEntry(bound,pinned,{chatId:topic.chatId,threadId:topic.threadId});
+ assertBoundTopicDmEntry(bound,pinned??origin,{chatId:topic.chatId,threadId:topic.threadId});
  await assertTopicDmEntryDestination(owner,topic.chatId,topic.threadId);
  // Fail before writing an announcement or application token when public release is closed.
  await assertFeatureReleased("announcement");
