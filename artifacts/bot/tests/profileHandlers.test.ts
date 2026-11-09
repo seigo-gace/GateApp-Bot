@@ -163,6 +163,7 @@ test("cancel is revision-bound: clears active draft only and returns directly to
   await f.action(cancelAction,[previous]);
   assert.equal(f.draft,null);
   assert.equal(f.discards,1);
+  assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"),"cancel shows no explanation toast");
   assert.ok(f.sent.at(-1)[1].includes("投稿メニュー"));
   assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
   assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard.flat().length,10);
@@ -285,6 +286,7 @@ test("A cancel returns directly to the DM posting menu without deleting saved pr
  assert.equal(f.draft,null);
  const result=f.sent.at(-1);
  assert.equal(result[0],"edit");
+ assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"));
  assert.match(result[1],/投稿メニュー/);
  assert.equal(result[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
  assert.deepEqual(result[2].reply_markup.inline_keyboard.map((row:any[])=>row.length),[3,2,2,3]);
