@@ -132,10 +132,10 @@ async function main():Promise<void>{
   else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
   else await startOperationHelp(ctx.telegram,ctx.from.id);
  });
+ registerCompactRecruitmentHandlers(bot);
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
- registerCompactRecruitmentHandlers(bot);
  registerPostingHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
