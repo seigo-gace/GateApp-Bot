@@ -48,3 +48,20 @@ test("recruitment input rejects incomplete and unsafe text",()=>{
  assert.match(preview,/&lt;script&gt;/);
  assert.match(preview,/&amp;/);
 });
+
+test("Master four-line manual input renders into recruitment preview",()=>{
+ const d=parseRecruitmentMessage("テスト\nテスト\n170 80 40\nテスト",false);
+ assert.equal(d.mode,"manual");
+ assert.equal(d.title,"テスト");
+ assert.equal(d.nickname,"テスト");
+ assert.equal(d.heightCm,170);
+ assert.equal(d.weightKg,80);
+ assert.equal(d.age,40);
+ assert.equal(d.body,"テスト");
+ const preview=renderRecruitmentPreview(d);
+ assert.match(preview,/📢 <b>テスト<\/b>/);
+ assert.match(preview,/ニックネーム：テスト/);
+ assert.match(preview,/170cm.*80kg.*40歳/);
+ assert.match(preview,/募集内容<\/b>\nテスト/);
+ assert.throws(()=>validateRecruitmentReady(d),/ポジション/);
+});
