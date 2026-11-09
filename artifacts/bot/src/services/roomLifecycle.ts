@@ -9,7 +9,7 @@ export type RoomEventKind="scheduled"|"prepared"|"started"|"postponed"|"cancelle
 const map:Record<RoomAction,{to:RoomState;event:RoomEventKind;from:readonly RoomState[]}>={
  schedule:{to:"scheduled",event:"scheduled",from:["draft","postponed"]},
  prepare:{to:"ready",event:"prepared",from:["draft","scheduled","postponed"]},
- start:{to:"live",event:"started",from:["draft","scheduled","ready","postponed"]},
+ start:{to:"live",event:"started",from:["scheduled","ready","postponed"]},
  postpone:{to:"postponed",event:"postponed",from:["scheduled","ready","live"]},
  cancel:{to:"cancelled",event:"cancelled",from:["draft","scheduled","ready","live","postponed"]},
  finish:{to:"finished",event:"finished",from:["live"]},
