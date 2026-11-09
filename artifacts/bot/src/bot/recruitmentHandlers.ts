@@ -13,7 +13,7 @@ import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntr
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
-import {publishPost} from "../services/publishService.js";
+import {publishPost,assertFeatureReleased} from "../services/publishService.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
@@ -160,6 +160,8 @@ async function publishRecruitment(
   pinned,{chatId:topic.chatId,threadId:topic.threadId},
  );
  await assertTopicDmEntryDestination(owner,topic.chatId,topic.threadId);
+ // Fail before writing an announcement or application token when public release is closed.
+ await assertFeatureReleased("announcement");
  // The posted message is rendered exclusively by the Bot, never forwarded.
  const text=renderRecruitmentPreview(data,profile);
  const snapshot=profile?{
