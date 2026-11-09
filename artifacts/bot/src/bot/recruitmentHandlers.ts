@@ -9,7 +9,7 @@ import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js"
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
-import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntry} from "../services/topicDmEntry.js";
+import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntry,draftTopicEntryOrigin} from "../services/topicDmEntry.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
@@ -70,9 +70,9 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  const pinned=await currentTopicDmEntry(id);
  const origin=pinned?null:await currentMenuOrigin(id);
  const destinations=await listVerifiedTopics("announcement");
- const boundChat=Number(d.data.entryChatId??0),boundThread=Number(d.data.entryThreadId??0);
- const changed=boundChat>0&&boundThread>0&&
-   (!pinned||pinned.chatId!==boundChat||pinned.threadId!==boundThread);
+ const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
+ const changed=!!bound&&
+   (!pinned||pinned.chatId!==bound.chatId||pinned.threadId!==bound.threadId);
  const current=changed?null:
    pinned?destinations.find(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):
    origin?destinations.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
@@ -154,11 +154,8 @@ async function publishRecruitment(
   throw new Error("プロフィールが更新されています。更新後の内容を再確認してください。");
  const topic=await getVerifiedTopic(topicId,"announcement");
  const pinned=await currentTopicDmEntry(owner);
- const boundChat=Number(d.data.entryChatId??0),boundThread=Number(d.data.entryThreadId??0);
- assertBoundTopicDmEntry(
-  boundChat>0&&boundThread>0?{chatId:boundChat,threadId:boundThread}:null,
-  pinned,{chatId:topic.chatId,threadId:topic.threadId},
- );
+ const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
+ assertBoundTopicDmEntry(bound,pinned,{chatId:topic.chatId,threadId:topic.threadId});
  await assertTopicDmEntryDestination(owner,topic.chatId,topic.threadId);
  // Fail before writing an announcement or application token when public release is closed.
  await assertFeatureReleased("announcement");
