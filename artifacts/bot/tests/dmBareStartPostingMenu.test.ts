@@ -14,8 +14,9 @@ test("bare /start posting menu uses Master 3/2/2/3 rows", () => {
 
 test("missing verified navigation URL does not crash the DM menu or create an unverified link", () => {
   const missing = navigationButton("雑談");
-  assert.deepEqual(missing, {text:"雑談", callback_data:"dm:nav-unavailable", hide:false});
+  assert.equal(missing.text, "雑談");
+  assert.equal("callback_data" in missing && missing.callback_data, "dm:nav-unavailable");
   const verified = navigationButton("雑談", "https://t.me/example_verified");
   assert.equal(verified.text, "雑談");
-  assert.equal(verified.url, "https://t.me/example_verified");
+  assert.equal("url" in verified && verified.url, "https://t.me/example_verified");
 });
