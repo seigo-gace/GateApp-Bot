@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bareStartPostingRowLabels, navigationButton } from "../src/services/dmBareStartPostingMenu.js";
+import { bareStartPostingRowLabels, navigationButton, canOpenPostingEditor } from "../src/services/dmBareStartPostingMenu.js";
 import { APPROVED_POSTING_ROWS } from "../src/services/menuPanelRenderer.js";
 
 test("bare /start posting menu uses Master 3/2/2/3 rows", () => {
@@ -19,4 +19,12 @@ test("missing verified navigation URL does not crash the DM menu or create an un
   const verified = navigationButton("雑談", "https://t.me/example_verified");
   assert.equal(verified.text, "雑談");
   assert.equal("url" in verified && verified.url, "https://t.me/example_verified");
+});
+
+
+test("recruitment drafting is available without releasing public Telegram posting", () => {
+  assert.equal(canOpenPostingEditor("相手募集", false), true);
+  assert.equal(canOpenPostingEditor("相手募集", true), true);
+  assert.equal(canOpenPostingEditor("告知/予告", false), false);
+  assert.equal(canOpenPostingEditor("告知/予告", true), true);
 });
