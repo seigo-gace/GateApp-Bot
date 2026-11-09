@@ -24,6 +24,19 @@ export function parseTopicEntryPayload(payload:string):string{
 }
 export type TopicEntryOrigin = {chatId:number;threadId:number};
 
+/** A saved Telegram forum chat ID is negative. Never silently drop a
+ * previously bound destination because it is not a positive integer.
+ */
+export function draftTopicEntryOrigin(
+ chatId:unknown,threadId:unknown,
+):TopicEntryOrigin|null{
+ if(chatId==null&&threadId==null)return null;
+ const chat=Number(chatId),thread=Number(threadId);
+ if(!ALLOWED_CHATS.has(chat)||!Number.isSafeInteger(thread)||thread<=0)
+  throw Error("TOPIC_ENTRY_DRAFT_CONTEXT_INVALID");
+ return {chatId:chat,threadId:thread};
+}
+
 /** A private draft created through a pinned Topic cannot silently move to another Topic.
  * Returning to a menu does not call this guard; only publication does.
  */
