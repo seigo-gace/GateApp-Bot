@@ -52,7 +52,7 @@ function keyboard(d:EditorDraft){
   rows.push([b("目的タグ",`recruit:panel:${rev}:purpose`,"success"),
    b("場所タグ",`recruit:panel:${rev}:place`,"primary")]);
  }
- rows.push([b("✅ 投稿",`recruit:post:${rev}`,"success"),
+ rows.push([b("✅ 投稿する",`recruit:post:${rev}`,"success"),
   b("キャンセル",`recruit:cancel:${rev}`)]);
  return Markup.inlineKeyboard(rows);
 }
@@ -62,7 +62,8 @@ function initialKeyboard(d:EditorDraft){
   [b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
    b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
    b("場所選択",`recruit:panel:${rev}:place`,"danger")],
-  [b("キャンセル",`recruit:cancel:${rev}`)]
+  [b("✅ 投稿する",`recruit:post:${rev}`,"success"),
+   b("キャンセル",`recruit:cancel:${rev}`)]
  ]);
 }
 function inputInstructions(linked:boolean){
@@ -145,7 +146,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   if(previous.step==="awaiting_text"){
    await show(telegram,userId,previous,inputInstructions(previous.data.mode==="linked"),
     previous.data.mode==="manual"?initialKeyboard(previous):
-    Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${previous.revision}`)]]));return;
+    Markup.inlineKeyboard([[b("✅ 投稿する",`recruit:post:${previous.revision}`,"success"),b("キャンセル",`recruit:cancel:${previous.revision}`)]]));return;
   }
  }
  const profile=await getProfile(userId);
@@ -165,7 +166,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   d.data.screenMessageId=Number(menuMessageId);
  }
  await show(telegram,userId,d,inputInstructions(linked),
-  linked?Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]):initialKeyboard(d));
+  linked?Markup.inlineKeyboard([[b("✅ 投稿する",`recruit:post:${d.revision}`,"success"),b("キャンセル",`recruit:cancel:${d.revision}`)]]):initialKeyboard(d));
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number
@@ -340,7 +341,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]:[
    b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
-  rows.push([b("📋 プレビュー",`recruit:panelback:${rev}`),
+  rows.push([b("📋 プレビュー",`recruit:panelback:${rev}`)]);
+  rows.push([b("✅ 投稿する",`recruit:post:${rev}`,"success"),
    b("キャンセル",`recruit:cancel:${rev}`)]);
   const ready=!!data.title?.trim()&&!!data.body?.trim();
   const profile=ready&&data.mode==="linked"?await getProfile(id):null;
@@ -404,9 +406,18 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
  });
  bot.action(/^recruit:post:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
-  const d=await getDraft(ctx.from.id,"announcement");
-  if(!active(d,Number(ctx.match[1]),"preview")){
+  let d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))||
+     !["preview","awaiting_text","awaiting_tags"].includes(d.step)){
    await ctx.answerCbQuery("古い投稿ボタンです");return;
+  }
+  if(d.step==="awaiting_text"){
+   await ctx.answerCbQuery("募集情報を入力してから投稿してください",{show_alert:true});
+   return;
+  }
+  if(d.step==="awaiting_tags"){
+   d=await updateDraft(ctx.from.id,"announcement",d.revision,"preview",{
+    ...d.data,recruitPanel:null,recruitPanelReturnStep:null});
   }
   try{
    if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d)){
