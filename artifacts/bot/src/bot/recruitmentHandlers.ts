@@ -161,6 +161,9 @@ async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:Edit
   if((page+1)*10<matches.length)items.push({text:"次へ ▶",callback:`recruit:destpage:${rev}:${board}:${index}:${page+1}`});
  }
  if(!items.length)throw Error("RECRUITMENT_DESTINATIONS_NOT_VERIFIED");
+ if(stage==="blocks")items.push({text:"◀ グループ選択",callback:`recruit:destback:${rev}:groups`});
+ if(stage==="topics")items.push({text:board==="area_bbs"?"◀ エリアブロック":"◀ グループ選択",
+  callback:`recruit:destback:${rev}:${board==="area_bbs"?"blocks":"groups"}`});
  await show(telegram,id,d,heading,Markup.inlineKeyboard(items.map(x=>[b(x.text,x.callback)])));
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
@@ -342,6 +345,15 @@ async function checkLinkedProfileChanged(telegram:Telegram,id:number,d:EditorDra
  return true;
 }
 export function registerCompactRecruitmentHandlers(bot:Telegraf){
+ bot.action(/^recruit:destback:(\d+):(groups|blocks)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,
+   ctx.match[2] as "groups"|"blocks",ctx.match[2]==="blocks"?"area_bbs":undefined);
+ });
+
  bot.action(/^recruit:destgroup:(\d+):(area_bbs|gay_board|video_chat)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
@@ -606,39 +618,13 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     "\n投稿№："+sourceId+"\n管理者による送信結果の照合が必要です。");
   }
  });
- async function showRecruitmentTargetPicker(
-  ctx:{from:{id:number};editMessageText:(text:string,extra?:any)=>Promise<unknown>},
-  d:EditorDraft,page:number,provided?:Awaited<ReturnType<typeof listVerifiedTopics>>,
- ){
-  const verified=provided??await listVerifiedTopics("announcement");
-  if(!Number.isSafeInteger(page)||page<0||page*10>=verified.length)
-   throw Error("RECRUITMENT_TARGET_PAGE_INVALID");
-  const input=asInput(d);
-  const profile=input.mode==="linked"?await getProfile(ctx.from.id):null;
-  const end=Math.min((page+1)*10,verified.length);
-  const rows=verified.slice(page*10,end).map(t=>[
-   b(BOARD_TITLES[t.board]+" / "+t.title,`recruit:target:${d.revision}:${t.id}`)]);
-  const navigation=[];
-  if(page>0)navigation.push(b("◀ 前へ",`recruit:targets:${d.revision}:${page-1}`));
-  if(end<verified.length)navigation.push(b("次へ ▶",`recruit:targets:${d.revision}:${page+1}`));
-  if(navigation.length)rows.push(navigation);
-  await ctx.editMessageText("📍 投稿先を選択してください（"+(page+1)+"/"+
-   Math.ceil(verified.length/10)+"ページ）。選択後に公開します。\n\n"+
-   renderRecruitmentPreview(input,profile),
-   {parse_mode:"HTML",...Markup.inlineKeyboard(rows)});
- }
+ // Old flat-topic page callbacks restart at the group-first picker.
  bot.action(/^recruit:targets:(\d+):(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
-  if(!active(d,Number(ctx.match[1]),"preview")){
-   await ctx.answerCbQuery("古い操作です");return;
-  }
-  try{
-   await ctx.answerCbQuery();
-   await showRecruitmentTargetPicker(ctx,d,Number(ctx.match[2]));
-  }catch{
-   await ctx.answerCbQuery("投稿先一覧を確認できません",{show_alert:true}).catch(()=>{});
-  }
+  if(!active(d,Number(ctx.match[1]),"preview")){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"groups");
  });
  bot.action(/^recruit:post:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
@@ -676,55 +662,27 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    }
    const options=await listVerifiedTopics("announcement");
    const selected=options.find(t=>t.id===Number(d.data.selectedTopicId));
-   if(selected){
-    await ctx.answerCbQuery("投稿処理を確認しています");
-    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,selected.id,true);
-    await showRecruitmentPublished(ctx,sent);return;
-   }
-   const pinned=await currentTopicDmEntry(ctx.from.id);
-   const origin=pinned?null:await currentMenuOrigin(ctx.from.id);
-   const preferred=pinned?options.find(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):
-     origin?options.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
-   const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
-   const matches=preferred&&(!bound||
-    (bound.chatId===preferred.chatId&&bound.threadId===preferred.threadId));
-   if(preferred&&matches){
-    await ctx.answerCbQuery("投稿処理を確認しています");
-    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,preferred.id);
-    await showRecruitmentPublished(ctx,sent);
+   if(!selected){
+    await ctx.answerCbQuery("先に投稿先を選択してください");
+    await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"groups");
     return;
    }
-   if(!options.length)throw Error("公開先のTopicがまだ認証されていません。下書きは保持しました。");
-   await ctx.answerCbQuery("投稿先を選択してください");
-   await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"groups");
+   await ctx.answerCbQuery("投稿処理を確認しています");
+   const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,selected.id,true);
+   await showRecruitmentPublished(ctx,sent);
   }catch(e){
    await ctx.answerCbQuery("投稿の条件を確認してください").catch(()=>{});
    await showPreview(ctx.telegram,ctx.from.id,d,
     e instanceof Error?e.message:"投稿状態を確認できませんでした。");
   }
  });
+ // Old flat-topic buttons must not skip required hierarchy steps.
  bot.action(/^recruit:target:(\d+):(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
-  if(!active(d,Number(ctx.match[1]),"preview")){
-   await ctx.answerCbQuery("古い操作です");return;
-  }
-  try{
-   await ctx.answerCbQuery("投稿しています");
-   if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d))return;
-   const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]),true);
-   await showRecruitmentPublished(ctx,sent);
-  }catch(e){
-   const reason=e instanceof Error?e.message:"";
-   if(reason.startsWith("TOPIC_ENTRY_")||reason==="FEATURE_RELEASE_NOT_VERIFIED"){
-    await showPreview(ctx.telegram,ctx.from.id,d,
-     reason==="FEATURE_RELEASE_NOT_VERIFIED"
-      ?"公開許可が確認できません。下書きを保持しました。"
-      :"選択したTopicへの投稿を確認できません。下書きは保持しました。");
-    return;
-   }
-   await ctx.reply("投稿を確認できませんでした。送信状態が不明な場合は再送せず照合してください。");
-  }
+  if(!active(d,Number(ctx.match[1]),"preview")){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"groups");
  });
  bot.action(/^recruit:cancel:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
