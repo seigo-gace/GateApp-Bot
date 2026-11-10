@@ -23,6 +23,10 @@ import {loadRoomPublication,roomPublicationEditor} from "../services/roomPublish
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished} from "./recruitmentHandlers.js";
+import {parseRecruitmentMessage,renderRecruitmentPreview,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
+import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
+import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
+import {roomCrossPostTargets} from "../services/roomCrossPost.js";
 import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 
 async function showPostScreen(
@@ -57,13 +61,15 @@ function preview(module:Module,draft:EditorDraft):string {
   validateRoom({ownerId:1,name:title,mode:externalUrl?"external":"jitsi",
    externalUrl,status:"draft"});
   const when=draft.data.startAt?new Date(String(draft.data.startAt)):null;
+  const stage=String(draft.data.stage||"");
+  const state=stage==="scheduled_ready"||when?"📅 予告中":"🟡 開始待ち";
   return ["🎬 ROOM："+escapeProfileHtml(title),
     escapeProfileHtml(description),
     "方式："+(externalUrl?"URL持込":"無料Jitsi"),
     "開催："+(when?when.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）":"今すぐ"),
-    "参加："+(draft.data.visibility==="public"?"自由参加":"応募受付"),
+    "参加："+(draft.data.visibility==="public"?"自由参加":"承認制"),
     "プロフ連携："+(draft.data.profileLinked?"あり":"なし"),
-    "状態："+(when?"📅 予告中":"🔴 LIVE中")].join("\n");
+    "状態："+state].join("\n");
   }
  const kind=draft.data.kind as AnnouncementKind;
  return buildAnnouncementCard(validateAnnouncement({ownerId:1,kind,
@@ -125,45 +131,149 @@ function tagPanel(draft:EditorDraft) {
  return Markup.inlineKeyboard(rows);
 }
 /** The same editor is called from /room and an authenticated M2 entry. */
+
+function roomRecruitmentData(d:EditorDraft):RecruitmentInput{
+ const o=d.data;
+ return {
+  title:String(o.title||""),body:String(o.description||""),
+  mode:o.recruitmentMode==="linked"?"linked":"manual",
+  nickname:typeof o.nickname==="string"?o.nickname:undefined,
+  heightCm:Number(o.heightCm)||undefined,weightKg:Number(o.weightKg)||undefined,
+  age:Number(o.age)||undefined,position:typeof o.position==="string"?o.position:undefined,
+  purposeCodes:[],placeCodes:[],
+ };
+}
+function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
+ return validLikeTags(Array.isArray(d.data[key])?d.data[key] as LikeTag[]:[]);
+}
 function roomOptions(d:EditorDraft){
- const revision=d.revision;
- const publicJoin=d.data.visibility==="public";
- return Markup.inlineKeyboard([
-  [Markup.button.callback(publicJoin?"✅ 自由参加":"▫️ 自由参加",
-    `room:joinmode:${revision}:public`),
-   Markup.button.callback(!publicJoin?"✅ 応募受付":"▫️ 応募受付",
-    `room:joinmode:${revision}:approved_only`)],
-  [Markup.button.callback("📝 タイトル・説明を修正",`room:edit:${revision}`),
-   Markup.button.callback(d.data.profileLinked?"✅ プロフ連携":"▫️ プロフ連携",
-    `room:profile:${revision}`)],
-  [Markup.button.callback("▶ 開始する",`room:plan:${revision}:now`),
-   Markup.button.callback("📅 予告する",`room:plan:${revision}:scheduled`)],
-  [Markup.button.callback("下書き保存",`room:save:${revision}`),
-   Markup.button.callback("キャンセル",`room:cancel:${revision}`)],
- ]);
+ const r=d.revision,linked=d.data.recruitmentMode==="linked";
+ const rows:any[][]=[];
+ rows.push([Markup.button.callback("📝 タイトル",`room:field:${r}:title`),
+  Markup.button.callback("📝 募集内容",`room:field:${r}:body`)]);
+ if(!linked)rows.push([Markup.button.callback("📝 ニックネーム",`room:field:${r}:nickname`),
+  Markup.button.callback("📝 身長/体重/年齢",`room:field:${r}:stats`)]);
+ rows.push([Markup.button.callback(linked?"✅ プロフ連携":"ポジション",`room:position:${r}`),
+  Markup.button.callback("#Like",`room:tag:${r}:like`),
+  Markup.button.callback("#Love",`room:tag:${r}:love`)]);
+ rows.push([Markup.button.callback("▶ 即開始",`room:plan:${r}:now`),
+  Markup.button.callback("📅 予告する",`room:plan:${r}:scheduled`)]);
+ rows.push([Markup.button.callback("↩ 戻る",`room:back:${r}`),
+  Markup.button.callback("キャンセル",`room:cancel:${r}`)]);
+ return Markup.inlineKeyboard(rows);
 }
 export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
+ const r=d.revision,stage=String(d.data.stage||"");
+ const nav=[[Markup.button.callback("↩ 戻る",`room:back:${r}`),
+  Markup.button.callback("キャンセル",`room:cancel:${r}`)]];
  if(!d.data.modeSelected&&!d.data.title&&!d.data.description)
-  return Markup.inlineKeyboard([[
-   Markup.button.callback("ルーム作成",`room:mode:${d.revision}:jitsi`),
-   Markup.button.callback("URL",`room:mode:${d.revision}:external`)
-  ]]);
- if(d.step==="awaiting_text"||d.step==="awaiting_room_url")
-  return Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`room:cancel:${d.revision}`)]]);
+  return Markup.inlineKeyboard([
+   [Markup.button.callback("Room作成",`room:mode:${r}:jitsi`),
+    Markup.button.callback("Room持ち込み",`room:mode:${r}:external`)],
+   [Markup.button.callback("キャンセル",`room:cancel:${r}`)]
+  ]);
+ if(stage==="join_choice")return Markup.inlineKeyboard([
+  [Markup.button.callback("自由参加",`room:joinmode:${r}:public`),
+   Markup.button.callback("承認制",`room:joinmode:${r}:approved_only`)],
+  ...nav
+ ]);
+ if(stage==="scheduled_ready")return Markup.inlineKeyboard([
+  [Markup.button.callback("✅ 投稿する",`room:publish:${r}`)],
+  ...nav
+ ]);
+ if(stage==="position")return Markup.inlineKeyboard([
+  ...PROFILE_POSITIONS.map((value,i)=>({text:String(value),
+   callback_data:`room:positionchoice:${r}:${i}`}))
+   .reduce<Array<Array<{text:string;callback_data:string}>>>((rows,item,i)=>{
+    if(i%3===0)rows.push([]);rows[rows.length-1]!.push(item);return rows;
+   },[]),
+  ...nav
+ ]);
+ if(stage==="tag_categories")return Markup.inlineKeyboard([
+  ...LIKE_CATEGORIES.map((c,i)=>Markup.button.callback(c.name,`room:tagcat:${r}:${i}`))
+   .reduce<any[][]>((rows,item,i)=>{if(i%3===0)rows.push([]);rows.at(-1)!.push(item);return rows;},[]),
+  ...nav
+ ]);
+ if(stage==="tag_items"){
+  const cat=Number(d.data.tagCategory),page=Number(d.data.tagPage)||0;
+  const category=LIKE_CATEGORIES[cat];
+  if(!category)throw Error("ROOM_TAG_CATEGORY_INVALID");
+  const selected=roomTags(d,d.data.tagPurpose==="love"?"loveTags":"likeTags");
+  const items=category.items.slice(page*LIKE_PAGE_SIZE,(page+1)*LIKE_PAGE_SIZE);
+  const rows=items.map((item,i)=>Markup.button.callback(
+   (selected.some(t=>t.category===category.name&&t.tag===item)?"✅ ":"▫️ ")+item,
+   `room:tagitem:${r}:${cat*100+page*LIKE_PAGE_SIZE+i}`))
+   .reduce<any[][]>((out,item,i)=>{if(i%3===0)out.push([]);out.at(-1)!.push(item);return out;},[]);
+  const pagination:any[]=[];
+  if(page>0)pagination.push(Markup.button.callback("◀ 前へ",`room:tagpage:${r}:${page-1}`));
+  if((page+1)*LIKE_PAGE_SIZE<category.items.length)
+   pagination.push(Markup.button.callback("次へ ▶",`room:tagpage:${r}:${page+1}`));
+  if(pagination.length)rows.push(pagination);
+  rows.push([Markup.button.callback("✅ 保存",`room:tagsave:${r}`),
+   Markup.button.callback("↩ 戻る",`room:tagback:${r}`)]);
+  rows.push([Markup.button.callback("キャンセル",`room:cancel:${r}`)]);
+  return Markup.inlineKeyboard(rows);
+ }
+ if(d.step==="awaiting_text"||d.step==="awaiting_room_url"||d.step==="awaiting_datetime")
+  return Markup.inlineKeyboard(nav);
  return roomOptions(d);
 }
 async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ const stage=String(d.data.stage||"");
  if(!d.data.modeSelected&&!d.data.title&&!d.data.description){
-  await showPostScreen(telegram,userId,d,
-   "🎬 募集+Room\n最初にROOMの作成方法を選択してください。",
-   roomStageKeyboard(d));
-  return;
+  await showPostScreen(telegram,userId,d,"🎬 募集+Room\nRoom作成方法を選択してください。",
+   roomStageKeyboard(d));return;
  }
- const ready=typeof d.data.title==="string"&&d.data.title.trim()&&
-  typeof d.data.description==="string"&&d.data.description.trim();
- await showPostScreen(telegram,userId,d,ready?
-  "🎬 募集+Room（未投稿）\n"+preview("room",d):
-  "🎬 募集+Room（未投稿）\n1行目：タイトル（必須）\n2行目以降：募集内容・ROOMの説明（必須）\n\n入力後、この画面に内容が反映されます。",
+ if(stage==="join_choice"){
+  await showPostScreen(telegram,userId,d,
+   "📅 予告する\n参加方法を選択してください。\n自由参加 または 承認制",roomStageKeyboard(d));return;
+ }
+ if(stage==="scheduled_ready"){
+  await showPostScreen(telegram,userId,d,
+   "📅 募集+Room｜予告確認\n"+preview("room",d)+
+   "\n\n内容を確認して［投稿する］を押してください。",roomStageKeyboard(d));return;
+ }
+ if(stage==="position"||stage==="tag_categories"||stage==="tag_items"){
+  await showPostScreen(telegram,userId,d,stage==="position"?"ポジションを選んでください。":
+   "🏷️ #"+(d.data.tagPurpose==="love"?"Love":"Like")+" を選択してください。",roomStageKeyboard(d));return;
+ }
+ if(d.step==="awaiting_room_url"){
+  await showPostScreen(telegram,userId,d,
+   "🔗 持ち込みROOMのHTTPS参加URLを送信してください。\n送信内容はBotが回収します。",
+   roomStageKeyboard(d));return;
+ }
+ if(d.step==="awaiting_datetime"){
+  await showPostScreen(telegram,userId,d,
+   "📅 予告日時を日本時間で送信してください。\n例：2026/11/20 20:00",
+   roomStageKeyboard(d));return;
+ }
+ if(d.step==="awaiting_text"){
+  const field=String(d.data.editField||"");
+  const linked=d.data.recruitmentMode==="linked";
+  const guide=field==="title"?"タイトルを1行で送信してください。":
+   field==="nickname"?"ニックネームを送信してください。":
+   field==="stats"?"身長 体重 年齢 を送信してください。":
+   field==="body"?"募集内容を送信してください。":
+   linked?"1行目：タイトル\n2行目以降：募集内容":
+   "1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：募集内容";
+  await showPostScreen(telegram,userId,d,
+   "🎬 募集+Room｜入力\n"+guide+"\n\n入力したテキストは回収し、同じ画面のプレビューへ反映します。",
+   roomStageKeyboard(d));return;
+ }
+ const ready=String(d.data.title||"").trim()&&String(d.data.description||"").trim();
+ if(!ready){
+  const next=await updateDraft(userId,"room",d.revision,"awaiting_text",d.data);
+  await roomPreviewScreen(telegram,userId,next);return;
+ }
+ const profile=d.data.recruitmentMode==="linked"?await getProfile(userId):null;
+ const recruitment=roomRecruitmentData(d);
+ const detail=renderRecruitmentPreview(recruitment,profile);
+ const like=roomTags(d,"likeTags").map(t=>"#"+escapeProfileHtml(t.tag)).join(" ");
+ const love=roomTags(d,"loveTags").map(t=>"#"+escapeProfileHtml(t.tag)).join(" ");
+ await showPostScreen(telegram,userId,d,
+  "🎬 募集+Room（未投稿）\n"+detail+
+  "\n#Like："+like+"\n#Love："+love+
+  "\n\nRoom方式："+(d.data.externalUrl?"持ち込み":"Room作成"),
   roomStageKeyboard(d));
 }
 /** Use the authenticated Topic-origin contract shared with 相手募集.
