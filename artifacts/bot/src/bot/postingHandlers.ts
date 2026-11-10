@@ -1121,6 +1121,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
  module:Module,revision:number,topicId:number,
 ):Promise<void>{
   await ctx.answerCbQuery("公開処理を確認しています");
+  let roomSourceMayExist=false;
   try{
    const roomTargets=module==="room"?await verifiedRoomTargets(ctx.from.id):null;
    if(module==="room"){
@@ -1183,6 +1184,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const externalUrl=draft.data.externalUrl?String(draft.data.externalUrl):undefined;
      const startAt=draft.data.startAt?new Date(String(draft.data.startAt)):undefined;
      const visibility=draft.data.visibility==="public"?"public":"approved_only";
+     // A failed database write may still have committed. Do not offer a new
+     // revision/request key after source creation becomes uncertain.
+     roomSourceMayExist=true;
      const room=await createRoom(ctx.from.id,revision,title,externalUrl,{
       description,scheduledAt:startAt,visibility});
      const roomId=Number(room.sourceId);
@@ -1288,7 +1292,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
    const msg=e instanceof Error?e.message:"投稿失敗";
-   const uncertain=msg==="PUBLISH_NEEDS_RECONCILE"||
+   const uncertain=roomSourceMayExist||msg==="PUBLISH_NEEDS_RECONCILE"||
     msg==="POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE"||
     msg==="POST_DRAFT_FINALIZATION_NEEDS_RECONCILE";
    if(module==="room"){
