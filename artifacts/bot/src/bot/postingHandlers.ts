@@ -1,4 +1,4 @@
-import { Markup, type Telegraf, type Telegram } from "telegraf";
+import { Markup, type Telegraf, type Telegram, type Context } from "telegraf";
 import {pool} from "../db/index.js";
 import { getProfile, recordProfilePublication } from "../services/profileRepository.js";
 import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.js";
@@ -1139,10 +1139,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await editMessageToDmPostingMenu(ctx,ctx.from.id);
  });
- bot.action(/^post:publish:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
-  if(!privateDM(ctx))return;
-  const module=ctx.match[1] as Module;
-  const revision=Number(ctx.match[2]);const topicId=Number(ctx.match[3]);
+ async function publishAccepted(ctx:Context,module:Module,revision:number,topicId:number):Promise<void>{
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
    const roomTargets=module==="room"?await verifiedRoomTargets(ctx.from.id):null;
@@ -1297,5 +1294,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     "投稿と元データの照合が必要です。重複投稿防止のため自動再送は行いません。":
     "投稿を確認できませんでした："+msg);
   }
+ }
+ bot.action(/^post:publish:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  await publishAccepted(ctx,ctx.match[1] as Module,Number(ctx.match[2]),Number(ctx.match[3]));
  });
 }
