@@ -9,6 +9,17 @@ export type RecruitmentInput={
  nickname?:string;heightCm?:number;weightKg?:number;age?:number;position?:string;
  purposeCodes:string[];placeCodes:string[];
 };
+/** The selector panel opened before first input still belongs to the text-entry phase.
+ * A selector opened from preview must not re-consume arbitrary new text.
+ */
+export function recruitmentTextPhase(
+ step:string, panelReturnStep:unknown,
+):"initial"|"edit"|null{
+ if(step==="awaiting_text")return "initial";
+ if(step==="awaiting_recruitment_edit")return "edit";
+ if(step==="awaiting_tags"&&panelReturnStep==="awaiting_text")return "initial";
+ return null;
+}
 export function parseRecruitmentMessage(text:string,hasProfile:boolean):RecruitmentInput{
  const lines=text.replace(/\r\n/g,"\n").split("\n");
  const min=hasProfile?2:4;
