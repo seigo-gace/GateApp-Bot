@@ -90,7 +90,7 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     JOIN room_posts r ON r.room_id=a.room_id
     WHERE q.state='pending' AND e.state='applied'
       AND d.status='sent' AND d.telegram_message_id IS NOT NULL
-      AND t.enabled=TRUE AND t.purpose='announcement'
+      AND t.enabled=TRUE AND t.purpose='room'
       AND NOT EXISTS (
         SELECT 1 FROM room_status_message_edits prev
         JOIN room_source_events prev_event ON prev_event.event_id=prev.room_event_id
