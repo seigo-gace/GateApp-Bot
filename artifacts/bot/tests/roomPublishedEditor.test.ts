@@ -25,11 +25,11 @@ test("scheduled Room+募集 has cancellation but no direct join URL or live-end 
  const ui=roomPublicationEditor({...room("scheduled"),scheduledAt:"2026-11-20T11:00:00.000Z"});
  assert.match(ui.text,/📅 予告中/);
  assert.match(ui.text,/日本時間/);
- assert.ok(ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("中止")));
+ assert.ok(ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("削除")));
  assert.ok(!ui.keyboard.reply_markup.inline_keyboard.flat().some(x=>"url" in x&&x.url?.includes("meet.jit.si")));
 });
 test("finished Room+募集 stays listed but cannot be edited through meeting actions",()=>{
  const ui=roomPublicationEditor(room("finished"));
- assert.match(ui.text,/終了しました/);
+ assert.match(ui.text,/⚫ 終了/);
  assert.ok(!ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("終了する")||b.text.includes("中止する")));
 });
