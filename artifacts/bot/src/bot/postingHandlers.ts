@@ -31,10 +31,10 @@ import {roomCrossPostTargets} from "../services/roomCrossPost.js";
 import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 
 async function showPostScreen(
- telegram:Telegram,userId:number,draft:EditorDraft,text:string,keyboard?:WizardKeyboard,
+ telegram:Telegram,userId:number,draft:EditorDraft,text:string,keyboard?:WizardKeyboard,html=false,
 ):Promise<void>{
  const old=typeof draft.data.screenMessageId==="number"?draft.data.screenMessageId:undefined;
- const shown=await showWizardScreen(telegram,userId,old,text,keyboard);
+ const shown=await showWizardScreen(telegram,userId,old,text,keyboard,html?"HTML":undefined);
  if(shown.messageId!==old)
   await bindDraftScreen(userId,draft.module,draft.revision,shown.messageId);
 }
@@ -275,7 +275,7 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
   "🎬 募集+Room（未投稿）\n"+detail+
   "\n#Like："+like+"\n#Love："+love+
   "\n\nRoom方式："+(d.data.externalUrl?"持ち込み":"Room作成"),
-  roomStageKeyboard(d));
+  roomStageKeyboard(d),true);
 }
 /** Use the authenticated Topic-origin contract shared with 相手募集.
  * Only an unavailable/unverified ROOM destination opens the fallback picker.
