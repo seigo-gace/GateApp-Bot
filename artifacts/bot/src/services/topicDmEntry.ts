@@ -24,6 +24,18 @@ export function parseTopicEntryPayload(payload:string):string{
 }
 export type TopicEntryOrigin = {chatId:number;threadId:number};
 
+/** One shared verified-origin resolver for recruitment and Room+募集.
+ * No fallback to another group or Topic. A missing match is an explicit error
+ * path owned by the caller, never implicit auto-posting elsewhere.
+ */
+export function verifiedOriginTopic<T extends {chatId:number;threadId:number}>(
+ topics:readonly T[],origin:TopicEntryOrigin|null,
+):T|null{
+ if(!origin)return null;
+ return topics.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId)??null;
+}
+
+
 /** A saved Telegram forum chat ID is negative. Never silently drop a
  * previously bound destination because it is not a positive integer.
  */
