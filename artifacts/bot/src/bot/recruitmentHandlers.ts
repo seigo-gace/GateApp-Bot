@@ -130,8 +130,17 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
- const previous=await getDraft(userId,"announcement");
+ let previous=await getDraft(userId,"announcement");
  if(previous?.data.recruitmentFlow==="compact"){
+  // Reuse the tapped menu screen rather than silently editing an old DM screen.
+  // Preserve the entire draft and its previously selected fields.
+  if(Number.isSafeInteger(menuMessageId)&&Number(menuMessageId)>0&&
+     previous.data.screenMessageId!==Number(menuMessageId)){
+   await bindDraftScreen(userId,"announcement",previous.revision,Number(menuMessageId));
+   previous=await getDraft(userId,"announcement");
+   if(!previous||previous.data.recruitmentFlow!=="compact")
+    throw Error("RECRUITMENT_DRAFT_SCREEN_REBIND_FAILED");
+  }
   if(previous.step==="preview"){
    await showPreview(telegram,userId,previous);return;
   }
