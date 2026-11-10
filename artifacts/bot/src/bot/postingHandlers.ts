@@ -397,7 +397,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
  });
- bot.action(/^room:confirmback:(\\d+)$/,async ctx=>{
+ bot.action(/^room:confirmback:(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const d=await getDraft(ctx.from.id,"room");
   if(!d||d.step!=="preview"||d.revision!==Number(ctx.match[1])){
