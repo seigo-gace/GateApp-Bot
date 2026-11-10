@@ -76,7 +76,7 @@ function initialKeyboard(d:EditorDraft){
   decisionRow(rev)
  ]);
 }
-function inputInstructions(linked:boolean){
+export function inputInstructions(linked:boolean){
  return linked?
   "📢 相手募集を作成\n保存済みプロフィールと連動します。募集内容だけを1通で送信してください。\n\n"+
    "1行目：タイトル\n2行目以降：募集内容（改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
