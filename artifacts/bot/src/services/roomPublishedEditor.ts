@@ -4,7 +4,7 @@
  */
 import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
-import {styledRecruitmentButton as colored} from "../bot/recruitmentHandlers.js";
+import {styledInlineButton as colored} from "./inlineButtonStyle.js";
 import {BOARD_TITLES,type BoardKey} from "./topicRouting.js";
 import {telegramPublishedMessageUrl} from "./searchDomain.js";
 import type {Telegram} from "telegraf";
