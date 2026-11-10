@@ -15,8 +15,14 @@ test("new 募集+Room opens with only room creation and URL choices",()=>{
   [["Room作成","Room持ち込み"],["キャンセル"]]);
 });
 test("chosen room method asks for input before revealing other settings",()=>{
- assert.deepEqual(labels(draft("awaiting_text",{modeSelected:true,externalUrl:null})),
-  [["↩ 戻る","キャンセル"]]);
+ const editing=labels(draft("awaiting_text",{modeSelected:true,externalUrl:null,recruitmentMode:"manual"}));
+ assert.deepEqual(editing,[
+  ["📝 タイトル","📝 ニックネーム"],
+  ["📝 身長/体重/年齢","📝 募集内容"],
+  ["ポジション選択","#Like","#Love"],
+  ["▶ 即開始","📅 予告する"],
+  ["↩ 戻る","キャンセル"]
+ ]);
  assert.deepEqual(labels(draft("awaiting_room_url",{modeSelected:true})),
   [["↩ 戻る","キャンセル"]]);
 });
@@ -71,4 +77,25 @@ test("scheduled route uses two participation modes then a separate submit button
   ["↩ 戻る","キャンセル"]]);
  assert.deepEqual(labels(draft("preview",{modeSelected:true,stage:"scheduled_ready"})),[
   ["✅ 投稿する"],["↩ 戻る","キャンセル"]]);
+});
+
+test("ROOM UI uses semantic Telegram styles on actual InlineKeyboard buttons",()=>{
+ const rows=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"details",
+  recruitmentMode:"manual",title:"テスト",description:"募集内容"})).reply_markup.inline_keyboard;
+ const style=(label:string)=>rows.flat().find(x=>x.text===label)?.style;
+ assert.equal(style("📝 タイトル"),"primary");
+ assert.equal(style("#Like"),"success");
+ assert.equal(style("#Love"),"danger");
+ assert.equal(style("▶ 即開始"),"success");
+ assert.equal(style("📅 予告する"),"primary");
+ assert.equal(style("キャンセル"),"danger");
+ const first=roomStageKeyboard(draft("preview",{modeSelected:false})).reply_markup.inline_keyboard;
+ assert.equal(first[0]?.[0]?.style,"success");
+ assert.equal(first[0]?.[1]?.style,"primary");
+ assert.equal(first[1]?.[0]?.style,"danger");
+ const choices=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"join_choice"})).reply_markup.inline_keyboard;
+ assert.equal(choices[0]?.[0]?.style,"success");
+ assert.equal(choices[0]?.[1]?.style,"primary");
+ const schedule=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"scheduled_ready"})).reply_markup.inline_keyboard;
+ assert.equal(schedule[0]?.[0]?.style,"success");
 });
