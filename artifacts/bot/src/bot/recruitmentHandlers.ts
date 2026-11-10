@@ -339,6 +339,47 @@ async function checkLinkedProfileChanged(telegram:Telegram,id:number,d:EditorDra
  return true;
 }
 export function registerCompactRecruitmentHandlers(bot:Telegraf){
+ bot.action(/^recruit:destgroup:(\d+):(area_bbs|gay_board|video_chat)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  const board=ctx.match[2] as "area_bbs"|"gay_board"|"video_chat";
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,
+   board==="area_bbs"?"blocks":"topics",board);
+ });
+ bot.action(/^recruit:destblock:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"topics","area_bbs",Number(ctx.match[2]));
+ });
+ bot.action(/^recruit:destpage:(\d+):(area_bbs|gay_board|video_chat):(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"topics",
+   ctx.match[2] as "area_bbs"|"gay_board"|"video_chat",Number(ctx.match[3]),Number(ctx.match[4]));
+ });
+ bot.action(/^recruit:destchoose:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))){await ctx.answerCbQuery("古い操作です");return;}
+  const target=await getVerifiedTopic(Number(ctx.match[2]),"announcement");
+  const next=await updateDraft(ctx.from.id,"announcement",d.revision,d.step,{
+   ...d.data,selectedTopicId:target.id,entryChatId:target.chatId,
+   entryThreadId:target.threadId,destinationLabel:BOARD_TITLES[target.board]+" / "+target.title});
+  await ctx.answerCbQuery("投稿先を設定しました");
+  if(next.step==="awaiting_text"){
+   await show(ctx.telegram,ctx.from.id,next,
+    "📍 投稿先："+escapeProfileHtml(String(next.data.destinationLabel))+"\n\n"+
+    escapeProfileHtml(inputInstructions(next.data.mode==="linked")),
+    next.data.mode==="linked"?Markup.inlineKeyboard([decisionRow(next.revision)]):initialKeyboard(next),true);
+  }else await showPreview(ctx.telegram,ctx.from.id,next);
+ });
+
  bot.command("recruit",async ctx=>{
   if(ctx.chat.type!=="private")return;
   await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
@@ -631,6 +672,12 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     return;
    }
    const options=await listVerifiedTopics("announcement");
+   const selected=options.find(t=>t.id===Number(d.data.selectedTopicId));
+   if(selected){
+    await ctx.answerCbQuery("投稿処理を確認しています");
+    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,selected.id,true);
+    await showRecruitmentPublished(ctx,sent);return;
+   }
    const pinned=await currentTopicDmEntry(ctx.from.id);
    const origin=pinned?null:await currentMenuOrigin(ctx.from.id);
    const preferred=pinned?options.find(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):
