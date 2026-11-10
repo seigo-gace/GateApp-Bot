@@ -4,11 +4,11 @@
  */
 import {pool} from "../db/index.js";
 
-export type RoomNoticeKind="scheduled"|"prepared"|"started"|"postponed"|"cancelled"|"finished"|"visibility_changed";
+export type RoomNoticeKind="scheduled"|"prepared"|"started"|"postponed"|"cancelled"|"finished"|"visibility_changed"|"details_changed";
 export function projectRoomNotice(kind:RoomNoticeKind):{
   close:boolean; finalStatus:"cancelled"|"finished"|null;
 }{
- if(!["scheduled","prepared","started","postponed","cancelled","finished","visibility_changed"].includes(kind))
+ if(!["scheduled","prepared","started","postponed","cancelled","finished","visibility_changed","details_changed"].includes(kind))
    throw new Error("ROOM_NOTICE_KIND_INVALID");
  return {close:kind==="cancelled"||kind==="finished",
   finalStatus:kind==="cancelled"?"cancelled":kind==="finished"?"finished":null};
