@@ -108,7 +108,7 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  try{
   const api=telegram as unknown as {callApi:(method:string,payload:Record<string,unknown>)=>Promise<any>};
   const old=typeof d.data.screenMessageId==="number"?d.data.screenMessageId:undefined;
-  const rich=buildRecruitmentRichPreview(input,d.revision,rawDestination,warning,profile);
+  const rich=buildRecruitmentRichPreview(input,d.revision,rawDestination,warning,profile,!!d.data.publishedSourceId);
   const payload={chat_id:id,rich_message:rich,
     reply_markup:{inline_keyboard:actionRows}};
   if(old){
@@ -129,7 +129,7 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  }catch{
   // Telegram API/SDK or device support cannot be assumed in advance.
  }
- await show(telegram,id,d,d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n"+
+ await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+
   renderRecruitmentPreview(input,profile)+"\n\n"+escapeProfileHtml(rawDestination)+
   "\n\n📝各項目を変更しても他の入力は保持します。"+
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
