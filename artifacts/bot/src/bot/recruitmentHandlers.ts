@@ -382,7 +382,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   const heading=panel==="position"?"ポジションを選択してください（1つ必須）。":
    panel==="purpose"?"目的タグを選択してください（複数選択可能）。":
    "場所あり／なしは択一、足ありは独立して選択できます。";
-  await show(telegram,id,d,d.data.publishedSourceId?"📢 公開済み募集を編集中\n"+preview:"📢 相手募集（未投稿）\n"+preview+
+  await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+preview+
    "\n\n"+selected+"\n\n"+escapeProfileHtml(heading),
    Markup.inlineKeyboard(rows),true);
  }
