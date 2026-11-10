@@ -266,7 +266,7 @@ function postedMessageUrl(chatId:number,messageId:number):string{
   throw Error("POSTED_MESSAGE_LINK_INVALID");
  return "https://t.me/c/"+raw.slice(4)+"/"+messageId;
 }
-async function showRecruitmentPublished(
+export async function showRecruitmentPublished(
  ctx:{editMessageText:(text:string,extra?:any)=>Promise<unknown>;from?:{id:number}},
  sent:{chatId:number;threadId:number;messageId:number;sourceId:number},
 ):Promise<void>{
