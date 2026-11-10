@@ -177,7 +177,7 @@ export async function markPostSourcePublished(
     WHERE link_post_id=$1 AND owner_user_id=$2
       AND status IN ('draft','published') RETURNING link_post_id`:
   `UPDATE announcement_posts SET status='published',
-      accept_applications=CASE WHEN kind='recruitment' THEN TRUE ELSE FALSE END,
+      accept_applications=FALSE,
       updated_at=NOW()
     WHERE announcement_id=$1 AND owner_user_id=$2
       AND status IN ('draft','publishing','published') RETURNING announcement_id`;
