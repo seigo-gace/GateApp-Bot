@@ -5,27 +5,21 @@ import {Markup,type Telegraf,type Context} from "telegraf";
 import {pool} from "../db/index.js";
 import {getProfile} from "../services/profileRepository.js";
 import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js";
-import {activateApplicationSession,resolveApplicationSession} from "../services/applicationLinks.js";
+import {resolveApplicationSession,legacyRecruitmentContactOwner} from "../services/applicationLinks.js";
+import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {submitApplication,decideApplication,withdrawApplication} from "../services/announcementApplications.js";
+/** Existing old Bot application links remain readable, but now only offer
+ * the recruitment owner's username contact. No deadline or new application.
+ */
 export async function startApplicationEditor(ctx:Context,payload:string):Promise<void>{
  if(ctx.chat?.type!=="private"||!ctx.from)return;
  try{
-  const target=await activateApplicationSession(ctx.from.id,payload);
-  const profile=await getProfile(ctx.from.id);
-  if(!profile){
-   await ctx.reply("応募にはプロフィールの登録が必要です。/profile で非公開保存してから、元の募集ボタンを開き直してください。");
-   return;
-  }
-  // Explicitly show the exact basic fields that the user would consent to share.
-  await ctx.reply("📨 応募内容の確認（まだ応募していません）\n募集："+escapeProfileHtml(target.body)+
-   "\n\n応募先へ共有するプロフィールの情報：\n"+renderPublicProfile(profile)+
-   "\n\n送信する場合だけ承認してください。",
-   {parse_mode:"HTML",...Markup.inlineKeyboard([
-    [Markup.button.callback("✅ この情報で応募","application:confirm")],
-    [Markup.button.callback("やめる","application:cancel")],
-   ])});
- }catch(e){
-  await ctx.reply("募集が終了したか、応募リンクの確認ができません。元の投稿を確認してください。");
+  const owner=await legacyRecruitmentContactOwner(payload);
+  const url=await ownerUsernameLink(ctx.telegram,owner);
+  await ctx.reply("🔗 募集者へ連絡してください。",
+   Markup.inlineKeyboard([[Markup.button.url("🔗 募集者へ連絡",url)]]));
+ }catch{
+  await ctx.reply("この旧投稿の募集者リンクを確認できません。投稿内容を確認してください。");
  }
 }
 export function registerApplicationHandlers(bot:Telegraf):void{
