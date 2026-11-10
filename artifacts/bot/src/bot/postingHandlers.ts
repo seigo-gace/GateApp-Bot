@@ -127,13 +127,8 @@ function tagPanel(draft:EditorDraft) {
 /** The same editor is called from /room and an authenticated M2 entry. */
 function roomOptions(d:EditorDraft){
  const revision=d.revision;
- const external=Boolean(d.data.externalUrl);
  const publicJoin=d.data.visibility==="public";
  return Markup.inlineKeyboard([
-  [Markup.button.callback(external?"▫️ 無料Jitsi":"✅ 無料Jitsi",
-    `room:mode:${revision}:jitsi`),
-   Markup.button.callback(external?"✅ URL持込":"▫️ URL持込",
-    `room:mode:${revision}:external`)],
   [Markup.button.callback(publicJoin?"✅ 自由参加":"▫️ 自由参加",
     `room:joinmode:${revision}:public`),
    Markup.button.callback(!publicJoin?"✅ 応募受付":"▫️ 応募受付",
@@ -147,13 +142,29 @@ function roomOptions(d:EditorDraft){
    Markup.button.callback("キャンセル",`room:cancel:${revision}`)],
  ]);
 }
+function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
+ if(!d.data.modeSelected&&!d.data.title&&!d.data.description)
+  return Markup.inlineKeyboard([[
+   Markup.button.callback("ルーム作成",`room:mode:${d.revision}:jitsi`),
+   Markup.button.callback("URL",`room:mode:${d.revision}:external`)
+  ]]);
+ if(d.step==="awaiting_text")
+  return Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`room:cancel:${d.revision}`)]]);
+ return roomOptions(d);
+}
 async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ if(!d.data.modeSelected&&!d.data.title&&!d.data.description){
+  await showPostScreen(telegram,userId,d,
+   "🎬 募集+Room\n最初にROOMの作成方法を選択してください。",
+   roomStageKeyboard(d));
+  return;
+ }
  const ready=typeof d.data.title==="string"&&d.data.title.trim()&&
   typeof d.data.description==="string"&&d.data.description.trim();
  await showPostScreen(telegram,userId,d,ready?
   "🎬 募集+Room（未投稿）\n"+preview("room",d):
   "🎬 募集+Room（未投稿）\n1行目：タイトル（必須）\n2行目以降：募集内容・ROOMの説明（必須）\n\n入力後、この画面に内容が反映されます。",
-  roomOptions(d));
+  roomStageKeyboard(d));
 }
 /** Use the authenticated Topic-origin contract shared with 相手募集.
  * Only an unavailable/unverified ROOM destination opens the fallback picker.
@@ -215,8 +226,8 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
   }
   return;
  }
- const draft=await beginDraft(userId,"room","awaiting_text",
-  {visibility:"approved_only",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
+ const draft=await beginDraft(userId,"room","preview",
+  {visibility:"approved_only",profileLinked:false,modeSelected:false,...(screenId?{screenMessageId:screenId}:{})});
  await roomPreviewScreen(telegram,userId,draft);
 }
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
@@ -336,7 +347,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),choice=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"room");
-  if(!d||!["preview","awaiting_text"].includes(d.step)||d.revision!==rev){
+  if(!d||!["preview","awaiting_text","awaiting_room_url"].includes(d.step)||d.revision!==rev){
    await ctx.answerCbQuery("操作が古くなりました。投稿メニューから再度お試しください。");return;
   }
   try{
@@ -345,16 +356,21 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery("先にタイトルと募集内容を入力してください。");return;
    }
    if(op==="mode"){
+    if(d.data.modeSelected&&d.data.title&&d.data.description){
+     await ctx.answerCbQuery("ROOMの方式は選択済みです");return;
+    }
     if(choice!=="jitsi"&&choice!=="external")throw new Error("ROOM_MODE_INVALID");
     if(choice==="external"){
-     const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_room_url",d.data);
+     const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_room_url",
+      {...d.data,modeSelected:true});
      await ctx.answerCbQuery();
      await showPostScreen(ctx.telegram,ctx.from.id,next,
       "外部ROOMのHTTPS参加URLを1通で送信してください。");
      return;
     }
-    const next=await updateDraft(ctx.from.id,"room",rev,d.step,
-     {...d.data,externalUrl:null});
+    const next=await updateDraft(ctx.from.id,"room",rev,
+     d.data.title&&d.data.description?"preview":"awaiting_text",
+     {...d.data,modeSelected:true,externalUrl:null});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="joinmode"){
     if(choice!=="public"&&choice!=="approved_only")throw new Error("ROOM_VISIBILITY_INVALID");
@@ -725,7 +741,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const errorText=(e instanceof Error?e.message:"入力内容を確認してください。")+
      "\n内容を修正して、もう一度送信してください。";
    await render(current,errorText,current.module==="room"?
-    roomOptions(current):current.module==="link"?
+    roomStageKeyboard(current):current.module==="link"?
     Markup.inlineKeyboard([
      ...(Array.isArray(current.data.buttons)&&current.data.buttons.length?
        [[Markup.button.callback("↩ プレビューに戻る",
