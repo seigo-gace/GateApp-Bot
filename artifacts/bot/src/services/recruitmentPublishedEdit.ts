@@ -63,16 +63,18 @@ export async function applyPublishedRecruitmentEdit(
  if(claim.rows.length!==1)throw Error("RECRUITMENT_EDIT_CONFLICT");
  try{
   const receipt=await pool.query(
-   "SELECT inline_buttons FROM posting_deliveries"+
+   "SELECT inline_buttons,rendered_text FROM posting_deliveries"+
    " WHERE source_type='announcement' AND source_id=$1 AND owner_user_id=$2"+
    " AND status='sent' AND telegram_message_id=$3 AND posting_topic_id=$4"+
    " ORDER BY delivery_id DESC LIMIT 1",
    [String(sourceId),owner,publication.messageId,publication.topicId]);
   if(receipt.rows.length!==1)throw Error("RECRUITMENT_DELIVERY_STALE");
-  await createTelegramDispatcher(telegram).revise(
-   {chatId:publication.chatId,threadId:publication.threadId},
-   publication.messageId,{text:rendered,parseMode:"HTML",
-    buttons:receipt.rows[0].inline_buttons??[]});
+  if(receipt.rows[0].rendered_text!==rendered){
+   await createTelegramDispatcher(telegram).revise(
+    {chatId:publication.chatId,threadId:publication.threadId},
+    publication.messageId,{text:rendered,parseMode:"HTML",
+     buttons:receipt.rows[0].inline_buttons??[]});
+  }
   const conditions={
    inputMode:input.mode,title:input.title,
    ...(input.mode==="manual"?{nickname:input.nickname,heightCm:input.heightCm,
