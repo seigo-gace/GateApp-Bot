@@ -24,7 +24,12 @@ import {parseRecruitmentMessage,changeRecruitmentField,
  renderRecruitmentPreview,validateRecruitmentReady,recruitmentTextPhase,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
 type EditField="title"|"nickname"|"stats"|"body";
-const asInput=(d:EditorDraft)=>d.data as RecruitmentInput;
+const asInput=(d:EditorDraft)=>({
+  ...d.data,
+  purposeCodes:Array.isArray(d.data.purposeCodes)?d.data.purposeCodes:[],
+  placeCodes:Array.isArray(d.data.placeCodes)?d.data.placeCodes:[],
+  mode:d.data.mode==="linked"||d.data.recruitmentMode==="linked"?"linked":"manual",
+}) as RecruitmentInput;
 const active=(d:EditorDraft|null,rev:number,step?:string):d is EditorDraft=>
  !!d&&d.data.recruitmentFlow==="compact"&&d.revision===rev&&
  (!step||d.step===step);
@@ -140,6 +145,32 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    previous=await getDraft(userId,"announcement");
    if(!previous||previous.data.recruitmentFlow!=="compact")
     throw Error("RECRUITMENT_DRAFT_SCREEN_REBIND_FAILED");
+  }
+  // Older stored compact drafts can lack the current preview fields or tag
+  // arrays. Never discard their other values or reset the user's profile.
+  // A missing text body means the existing input screen, not a broken preview.
+  if(["preview","awaiting_tags","awaiting_recruitment_edit","awaiting_text"].includes(previous.step)){
+   const recovered={
+    ...previous.data,
+    mode:previous.data.mode==="linked"||previous.data.recruitmentMode==="linked"?"linked":"manual",
+    purposeCodes:Array.isArray(previous.data.purposeCodes)?previous.data.purposeCodes:[],
+    placeCodes:Array.isArray(previous.data.placeCodes)?previous.data.placeCodes:[],
+   };
+   const missingText=["preview","awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)&&
+    (typeof recovered.title!=="string"||!recovered.title.trim()||
+     typeof recovered.body!=="string"||!recovered.body.trim());
+   const changed=missingText||recovered.mode!==previous.data.mode||
+    recovered.purposeCodes!==previous.data.purposeCodes||
+    recovered.placeCodes!==previous.data.placeCodes;
+   if(changed){
+    previous=await updateDraft(userId,"announcement",previous.revision,
+     missingText?"awaiting_text":previous.step,recovered);
+   }
+   if(missingText){
+    await show(telegram,userId,previous,inputInstructions(recovered.mode==="linked"),
+     recovered.mode==="linked"?Markup.inlineKeyboard([decisionRow(previous.revision)]):initialKeyboard(previous));
+    return;
+   }
   }
   if(previous.step==="preview"){
    await showPreview(telegram,userId,previous);return;
