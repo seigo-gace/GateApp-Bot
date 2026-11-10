@@ -87,21 +87,19 @@ function inputInstructions(linked:boolean){
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
  const profile=input.mode==="linked"?await getProfile(id):null;
- const pinned=await currentTopicDmEntry(id);
- const origin=pinned?null:await currentMenuOrigin(id);
- const activeOrigin=pinned??origin;
  const destinations=await listVerifiedTopics("announcement");
- const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
- const changed=!!bound&&
-   (!activeOrigin||activeOrigin.chatId!==bound.chatId||activeOrigin.threadId!==bound.threadId);
- const current=changed?null:
-   activeOrigin?destinations.find(t=>t.chatId===activeOrigin.chatId&&t.threadId===activeOrigin.threadId):null;
- const selected=destinations.find(t=>t.id===Number(d.data.selectedTopicId));
- const rawDestination=selected?"投稿先："+BOARD_TITLES[selected.board]+" / "+selected.title:
-  changed?"投稿先：元Topicが変更されました。［投稿する］から認証済みTopicを選択してください。":
-   current?"投稿先："+current.board+" / "+current.title:
-   pinned?"投稿先：元Topicが未認証です。［投稿する］から認証済みTopicを選択してください。":
-   "投稿先：未選択。［投稿］で検証済みTopicを選択できます。";
+ // A published edit always reflects the actual delivery receipt; a fresh draft
+ // reflects only the explicitly selected verified topic, never an old DM entry.
+ const publishedId=Number(d.data.publishedSourceId);
+ const published=Number.isSafeInteger(publishedId)&&publishedId>0?
+  await loadPublishedRecruitment(id,publishedId):null;
+ const selected=published?
+  destinations.find(t=>t.id===published.topicId&&t.chatId===published.chatId&&t.threadId===published.threadId):
+  destinations.find(t=>t.id===Number(d.data.selectedTopicId));
+ if(published&&!selected)throw Error("RECRUITMENT_PUBLICATION_TOPIC_NOT_VERIFIED");
+ const rawDestination=selected?
+  BOARD_TITLES[selected.board]+"\n"+selected.title+" / 投稿ID："+(published?published.sourceId:"未発行"):
+  "投稿先グループ：未選択\n投稿先を選んでから公開してください。";
  const fullKeyboard=keyboard(d);
  // The Rich editor has buttons beside the field text. Keep only the shared
  // selectors/publish/back buttons below it; plain mode uses all edit buttons.
@@ -133,7 +131,8 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
   // Telegram API/SDK or device support cannot be assumed in advance.
  }
  await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+
-  renderRecruitmentPreview(input,profile)+"\n\n"+escapeProfileHtml(rawDestination)+
+  rawDestination.split("\n").map(escapeProfileHtml).join("\n")+"\n"+
+  renderRecruitmentPreview(input,profile)+
   "\n\n📝各項目を変更しても他の入力は保持します。"+
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
 }
@@ -324,9 +323,9 @@ export async function showRecruitmentPublished(
  if(!topic)throw Error("RECRUITMENT_TOPIC_NOT_VERIFIED");
  const profile=record.input.mode==="linked"?await getProfile(ctx.from.id):null;
  const details=renderRecruitmentPreview(record.input,profile);
- const screen="✅ 募集を投稿しました。\n投稿先："+escapeProfileHtml(BOARD_TITLES[topic.board])+
-  "\nトピック："+escapeProfileHtml(topic.title)+"\n投稿№："+sent.sourceId+
-  "\n\n"+details;
+ const screen="✅ 募集を投稿しました。\n"+escapeProfileHtml(BOARD_TITLES[topic.board])+
+  "\n"+escapeProfileHtml(topic.title)+" / 投稿ID："+sent.sourceId+
+  "\n"+details;
  await ctx.editMessageText(screen,{
   parse_mode:"HTML",
   ...Markup.inlineKeyboard([
@@ -386,6 +385,10 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
   if(!active(d,Number(ctx.match[1]))){await ctx.answerCbQuery("古い操作です");return;}
+  if(d.data.publishedSourceId){
+   await ctx.answerCbQuery("公開済み募集の投稿先は変更できません。新規投稿から選択してください",{show_alert:true});
+   return;
+  }
   const target=await getVerifiedTopic(Number(ctx.match[2]),"announcement");
   const next=await updateDraft(ctx.from.id,"announcement",d.revision,d.step,{
    ...d.data,selectedTopicId:target.id,entryChatId:target.chatId,
