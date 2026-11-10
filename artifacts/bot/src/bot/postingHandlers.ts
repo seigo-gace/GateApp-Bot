@@ -161,19 +161,24 @@ function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
 /** Four-line Recruitment input is collected as ONE message.
  * Only selectable ROOM controls belong on this keyboard.
  */
+/** Four-line Recruitment message owns title/nickname/stats/body input.
+ * No redundant input buttons. Row two is exactly four existing actions.
+ */
 function roomOptions(d:EditorDraft){
  const r=d.revision,b=styledRecruitmentButton;
- const rows:any[][]=[];
+ const selectors:any[]=[];
  if(d.data.recruitmentMode!=="linked")
-  rows.push([b(d.data.position?"✅ ポジション":"ポジション選択",
-   `room:position:${r}`,"primary")]);
- rows.push([b("#Like",`room:tag:${r}:like`,"success"),
-  b("#Love",`room:tag:${r}:love`,"danger")]);
- rows.push([b("▶ 即開始",`room:plan:${r}:now`,"success"),
-  b("📅 予告する",`room:plan:${r}:scheduled`,"primary")]);
- rows.push([b("↩ 戻る",`room:back:${r}`),
-  b("キャンセル",`room:cancel:${r}`,"danger")]);
- return Markup.inlineKeyboard(rows);
+  selectors.push(b(d.data.position?"✅ ポジション":"ポジション選択",
+   `room:position:${r}`,"primary"));
+ selectors.push(b("#Like",`room:tag:${r}:like`,"success"),
+  b("#Love",`room:tag:${r}:love`,"danger"));
+ return Markup.inlineKeyboard([
+  selectors,
+  [b("▶ 即開始",`room:plan:${r}:now`,"success"),
+   b("📅 予告する",`room:plan:${r}:scheduled`,"primary"),
+   b("↩ 戻る",`room:back:${r}`),
+   b("キャンセル",`room:cancel:${r}`,"danger")],
+ ]);
 }
 export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
  const r=d.revision,stage=String(d.data.stage||"");
