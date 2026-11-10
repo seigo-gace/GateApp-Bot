@@ -18,7 +18,8 @@ test("chosen room method keeps the four-line form and minimal selectable control
  const editing=labels(draft("awaiting_text",{modeSelected:true,externalUrl:null,recruitmentMode:"manual"}));
  assert.deepEqual(editing,[
   ["ポジション選択","#Like","#Love"],
-  ["▶ 即開始","📅 予告する","↩ 戻る","キャンセル"]
+  ["▶ 即開始","📅 予告する"],
+  ["↩ 戻る","キャンセル"]
  ]);
  assert.deepEqual(labels(draft("awaiting_room_url",{modeSelected:true})),
   [["↩ 戻る","キャンセル"]]);
@@ -48,13 +49,15 @@ test("adopted ROOM editor has exact row layout and excludes every removed legacy
   title:"テスト",description:"募集内容"}));
  assert.deepEqual(manual,[
   ["ポジション選択","#Like","#Love"],
-  ["▶ 即開始","📅 予告する","↩ 戻る","キャンセル"]
+  ["▶ 即開始","📅 予告する"],
+  ["↩ 戻る","キャンセル"]
  ]);
  const linked=labels(draft("preview",{modeSelected:true,stage:"details",recruitmentMode:"linked",
   title:"テスト",description:"募集内容"}));
  assert.deepEqual(linked,[
   ["#Like","#Love"],
-  ["▶ 即開始","📅 予告する","↩ 戻る","キャンセル"]
+  ["▶ 即開始","📅 予告する"],
+  ["↩ 戻る","キャンセル"]
  ]);
  for(const row of [...manual,...linked]){
   for(const text of row){
