@@ -24,8 +24,8 @@ import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished} from "./recruitmentHandlers.js";
-import {parseRecruitmentMessage,renderRecruitmentPreview,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
-import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
+import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
+import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {roomCrossPostTargets} from "../services/roomCrossPost.js";
 import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
@@ -143,6 +143,16 @@ function roomRecruitmentData(d:EditorDraft):RecruitmentInput{
   age:Number(o.age)||undefined,position:typeof o.position==="string"?o.position:undefined,
   purposeCodes:[],placeCodes:[],
  };
+}
+/** Preserve the existing ROOM card while reusing recruitment's identity formatting. */
+function roomPublishedText(d:EditorDraft,profile?:ProfileBasicDraft|null):string{
+ const original=preview("room",d),index=original.lastIndexOf("\n状態：");
+ if(index<0)throw Error("ROOM_PUBLIC_STATE_INVALID");
+ const identity=recruitmentIdentityLines(roomRecruitmentData(d),profile);
+ const like=roomTags(d,"likeTags").map(t=>"#"+escapeProfileHtml(t.tag));
+ const love=roomTags(d,"loveTags").map(t=>"#"+escapeProfileHtml(t.tag));
+ return original.slice(0,index)+"\n"+identity.join("\n")+
+  "\n#Like："+like.join(" ")+"\n#Love："+love.join(" ")+original.slice(index);
 }
 function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
  return validLikeTags(Array.isArray(d.data[key])?d.data[key] as LikeTag[]:[]);
@@ -1204,7 +1214,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const ann=await createAnnouncement(ctx.from.id,revision,"recruitment",
       title+"\n"+description,startAt,[],[],roomId);
      sourceId=ann.sourceId;
-     text=preview("room",draft);
+     const profile=draft.data.recruitmentMode==="linked"?await getProfile(ctx.from.id):null;
+     if(draft.data.recruitmentMode==="linked"&&!profile)
+      throw Error("ROOM_PROFILE_MISSING");
+     text=roomPublishedText(draft,profile);
      const rows:{text:string;url:string}[][]=[
       [{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]
      ];
