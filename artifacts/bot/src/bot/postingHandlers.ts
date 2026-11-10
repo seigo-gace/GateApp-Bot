@@ -470,7 +470,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   await startRoomEditor(ctx.telegram,ctx.from.id);
  });
- bot.action(/^room:(mode|joinmode|profile|edit|plan|board|cancel|back|field|position|positionchoice|tag|tagcat|tagitem|tagpage|tagsave|tagback|publish):(\d+)(?::([a-z_0-9]+))?$/,async ctx=>{
+ bot.action(/^room:(mode|joinmode|plan|cancel|back|field|position|positionchoice|tag|tagcat|tagitem|tagpage|tagsave|tagback|publish):(\d+)(?::([a-z_0-9]+))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),choice=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"room");
@@ -478,7 +478,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("操作が古くなりました。投稿メニューから再度お試しください。");return;
   }
   try{
-   if((op==="plan"||op==="board")&&(!String(d.data.title||"").trim()||
+   if(op==="plan"&&(!String(d.data.title||"").trim()||
       !String(d.data.description||"").trim())){
     await ctx.answerCbQuery("先にタイトルと募集内容を入力してください。");return;
    }
@@ -515,17 +515,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
      {...d.data,visibility:choice,stage:"date_input",startAt:null});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
-   }else if(op==="profile"){
-    if(!d.data.profileLinked&&!await existingPublishedProfileUrl(ctx.from.id)){
-     await ctx.answerCbQuery("公開済みのプロフィールがありません。");return;
-    }
-    const next=await updateDraft(ctx.from.id,"room",rev,d.step,
-     {...d.data,profileLinked:!d.data.profileLinked});
-    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
-   }else if(op==="edit"){
-    const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_text",d.data);
-    await ctx.answerCbQuery();
-    await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="plan"){
     if(d.step!=="preview")throw Error("ROOM_DETAILS_REQUIRED");
     validateRecruitmentIdentityReady(roomRecruitmentData(d),
@@ -615,12 +604,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
      throw Error("ROOM_SCHEDULE_NOT_READY");
     const targets=await verifiedRoomTargets(ctx.from.id);
     await publishAccepted(ctx,"room",d.revision,targets[0]!.topicId);
-   }else if(op==="board"){
-    const boardIndex=Number(choice);
-    if(!Number.isInteger(boardIndex)||boardIndex<0||boardIndex>=BOARD_KEYS.length)
-     throw new Error("ROOM_BOARD_INVALID");
-    await ctx.answerCbQuery();
-    await destinationMenu(ctx,"room",rev,BOARD_KEYS[boardIndex]);
    }else if(op==="cancel"){
     const template=d.data.savedTemplate;
     const previous=template&&typeof template==="object"&&!Array.isArray(template)?
@@ -1011,21 +994,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
      [Markup.button.callback("キャンセル","post:link:cancel:"+current.revision)]
     ]):undefined);
   }
- });
- bot.action(/^room:save:(\d+)$/,async ctx=>{
-  if(!privateDM(ctx))return;
-  const rev=Number(ctx.match[1]);
-  const d=await getDraft(ctx.from.id,"room");
-  if(!d||d.step!=="preview"||d.revision!==rev){
-   await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");
-   return;
-  }
-  try{
-   parseRoomDetails(String(d.data.title||"")+"\n"+String(d.data.description||""));
-   await saveRoomEditorDraft(ctx.from.id,rev);
-   await ctx.answerCbQuery("下書き保存済み");
-   await ctx.editMessageText("✅ ROOMのタイトル・説明・設定を非公開保存しました。\n投稿メニューから再利用できます。");
-  }catch{await ctx.answerCbQuery("保存に失敗しました。投稿メニューから再度お試しください。");}
  });
  bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
