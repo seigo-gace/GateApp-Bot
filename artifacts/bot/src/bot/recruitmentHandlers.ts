@@ -701,12 +701,17 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
      !["preview","awaiting_text","awaiting_tags","awaiting_recruitment_edit"].includes(d.step)){
    await ctx.answerCbQuery("古い操作です");return;
   }
-  // Cancel only this private recruitment, invalidating its old callbacks.
-  // Previously published content and the independent profile are untouched.
+  // Published-edit cancellation must discard unsaved changes but preserve
+  // both the public post and its private owner management screen.
+  const sourceId=Number(d.data.publishedSourceId);
+  const publication=Number.isSafeInteger(sourceId)&&sourceId>0?
+   await loadPublishedRecruitment(ctx.from.id,sourceId):null;
+  // Invalidate stale edit callbacks without changing the published record.
   await updateDraft(ctx.from.id,"announcement",d.revision,"cancelled",{
    recruitmentFlow:"compact",cancelled:true,screenMessageId:d.data.screenMessageId,
   });
   await ctx.answerCbQuery();
-  await editMessageToDmPostingMenu(ctx,ctx.from.id);
+  if(publication)await showRecruitmentPublished(ctx,publication);
+  else await editMessageToDmPostingMenu(ctx,ctx.from.id);
  });
 }
