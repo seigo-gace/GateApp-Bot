@@ -111,3 +111,14 @@ test("text entry is accepted after pre-input selector panel, not from preview se
  assert.deepEqual(next.placeCodes,["場所あり"]);
  assert.equal(next.position,"タチ");
 });
+
+test("rich owner editor begins with actual group title, topic/post ID, then title and nickname",()=>{
+ const d=parseRecruitmentMessage("テスト\nテスト\n170 80 40\n募集内容",false);
+ const rich=buildRecruitmentRichPreview(d,7,"エリア’s BBS\n新宿 / 投稿ID：123",undefined,undefined,true);
+ const blocks=rich.blocks as Array<{type?:string;text?:unknown}>;
+ assert.equal(blocks[0]?.text,"エリア’s BBS");
+ assert.equal(blocks[1]?.text,"新宿 / 投稿ID：123");
+ assert.match(JSON.stringify(blocks[2]),/テスト/);
+ assert.match(JSON.stringify(blocks[3]),/ニックネーム：テスト/);
+ assert.doesNotMatch(JSON.stringify(rich),/area_bbs/);
+});
