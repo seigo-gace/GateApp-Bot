@@ -141,11 +141,13 @@ export async function deletePublishedRoom(telegram:Telegram,owner:number,
    if(done.rows.length!==1)throw Error("ROOM_DELETE_ACK_UNCERTAIN");
   }
   await updateRoomState(owner,pub.roomId,expectedRevision,"cancel");
-  await pool.query(
+  const finalized=await pool.query(
    `UPDATE announcement_posts SET status='cancelled',
       accept_applications=FALSE,updated_at=NOW()
-    WHERE announcement_id=$1 AND owner_user_id=$2 AND status='publishing'`,
+    WHERE announcement_id=$1 AND owner_user_id=$2 AND status='publishing'
+    RETURNING announcement_id`,
    [announcementId,owner]);
+  if(finalized.rows.length!==1)throw Error("ROOM_DELETE_FINALIZE_UNCERTAIN");
  }catch(error){
   // Existing deleted receipts must not be sent or deleted a second time.
   await pool.query(
