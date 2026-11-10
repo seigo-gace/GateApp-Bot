@@ -10,14 +10,14 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 function actions(roomId:number,revision:number,status:string,visibility?:string){
  const allowed:Record<string,RoomAction[]>={
-  draft:["schedule","prepare","cancel"],
-  scheduled:["prepare","postpone","cancel"],
+  draft:["schedule","cancel"],
+  scheduled:["start","postpone","cancel"],
   ready:["start","postpone","cancel"],
   live:["finish","postpone","cancel"],
-  postponed:["schedule","prepare","cancel"],
+  postponed:["schedule","start","cancel"],
  };
  const labels:Record<RoomAction,string>={schedule:"📅 予約",prepare:"✅ 準備完了",
-  start:"▶ 開始を申告",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"■ 終了を申告"};
+  start:"▶ 開始する",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"⚫ 終了する"};
  const rows=(allowed[status]||[]).map(x=>[
   Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`)]);
  if(["draft","scheduled","ready"].includes(status)&&visibility){
