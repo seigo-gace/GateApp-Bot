@@ -1296,8 +1296,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
        [roomId,ctx.from.id]);
       if(room.rows.length!==1)throw new Error("ROOM_SOURCE_NOT_OWNED");
       // Never auto-start ROOM at publication. Owner's Start is explicit.
-      // Persist the template for the next ROOM rather than deleting it.
-      await saveRoomEditorDraft(ctx.from.id,revision);
+      // Close this temporary editor: the published ROOM has its own durable
+      // source and delivery receipts; a new ROOM must get a fresh request key.
+      await markDraftPublished(ctx.from.id,"room",revision);
      }else await markDraftPublished(ctx.from.id,module,revision);
     }
    }catch{
