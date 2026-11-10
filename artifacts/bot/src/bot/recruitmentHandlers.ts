@@ -95,9 +95,9 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
    (!activeOrigin||activeOrigin.chatId!==bound.chatId||activeOrigin.threadId!==bound.threadId);
  const current=changed?null:
    activeOrigin?destinations.find(t=>t.chatId===activeOrigin.chatId&&t.threadId===activeOrigin.threadId):null;
- const rawDestination=changed?"投稿先：元Topicの入口が変更されています。この下書きからは公開できません。":
+ const rawDestination=changed?"投稿先：元Topicが変更されました。［投稿する］から認証済みTopicを選択してください。":
    current?"投稿先："+current.board+" / "+current.title:
-   pinned?"投稿先：元Topicがこの投稿用途では未認証のため公開できません。":
+   pinned?"投稿先：元Topicが未認証です。［投稿する］から認証済みTopicを選択してください。":
    "投稿先：未選択。［投稿］で検証済みTopicを選択できます。";
  const fullKeyboard=keyboard(d);
  // The Rich editor has buttons beside the field text. Keep only the shared
@@ -216,7 +216,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   linked?Markup.inlineKeyboard([decisionRow(d.revision)]):initialKeyboard(d));
 }
 async function publishRecruitment(
- telegram:Telegram,owner:number,d:EditorDraft,topicId:number
+ telegram:Telegram,owner:number,d:EditorDraft,topicId:number,explicitTopicChoice=false
 ):Promise<{chatId:number;threadId:number;messageId:number;sourceId:number}>{
  const data=asInput(d);
  const profile=data.mode==="linked"?await getProfile(owner):null;
@@ -227,8 +227,11 @@ async function publishRecruitment(
  const pinned=await currentTopicDmEntry(owner);
  const origin=pinned?null:await currentMenuOrigin(owner);
  const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
- assertBoundTopicDmEntry(bound,pinned??origin,{chatId:topic.chatId,threadId:topic.threadId});
- await assertTopicDmEntryDestination(owner,topic.chatId,topic.threadId);
+ // Explicit choice of an already verified destination supersedes stale origin.
+ if(!explicitTopicChoice){
+  assertBoundTopicDmEntry(bound,pinned??origin,{chatId:topic.chatId,threadId:topic.threadId});
+  await assertTopicDmEntryDestination(owner,topic.chatId,topic.threadId);
+ }
  // Fail before writing an announcement or application token when public release is closed.
  await assertFeatureReleased("announcement");
  // The posted message is rendered exclusively by the Bot, never forwarded.
@@ -566,8 +569,10 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    const origin=pinned?null:await currentMenuOrigin(ctx.from.id);
    const preferred=pinned?options.find(t=>t.chatId===pinned.chatId&&t.threadId===pinned.threadId):
      origin?options.find(t=>t.chatId===origin.chatId&&t.threadId===origin.threadId):null;
-   if(pinned&&!preferred)throw Error("元Topicが募集投稿先として認証されていません。");
-   if(preferred){
+   const bound=draftTopicEntryOrigin(d.data.entryChatId,d.data.entryThreadId);
+   const matches=preferred&&(!bound||
+    (bound.chatId===preferred.chatId&&bound.threadId===preferred.threadId));
+   if(preferred&&matches){
     await ctx.answerCbQuery("投稿処理を確認しています");
     const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,preferred.id);
     await showRecruitmentPublished(ctx,sent);
@@ -575,9 +580,11 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    }
    if(!options.length)throw Error("公開先のTopicがまだ認証されていません。下書きは保持しました。");
    await ctx.answerCbQuery("投稿先を選択してください");
-   await ctx.editMessageText("投稿先を選択してください。選択先へこの内容を投稿します。",
-    Markup.inlineKeyboard(options.slice(0,25).map(t=>[
-     b(t.board+" / "+t.title,`recruit:target:${d.revision}:${t.id}`)])));
+   const input=asInput(d);
+   const profile=input.mode==="linked"?await getProfile(ctx.from.id):null;
+   await ctx.editMessageText("📍 投稿先を選択してください。選択後に公開します。\n\n"+renderRecruitmentPreview(input,profile),
+    {parse_mode:"HTML",...Markup.inlineKeyboard(options.slice(0,20).map(t=>[
+     b(BOARD_TITLES[t.board]+" / "+t.title,`recruit:target:${d.revision}:${t.id}`)]))});
   }catch(e){
    await ctx.answerCbQuery("投稿の条件を確認してください").catch(()=>{});
    await showPreview(ctx.telegram,ctx.from.id,d,
@@ -593,7 +600,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   try{
    await ctx.answerCbQuery("投稿しています");
    if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d))return;
-   const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]));
+   const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]),true);
    await showRecruitmentPublished(ctx,sent);
   }catch(e){
    const reason=e instanceof Error?e.message:"";
@@ -601,7 +608,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     await showPreview(ctx.telegram,ctx.from.id,d,
      reason==="FEATURE_RELEASE_NOT_VERIFIED"
       ?"公開許可が確認できません。下書きを保持しました。"
-      :"元Topicの投稿先が一致しません。この下書きからは別Topicへ公開できません。");
+      :"選択したTopicへの投稿を確認できません。下書きは保持しました。");
     return;
    }
    await ctx.reply("投稿を確認できませんでした。送信状態が不明な場合は再送せず照合してください。");
