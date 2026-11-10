@@ -199,7 +199,9 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
      missingText?"awaiting_text":previous.step,recovered);
    }
    if(missingText){
-    await show(telegram,userId,previous,inputInstructions(recovered.mode==="linked"),
+    if(!Number.isSafeInteger(previous.data.selectedTopicId))
+     await showRecruitmentDestinationStep(telegram,userId,previous,"groups");
+    else await show(telegram,userId,previous,inputInstructions(recovered.mode==="linked"),
      recovered.mode==="linked"?Markup.inlineKeyboard([decisionRow(previous.revision)]):initialKeyboard(previous));
     return;
    }
@@ -215,7 +217,9 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
      previous.data.recruitPanelReturnStep==="awaiting_text"?"awaiting_text":"preview";
    const restored=await updateDraft(userId,"announcement",previous.revision,returnStep,
     {...previous.data,recruitPanel:null,recruitPanelReturnStep:null,editField:null});
-   if(returnStep==="awaiting_text"){
+   if(!Number.isSafeInteger(restored.data.selectedTopicId)){
+    await showRecruitmentDestinationStep(telegram,userId,restored,"groups");
+   }else if(returnStep==="awaiting_text"){
     await show(telegram,userId,restored,inputInstructions(restored.data.mode==="linked"),initialKeyboard(restored));
    }else{
     await showPreview(telegram,userId,restored);
