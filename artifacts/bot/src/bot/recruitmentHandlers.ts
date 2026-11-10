@@ -414,7 +414,6 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]:[
    b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
-  rows.push([b("↩ 募集画面に戻る",`recruit:panelback:${rev}`)]);
   rows.push(d.data.publishedSourceId?
    [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
   const ready=!!data.title?.trim()&&!!data.body?.trim();
@@ -460,22 +459,6 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   }
   const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",nextData);
   await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);
- });
- bot.action(/^recruit:panelback:(\d+)$/,async ctx=>{
-  if(ctx.chat?.type!=="private")return;
-  const d=await getDraft(ctx.from.id,"announcement");
-  if(!active(d,Number(ctx.match[1]),"awaiting_tags")){
-   await ctx.answerCbQuery("古い操作です");return;
-  }
-  const returnStep=d.data.recruitPanelReturnStep==="awaiting_text"?"awaiting_text":"preview";
-  const next=await updateDraft(ctx.from.id,"announcement",d.revision,returnStep,
-   {...d.data,recruitPanel:null,recruitPanelReturnStep:null});
-  await ctx.answerCbQuery();
-  if(returnStep==="awaiting_text"){
-   await show(ctx.telegram,ctx.from.id,next,inputInstructions(next.data.mode==="linked"),initialKeyboard(next));
-  }else{
-   await showPreview(ctx.telegram,ctx.from.id,next);
-  }
  });
  bot.action(/^recruit:published:edit:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
