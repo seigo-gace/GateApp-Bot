@@ -267,19 +267,29 @@ function postedMessageUrl(chatId:number,messageId:number):string{
  return "https://t.me/c/"+raw.slice(4)+"/"+messageId;
 }
 async function showRecruitmentPublished(
- ctx:{editMessageText:(text:string,extra?:any)=>Promise<unknown>},
+ ctx:{editMessageText:(text:string,extra?:any)=>Promise<unknown>;from?:{id:number}},
  sent:{chatId:number;threadId:number;messageId:number;sourceId:number},
 ):Promise<void>{
+ if(!ctx.from?.id)throw Error("RECRUITMENT_DM_OWNER_REQUIRED");
+ const record=await loadPublishedRecruitment(ctx.from.id,sent.sourceId);
+ if(record.chatId!==sent.chatId||record.threadId!==sent.threadId||
+    record.messageId!==sent.messageId)throw Error("RECRUITMENT_DELIVERY_MISMATCH");
  const topics=await listVerifiedTopics("announcement");
  const topic=topics.find(t=>t.chatId===sent.chatId&&t.threadId===sent.threadId);
  if(!topic)throw Error("RECRUITMENT_TOPIC_NOT_VERIFIED");
- await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+BOARD_TITLES[topic.board]+
-  "\nトピック："+topic.title+"\n投稿№："+sent.sourceId,
-  Markup.inlineKeyboard([
+ const profile=record.input.mode==="linked"?await getProfile(ctx.from.id):null;
+ const details=renderRecruitmentPreview(record.input,profile);
+ const screen="✅ 募集を投稿しました。\n投稿先："+escapeProfileHtml(BOARD_TITLES[topic.board])+
+  "\nトピック："+escapeProfileHtml(topic.title)+"\n投稿№："+sent.sourceId+
+  "\n\n"+details;
+ await ctx.editMessageText(screen,{
+  parse_mode:"HTML",
+  ...Markup.inlineKeyboard([
    [Markup.button.callback("✏️ 編集","recruit:published:edit:"+sent.sourceId),
     Markup.button.callback("🗑 削除","recruit:published:delete:"+sent.sourceId)],
    [Markup.button.url("📍 投稿先を開く",postedMessageUrl(sent.chatId,sent.messageId))]
-  ]));
+  ])
+ });
 }
 async function checkLinkedProfileChanged(telegram:Telegram,id:number,d:EditorDraft):Promise<boolean>{
  if(asInput(d).mode!=="linked")return false;
