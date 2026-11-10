@@ -202,7 +202,10 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    }
   }
   if(previous.step==="preview"){
-   await showPreview(telegram,userId,previous);return;
+   if(!Number.isSafeInteger(previous.data.selectedTopicId))
+    await showRecruitmentDestinationStep(telegram,userId,previous,"groups");
+   else await showPreview(telegram,userId,previous);
+   return;
   }
   if(["awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)){
    const returnStep=previous.step==="awaiting_tags"&&
@@ -693,7 +696,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    }
    if(!options.length)throw Error("公開先のTopicがまだ認証されていません。下書きは保持しました。");
    await ctx.answerCbQuery("投稿先を選択してください");
-   await showRecruitmentTargetPicker(ctx,d,0,options);
+   await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"groups");
   }catch(e){
    await ctx.answerCbQuery("投稿の条件を確認してください").catch(()=>{});
    await showPreview(ctx.telegram,ctx.from.id,d,
