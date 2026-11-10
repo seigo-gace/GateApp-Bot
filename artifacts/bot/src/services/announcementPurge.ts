@@ -29,7 +29,7 @@ export async function purgeDisposableAnnouncements(limit=20):Promise<number>{
    `SELECT announcement_id,status,room_id,expires_at,created_at,
       event_at,deadline_at,scheduled_at,publish_at
       FROM announcement_posts a
-     WHERE a.room_id IS NULL
+     WHERE a.room_id IS NULL AND a.kind <> 'recruitment'
        AND (a.status IN ('closed','cancelled','finished')
          OR (a.expires_at IS NOT NULL AND a.expires_at<=NOW()))
        AND NOT EXISTS (
