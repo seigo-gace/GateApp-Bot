@@ -14,6 +14,7 @@ import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
+import {loadPublishedRecruitment,applyPublishedRecruitmentEdit} from "../services/recruitmentPublishedEdit.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
@@ -55,7 +56,8 @@ function keyboard(d:EditorDraft){
   rows.push([b("目的タグ",`recruit:panel:${rev}:purpose`,"success"),
    b("場所タグ",`recruit:panel:${rev}:place`,"primary")]);
  }
- rows.push(decisionRow(rev));
+ rows.push(d.data.publishedSourceId?
+  [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
  return Markup.inlineKeyboard(rows);
 }
 function initialKeyboard(d:EditorDraft){
@@ -121,7 +123,7 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  }catch{
   // Telegram API/SDK or device support cannot be assumed in advance.
  }
- await show(telegram,id,d,"📢 公開前プレビュー（未投稿)\n"+
+ await show(telegram,id,d,d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n"+
   renderRecruitmentPreview(input,profile)+"\n\n"+escapeProfileHtml(rawDestination)+
   "\n\n📝各項目を変更しても他の入力は保持します。"+
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
@@ -174,7 +176,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number
-):Promise<{chatId:number;threadId:number;messageId:number}>{
+):Promise<{chatId:number;threadId:number;messageId:number;sourceId:number}>{
  const data=asInput(d);
  const profile=data.mode==="linked"?await getProfile(owner):null;
  validateRecruitmentReady(data,profile);
@@ -212,7 +214,7 @@ async function publishRecruitment(
  });
  await markPostSourcePublished(owner,"announcement",ann.sourceId);
  await markDraftPublished(owner,"announcement",d.revision);
- return sent;
+ return {...sent,sourceId:Number(ann.sourceId)};
 }
 /** Exact private-supergroup post link; no guess from a topic id. */
 function postedMessageUrl(chatId:number,messageId:number):string{
@@ -223,12 +225,13 @@ function postedMessageUrl(chatId:number,messageId:number):string{
 }
 async function showRecruitmentPublished(
  ctx:{editMessageText:(text:string,extra?:any)=>Promise<unknown>},
- sent:{chatId:number;threadId:number;messageId:number},
+ sent:{chatId:number;threadId:number;messageId:number;sourceId:number},
 ):Promise<void>{
  await ctx.editMessageText("✅ 募集を投稿しました。\n投稿ID："+sent.messageId+
   "\n公開先の投稿を開いて確認できます。",
   Markup.inlineKeyboard([[
    Markup.button.url("📍 投稿先へ移動",postedMessageUrl(sent.chatId,sent.messageId)),
+   Markup.button.callback("📝 投稿を編集","recruit:published:edit:"+sent.sourceId),
   ]]));
 }
 async function checkLinkedProfileChanged(telegram:Telegram,id:number,d:EditorDraft):Promise<boolean>{
@@ -426,6 +429,45 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await showPreview(ctx.telegram,ctx.from.id,next);
   }
  });
+ bot.command("myrecruitments",async ctx=>{
+  if(ctx.chat.type!=="private")return;
+  // Existing posts remain discoverable after the original DM completion screen.
+  const {pool}=await import("../db/index.js");
+  const rows=await pool.query(
+   "SELECT a.announcement_id,a.conditions->>'title' AS title FROM announcement_posts a"+
+   " JOIN posting_deliveries d ON d.source_type='announcement'"+
+   " AND d.source_id=a.announcement_id::text AND d.owner_user_id=a.owner_user_id"+
+   " AND d.status='sent' WHERE a.owner_user_id=$1 AND a.kind='recruitment'"+
+   " AND a.status='published' ORDER BY a.updated_at DESC LIMIT 10",[ctx.from.id]);
+  if(!rows.rows.length){await ctx.reply("公開済みの相手募集はありません。");return;}
+  await ctx.reply("📢 マイ募集｜編集する投稿を選択",
+   Markup.inlineKeyboard(rows.rows.map(row=>[
+    b(String(row.title??"募集").slice(0,35),"recruit:published:edit:"+row.announcement_id)
+   ])));
+ });
+ bot.action(/^recruit:published:edit:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const sourceId=Number(ctx.match[1]);
+  try{
+   const record=await loadPublishedRecruitment(ctx.from.id,sourceId);
+   const profile=record.input.mode==="linked"?await getProfile(ctx.from.id):null;
+   const d=await beginDraft(ctx.from.id,"announcement","preview",{
+    ...record.input,kind:"recruitment",recruitmentFlow:"compact",
+    recruitmentMode:record.input.mode,
+    publishedSourceId:sourceId,publishedSourceRevision:record.sourceRevision,
+    profileRevision:profile?.revision??null,
+   });
+   const message=ctx.callbackQuery.message;
+   if(message&&"message_id" in message){
+    await bindDraftScreen(ctx.from.id,"announcement",d.revision,message.message_id);
+    d.data.screenMessageId=message.message_id;
+   }
+   await ctx.answerCbQuery();
+   await showPreview(ctx.telegram,ctx.from.id,d);
+  }catch{
+   await ctx.answerCbQuery("公開済みの本人投稿を確認できませんでした",{show_alert:true});
+  }
+ });
  bot.action(/^recruit:post:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   let d=await getDraft(ctx.from.id,"announcement");
@@ -447,6 +489,18 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    }
    validateRecruitmentReady(asInput(d),
     asInput(d).mode==="linked"?await getProfile(ctx.from.id):null);
+   if(d.data.publishedSourceId){
+    const sourceId=Number(d.data.publishedSourceId);
+    const sourceRevision=Number(d.data.publishedSourceRevision);
+    await ctx.answerCbQuery("元の投稿を更新しています");
+    const updated=await applyPublishedRecruitmentEdit(
+     ctx.telegram,ctx.from.id,sourceId,sourceRevision,asInput(d));
+    await updateDraft(ctx.from.id,"announcement",d.revision,"published",{
+     recruitmentFlow:"compact",publishedSourceId:sourceId,
+     screenMessageId:d.data.screenMessageId});
+    await showRecruitmentPublished(ctx,updated);
+    return;
+   }
    const options=await listVerifiedTopics("announcement");
    const pinned=await currentTopicDmEntry(ctx.from.id);
    const origin=pinned?null:await currentMenuOrigin(ctx.from.id);
