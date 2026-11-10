@@ -148,8 +148,11 @@ function roomOptions(d:EditorDraft){
  ]);
 }
 async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
- await showPostScreen(telegram,userId,d,
-  "ROOM内容（まだ公開していません）\n"+preview("room",d),
+ const ready=typeof d.data.title==="string"&&d.data.title.trim()&&
+  typeof d.data.description==="string"&&d.data.description.trim();
+ await showPostScreen(telegram,userId,d,ready?
+  "🎬 募集+Room（未投稿）\n"+preview("room",d):
+  "🎬 募集+Room（未投稿）\n1行目：タイトル（必須）\n2行目以降：募集内容・ROOMの説明（必須）\n\n入力後、この画面に内容が反映されます。",
   roomOptions(d));
 }
 /** Use the authenticated Topic-origin contract shared with 相手募集.
@@ -184,8 +187,7 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
  if(existing?.data.roomEditSourceId){
   const fresh=await beginDraft(userId,"room","awaiting_text",
    {visibility:"approved_only",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
-  await showPostScreen(telegram,userId,fresh,
-   "🎬 募集+Room\n1行目：タイトル（必須）\n2行目以降：募集内容・ROOMの説明（必須）");
+  await roomPreviewScreen(telegram,userId,fresh);
   return;
  }
  if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
@@ -205,15 +207,13 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
    await showPostScreen(telegram,userId,existing,
     "外部ROOMのHTTPS参加URLを1通で送信してください。");
   }else{
-   await showPostScreen(telegram,userId,existing,
-    "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
+   await roomPreviewScreen(telegram,userId,existing);
   }
   return;
  }
  const draft=await beginDraft(userId,"room","awaiting_text",
   {visibility:"approved_only",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
- await showPostScreen(telegram,userId,draft,
-  "🎬 ROOM作成\n1行目：タイトル（必須）\n2行目以降：説明文（必須）\n\n例：\n今夜の交流\n気軽にお話ししましょう。");
+ await roomPreviewScreen(telegram,userId,draft);
 }
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
 export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
@@ -332,10 +332,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),choice=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"room");
-  if(!d||d.step!=="preview"||d.revision!==rev){
+  if(!d||!["preview","awaiting_text"].includes(d.step)||d.revision!==rev){
    await ctx.answerCbQuery("操作が古くなりました。投稿メニューから再度お試しください。");return;
   }
   try{
+   if((op==="plan"||op==="board")&&(!String(d.data.title||"").trim()||
+      !String(d.data.description||"").trim())){
+    await ctx.answerCbQuery("先にタイトルと募集内容を入力してください。");return;
+   }
    if(op==="mode"){
     if(choice!=="jitsi"&&choice!=="external")throw new Error("ROOM_MODE_INVALID");
     if(choice==="external"){
@@ -345,25 +349,24 @@ export function registerPostingHandlers(bot:Telegraf):void{
       "外部ROOMのHTTPS参加URLを1通で送信してください。");
      return;
     }
-    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+    const next=await updateDraft(ctx.from.id,"room",rev,d.step,
      {...d.data,externalUrl:null});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="joinmode"){
     if(choice!=="public"&&choice!=="approved_only")throw new Error("ROOM_VISIBILITY_INVALID");
-    const next=await updateDraft(ctx.from.id,"room",rev,"preview",{...d.data,visibility:choice});
+    const next=await updateDraft(ctx.from.id,"room",rev,d.step,{...d.data,visibility:choice});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="profile"){
     if(!d.data.profileLinked&&!await existingPublishedProfileUrl(ctx.from.id)){
      await ctx.answerCbQuery("公開済みのプロフィールがありません。");return;
     }
-    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+    const next=await updateDraft(ctx.from.id,"room",rev,d.step,
      {...d.data,profileLinked:!d.data.profileLinked});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="edit"){
     const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_text",d.data);
     await ctx.answerCbQuery();
-    await showPostScreen(ctx.telegram,ctx.from.id,next,
-     "タイトルと説明文を再入力してください。\n1行目：タイトル／2行目以降：説明文");
+    await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="plan"){
     if(choice==="scheduled"){
      const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
