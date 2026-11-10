@@ -9,7 +9,7 @@ import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js"
 import {getDraft,beginDraft,updateDraft,bindDraftScreen,createAnnouncement,
  markPostSourcePublished,markDraftPublished,type EditorDraft} from "../services/publicPostRepository.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
-import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntry,draftTopicEntryOrigin} from "../services/topicDmEntry.js";
+import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic} from "../services/topicDmEntry.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {BOARD_TITLES} from "../services/topicRouting.js";
@@ -172,9 +172,8 @@ async function currentRecruitmentMenuTopic(userId:number){
  const pinned=await currentTopicDmEntry(userId);
  const origin=pinned?null:await currentMenuOrigin(userId);
  const entry=pinned??origin;
- if(!entry)return null;
  const topics=await listVerifiedTopics("announcement");
- return topics.find(t=>t.chatId===entry.chatId&&t.threadId===entry.threadId)??null;
+ return verifiedOriginTopic(topics,entry);
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
  let previous=await getDraft(userId,"announcement");
