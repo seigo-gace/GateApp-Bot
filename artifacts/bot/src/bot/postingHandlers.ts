@@ -570,6 +570,21 @@ export function registerPostingHandlers(bot:Telegraf):void{
     showPostScreen(ctx.telegram,ctx.from.id,d,text+warning,keyboard);
   const input=ctx.message.text.trim();
   try{
+   if(current.module==="room"&&current.data.roomEditSourceId){
+    const sourceId=Number(current.data.roomEditSourceId);
+    const roomId=Number(current.data.roomEditRoomId);
+    const expectedRevision=Number(current.data.roomEditRevision);
+    const {title,description}=parseRoomDetails(input);
+    await updateRoomDetails(ctx.from.id,roomId,expectedRevision,title,description);
+    const old=current.data.savedTemplate;
+    const data=old&&typeof old==="object"&&!Array.isArray(old)?
+     old as Record<string,unknown>:{cancelled:true};
+    await updateDraft(ctx.from.id,"room",current.revision,
+     old?"saved":"cancelled",data);
+    await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
+     Number(current.data.screenMessageId)||undefined);
+    return;
+   }
    let data:Record<string,unknown>;
    if(current.step==="awaiting_datetime"){
     const date=parseJstDateTime(input);
