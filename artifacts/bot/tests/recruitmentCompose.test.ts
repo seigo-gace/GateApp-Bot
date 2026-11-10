@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
  parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,
- validateRecruitmentReady,
+ validateRecruitmentReady,recruitmentTextPhase,
 } from "../src/services/recruitmentCompose.js";
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
 import {recruitmentDecisionRow} from "../src/services/recruitmentButtonLayout.js";
@@ -94,4 +94,20 @@ test("Master four-line manual input renders into recruitment preview",()=>{
  assert.equal(row.length,2);
  assert.equal(row[0]?.text,"✅ 投稿する");
  assert.equal(row[1]?.text,"キャンセル");
+});
+
+test("text entry is accepted after pre-input selector panel, not from preview selector",()=>{
+ assert.equal(recruitmentTextPhase("awaiting_text",null),"initial");
+ assert.equal(recruitmentTextPhase("awaiting_recruitment_edit",null),"edit");
+ assert.equal(recruitmentTextPhase("awaiting_tags","awaiting_text"),"initial");
+ assert.equal(recruitmentTextPhase("awaiting_tags","preview"),null);
+ assert.equal(recruitmentTextPhase("preview",null),null);
+ assert.equal(recruitmentTextPhase("awaiting_tags",null),null);
+ const prior={position:"タチ",purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const fresh=parseRecruitmentMessage("テスト\nテスト\n170 80 40\n最終行",false);
+ const next={...fresh,...prior,recruitPanel:null,recruitPanelReturnStep:null};
+ assert.equal(next.body,"最終行");
+ assert.deepEqual(next.purposeCodes,["サシ"]);
+ assert.deepEqual(next.placeCodes,["場所あり"]);
+ assert.equal(next.position,"タチ");
 });
