@@ -330,12 +330,9 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
   }else if(existing.step==="preview"){
    await roomPreviewScreen(telegram,userId,existing);
   }else if(existing.step==="awaiting_datetime"){
-   await showPostScreen(telegram,userId,existing,
-    "📅 予告日時を日本時間で1通送信してください。例：2026/11/20 20:00");
+   await roomPreviewScreen(telegram,userId,existing);
   }else if(existing.step==="awaiting_room_url"){
-   await showPostScreen(telegram,userId,existing,
-    "外部ROOMのHTTPS参加URLを1通で送信してください。",
-    roomStageKeyboard(existing));
+   await roomPreviewScreen(telegram,userId,existing);
   }else{
    await roomPreviewScreen(telegram,userId,existing);
   }
@@ -869,9 +866,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const date=parseJstDateTime(input);
     if(current.module==="room"){
      const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
-      {...current.data,startAt:date.toISOString()});
-     if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,updated))
-       await destinationMenu(ctx,"room",updated.revision);
+      {...current.data,startAt:date.toISOString(),stage:"scheduled_ready"});
+     await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
      return;
     }
     data={...current.data,eventAt:date.toISOString()};
@@ -888,7 +884,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const hasDetails=Boolean(String(current.data.title||"").trim()&&
       String(current.data.description||"").trim());
     const updated=await updateDraft(ctx.from.id,"room",current.revision,
-     hasDetails?"preview":"awaiting_text",{...current.data,externalUrl});
+     hasDetails?"preview":"awaiting_text",
+     {...current.data,externalUrl,stage:"details"});
     await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
     return;
    }
@@ -902,11 +899,21 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(current.module==="room"){
-    const {title,description}=parseRoomDetails(input);
-    const externalUrl=current.data.externalUrl?String(current.data.externalUrl):undefined;
-    validateRoom({ownerId:ctx.from.id,name:title,mode:externalUrl?"external":"jitsi",
-     externalUrl,status:"draft"});
-    data={...current.data,title,description};
+    const currentInput=roomRecruitmentData(current);
+    const field=String(current.data.editField||"");
+    if(field){
+     const changed=changeRecruitmentField(currentInput,
+      field as "title"|"nickname"|"stats"|"body",input);
+     data={...current.data,...changed,title:changed.title,
+      description:changed.body,editField:null};
+    }else{
+     const parsed=parseRecruitmentMessage(input,current.data.recruitmentMode==="linked");
+     data={...current.data,...parsed,title:parsed.title,description:parsed.body,
+      position:current.data.position??null,editField:null};
+    }
+    const externalUrl=data.externalUrl?String(data.externalUrl):undefined;
+    validateRoom({ownerId:ctx.from.id,name:String(data.title),
+     mode:externalUrl?"external":"jitsi",externalUrl,status:"draft"});
    }else{
     if(!current.data.kind)throw new Error("投稿種別が未選択です。");
     const kind=current.data.kind as AnnouncementKind;
