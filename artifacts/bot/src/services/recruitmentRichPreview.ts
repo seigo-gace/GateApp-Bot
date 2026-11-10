@@ -11,11 +11,11 @@ const edit=(rev:number,field:"title"|"nickname"|"stats"|"body"):RichButton=>({
 });
 const paragraph=(text:unknown)=>({type:"paragraph",text});
 export function buildRecruitmentRichPreview(
- d:RecruitmentInput,revision:number,destination:string,warning?:string,profile?:ProfileBasicDraft|null,
+ d:RecruitmentInput,revision:number,destination:string,warning?:string,profile?:ProfileBasicDraft|null,published=false,
 ){
  if(!Number.isSafeInteger(revision)||revision<=0)throw Error("RECRUITMENT_REVISION_INVALID");
  const blocks:unknown[]=[
-  paragraph("📢 公開前プレビュー（未投稿）"),
+  paragraph(published?"📢 公開済み募集を編集中":"📢 相手募集（未投稿）"),
   paragraph([{type:"bold",text:"📢 "+d.title}," ",edit(revision,"title")]),
  ];
  if(d.mode==="manual"){
