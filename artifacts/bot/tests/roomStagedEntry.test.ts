@@ -62,6 +62,16 @@ test("adopted ROOM editor has exact row layout and excludes every removed legacy
   }
  }
 });
+test("ROOM position panel keeps seven original choices in 3/4 rows without changing navigation",()=>{
+ const rows=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"position"})).reply_markup.inline_keyboard;
+ assert.deepEqual(rows.map(row=>row.length),[3,4,2]);
+ assert.deepEqual(rows.slice(0,2).flat().map(button=>button.text),
+  ["タチ","タチリバ","リバ","ウケリバ","ウケ","S","M"]);
+ assert.deepEqual(rows.slice(0,2).flat().map(button=>button.callback_data),
+  Array.from({length:7},(_,i)=>`room:positionchoice:7:${i}`));
+ assert.deepEqual(rows[2]?.map(button=>button.text),["↩ 戻る","キャンセル"]);
+});
+
 test("scheduled route uses two participation modes then a separate submit button",()=>{
  assert.deepEqual(labels(draft("preview",{modeSelected:true,stage:"join_choice"})),[
   ["自由参加","承認制"],["↩ 戻る","キャンセル"]]);
