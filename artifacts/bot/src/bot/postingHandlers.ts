@@ -201,11 +201,10 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
   ...nav
  ]);
  if(stage==="position")return Markup.inlineKeyboard([
-  ...PROFILE_POSITIONS.map((value,i)=>({text:String(value),
-   callback_data:`room:positionchoice:${r}:${i}`}))
-   .reduce<Array<Array<{text:string;callback_data:string}>>>((rows,item,i)=>{
-    if(i%3===0)rows.push([]);rows[rows.length-1]!.push(item);return rows;
-   },[]),
+  ...[PROFILE_POSITIONS.slice(0,3),PROFILE_POSITIONS.slice(3)].map((group,row)=>group.map((value,i)=>({
+   text:String(value),
+   callback_data:`room:positionchoice:${r}:${row===0?i:i+3}`,
+  }))),
   ...nav
  ]);
  if(stage==="tag_categories")return Markup.inlineKeyboard([
