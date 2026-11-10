@@ -167,7 +167,10 @@ async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:Edit
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
  let previous=await getDraft(userId,"announcement");
- if(previous?.data.recruitmentFlow==="compact"){
+ if(previous?.data.recruitmentFlow==="compact"&&!previous.data.publishedSourceId){
+  // Starting a new recruitment from the posting menu must not reopen an old
+  // published-post edit draft. Published edits are entered only from the
+  // existing publication management callback.
   // Reuse the tapped menu screen rather than silently editing an old DM screen.
   // Preserve the entire draft and its previously selected fields.
   if(Number.isSafeInteger(menuMessageId)&&Number(menuMessageId)>0&&
