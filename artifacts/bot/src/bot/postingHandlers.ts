@@ -16,7 +16,7 @@ import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic }
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
-import {makeApplicationLink} from "../services/applicationLinks.js";
+import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {loadRoomPublication,roomPublicationEditor} from "../services/roomPublishedEditor.js";
@@ -929,12 +929,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
       title+"\n"+description,startAt,[],[],roomId);
      sourceId=ann.sourceId;
      text=preview("room",draft);
-     const rows:{text:string;url:string}[][]=[];
-     if(visibility==="approved_only"){
-      // Applicants must be able to request approval for both scheduled and
-      // immediate ROOMs; a join button alone never grants private access.
-      rows.push([{text:"📨 参加希望",url:await makeApplicationLink(ctx.from.id,Number(sourceId))}]);
-     }
+     const rows:{text:string;url:string}[][]=[
+      [{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]
+     ];
      if(!startAt){
       rows.push([{text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)}]);
      }
@@ -961,8 +958,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
       buttons=[[{text:"🪪 プロフを見る",url:profileUrl}]];
      }
      if(kind==="recruitment"){
-      const link=await makeApplicationLink(ctx.from.id,Number(sourceId));
-      buttons=[[{text:"📨 応募する（Bot DM）",url:link}]];
+      buttons=[[{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]];
      }
     }
    }
