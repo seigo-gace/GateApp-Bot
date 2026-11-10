@@ -143,10 +143,29 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
   "ROOM内容（まだ公開していません）\n"+preview("room",d),
   roomOptions(d));
 }
-async function roomBoardMenu(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
- await showPostScreen(telegram,userId,d,"投稿先グループを選択してください。",
-  Markup.inlineKeyboard([BOARD_KEYS.map((key,index)=>
-   Markup.button.callback(BOARD_TITLES[key],`room:board:${d.revision}:${index}`))]));
+/** Use the authenticated Topic-origin contract shared with 相手募集.
+ * Only an unavailable/unverified ROOM destination opens the fallback picker.
+ */
+async function verifiedRoomOrigin(userId:number){
+ const pinned=await currentTopicDmEntry(userId);
+ const origin=pinned??await currentMenuOrigin(userId);
+ if(!origin)return null;
+ return (await listVerifiedTopics("room")).find(t=>
+  t.chatId===origin.chatId&&t.threadId===origin.threadId)??null;
+}
+async function roomPublishConfirmation(telegram:Telegram,userId:number,d:EditorDraft){
+ const topic=await verifiedRoomOrigin(userId);
+ if(!topic)return false;
+ await showPostScreen(telegram,userId,d,
+  "🎬 募集+Room\n"+preview("room",d)+
+  "\n\n投稿先："+escapeProfileHtml(BOARD_TITLES[topic.board])+
+  " / "+escapeProfileHtml(topic.title)+
+  "\n\nこの内容を投稿します。募集とROOMは一体で公開されます。",
+  Markup.inlineKeyboard([
+   [Markup.button.callback("✅ この内容で投稿",`post:publish:room:${d.revision}:${topic.id}`)],
+   [Markup.button.callback("↩ 編集に戻る",`room:confirmback:${d.revision}`)]
+  ]));
+ return true;
 }
 /** Entry shared by /room and the verified ROOM topic menu. */
 export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
@@ -341,7 +360,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }else if(choice==="now"){
      const next=await updateDraft(ctx.from.id,"room",rev,"preview",
       {...d.data,startAt:null});
-     await ctx.answerCbQuery();await roomBoardMenu(ctx.telegram,ctx.from.id,next);
+     await ctx.answerCbQuery();
+     if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,next))
+      await destinationMenu(ctx,"room",next.revision);
     }else throw new Error("ROOM_PLAN_INVALID");
    }else if(op==="board"){
     const boardIndex=Number(choice);
@@ -361,6 +382,15 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }catch{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
+ });
+ bot.action(/^room:confirmback:(\\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.step!=="preview"||d.revision!==Number(ctx.match[1])){
+   await ctx.answerCbQuery("古い操作です");return;
+  }
+  await ctx.answerCbQuery();
+  await roomPreviewScreen(ctx.telegram,ctx.from.id,d);
  });
  bot.command("link",async ctx=>{
   if(!privateDM(ctx))return;
@@ -533,7 +563,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(current.module==="room"){
      const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
       {...current.data,startAt:date.toISOString()});
-     await roomBoardMenu(ctx.telegram,ctx.from.id,updated);
+     if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,updated))
+       await destinationMenu(ctx,"room",updated.revision);
      return;
     }
     data={...current.data,eventAt:date.toISOString()};
