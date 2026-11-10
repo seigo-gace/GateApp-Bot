@@ -539,9 +539,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
       {...d.data,startAt:null,stage:"join_choice"});
      await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
     }else if(choice==="now"){
+     // Resolve the destination before advancing the callback revision.
+     // A missing/stale verified Topic must leave this button usable.
+     const targets=await verifiedRoomTargets(ctx.from.id);
      const next=await updateDraft(ctx.from.id,"room",rev,"preview",
       {...d.data,startAt:null,visibility:"public",stage:"immediate_ready"});
-     const targets=await verifiedRoomTargets(ctx.from.id);
      await publishAccepted(ctx,"room",next.revision,targets[0]!.topicId);
     }else throw new Error("ROOM_PLAN_INVALID");
    }else if(op==="back"){
