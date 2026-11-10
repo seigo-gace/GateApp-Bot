@@ -11,12 +11,12 @@ export type PublicRoomStatus="scheduled"|"prepared"|"started"|"postponed"|
 
 export function roomBadge(kind:PublicRoomStatus):string{
  const badges:Record<PublicRoomStatus,string>={
-  scheduled:"📅 開催予定",
+  scheduled:"📅 予告中",
   prepared:"🟢 準備完了",
   started:"🔴 LIVE中",
   postponed:"⏸ 延期",
   cancelled:"🚫 中止",
-  finished:"⚫ 終了しました",
+  finished:"⚫ 終了",
   visibility_changed:"🔒 参加条件を更新しました",
   details_changed:"📝 募集内容を更新しました",
  };
@@ -90,7 +90,7 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     JOIN room_posts r ON r.room_id=a.room_id
     WHERE q.state='pending' AND e.state='applied'
       AND d.status='sent' AND d.telegram_message_id IS NOT NULL
-      AND t.enabled=TRUE AND t.purpose='room'
+      AND t.enabled=TRUE AND t.purpose IN ('room','announcement')
       AND NOT EXISTS (
         SELECT 1 FROM room_status_message_edits prev
         JOIN room_source_events prev_event ON prev_event.event_id=prev.room_event_id
