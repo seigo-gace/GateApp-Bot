@@ -76,12 +76,12 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     GROUP BY approved_by HAVING count(DISTINCT feature)=2`);
  if(gate.rows.length!==1)throw new Error("ROOM_STATUS_FEATURES_NOT_VERIFIED");
  const c=await pool.connect();
- let item:null|{editId:number;chatId:number;messageId:number;
+ let item:null|{editId:number;deliveryId:number;chatId:number;messageId:number;
   original:string;kind:PublicRoomStatus;buttons:Button[][];details?:{title:string;description:string}}=null;
  try{
   await c.query("BEGIN");
   const result=await c.query(
-   `SELECT q.edit_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,r.title AS room_title,r.description AS room_description
+   `SELECT q.edit_id,d.delivery_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,r.title AS room_title,r.description AS room_description
     FROM room_status_message_edits q
     JOIN room_source_events e ON e.event_id=q.room_event_id
     JOIN posting_deliveries d ON d.delivery_id=q.delivery_id
@@ -106,9 +106,10 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     ORDER BY q.room_event_id,q.edit_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED`);
   if(!result.rows.length){await c.query("COMMIT");return null;}
   const r=result.rows[0];
-  const editId=Number(r.edit_id),chatId=Number(r.chat_id),
+  const editId=Number(r.edit_id),deliveryId=Number(r.delivery_id),chatId=Number(r.chat_id),
    messageId=Number(r.telegram_message_id);
   if(!Number.isSafeInteger(editId)||editId<=0||
+     !Number.isSafeInteger(deliveryId)||deliveryId<=0||
      !Number.isSafeInteger(chatId)||chatId>=0||
      !Number.isSafeInteger(messageId)||messageId<=0)
    throw new Error("ROOM_STATUS_DELIVERY_INVALID");
@@ -121,7 +122,7 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
    await c.query("COMMIT");
    return {editId,state:"needs_reconcile"};
   }
-  item={editId,chatId,messageId,original:String(r.rendered_text),
+  item={editId,deliveryId,chatId,messageId,original:String(r.rendered_text),
    kind:r.kind as PublicRoomStatus,
    buttons:verifyButtons(r.inline_buttons),
    details:r.kind==="details_changed"?{title:String(r.room_title),description:String(r.room_description)}:undefined};
@@ -137,14 +138,24 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
   const buttons=terminal?[]:item.buttons;
   const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>
    Markup.button.url(b.text,b.url))));
+  const rendered=roomStatusMessage(item.original,item.kind,item.details);
   await telegram.editMessageText(item.chatId,item.messageId,undefined,
-   roomStatusMessage(item.original,item.kind,item.details),{
+   rendered,{
     parse_mode:"HTML",...keyboard,
   });
-  const ack=await pool.query(
-   `UPDATE room_status_message_edits SET state='confirmed',updated_at=NOW()
-     WHERE edit_id=$1 AND state='sending' RETURNING edit_id`,[item.editId]);
-  if(ack.rows.length!==1)throw new Error("ROOM_EDIT_ACK_UNCERTAIN");
+  const cx=await pool.connect();
+  try{
+   await cx.query("BEGIN");
+   const save=await cx.query(
+    "UPDATE posting_deliveries SET rendered_text=$3,updated_at=NOW() WHERE delivery_id=$1 AND telegram_message_id=$2 AND status='sent' RETURNING delivery_id",
+    [item.deliveryId,item.messageId,rendered]);
+   if(save.rows.length!==1)throw Error("ROOM_DELIVERY_CONTENT_STALE");
+   const ack=await cx.query(
+    "UPDATE room_status_message_edits SET state='confirmed',updated_at=NOW() WHERE edit_id=$1 AND state='sending' RETURNING edit_id",
+    [item.editId]);
+   if(ack.rows.length!==1)throw Error("ROOM_EDIT_ACK_UNCERTAIN");
+   await cx.query("COMMIT");
+  }catch(error){await cx.query("ROLLBACK");throw error;}finally{cx.release();}
   return {editId:item.editId,state:"confirmed"};
  }catch{
   await pool.query(
