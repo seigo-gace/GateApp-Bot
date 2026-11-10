@@ -367,8 +367,9 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]:[
    b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
-  rows.push([b("📋 プレビュー",`recruit:panelback:${rev}`)]);
-  rows.push(decisionRow(rev));
+  rows.push([b("↩ 募集画面に戻る",`recruit:panelback:${rev}`)]);
+  rows.push(d.data.publishedSourceId?
+   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
   const ready=!!data.title?.trim()&&!!data.body?.trim();
   const profile=ready&&data.mode==="linked"?await getProfile(id):null;
   const preview=ready?renderRecruitmentPreview(data,profile):
@@ -381,7 +382,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   const heading=panel==="position"?"ポジションを選択してください（1つ必須）。":
    panel==="purpose"?"目的タグを選択してください（複数選択可能）。":
    "場所あり／なしは択一、足ありは独立して選択できます。";
-  await show(telegram,id,d,"📢 募集プレビュー（未投稿）\n"+preview+
+  await show(telegram,id,d,d.data.publishedSourceId?"📢 公開済み募集を編集中\n"+preview:"📢 相手募集（未投稿）\n"+preview+
    "\n\n"+selected+"\n\n"+escapeProfileHtml(heading),
    Markup.inlineKeyboard(rows),true);
  }
