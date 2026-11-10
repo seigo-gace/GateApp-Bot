@@ -906,11 +906,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
      await rememberPublishedRecruitmentDmScreen(ctx.from.id,Number(sourceId),Number(dmId));
     await showRecruitmentPublished(ctx,{...result,sourceId:Number(sourceId)});
    }else if(module==="room"){
-    await ctx.editMessageText("✅ ROOMを公開しました。\n投稿先："+result.chatId+
-     " / Topic "+result.threadId+"\n投稿ID："+result.messageId+
-     (isScheduledRoom?"\n📅 予告中です。開催時には /myrooms から［開始する］を押してください。":"\n🔴 LIVE中"),
-     hostJoinUrl&&!isScheduledRoom?Markup.inlineKeyboard([
-      [Markup.button.url("🎥 ROOMに入る",hostJoinUrl)]]):undefined);
+    const screenId="message" in ctx.callbackQuery?
+     ctx.callbackQuery.message?.message_id:undefined;
+    await showRoomPublished(ctx.telegram,ctx.from.id,Number(sourceId),screenId);
    }else await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
