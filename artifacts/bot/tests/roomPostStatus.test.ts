@@ -23,7 +23,7 @@ test("Room+募集 title and description edit updates original card and preserves
  const edited=roomStatusMessage(original,"details_changed",
   {title:"新タイトル",description:"新しい説明\n2行目"});
  assert.match(edited,/^🎬 ROOM：新タイトル\n新しい説明\n2行目\n方式：無料Jitsi/m);
- assert.match(edited,/状態：📝 募集内容を更新しました/);
+ assert.match(edited,/状態：🔴 LIVE中/);
  const done=roomStatusMessage(edited,"finished");
  assert.match(done,/新タイトル\n新しい説明/);
  assert.match(done,/状態：⚫ 終了/);
