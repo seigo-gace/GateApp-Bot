@@ -4,6 +4,7 @@
  */
 import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
+import {styledRecruitmentButton as colored} from "../bot/recruitmentHandlers.js";
 import {BOARD_TITLES,type BoardKey} from "./topicRouting.js";
 import {telegramPublishedMessageUrl} from "./searchDomain.js";
 import type {Telegram} from "telegraf";
@@ -74,15 +75,15 @@ export function roomPublicationEditor(p:RoomPublication){
  const rows:Array<Array<ReturnType<typeof Markup.button.callback>|ReturnType<typeof Markup.button.url>>>=[];
  if(["draft","scheduled","ready","postponed"].includes(p.status)){
   rows.push([
-   Markup.button.callback("▶ 開始する",`room:published:start:${p.announcementId}:${p.roomRevision}`),
-   Markup.button.callback("✏️ 編集",`room:published:edit:${p.announcementId}`),
-   Markup.button.callback("🗑 削除",`room:published:delete:${p.announcementId}`)
+   colored("▶ 開始する",`room:published:start:${p.announcementId}:${p.roomRevision}`,"success"),
+   colored("✏️ 編集",`room:published:edit:${p.announcementId}`,"primary"),
+   colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger")
   ]);
  }else if(p.status==="live"){
   rows.push([
-   Markup.button.callback("⚫ 終了",`room:published:finish:${p.announcementId}:${p.roomRevision}`),
-   Markup.button.callback("✏️ 編集",`room:published:edit:${p.announcementId}`),
-   Markup.button.callback("🗑 削除",`room:published:delete:${p.announcementId}`)
+   colored("⚫ 終了",`room:published:finish:${p.announcementId}:${p.roomRevision}`,"danger"),
+   colored("✏️ 編集",`room:published:edit:${p.announcementId}`,"primary"),
+   colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger")
   ]);
  }
  if(p.status==="live"&&p.ownerJoinUrl)rows.push([
