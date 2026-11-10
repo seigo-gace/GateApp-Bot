@@ -8,7 +8,7 @@ import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js"
 import {resolveApplicationSession,legacyRecruitmentContactOwner,
  activateApplicationSession,isRoomApplicationLink} from "../services/applicationLinks.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
-import {submitApplication,decideApplication,withdrawApplication} from "../services/announcementApplications.js";
+import {submitApplication,decideApplication,withdrawApplication,renderRoomApplicantSummary} from "../services/announcementApplications.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
@@ -202,22 +202,25 @@ export function registerApplicationHandlers(bot:Telegraf):void{
  bot.command("applications",async ctx=>{
   if(ctx.chat.type!=="private")return;
   const rows=await pool.query(
-   `SELECT a.application_id,a.applicant_user_id,a.status,p.announcement_id
+   `SELECT a.application_id,a.status,a.consented_profile,
+      p.announcement_id,p.room_id
     FROM announcement_applications a
     JOIN announcement_posts p ON p.announcement_id=a.announcement_id
     WHERE p.owner_user_id=$1 AND p.kind='recruitment'
     ORDER BY a.updated_at DESC LIMIT 25`,[ctx.from.id]);
   if(!rows.rows.length){await ctx.reply("受付中・処理済みの応募記録はありません。");return;}
   for(const row of rows.rows){
-   const id=Number(row.application_id);
-   const text="募集 #"+row.announcement_id+" / 応募ID #"+id+
-    "\n応募者ID："+row.applicant_user_id+" / 状態："+row.status;
-   const active=["submitted","held"].includes(row.status);
-   await ctx.reply(text,active?Markup.inlineKeyboard([
-    [Markup.button.callback("✅ 承認",`application:decide:${id}:accepted`)],
-    [Markup.button.callback("⏸ 保留",`application:decide:${id}:held`)],
-    [Markup.button.callback("❌ 辞退",`application:decide:${id}:declined`)],
-   ]):undefined);
+   const id=Number(row.application_id),active=["submitted","held"].includes(row.status);
+   const isRoom=row.room_id!==null;
+   const body=isRoom?
+    renderRoomApplicantSummary(row.consented_profile as Record<string,unknown>|null):
+    "募集 #"+row.announcement_id+" / 応募ID #"+id;
+   const text=body+"\n状態："+String(row.status);
+   const buttons=active?Markup.inlineKeyboard([
+    [Markup.button.callback("✅ 承認",`application:decide:${id}:accepted`),
+     Markup.button.callback("❌ 拒否",`application:decide:${id}:declined`)]
+   ]):undefined;
+   await ctx.reply(text,buttons?{parse_mode:isRoom?"HTML":undefined,...buttons}:undefined);
   }
  });
  bot.action(/^application:decide:(\d+):(accepted|held|declined)$/,async ctx=>{
