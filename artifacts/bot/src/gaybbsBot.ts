@@ -126,7 +126,7 @@ async function main():Promise<void>{
   const kind=ctx.match[1];
   if(kind==="profile")await startProfileEditor(ctx);
   else if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
-  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
   else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
   else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
