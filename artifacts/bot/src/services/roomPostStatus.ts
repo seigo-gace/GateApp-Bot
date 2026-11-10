@@ -40,7 +40,12 @@ export function roomStatusMessage(original:string,kind:PublicRoomStatus,
   const esc=(v:string)=>v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   base="🎬 ROOM："+esc(details.title)+"\n"+esc(details.description)+base.slice(ix);
  }
- const status="状態："+badge;
+ // Content edits must not erase the active lifecycle mark (予告中/LIVE中/終了).
+ // Only a lifecycle event is authorized to change that visible state.
+ const previous=original.match(/^状態：([^\r\n]*)$/mu)?.[1];
+ const preserved=kind==="details_changed"||kind==="visibility_changed";
+ if(preserved&&!previous)throw Error("ROOM_PUBLIC_STATUS_MISSING");
+ const status="状態："+(preserved?previous:badge);
  const result=base+"\n"+status;
  if(result.length>4096)throw new Error("ROOM_STATUS_TOO_LONG");
  return result;
