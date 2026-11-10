@@ -11,14 +11,14 @@ export type RoomPublication={
  announcementId:number;roomId:number;roomRevision:number;
  groupTitle:string;topicTitle:string;chatId:number;messageId:number;
  title:string;description:string;status:string;visibility:string;
- scheduledAt:string|null;
+ scheduledAt:string|null;ownerJoinUrl:string|null;
 };
 export async function loadRoomPublication(owner:number,announcementId:number):Promise<RoomPublication>{
  if(![owner,announcementId].every(n=>Number.isSafeInteger(n)&&n>0))
   throw Error("ROOM_PUBLICATION_OWNER_INVALID");
  const r=await pool.query(`
   SELECT a.announcement_id,a.room_id,r.revision AS room_revision,
-   r.title,r.description,r.status,r.join_visibility,r.start_at,
+   r.title,r.description,r.status,r.join_visibility,r.start_at,r.join_url,
    t.board_key,t.title AS topic_title,t.chat_id,d.telegram_message_id
   FROM announcement_posts a
   JOIN room_posts r ON r.room_id=a.room_id AND r.owner_user_id=a.owner_user_id
@@ -41,6 +41,7 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
   title:String(x.title),description:String(x.description),status:String(x.status),
   visibility:String(x.join_visibility),
   scheduledAt:x.start_at?new Date(x.start_at).toISOString():null,
+  ownerJoinUrl:typeof x.join_url==="string"&&/^https:\/\//.test(x.join_url)?x.join_url:null,
  };
  if(![data.announcementId,data.roomId,data.roomRevision,data.messageId].every(
   x=>Number.isSafeInteger(x)&&x>0))throw Error("ROOM_PUBLICATION_RECEIPT_INVALID");
@@ -69,6 +70,8 @@ export function roomPublicationEditor(p:RoomPublication){
   Markup.button.callback("⚫ 終了する",`room:published:finish:${p.announcementId}:${p.roomRevision}`)]);
  else if(["scheduled","ready","postponed"].includes(p.status))rows.push([
   Markup.button.callback("🚫 中止する",`room:published:cancel:${p.announcementId}:${p.roomRevision}`)]);
+ if(p.status==="live"&&p.ownerJoinUrl)rows.push([
+  Markup.button.url("🎥 ROOMに入る",p.ownerJoinUrl)]);
  rows.push([Markup.button.url("📍 投稿先を開く",
   telegramPublishedMessageUrl(p.chatId,p.messageId))]);
  return {text:text.join("\n"),keyboard:Markup.inlineKeyboard(rows)};
