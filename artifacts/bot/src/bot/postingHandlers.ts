@@ -23,7 +23,7 @@ import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
-import {showRecruitmentPublished} from "./recruitmentHandlers.js";
+import {showRecruitmentPublished,inputInstructions} from "./recruitmentHandlers.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
@@ -261,17 +261,15 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
  if(d.step==="awaiting_text"){
   const field=String(d.data.editField||"");
   const linked=d.data.recruitmentMode==="linked";
-  // The old ROOM-only two-line editor is not the creation entry.
-  // Follow the adopted Recruitment parser's linked/manual input modes.
+  // Reuse the *same* full instruction and example as the adopted 相手募集.
+  // ROOM customizes only the heading; no second interpretation of line order.
   const guide=field==="title"?"タイトルを1行で送信してください。":
    field==="nickname"?"ニックネームを送信してください。":
    field==="stats"?"身長 体重 年齢 を送信してください。":
    field==="body"?"募集内容を送信してください。":
-   linked?"【プロフィール連携済み：相手募集と共通】\n1行目：タイトル\n2行目以降：募集内容":
-   "【プロフィール未連携：相手募集と共通】\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：募集内容";
+   inputInstructions(linked).replace("📢 相手募集を作成","🎬 募集+Room｜入力");
   await showPostScreen(telegram,userId,d,
-   "🎬 募集+Room｜相手募集と共通の入力\n"+guide+
-   "\n\nまとめて1通で送信してください。Botが入力文を回収し、同じ画面に反映します。",
+   guide+"\n\n送信した内容をBotが回収し、同じ画面のプレビューに反映します。",
    roomStageKeyboard(d));return;
  }
  const ready=String(d.data.title||"").trim()&&String(d.data.description||"").trim();
