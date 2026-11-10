@@ -148,7 +148,7 @@ function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
    Markup.button.callback("ルーム作成",`room:mode:${d.revision}:jitsi`),
    Markup.button.callback("URL",`room:mode:${d.revision}:external`)
   ]]);
- if(d.step==="awaiting_text")
+ if(d.step==="awaiting_text"||d.step==="awaiting_room_url")
   return Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`room:cancel:${d.revision}`)]]);
  return roomOptions(d);
 }
@@ -213,14 +213,19 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
   return;
  }
  if(existing&&["preview","awaiting_text","awaiting_datetime","awaiting_room_url"].includes(existing.step)){
-  if(existing.step==="preview"){
+  if(existing.step==="awaiting_text"&&!existing.data.modeSelected&&
+     !existing.data.title&&!existing.data.description){
+   const first=await updateDraft(userId,"room",existing.revision,"preview",existing.data);
+   await roomPreviewScreen(telegram,userId,first);
+  }else if(existing.step==="preview"){
    await roomPreviewScreen(telegram,userId,existing);
   }else if(existing.step==="awaiting_datetime"){
    await showPostScreen(telegram,userId,existing,
     "📅 予告日時を日本時間で1通送信してください。例：2026/11/20 20:00");
   }else if(existing.step==="awaiting_room_url"){
    await showPostScreen(telegram,userId,existing,
-    "外部ROOMのHTTPS参加URLを1通で送信してください。");
+    "外部ROOMのHTTPS参加URLを1通で送信してください。",
+    roomStageKeyboard(existing));
   }else{
    await roomPreviewScreen(telegram,userId,existing);
   }
@@ -365,7 +370,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
       {...d.data,modeSelected:true});
      await ctx.answerCbQuery();
      await showPostScreen(ctx.telegram,ctx.from.id,next,
-      "外部ROOMのHTTPS参加URLを1通で送信してください。");
+      "外部ROOMのHTTPS参加URLを1通で送信してください。",
+      roomStageKeyboard(next));
      return;
     }
     const next=await updateDraft(ctx.from.id,"room",rev,
