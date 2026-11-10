@@ -23,7 +23,7 @@ import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
-import {showRecruitmentPublished,inputInstructions} from "./recruitmentHandlers.js";
+import {showRecruitmentPublished,inputInstructions,recruitmentEditorFieldRows} from "./recruitmentHandlers.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
@@ -159,14 +159,15 @@ function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
 }
 function roomOptions(d:EditorDraft){
  const r=d.revision,linked=d.data.recruitmentMode==="linked";
- const rows:any[][]=[];
- rows.push([Markup.button.callback("📝 タイトル",`room:field:${r}:title`),
-  Markup.button.callback("📝 募集内容",`room:field:${r}:body`)]);
- if(!linked)rows.push([Markup.button.callback("📝 ニックネーム",`room:field:${r}:nickname`),
-  Markup.button.callback("📝 身長/体重/年齢",`room:field:${r}:stats`)]);
- rows.push([Markup.button.callback(linked?"✅ プロフ連携":"ポジション",`room:position:${r}`),
-  Markup.button.callback("#Like",`room:tag:${r}:like`),
-  Markup.button.callback("#Love",`room:tag:${r}:love`)]);
+ const rows:any[][]=recruitmentEditorFieldRows(linked?"linked":"manual",r,{
+  edit:field=>`room:field:${r}:${field}`,
+  position:()=>`room:position:${r}`,
+  firstTag:()=>`room:tag:${r}:like`,
+  secondTag:()=>`room:tag:${r}:love`,
+ },{
+  position:d.data.position?"✅ ポジション":"ポジション選択",
+  firstTag:"#Like",secondTag:"#Love",
+ });
  rows.push([Markup.button.callback("▶ 即開始",`room:plan:${r}:now`),
   Markup.button.callback("📅 予告する",`room:plan:${r}:scheduled`)]);
  rows.push([Markup.button.callback("↩ 戻る",`room:back:${r}`),
