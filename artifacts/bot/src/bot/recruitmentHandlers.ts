@@ -19,6 +19,7 @@ import {loadPublishedRecruitment,applyPublishedRecruitmentEdit,deletePublishedRe
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
+import {recruitmentGroups,recruitmentAreaBlockOptions,recruitmentTopicsForAreaBlock,recruitmentTopicsForGroup} from "../services/recruitmentDestinationHierarchy.js";
 import {recruitmentDecisionRow,recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
  renderRecruitmentPreview,validateRecruitmentReady,recruitmentTextPhase,type RecruitmentInput} from "../services/recruitmentCompose.js";
@@ -95,7 +96,9 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
    (!activeOrigin||activeOrigin.chatId!==bound.chatId||activeOrigin.threadId!==bound.threadId);
  const current=changed?null:
    activeOrigin?destinations.find(t=>t.chatId===activeOrigin.chatId&&t.threadId===activeOrigin.threadId):null;
- const rawDestination=changed?"投稿先：元Topicが変更されました。［投稿する］から認証済みTopicを選択してください。":
+ const selected=destinations.find(t=>t.id===Number(d.data.selectedTopicId));
+ const rawDestination=selected?"投稿先："+BOARD_TITLES[selected.board]+" / "+selected.title:
+  changed?"投稿先：元Topicが変更されました。［投稿する］から認証済みTopicを選択してください。":
    current?"投稿先："+current.board+" / "+current.title:
    pinned?"投稿先：元Topicが未認証です。［投稿する］から認証済みTopicを選択してください。":
    "投稿先：未選択。［投稿］で検証済みTopicを選択できます。";
@@ -133,6 +136,32 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
   renderRecruitmentPreview(input,profile)+"\n\n"+escapeProfileHtml(rawDestination)+
   "\n\n📝各項目を変更しても他の入力は保持します。"+
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
+}
+async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:EditorDraft,
+ stage:"groups"|"blocks"|"topics",board?:"area_bbs"|"gay_board"|"video_chat",index=0,page=0){
+ const all=await listVerifiedTopics("announcement");
+ const rev=d.revision;
+ let heading="📍 投稿先グループを選択してください";
+ let items:{text:string;callback:string}[]=[];
+ if(stage==="groups"){
+  items=recruitmentGroups(all).map(x=>({text:x.label,callback:`recruit:destgroup:${rev}:${x.board}`}));
+ }else if(stage==="blocks"){
+  heading="📍 エリアブロックを選択してください";
+  items=recruitmentAreaBlockOptions(all).map(x=>({
+   text:x.label,callback:`recruit:destblock:${rev}:${x.index}`}));
+ }else{
+  const matches=board==="area_bbs"?
+   recruitmentTopicsForAreaBlock(all,index):
+   recruitmentTopicsForGroup(all,board==="gay_board"?"gay_board":"video_chat");
+  if(page<0||page*10>=matches.length)throw Error("RECRUITMENT_DESTINATION_PAGE_INVALID");
+  heading="📍 投稿するトピックを選択してください";
+  items=matches.slice(page*10,(page+1)*10).map(t=>({
+   text:t.title,callback:`recruit:destchoose:${rev}:${t.id}`}));
+  if(page>0)items.push({text:"◀ 前へ",callback:`recruit:destpage:${rev}:${board}:${index}:${page-1}`});
+  if((page+1)*10<matches.length)items.push({text:"次へ ▶",callback:`recruit:destpage:${rev}:${board}:${index}:${page+1}`});
+ }
+ if(!items.length)throw Error("RECRUITMENT_DESTINATIONS_NOT_VERIFIED");
+ await show(telegram,id,d,heading,Markup.inlineKeyboard(items.map(x=>[b(x.text,x.callback)])));
 }
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
  let previous=await getDraft(userId,"announcement");
@@ -187,6 +216,10 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    }
    return;
   }
+  if(previous.step==="awaiting_text"&&!Number.isSafeInteger(previous.data.selectedTopicId)){
+   const resumed=await updateDraft(userId,"announcement",previous.revision,"awaiting_text",previous.data);
+   await showRecruitmentDestinationStep(telegram,userId,resumed,"groups");return;
+  }
   if(previous.step==="awaiting_text"){
    // Re-selecting this editor must make its input draft the most recently active
    // owner; otherwise an older screen can lose its next text to another flow.
@@ -212,8 +245,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   await bindDraftScreen(userId,"announcement",d.revision,Number(menuMessageId));
   d.data.screenMessageId=Number(menuMessageId);
  }
- await show(telegram,userId,d,inputInstructions(linked),
-  linked?Markup.inlineKeyboard([decisionRow(d.revision)]):initialKeyboard(d));
+ await showRecruitmentDestinationStep(telegram,userId,d,"groups");
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number,explicitTopicChoice=false
