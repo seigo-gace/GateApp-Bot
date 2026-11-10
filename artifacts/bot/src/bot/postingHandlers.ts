@@ -184,10 +184,14 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
   await bindDraftScreen(userId,"room",existing.revision,screenId);
   existing.data.screenMessageId=screenId;
  }
- if(existing?.data.roomEditSourceId){
-  const fresh=await beginDraft(userId,"room","awaiting_text",
-   {visibility:"approved_only",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
-  await roomPreviewScreen(telegram,userId,fresh);
+ if(existing?.data.roomEditSourceId&&existing.step==="awaiting_text"){
+  const sourceId=Number(existing.data.roomEditSourceId);
+  await showPostScreen(telegram,userId,existing,
+   "✏️ 募集+Roomのタイトルと説明文を修正します。\n"+
+   "1行目：タイトル\n2行目以降：説明文\n"+
+   "送信するまでは公開済み投稿は変わりません。",
+   Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+    `room:published:editcancel:${existing.revision}:${sourceId}`)]]));
   return;
  }
  if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
