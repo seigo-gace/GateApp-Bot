@@ -12,9 +12,10 @@ import {currentMenuOrigin} from "../services/menuOriginRepository.js";
 import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntry,draftTopicEntryOrigin} from "../services/topicDmEntry.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
+import {BOARD_TITLES} from "../services/topicRouting.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
-import {loadPublishedRecruitment,applyPublishedRecruitmentEdit} from "../services/recruitmentPublishedEdit.js";
+import {loadPublishedRecruitment,applyPublishedRecruitmentEdit,deletePublishedRecruitment} from "../services/recruitmentPublishedEdit.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
@@ -227,12 +228,16 @@ async function showRecruitmentPublished(
  ctx:{editMessageText:(text:string,extra?:any)=>Promise<unknown>},
  sent:{chatId:number;threadId:number;messageId:number;sourceId:number},
 ):Promise<void>{
- await ctx.editMessageText("✅ 募集を投稿しました。\n投稿ID："+sent.messageId+
-  "\n公開先の投稿を開いて確認できます。",
-  Markup.inlineKeyboard([[
-   Markup.button.url("📍 投稿先へ移動",postedMessageUrl(sent.chatId,sent.messageId)),
-   Markup.button.callback("📝 投稿を編集","recruit:published:edit:"+sent.sourceId),
-  ]]));
+ const topics=await listVerifiedTopics("announcement");
+ const topic=topics.find(t=>t.chatId===sent.chatId&&t.threadId===sent.threadId);
+ if(!topic)throw Error("RECRUITMENT_TOPIC_NOT_VERIFIED");
+ await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+BOARD_TITLES[topic.board]+
+  "\nトピック："+topic.title+"\n投稿№："+sent.sourceId,
+  Markup.inlineKeyboard([
+   [Markup.button.callback("✏️ 編集","recruit:published:edit:"+sent.sourceId),
+    Markup.button.callback("🗑 削除","recruit:published:delete:"+sent.sourceId)],
+   [Markup.button.url("📍 投稿先を開く",postedMessageUrl(sent.chatId,sent.messageId))]
+  ]));
 }
 async function checkLinkedProfileChanged(telegram:Telegram,id:number,d:EditorDraft):Promise<boolean>{
  if(asInput(d).mode!=="linked")return false;
@@ -468,6 +473,54 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   }catch{
    await ctx.answerCbQuery("公開済みの本人投稿を確認できませんでした",{show_alert:true});
   }
+ });
+ bot.action(/^recruit:published:delete:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const sourceId=Number(ctx.match[1]);
+  try{
+   await loadPublishedRecruitment(ctx.from.id,sourceId);
+   await ctx.answerCbQuery();
+   await ctx.editMessageText("🗑 この募集を削除しますか？\n投稿№："+sourceId+
+    "\n削除すると元のグループ投稿も削除されます。",
+    Markup.inlineKeyboard([[
+     b("🗑 削除する","recruit:published:confirm:"+sourceId,"danger"),
+     b("キャンセル","recruit:published:back:"+sourceId)
+    ]]));
+  }catch{await ctx.answerCbQuery("本人の公開済み募集を確認できませんでした",{show_alert:true});}
+ });
+ bot.action(/^recruit:published:back:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  try{
+   const record=await loadPublishedRecruitment(ctx.from.id,Number(ctx.match[1]));
+   await ctx.answerCbQuery();
+   await showRecruitmentPublished(ctx,record);
+  }catch{await ctx.answerCbQuery("投稿を確認できませんでした",{show_alert:true});}
+ });
+ bot.action(/^recruit:published:confirm:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const sourceId=Number(ctx.match[1]);
+  await ctx.answerCbQuery("削除処理を確認しています");
+  try{
+   await deletePublishedRecruitment(ctx.telegram,ctx.from.id,sourceId);
+   await ctx.editMessageText("✅ 募集を削除しました。\n投稿№："+sourceId,
+    Markup.inlineKeyboard([[b("📢 マイ募集","recruit:published:list")]]));
+  }catch{
+   await ctx.editMessageText("⚠️ 削除を確認できませんでした。再投稿や自動再削除は行いません。"+
+    "\n投稿№："+sourceId+"\n管理者による送信結果の照合が必要です。");
+  }
+ });
+ bot.action("recruit:published:list",async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  await ctx.answerCbQuery();
+  const {pool}=await import("../db/index.js");
+  const rows=await pool.query("SELECT a.announcement_id,a.conditions->>'title' AS title FROM announcement_posts a"+
+   " JOIN posting_deliveries d ON d.source_type='announcement'"+
+   " AND d.source_id=a.announcement_id::text AND d.owner_user_id=a.owner_user_id"+
+   " AND d.status='sent' WHERE a.owner_user_id=$1 AND a.kind='recruitment'"+
+   " AND a.status='published' ORDER BY a.updated_at DESC LIMIT 10",[ctx.from.id]);
+  await ctx.editMessageText("📢 マイ募集",Markup.inlineKeyboard(rows.rows.map(row=>[
+   b(String(row.title??"募集").slice(0,35),"recruit:published:back:"+row.announcement_id)
+  ])));
  });
  bot.action(/^recruit:post:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
