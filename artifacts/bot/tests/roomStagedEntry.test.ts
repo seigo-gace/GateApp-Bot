@@ -1,0 +1,29 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {roomStageKeyboard} from "../src/bot/postingHandlers.js";
+import type {EditorDraft} from "../src/services/publicPostRepository.js";
+
+function draft(step:EditorDraft["step"],data:Record<string,unknown>={}):EditorDraft{
+ return {module:"room",step,data,revision:7};
+}
+function labels(d:EditorDraft):string[][]{
+ return roomStageKeyboard(d).reply_markup.inline_keyboard.map(row=>row.map(button=>button.text));
+}
+test("new 募集+Room opens with only room creation and URL choices",()=>{
+ assert.deepEqual(labels(draft("preview",{modeSelected:false,visibility:"approved_only"})),
+  [["ルーム作成","URL"]]);
+});
+test("chosen room method asks for input before revealing other settings",()=>{
+ assert.deepEqual(labels(draft("awaiting_text",{modeSelected:true,externalUrl:null})),
+  [["キャンセル"]]);
+ assert.deepEqual(labels(draft("awaiting_room_url",{modeSelected:true})),
+  [["キャンセル"]]);
+});
+test("settings appear only after required details are available",()=>{
+ const d=draft("preview",{modeSelected:true,title:"テスト",description:"募集内容",visibility:"approved_only"});
+ const rows=labels(d).flat();
+ assert.ok(rows.includes("▶ 開始する"));
+ assert.ok(rows.includes("📅 予告する"));
+ assert.ok(!rows.includes("ルーム作成"));
+ assert.ok(!rows.includes("URL"));
+});
