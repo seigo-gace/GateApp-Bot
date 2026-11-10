@@ -668,8 +668,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    if(current.module==="room"&&current.step==="awaiting_room_url"){
     const externalUrl=assertHttpsMeetingUrl(input);
-    const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
-     {...current.data,externalUrl});
+    const hasDetails=Boolean(String(current.data.title||"").trim()&&
+      String(current.data.description||"").trim());
+    const updated=await updateDraft(ctx.from.id,"room",current.revision,
+     hasDetails?"preview":"awaiting_text",{...current.data,externalUrl});
     await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
     return;
    }
@@ -718,7 +720,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    if(e instanceof Error&&e.message==="POST_DRAFT_STALE")throw e;
    const errorText=(e instanceof Error?e.message:"入力内容を確認してください。")+
      "\n内容を修正して、もう一度送信してください。";
-   await render(current,errorText,current.module==="link"?
+   await render(current,errorText,current.module==="room"?
+    roomOptions(current):current.module==="link"?
     Markup.inlineKeyboard([
      ...(Array.isArray(current.data.buttons)&&current.data.buttons.length?
        [[Markup.button.callback("↩ プレビューに戻る",
