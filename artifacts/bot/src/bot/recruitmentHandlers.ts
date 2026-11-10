@@ -179,6 +179,16 @@ async function currentRecruitmentMenuTopic(userId:number){
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
  let previous=await getDraft(userId,"announcement");
  if(previous?.data.recruitmentFlow==="compact"&&!previous.data.publishedSourceId){
+  // Keep the authenticated Topic as the normal destination, even for an
+  // existing private draft. Never overwrite an explicit fallback selection.
+  const incoming=await currentRecruitmentMenuTopic(userId);
+  if(previous.data.destinationExplicit!==true&&incoming&&
+     Number(previous.data.selectedTopicId)!==incoming.id){
+   previous=await updateDraft(userId,"announcement",previous.revision,previous.step,{
+    ...previous.data,selectedTopicId:incoming.id,destinationExplicit:false,
+    entryChatId:incoming.chatId,entryThreadId:incoming.threadId,
+   });
+  }
   // Starting a new recruitment from the posting menu must not reopen an old
   // published-post edit draft. Published edits are entered only from the
   // existing publication management callback.
@@ -682,9 +692,16 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     return;
    }
    await ctx.answerCbQuery("投稿処理を確認しています");
-   const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,selected.id,true);
+   const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,selected.id,
+    d.data.destinationExplicit===true);
    await showRecruitmentPublished(ctx,sent);
   }catch(e){
+   const reason=e instanceof Error?e.message:"";
+   if(reason.startsWith("TOPIC_ENTRY_")){
+    await ctx.answerCbQuery("元の投稿先が使えないため選択してください").catch(()=>{});
+    await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"groups");
+    return;
+   }
    await ctx.answerCbQuery("投稿の条件を確認してください").catch(()=>{});
    await showPreview(ctx.telegram,ctx.from.id,d,
     e instanceof Error?e.message:"投稿状態を確認できませんでした。");
