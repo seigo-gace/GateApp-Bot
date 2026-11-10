@@ -86,7 +86,7 @@ export async function projectNextRoomEvent():Promise<{
     [id,a.owner_user_id,"room-event:"+e.event_id+":owner:"+id,
      JSON.stringify({source:"room",kind,roomId:Number(e.room_id),
       announcementId:id,revision})]);
-   if(projected.close){
+   if(projected.close||kind==='started'){
      await client.query(
       `INSERT INTO announcement_notifications
         (announcement_id,recipient_user_id,event_key,payload)
