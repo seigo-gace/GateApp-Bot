@@ -21,6 +21,8 @@ import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {updateRoomState} from "../services/roomLifecycle.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
+import {showRecruitmentPublished} from "./recruitmentHandlers.js";
+import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 
 async function showPostScreen(
  telegram:Telegram,userId:number,draft:EditorDraft,text:string,keyboard?:WizardKeyboard,
@@ -736,6 +738,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const destination=await getVerifiedTopic(topicId,module as PostPurpose);
    await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
    let sourceId:string;let text:string;
+   let isRecruitment=false;
    let hostJoinUrl:string|null=null;
    let isScheduledRoom=false;
    let buttons:ReadonlyArray<ReadonlyArray<{text:string;url:string}>>|undefined;
@@ -801,6 +804,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
      buttons=rows;
     }else{
      const kind=draft.data.kind as AnnouncementKind;
+     isRecruitment=kind==="recruitment";
      const value=String(draft.data.text);
      const eventAt=draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined;
      const purposeCodes=Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[];
@@ -850,7 +854,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }catch{
     throw new Error("POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE");
    }
-   if(module==="room"){
+   if(module==="announcement"&&isRecruitment){
+    // Legacy recruitment uses the same owner-scoped editor as the compact path.
+    // Keep the existing Telegram message and save its private management receipt.
+    const dmId="message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined;
+    if(Number.isSafeInteger(dmId)&&Number(dmId)>0)
+     await rememberPublishedRecruitmentDmScreen(ctx.from.id,Number(sourceId),Number(dmId));
+    await showRecruitmentPublished(ctx,{...result,sourceId:Number(sourceId)});
+   }else if(module==="room"){
     await ctx.editMessageText("✅ ROOMを公開しました。\n投稿先："+result.chatId+
      " / Topic "+result.threadId+"\n投稿ID："+result.messageId+
      (isScheduledRoom?"\n📅 予告中です。開催時には /myrooms から［開始する］を押してください。":"\n🔴 LIVE中"),
