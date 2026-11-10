@@ -39,9 +39,13 @@ async function show(telegram:Telegram,id:number,d:EditorDraft,text:string,keyboa
  const res=await showWizardScreen(telegram,id,old,text,html?{...keyboard,parse_mode:"HTML"}:keyboard);
  if(res.messageId!==old)await bindDraftScreen(id,"announcement",d.revision,res.messageId);
 }
-function b(text:string,id:string,style?:"primary"|"success"|"danger"){
+/** One InlineKeyboard style primitive shared by Recruitment and ROOM.
+ * Telegram clients supporting Bot API button styles display blue/green/red.
+ */
+export function styledRecruitmentButton(text:string,id:string,style?:"primary"|"success"|"danger"){
  return {...Markup.button.callback(text,id),...(style?{style}:{})};
 }
+const b=styledRecruitmentButton;
 function decisionRow(revision:number){
  return recruitmentDecisionRow(revision).map(item=>b(item.text,item.callback_data,"style" in item?item.style:undefined));
 }
@@ -55,7 +59,7 @@ export function recruitmentEditorFieldRows(
  labels:{firstTag:string;secondTag:string;position?:string},
 ):ReturnType<typeof Markup.button.callback>[][]{
  const edit=(label:string,field:"title"|"nickname"|"stats"|"body")=>
-  b(label,callbacks.edit(field));
+  b(label,callbacks.edit(field),"primary");
  if(mode==="manual")return [
   [edit("📝 タイトル","title"),edit("📝 ニックネーム","nickname")],
   [edit("📝 身長/体重/年齢","stats"),edit("📝 募集内容","body")],
