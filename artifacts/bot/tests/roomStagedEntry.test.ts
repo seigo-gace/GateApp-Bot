@@ -44,9 +44,9 @@ test("adopted ROOM editor has exact row layout and excludes every removed legacy
  const manual=labels(draft("preview",{modeSelected:true,stage:"details",recruitmentMode:"manual",
   title:"テスト",description:"募集内容"}));
  assert.deepEqual(manual,[
-  ["📝 タイトル","📝 募集内容"],
-  ["📝 ニックネーム","📝 身長/体重/年齢"],
-  ["ポジション","#Like","#Love"],
+  ["📝 タイトル","📝 ニックネーム"],
+  ["📝 身長/体重/年齢","📝 募集内容"],
+  ["ポジション選択","#Like","#Love"],
   ["▶ 即開始","📅 予告する"],
   ["↩ 戻る","キャンセル"]
  ]);
@@ -54,7 +54,7 @@ test("adopted ROOM editor has exact row layout and excludes every removed legacy
   title:"テスト",description:"募集内容"}));
  assert.deepEqual(linked,[
   ["📝 タイトル","📝 募集内容"],
-  ["✅ プロフ連携","#Like","#Love"],
+  ["#Like","#Love"],
   ["▶ 即開始","📅 予告する"],
   ["↩ 戻る","キャンセル"]
  ]);
