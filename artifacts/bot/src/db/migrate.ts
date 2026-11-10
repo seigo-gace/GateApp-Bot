@@ -431,6 +431,14 @@ export async function runMigrations(): Promise<void> {
         expires_at TIMESTAMPTZ NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      -- Shared Announcement application sessions also own the ROOM applicant
+      -- editor. Additive columns preserve existing legacy recruitment sessions.
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS draft JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS draft_step TEXT NOT NULL DEFAULT 'awaiting_text';
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS screen_message_id BIGINT;
       CREATE TABLE IF NOT EXISTS announcement_notifications (
         notification_id BIGSERIAL PRIMARY KEY,
         announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
