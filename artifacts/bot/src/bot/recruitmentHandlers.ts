@@ -45,24 +45,43 @@ function b(text:string,id:string,style?:"primary"|"success"|"danger"){
 function decisionRow(revision:number){
  return recruitmentDecisionRow(revision).map(item=>b(item.text,item.callback_data,"style" in item?item.style:undefined));
 }
+/** Shared input/edit button rows. ROOM changes only Purpose/Place labels and
+ * binds its own callback namespace; Recruitment's original layout remains canonical.
+ */
+export function recruitmentEditorFieldRows(
+ mode:"manual"|"linked",revision:number,
+ callbacks:{edit:(field:"title"|"nickname"|"stats"|"body")=>string;
+  position:()=>string;firstTag:()=>string;secondTag:()=>string},
+ labels:{firstTag:string;secondTag:string;position?:string},
+):ReturnType<typeof Markup.button.callback>[][]{
+ const edit=(label:string,field:"title"|"nickname"|"stats"|"body")=>
+  b(label,callbacks.edit(field));
+ if(mode==="manual")return [
+  [edit("📝 タイトル","title"),edit("📝 ニックネーム","nickname")],
+  [edit("📝 身長/体重/年齢","stats"),edit("📝 募集内容","body")],
+  [b(labels.position??"ポジション選択",callbacks.position(),"primary"),
+   b(labels.firstTag,callbacks.firstTag(),"success"),
+   b(labels.secondTag,callbacks.secondTag(),"danger")],
+ ];
+ return [
+  [edit("📝 タイトル","title"),edit("📝 募集内容","body")],
+  [b(labels.firstTag,callbacks.firstTag(),"success"),
+   b(labels.secondTag,callbacks.secondTag(),"primary")],
+ ];
+}
 function keyboard(d:EditorDraft){
  const rev=d.revision;
  const data=asInput(d);
- const rows:any[][]=[];
- if(data.mode==="manual"){
-  rows.push([b("📝 タイトル",`recruit:edit:${rev}:title`),
-   b("📝 ニックネーム",`recruit:edit:${rev}:nickname`)]);
-  rows.push([b("📝 身長/体重/年齢",`recruit:edit:${rev}:stats`),
-   b("📝 募集内容",`recruit:edit:${rev}:body`)]);
-  rows.push([b(data.position?"✅ ポジション":"ポジション選択",`recruit:panel:${rev}:position`,"primary"),
-   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
- }else{
-  rows.push([b("📝 タイトル",`recruit:edit:${rev}:title`),
-   b("📝 募集内容",`recruit:edit:${rev}:body`)]);
-  rows.push([b("目的タグ",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所タグ",`recruit:panel:${rev}:place`,"primary")]);
- }
+ const rows:any[][]=recruitmentEditorFieldRows(data.mode,rev,{
+  edit:field=>`recruit:edit:${rev}:${field}`,
+  position:()=>`recruit:panel:${rev}:position`,
+  firstTag:()=>`recruit:panel:${rev}:purpose`,
+  secondTag:()=>`recruit:panel:${rev}:place`,
+ },{
+  position:data.position?"✅ ポジション":"ポジション選択",
+  firstTag:data.mode==="manual"?"目的選択":"目的タグ",
+  secondTag:data.mode==="manual"?"場所選択":"場所タグ",
+ });
  rows.push(d.data.publishedSourceId?
   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
  return Markup.inlineKeyboard(rows);
