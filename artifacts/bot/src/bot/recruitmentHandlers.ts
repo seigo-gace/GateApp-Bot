@@ -13,7 +13,7 @@ import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntr
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {BOARD_TITLES} from "../services/topicRouting.js";
-import {makeApplicationLink} from "../services/applicationLinks.js";
+import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
 import {loadPublishedRecruitment,applyPublishedRecruitmentEdit,deletePublishedRecruitment,rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
@@ -305,14 +305,15 @@ async function publishRecruitment(
    age:data.age,position:data.position,
   }:{}),
  };
+ // No default recruitment deadline or application approval flow was authorized.
+ const usernameLink=await ownerUsernameLink(telegram,owner);
  const ann=await createAnnouncement(owner,d.revision,"recruitment",data.body,
   undefined,data.purposeCodes,data.placeCodes,undefined,
   {profileSnapshot:snapshot,conditions});
- const link=await makeApplicationLink(owner,Number(ann.sourceId));
  const sent=await publishPost(telegram,{
   sourceType:"announcement",destinationPurpose:"announcement",sourceId:ann.sourceId,
   ownerId:owner,revision:d.revision,topicId,text,approved:true,
-  buttons:[[{text:"📨 応募する（Bot DM）",url:link}]],
+  buttons:[[{text:"🔗 募集者へ連絡",url:usernameLink}]],
  });
  await markPostSourcePublished(owner,"announcement",ann.sourceId);
  if(Number.isSafeInteger(d.data.screenMessageId)&&Number(d.data.screenMessageId)>0)
