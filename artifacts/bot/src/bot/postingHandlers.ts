@@ -20,7 +20,7 @@ import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
-import {loadRoomPublication,roomPublicationEditor} from "../services/roomPublishedEditor.js";
+import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished} from "./recruitmentHandlers.js";
@@ -667,6 +667,43 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
    Number(d.data.screenMessageId)||undefined);
+ });
+ bot.action(/^room:published:delete:(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const sourceId=Number(ctx.match[1]);
+  try{
+   const pub=await loadRoomPublication(ctx.from.id,sourceId);
+   if(["finished","cancelled"].includes(pub.status)){
+    await ctx.answerCbQuery("終了済みです");return;
+   }
+   await ctx.answerCbQuery();
+   await ctx.editMessageText("🗑 この募集+Roomを削除しますか？\n"+
+    "元トピックとビデオチャットトピックの両方が対象です。",
+    Markup.inlineKeyboard([
+     [Markup.button.callback("🗑 削除する",
+       `room:published:deleteconfirm:${sourceId}:${pub.roomRevision}`)],
+     [Markup.button.callback("↩ 戻る",`room:published:manage:${sourceId}`)]
+    ]));
+  }catch{await ctx.answerCbQuery("ROOMの投稿を確認できません");}
+ });
+ bot.action(/^room:published:manage:(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  await ctx.answerCbQuery();
+  await showRoomPublished(ctx.telegram,ctx.from.id,Number(ctx.match[1]),
+   "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
+ });
+ bot.action(/^room:published:deleteconfirm:(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const sourceId=Number(ctx.match[1]),revision=Number(ctx.match[2]);
+  await ctx.answerCbQuery("投稿を削除しています");
+  try{
+   await deletePublishedRoom(ctx.telegram,ctx.from.id,sourceId,revision);
+   await ctx.editMessageText("✅ 募集+Roomを削除しました。\n"+
+    "元トピックとビデオチャットトピックの削除結果を記録しました。");
+  }catch{
+   await ctx.editMessageText("⚠️ 削除結果の確認が必要です。"+
+    "\n重複削除を避けるため自動再実行はしません。");
+  }
  });
  bot.action(/^room:published:(start|finish|cancel):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
