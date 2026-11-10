@@ -23,9 +23,9 @@ import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
-import {showRecruitmentPublished,inputInstructions,recruitmentEditorFieldRows} from "./recruitmentHandlers.js";
+import {showRecruitmentPublished,inputInstructions} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
-import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
+import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {roomCrossPostTargets} from "../services/roomCrossPost.js";
@@ -158,18 +158,17 @@ function roomPublishedText(d:EditorDraft,profile?:ProfileBasicDraft|null):string
 function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
  return validLikeTags(Array.isArray(d.data[key])?d.data[key] as LikeTag[]:[]);
 }
+/** Four-line Recruitment input is collected as ONE message.
+ * Only selectable ROOM controls belong on this keyboard.
+ */
 function roomOptions(d:EditorDraft){
- const r=d.revision,linked=d.data.recruitmentMode==="linked";
- const b=styledRecruitmentButton;
- const rows:any[][]=recruitmentEditorFieldRows(linked?"linked":"manual",r,{
-  edit:field=>`room:field:${r}:${field}`,
-  position:()=>`room:position:${r}`,
-  firstTag:()=>`room:tag:${r}:like`,
-  secondTag:()=>`room:tag:${r}:love`,
- },{
-  position:d.data.position?"✅ ポジション":"ポジション選択",
-  firstTag:"#Like",secondTag:"#Love",
- });
+ const r=d.revision,b=styledRecruitmentButton;
+ const rows:any[][]=[];
+ if(d.data.recruitmentMode!=="linked")
+  rows.push([b(d.data.position?"✅ ポジション":"ポジション選択",
+   `room:position:${r}`,"primary")]);
+ rows.push([b("#Like",`room:tag:${r}:like`,"success"),
+  b("#Love",`room:tag:${r}:love`,"danger")]);
  rows.push([b("▶ 即開始",`room:plan:${r}:now`,"success"),
   b("📅 予告する",`room:plan:${r}:scheduled`,"primary")]);
  rows.push([b("↩ 戻る",`room:back:${r}`),
@@ -476,7 +475,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   await startRoomEditor(ctx.telegram,ctx.from.id);
  });
- bot.action(/^room:(mode|joinmode|plan|cancel|back|field|position|positionchoice|tag|tagcat|tagitem|tagpage|tagsave|tagback|publish):(\d+)(?::([a-z_0-9]+))?$/,async ctx=>{
+ bot.action(/^room:(mode|joinmode|plan|cancel|back|position|positionchoice|tag|tagcat|tagitem|tagpage|tagsave|tagback|publish):(\d+)(?::([a-z_0-9]+))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),choice=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"room");
@@ -484,9 +483,15 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("操作が古くなりました。投稿メニューから再度お試しください。");return;
   }
   try{
-   if(op==="plan"&&(!String(d.data.title||"").trim()||
+   if(op==="plan"&&(d.step!=="preview"||
+      !String(d.data.title||"").trim()||
       !String(d.data.description||"").trim())){
-    await ctx.answerCbQuery("先にタイトルと募集内容を入力してください。");return;
+    await ctx.answerCbQuery("相手募集と同じ4行入力を先に送信してください。");
+    const next=d.step==="awaiting_text"?d:
+     await updateDraft(ctx.from.id,"room",rev,"awaiting_text",
+      {...d.data,stage:"details",editField:null});
+    await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+    return;
    }
    if(op==="mode"){
     if(d.data.modeSelected&&d.data.title&&d.data.description){
@@ -553,13 +558,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }
     if(!data.modeSelected||d.step==="awaiting_text")step="preview";
     const next=await updateDraft(ctx.from.id,"room",rev,step,data);
-    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
-   }else if(op==="field"){
-    if(!["title","nickname","stats","body"].includes(choice))throw Error("ROOM_FIELD_INVALID");
-    if(d.data.recruitmentMode==="linked"&&["nickname","stats"].includes(choice))
-     throw Error("ROOM_PROFILE_LINKED_READONLY");
-    const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_text",
-     {...d.data,editField:choice,stage:"details"});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="position"){
     if(d.data.recruitmentMode==="linked"){
@@ -946,18 +944,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(current.module==="room"){
-    const currentInput=roomRecruitmentData(current);
-    const field=String(current.data.editField||"");
-    if(field){
-     const changed=changeRecruitmentField(currentInput,
-      field as "title"|"nickname"|"stats"|"body",input);
-     data={...current.data,...changed,title:changed.title,
-      description:changed.body,editField:null};
-    }else{
-     const parsed=parseRecruitmentMessage(input,current.data.recruitmentMode==="linked");
-     data={...current.data,...parsed,title:parsed.title,description:parsed.body,
-      position:current.data.position??null,editField:null};
-    }
+    // Instant and scheduled ROOM share the one-shot Recruitment parser.
+    const parsed=parseRecruitmentMessage(input,current.data.recruitmentMode==="linked");
+    data={...current.data,...parsed,title:parsed.title,description:parsed.body,
+     position:current.data.position??null,editField:null};
     const externalUrl=data.externalUrl?String(data.externalUrl):undefined;
     validateRoom({ownerId:ctx.from.id,name:String(data.title),
      mode:externalUrl?"external":"jitsi",externalUrl,status:"draft"});
