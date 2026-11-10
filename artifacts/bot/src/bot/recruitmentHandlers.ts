@@ -495,9 +495,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     await ctx.answerCbQuery("元の投稿を更新しています");
     const updated=await applyPublishedRecruitmentEdit(
      ctx.telegram,ctx.from.id,sourceId,sourceRevision,asInput(d));
-    await updateDraft(ctx.from.id,"announcement",d.revision,"published",{
-     recruitmentFlow:"compact",publishedSourceId:sourceId,
-     screenMessageId:d.data.screenMessageId});
+    // Remove the consumed private editor so it cannot steal future DM inputs.
+    await markDraftPublished(ctx.from.id,"announcement",d.revision);
     await showRecruitmentPublished(ctx,updated);
     return;
    }
