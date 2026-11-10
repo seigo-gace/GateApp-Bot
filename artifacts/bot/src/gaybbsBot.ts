@@ -16,6 +16,7 @@ import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js"
 import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
+import {resolveRoomJoinLink} from "./services/roomJoinLinks.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
@@ -72,6 +73,20 @@ async function main():Promise<void>{
   }
   if(ctx.startPayload==="help"){
    await startOperationHelp(ctx.telegram,ctx.from.id);
+   return;
+  }
+  if(ctx.startPayload?.startsWith("j_")){
+   try{
+    const room=await resolveRoomJoinLink(ctx.from.id,ctx.startPayload);
+    if(!room){
+     await ctx.reply("このROOMはまだ開始していないか、参加承認がありません。開始後に再度［参加する］を押してください。");
+    }else{
+     await ctx.reply("🔴 LIVE中｜"+room.title+"\n参加資格を確認しました。",
+      Markup.inlineKeyboard([[Markup.button.url("🎥 ROOMへ参加",room.joinUrl)]]));
+    }
+   }catch{
+    await ctx.reply("ROOMへの参加状況を確認できません。");
+   }
    return;
   }
   if(ctx.startPayload?.startsWith("a_")){
