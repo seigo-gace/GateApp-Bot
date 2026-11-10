@@ -9,7 +9,7 @@ import { publishPost } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,parseRoomDetails,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createRoom,createLinkButton,markRoomDraftSaved,
- createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
+ createAnnouncement,markDraftPublished,markPostSourcePublished,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic } from "../services/topicDmEntry.js";
