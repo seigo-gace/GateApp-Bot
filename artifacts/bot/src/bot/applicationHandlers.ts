@@ -66,7 +66,7 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
  else rows.push([Markup.button.callback("✅ 応募する","application:confirm")]);
  rows.push([Markup.button.callback("↩ 入力し直す","application:retry"),
   Markup.button.callback("キャンセル","application:cancel")]);
- await showWizardScreen(telegram,id,screenId,text,Markup.inlineKeyboard(rows));
+ await showWizardScreen(telegram,id,screenId,text,Markup.inlineKeyboard(rows),"HTML");
 }
 export function registerApplicationHandlers(bot:Telegraf):void{
 
