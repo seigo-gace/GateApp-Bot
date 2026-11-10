@@ -524,9 +524,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }else if(choice==="now"){
      const next=await updateDraft(ctx.from.id,"room",rev,"preview",
       {...d.data,startAt:null,visibility:"public",stage:"immediate_ready"});
-     await ctx.answerCbQuery();
-     if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,next))
-      await destinationMenu(ctx,"room",next.revision);
+     const targets=await verifiedRoomTargets(ctx.from.id);
+     await publishAccepted(ctx,"room",next.revision,targets[0]!.topicId);
     }else throw new Error("ROOM_PLAN_INVALID");
    }else if(op==="back"){
     let step:EditorDraft["step"]="preview";
@@ -596,9 +595,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else if(op==="publish"){
     if(d.step!=="preview"||d.data.stage!=="scheduled_ready"||!d.data.startAt)
      throw Error("ROOM_SCHEDULE_NOT_READY");
-    await ctx.answerCbQuery();
-    if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,d))
-     await destinationMenu(ctx,"room",d.revision);
+    const targets=await verifiedRoomTargets(ctx.from.id);
+    await publishAccepted(ctx,"room",d.revision,targets[0]!.topicId);
    }else if(op==="board"){
     const boardIndex=Number(choice);
     if(!Number.isInteger(boardIndex)||boardIndex<0||boardIndex>=BOARD_KEYS.length)
@@ -1143,6 +1141,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
    const roomTargets=module==="room"?await verifiedRoomTargets(ctx.from.id):null;
+   if(module==="room"){
+    const active=await getDraft(ctx.from.id,"room");
+    if(!active||active.revision!==revision||
+       !["scheduled_ready","immediate_ready"].includes(String(active.data.stage||"")))
+     throw Error("ROOM_PUBLICATION_STAGE_INVALID");
+   }
    if(roomTargets&&roomTargets[0]?.topicId!==topicId)throw Error("ROOM_ORIGIN_CHANGED");
    const destination=await getVerifiedTopic(topicId,
     roomTargets?roomTargets[0]!.purpose:module as PostPurpose);
