@@ -3,6 +3,8 @@
  */
 import type {Telegram} from "telegraf";
 import {pool} from "../db/index.js";
+import {Markup} from "telegraf";
+import {renderRoomApplicantSummary} from "./announcementApplications.js";
 
 type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number};
 export function renderAnnouncementNotification(payload:EventPayload):string{
@@ -51,8 +53,28 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
   const userId=Number(row.recipient_user_id);
   if(!Number.isSafeInteger(userId)||userId<=0)
    throw new Error("NOTIFICATION_USER_INVALID");
-  const message=renderAnnouncementNotification(row.payload as EventPayload);
-  await telegram.sendMessage(userId,message);
+  const payload=row.payload as EventPayload;
+  let message=renderAnnouncementNotification(payload);
+  let extra:ReturnType<typeof Markup.inlineKeyboard>|undefined;
+  let useHtml=false;
+  if(payload.action==="submitted"&&Number.isSafeInteger(payload.applicationId)&&Number(payload.applicationId)>0){
+   const entry=await pool.query(
+    `SELECT ap.consented_profile,p.room_id FROM announcement_applications ap
+       JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
+       WHERE ap.application_id=$1 AND p.owner_user_id=$2`,
+    [payload.applicationId,userId]);
+   if(entry.rows.length!==1)throw Error("ROOM_APPLICATION_NOTIFICATION_NOT_OWNED");
+   if(entry.rows[0].room_id!==null){
+    message=renderRoomApplicantSummary(entry.rows[0].consented_profile as Record<string,unknown>|null);
+    extra=Markup.inlineKeyboard([[
+     Markup.button.callback("✅ 承認",`application:decide:${payload.applicationId}:accepted`),
+     Markup.button.callback("❌ 拒否",`application:decide:${payload.applicationId}:declined`)
+    ]]);
+    useHtml=true;
+   }
+  }
+  await telegram.sendMessage(userId,message,
+   useHtml?{parse_mode:"HTML",...extra}:extra);
   const ack=await pool.query(
    `UPDATE announcement_notifications SET state='sent',sent_at=NOW()
      WHERE notification_id=$1 AND state='sending' RETURNING notification_id`,[id]);
