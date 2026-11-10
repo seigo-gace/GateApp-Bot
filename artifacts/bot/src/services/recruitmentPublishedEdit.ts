@@ -107,3 +107,44 @@ export async function applyPublishedRecruitmentEdit(
   throw e;
  }
 }
+
+/** Owner-scoped removal of an already published recruitment. Keep a durable
+ * receipt and fail closed on ambiguous Telegram outcomes; never re-post. */
+export async function deletePublishedRecruitment(
+ telegram:Telegram,owner:number,sourceId:number,
+):Promise<void>{
+ const post=await loadPublishedRecruitment(owner,sourceId);
+ const verified=await getVerifiedTopic(post.topicId,"announcement");
+ if(verified.chatId!==post.chatId||verified.threadId!==post.threadId)
+  throw Error("RECRUITMENT_TOPIC_CHANGED");
+ const claim=await pool.query(
+  "UPDATE announcement_posts SET status='publishing',updated_at=NOW()"+
+  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment'"+
+  " AND status='published' RETURNING announcement_id",[sourceId,owner]);
+ if(claim.rows.length!==1)throw Error("RECRUITMENT_DELETE_CONFLICT");
+ try{
+  await createTelegramDispatcher(telegram).cancel(
+   {chatId:post.chatId,threadId:post.threadId},post.messageId);
+  const cx=await pool.connect();
+  try{
+   await cx.query("BEGIN");
+   const updated=await cx.query(
+    "UPDATE announcement_posts SET status='cancelled',accept_applications=FALSE,"+
+    " updated_at=NOW() WHERE announcement_id=$1 AND owner_user_id=$2"+
+    " AND status='publishing' RETURNING announcement_id",[sourceId,owner]);
+   if(updated.rows.length!==1)throw Error("RECRUITMENT_DELETE_SYNC_CONFLICT");
+   await cx.query(
+    "UPDATE posting_deliveries SET status='deleted',updated_at=NOW()"+
+    " WHERE source_type='announcement' AND source_id=$1 AND owner_user_id=$2"+
+    " AND telegram_message_id=$3 AND status='sent'",
+    [String(sourceId),owner,post.messageId]);
+   await cx.query("COMMIT");
+  }catch(e){await cx.query("ROLLBACK");throw e;}finally{cx.release();}
+ }catch(e){
+  await pool.query(
+   "UPDATE announcement_posts SET status='sync_error',updated_at=NOW()"+
+   " WHERE announcement_id=$1 AND owner_user_id=$2 AND status='publishing'",
+   [sourceId,owner]).catch(()=>{});
+  throw e;
+ }
+}
