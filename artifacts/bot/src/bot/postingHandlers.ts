@@ -336,10 +336,10 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
     `room:published:editcancel:${existing.revision}:${sourceId}`)]]));
   return;
  }
- if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
-  const {savedTemplate:_unused,...template}=existing.data;
+ // Preserve existing saved values but re-enter the adopted method picker.
+ if(existing?.step==="saved"){
   const resumed=await updateDraft(userId,"room",existing.revision,"preview",
-   {...template,savedTemplate:template,startAt:null});
+   {...existing.data,modeSelected:false,stage:"method",startAt:null});
   await roomPreviewScreen(telegram,userId,resumed);
   return;
  }
@@ -1063,27 +1063,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(!d||d.step!=="preview"||d.revision!==rev)throw new Error("下書きが更新されています。");
     text=preview(module,d);
    }
-   const selected=await getVerifiedTopic(topicId,module as PostPurpose);
+   // ROOM is always routed through verified origin + same-group video Topic.
+   // The old generic single-topic selector must not publish a ROOM.
    if(module==="room"){
-    const draft=await getDraft(ctx.from.id,"room");
-    if(!draft||draft.step!=="preview"||draft.revision!==rev)
-     throw Error("ROOM_DRAFT_STALE");
-    const updated=await updateDraft(ctx.from.id,"room",rev,"preview",{
-     ...draft.data,topicId:selected.id,destinationExplicit:true,
-     destinationLabel:BOARD_TITLES[selected.board]+" / "+selected.title});
+    const current=await getDraft(ctx.from.id,"room");
+    if(!current||current.revision!==rev)throw Error("ROOM_DRAFT_STALE");
     await ctx.answerCbQuery();
-    await showPostScreen(ctx.telegram,ctx.from.id,updated,
-     "🎬 募集+Room\n"+preview("room",updated)+
-     "\n\n投稿先："+escapeProfileHtml(BOARD_TITLES[selected.board])+
-     " / "+escapeProfileHtml(selected.title),
-     Markup.inlineKeyboard([
-      [Markup.button.callback("✅ この内容で投稿",
-       `post:publish:room:${updated.revision}:${selected.id}`)],
-      [Markup.button.callback("↩ 編集に戻る",
-       `room:confirmback:${updated.revision}`)]
-     ]));
+    if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,current))
+     await roomPreviewScreen(ctx.telegram,ctx.from.id,current);
     return;
    }
+   const selected=await getVerifiedTopic(topicId,module as PostPurpose);
    await assertTopicDmEntryDestination(ctx.from.id,selected.chatId,selected.threadId);
    if(module==="announcement"){
     const d=await getDraft(ctx.from.id,"announcement");
