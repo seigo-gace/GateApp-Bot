@@ -15,7 +15,7 @@ import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.j
 import {BOARD_TITLES} from "../services/topicRouting.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
-import {loadPublishedRecruitment,applyPublishedRecruitmentEdit,deletePublishedRecruitment} from "../services/recruitmentPublishedEdit.js";
+import {loadPublishedRecruitment,applyPublishedRecruitmentEdit,deletePublishedRecruitment,rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
@@ -214,6 +214,8 @@ async function publishRecruitment(
   buttons:[[{text:"📨 応募する（Bot DM）",url:link}]],
  });
  await markPostSourcePublished(owner,"announcement",ann.sourceId);
+ if(Number.isSafeInteger(d.data.screenMessageId)&&Number(d.data.screenMessageId)>0)
+  await rememberPublishedRecruitmentDmScreen(owner,Number(ann.sourceId),Number(d.data.screenMessageId));
  await markDraftPublished(owner,"announcement",d.revision);
  return {...sent,sourceId:Number(ann.sourceId)};
 }
@@ -448,7 +450,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   if(!rows.rows.length){await ctx.reply("公開済みの相手募集はありません。");return;}
   await ctx.reply("📢 マイ募集｜編集する投稿を選択",
    Markup.inlineKeyboard(rows.rows.map(row=>[
-    b(String(row.title??"募集").slice(0,35),"recruit:published:edit:"+row.announcement_id)
+    b(String(row.title??"募集").slice(0,35),"recruit:published:back:"+row.announcement_id)
    ])));
  });
  bot.action(/^recruit:published:edit:(\d+)$/,async ctx=>{
@@ -550,6 +552,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     const updated=await applyPublishedRecruitmentEdit(
      ctx.telegram,ctx.from.id,sourceId,sourceRevision,asInput(d));
     // Remove the consumed private editor so it cannot steal future DM inputs.
+    if(Number.isSafeInteger(d.data.screenMessageId)&&Number(d.data.screenMessageId)>0)
+     await rememberPublishedRecruitmentDmScreen(ctx.from.id,sourceId,Number(d.data.screenMessageId));
     await markDraftPublished(ctx.from.id,"announcement",d.revision);
     await showRecruitmentPublished(ctx,updated);
     return;
