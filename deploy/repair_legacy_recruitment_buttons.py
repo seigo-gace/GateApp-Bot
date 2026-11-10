@@ -47,7 +47,11 @@ async function api(method,payload){
    body:JSON.stringify(payload),signal:AbortSignal.timeout(22000)
  });
  const value=await res.json();
- if(!value.ok)throw new Error("TELEGRAM_API_"+String(value.error_code||res.status));
+ if(!value.ok){
+  if(method==="editMessageReplyMarkup" && /message is not modified/i.test(String(value.description||"")))
+    return true;
+  throw new Error("TELEGRAM_API_"+String(value.error_code||res.status)+"_"+(method==="getChat"?"LOOKUP":"EDIT"));
+ }
  return value.result;
 }
 const me=await api("getMe",{});
