@@ -668,17 +668,18 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
    Number(d.data.screenMessageId)||undefined);
  });
- bot.action(/^room:published:(finish|cancel):(\d+):(\d+)$/,async ctx=>{
+ bot.action(/^room:published:(start|finish|cancel):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const action=ctx.match[1],sourceId=Number(ctx.match[2]),rev=Number(ctx.match[3]);
   try{
    const pub=await loadRoomPublication(ctx.from.id,sourceId);
-   if(pub.roomRevision!==rev||!((action==="finish"&&pub.status==="live")||
-     (action==="cancel"&&["scheduled","ready","postponed"].includes(pub.status)))){
+   if(pub.roomRevision!==rev||!((action==="start"&&["draft","scheduled","ready","postponed"].includes(pub.status))||
+     (action==="finish"&&pub.status==="live")||
+     (action==="cancel"&&["draft","scheduled","ready","postponed"].includes(pub.status)))){
     await ctx.answerCbQuery("ROOMの状態が変更されています");return;
    }
-   await updateRoomState(ctx.from.id,pub.roomId,rev,action==="finish"?"finish":"cancel");
-   await ctx.answerCbQuery("終了状態を記録しました");
+   await updateRoomState(ctx.from.id,pub.roomId,rev,action as "start"|"finish"|"cancel");
+   await ctx.answerCbQuery(action==="start"?"ROOMを開始しました":"終了状態を記録しました");
    await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
     "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
   }catch{
