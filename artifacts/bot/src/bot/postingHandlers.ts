@@ -18,6 +18,7 @@ import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
+import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {loadRoomPublication,roomPublicationEditor} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
@@ -279,22 +280,25 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
 /** Use the authenticated Topic-origin contract shared with 相手募集.
  * Only an unavailable/unverified ROOM destination opens the fallback picker.
  */
-async function verifiedRoomOrigin(userId:number){
+async function verifiedRoomTargets(userId:number){
  const pinned=await currentTopicDmEntry(userId);
  const origin=pinned??await currentMenuOrigin(userId);
- return verifiedOriginTopic(await listVerifiedTopics("room"),origin);
+ return roomCrossPostTargets(await listVerifiedTopics("room"),
+  await listVerifiedTopics("announcement"),origin);
 }
 async function roomPublishConfirmation(telegram:Telegram,userId:number,d:EditorDraft){
- const topic=await verifiedRoomOrigin(userId);
- if(!topic)return false;
+ let targets;
+ try{targets=await verifiedRoomTargets(userId);}catch{return false;}
+ const source=targets[0]!;
  await showPostScreen(telegram,userId,d,
   "🎬 募集+Room\n"+preview("room",d)+
-  "\n\n投稿先："+escapeProfileHtml(BOARD_TITLES[topic.board])+
-  " / "+escapeProfileHtml(topic.title)+
-  "\n\nこの内容を投稿します。募集とROOMは一体で公開されます。",
+  "\n\n投稿先："+escapeProfileHtml(source.title)+
+  (targets.length===2?"\n＋ 同じグループのビデオチャットトピック":"")+
+  "\n\nこの内容を投稿します。どちらも同じROOMの投稿です。",
   Markup.inlineKeyboard([
-   [Markup.button.callback("✅ この内容で投稿",`post:publish:room:${d.revision}:${topic.id}`)],
-   [Markup.button.callback("↩ 編集に戻る",`room:confirmback:${d.revision}`)]
+   [Markup.button.callback("✅ この内容で投稿",`post:publish:room:${d.revision}:${source.topicId}`)],
+   [Markup.button.callback("↩ 戻る",`room:confirmback:${d.revision}`),
+    Markup.button.callback("キャンセル",`room:cancel:${d.revision}`)]
   ]));
  return true;
 }
@@ -1103,7 +1107,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const revision=Number(ctx.match[2]);const topicId=Number(ctx.match[3]);
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
-   const destination=await getVerifiedTopic(topicId,module as PostPurpose);
+   const roomTargets=module==="room"?await verifiedRoomTargets(ctx.from.id):null;
+   if(roomTargets&&roomTargets[0]?.topicId!==topicId)throw Error("ROOM_ORIGIN_CHANGED");
+   const destination=await getVerifiedTopic(topicId,
+    roomTargets?roomTargets[0]!.purpose:module as PostPurpose);
    const roomDraft=module==="room"?await getDraft(ctx.from.id,"room"):null;
    if(module==="room"&&roomDraft?.data.destinationExplicit===true){
     if(roomDraft.step!=="preview"||roomDraft.revision!==revision||
@@ -1162,9 +1169,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const rows:{text:string;url:string}[][]=[
       [{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]
      ];
-     if(!startAt){
-      rows.push([{text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)}]);
+     if(visibility==="approved_only"){
+      rows.push([{text:"📝 応募する",url:await makeApplicationLink(ctx.from.id,Number(sourceId))}]);
      }
+     rows.push([{text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)}]);
      if(draft.data.profileLinked){
       const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
       if(!profileUrl)throw new Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
@@ -1192,11 +1200,22 @@ export function registerPostingHandlers(bot:Telegraf):void{
      }
     }
    }
-   const result=await publishPost(ctx.telegram,{
-    sourceType:module==="room"?"announcement":module,
-    destinationPurpose:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,
-    buttons,approved:true,
-   });
+   // One source and independently acknowledged Telegram delivery per Topic.
+   let result:{messageId:number;chatId:number;threadId:number}|undefined;
+   if(module==="room"&&roomTargets){
+    for(const target of roomTargets){
+     const sent=await publishPost(ctx.telegram,{
+      sourceType:"announcement",destinationPurpose:target.purpose,
+      sourceId,ownerId:ctx.from.id,revision,topicId:target.topicId,text,
+      buttons,approved:true});
+     if(!result)result=sent;
+    }
+   }else{
+    result=await publishPost(ctx.telegram,{
+     sourceType:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,
+     buttons,approved:true});
+   }
+   if(!result)throw Error("POST_DELIVERY_MISSING");
    try{
     if(module==="profile")
      await recordProfilePublication(ctx.from.id,revision,result.chatId,result.threadId,result.messageId);
@@ -1213,8 +1232,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
        "SELECT status,revision FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
        [roomId,ctx.from.id]);
       if(room.rows.length!==1)throw new Error("ROOM_SOURCE_NOT_OWNED");
-      if(room.rows[0].status==="draft")
-       await updateRoomState(ctx.from.id,roomId,Number(room.rows[0].revision),"start");
+      // Never auto-start ROOM at publication. Owner's Start is explicit.
       // Persist the template for the next ROOM rather than deleting it.
       await saveRoomEditorDraft(ctx.from.id,revision);
      }else await markDraftPublished(ctx.from.id,module,revision);
