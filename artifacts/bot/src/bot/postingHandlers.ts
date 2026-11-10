@@ -175,8 +175,8 @@ function roomOptions(d:EditorDraft){
  return Markup.inlineKeyboard([
   selectors,
   [b("▶ 即開始",`room:plan:${r}:now`,"success"),
-   b("📅 予告する",`room:plan:${r}:scheduled`,"primary"),
-   b("↩ 戻る",`room:back:${r}`),
+   b("📅 予告する",`room:plan:${r}:scheduled`,"primary")],
+  [b("↩ 戻る",`room:back:${r}`),
    b("キャンセル",`room:cancel:${r}`,"danger")],
  ]);
 }
