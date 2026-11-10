@@ -214,6 +214,23 @@ async function publishRecruitment(
  await markDraftPublished(owner,"announcement",d.revision);
  return sent;
 }
+/** Exact private-supergroup post link; no guess from a topic id. */
+function postedMessageUrl(chatId:number,messageId:number):string{
+ const raw=String(chatId);
+ if(!/^-100[1-9]\d*$/.test(raw)||!Number.isSafeInteger(messageId)||messageId<=0)
+  throw Error("POSTED_MESSAGE_LINK_INVALID");
+ return "https://t.me/c/"+raw.slice(4)+"/"+messageId;
+}
+async function showRecruitmentPublished(
+ ctx:{editMessageText:(text:string,extra?:any)=>Promise<unknown>},
+ sent:{chatId:number;threadId:number;messageId:number},
+):Promise<void>{
+ await ctx.editMessageText("✅ 募集を投稿しました。\n投稿ID："+sent.messageId+
+  "\n公開先の投稿を開いて確認できます。",
+  Markup.inlineKeyboard([[
+   Markup.button.url("📍 投稿先へ移動",postedMessageUrl(sent.chatId,sent.messageId)),
+  ]]));
+}
 async function checkLinkedProfileChanged(telegram:Telegram,id:number,d:EditorDraft):Promise<boolean>{
  if(asInput(d).mode!=="linked")return false;
  const latest=await getProfile(id);
@@ -439,8 +456,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    if(preferred){
     await ctx.answerCbQuery("投稿処理を確認しています");
     const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,preferred.id);
-    await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+sent.chatId+
-     " / Topic "+sent.threadId+"\n投稿ID："+sent.messageId);
+    await showRecruitmentPublished(ctx,sent);
     return;
    }
    if(!options.length)throw Error("公開先のTopicがまだ認証されていません。下書きは保持しました。");
@@ -464,8 +480,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await ctx.answerCbQuery("投稿しています");
    if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d))return;
    const sent=await publishRecruitment(ctx.telegram,ctx.from.id,d,Number(ctx.match[2]));
-   await ctx.editMessageText("✅ 募集を投稿しました。\n投稿先："+sent.chatId+
-    " / Topic "+sent.threadId+"\n投稿ID："+sent.messageId);
+   await showRecruitmentPublished(ctx,sent);
   }catch(e){
    const reason=e instanceof Error?e.message:"";
    if(reason.startsWith("TOPIC_ENTRY_")||reason==="FEATURE_RELEASE_NOT_VERIFIED"){
