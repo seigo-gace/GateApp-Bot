@@ -28,7 +28,7 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
    AND d.status='sent' AND d.telegram_message_id IS NOT NULL
   JOIN posting_topics t ON t.topic_id=d.posting_topic_id
   WHERE a.owner_user_id=$1 AND a.announcement_id=$2 AND a.room_id IS NOT NULL
-   AND a.status='published'
+   AND a.status IN ('published','finished','cancelled')
   ORDER BY d.delivery_id ASC`,[owner,announcementId]);
  if(r.rows.length<1)throw Error("ROOM_PUBLICATION_NOT_OWNED_OR_UNCONFIRMED");
  const x=r.rows[0],board=String(x.board_key) as BoardKey;
