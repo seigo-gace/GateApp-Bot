@@ -1147,7 +1147,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await editMessageToDmPostingMenu(ctx,ctx.from.id);
  });
- async function publishAccepted(ctx:Context,module:Module,revision:number,topicId:number):Promise<void>{
+ async function publishAccepted(
+ ctx:Context & {from:NonNullable<Context["from"]>;
+  callbackQuery:NonNullable<Context["callbackQuery"]>},
+ module:Module,revision:number,topicId:number,
+):Promise<void>{
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
    const roomTargets=module==="room"?await verifiedRoomTargets(ctx.from.id):null;
