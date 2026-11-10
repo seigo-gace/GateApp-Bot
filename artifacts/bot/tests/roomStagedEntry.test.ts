@@ -39,3 +39,36 @@ test("ROOM's entry guidance uses the complete adopted recruitment input contract
  assert.match(linked,/保存済みプロフィールと連動します/);
  assert.match(linked,/2行目以降：募集内容/);
 });
+
+test("adopted ROOM editor has exact row layout and excludes every removed legacy button",()=>{
+ const manual=labels(draft("preview",{modeSelected:true,stage:"details",recruitmentMode:"manual",
+  title:"テスト",description:"募集内容"}));
+ assert.deepEqual(manual,[
+  ["📝 タイトル","📝 募集内容"],
+  ["📝 ニックネーム","📝 身長/体重/年齢"],
+  ["ポジション","#Like","#Love"],
+  ["▶ 即開始","📅 予告する"],
+  ["↩ 戻る","キャンセル"]
+ ]);
+ const linked=labels(draft("preview",{modeSelected:true,stage:"details",recruitmentMode:"linked",
+  title:"テスト",description:"募集内容"}));
+ assert.deepEqual(linked,[
+  ["📝 タイトル","📝 募集内容"],
+  ["✅ プロフ連携","#Like","#Love"],
+  ["▶ 即開始","📅 予告する"],
+  ["↩ 戻る","キャンセル"]
+ ]);
+ for(const row of [...manual,...linked]){
+  for(const text of row){
+   assert.ok(!/無料Jitsi|URL持込|応募受付|下書き保存|タイトル・説明を修正|プロフ連携切替/.test(text));
+  }
+ }
+});
+test("scheduled route uses two participation modes then a separate submit button",()=>{
+ assert.deepEqual(labels(draft("preview",{modeSelected:true,stage:"join_choice"})),[
+  ["自由参加","承認制"],["↩ 戻る","キャンセル"]]);
+ assert.deepEqual(labels(draft("awaiting_datetime",{modeSelected:true,stage:"date_input"})),[
+  ["↩ 戻る","キャンセル"]]);
+ assert.deepEqual(labels(draft("preview",{modeSelected:true,stage:"scheduled_ready"})),[
+  ["✅ 投稿する"],["↩ 戻る","キャンセル"]]);
+});
