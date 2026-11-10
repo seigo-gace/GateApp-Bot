@@ -405,6 +405,64 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await roomPreviewScreen(ctx.telegram,ctx.from.id,d);
  });
+ bot.action(/^room:published:edit:(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const sourceId=Number(ctx.match[1]);
+  try{
+   const pub=await loadRoomPublication(ctx.from.id,sourceId);
+   if(["finished","cancelled"].includes(pub.status)){
+    await ctx.answerCbQuery("終了済みROOMは編集できません");return;
+   }
+   const old=await getDraft(ctx.from.id,"room");
+   const screenId="message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined;
+   const edit=await beginDraft(ctx.from.id,"room","awaiting_text",{
+    roomEditSourceId:sourceId,roomEditRoomId:pub.roomId,roomEditRevision:pub.roomRevision,
+    savedTemplate:old?.data??null,screenMessageId:screenId,
+   });
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,edit,
+    "✏️ 募集+Roomのタイトルと説明文を修正します。\n"+
+    "1行目：タイトル\n2行目以降：説明文\n"+
+    "送信するまでは公開済み投稿は変わりません。",
+    Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+     `room:published:editcancel:${edit.revision}:${sourceId}`)]]));
+  }catch{
+   await ctx.answerCbQuery("公開済みROOMを確認できません");
+  }
+ });
+ bot.action(/^room:published:editcancel:(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]),sourceId=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.step!=="awaiting_text"||d.revision!==rev||
+     Number(d.data.roomEditSourceId)!==sourceId){
+   await ctx.answerCbQuery("古い編集操作です");return;
+  }
+  const saved=d.data.savedTemplate;
+  const restore=saved&&typeof saved==="object"&&!Array.isArray(saved)?
+   saved as Record<string,unknown>:{cancelled:true};
+  await updateDraft(ctx.from.id,"room",rev,saved?"saved":"cancelled",restore);
+  await ctx.answerCbQuery();
+  await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
+   Number(d.data.screenMessageId)||undefined);
+ });
+ bot.action(/^room:published:(finish|cancel):(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const action=ctx.match[1],sourceId=Number(ctx.match[2]),rev=Number(ctx.match[3]);
+  try{
+   const pub=await loadRoomPublication(ctx.from.id,sourceId);
+   if(pub.roomRevision!==rev||!((action==="finish"&&pub.status==="live")||
+     (action==="cancel"&&["scheduled","ready","postponed"].includes(pub.status)))){
+    await ctx.answerCbQuery("ROOMの状態が変更されています");return;
+   }
+   await updateRoomState(ctx.from.id,pub.roomId,rev,action==="finish"?"finish":"cancel");
+   await ctx.answerCbQuery("終了状態を記録しました");
+   await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
+    "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
+  }catch{
+   await ctx.answerCbQuery("ROOMの状態を更新できません。/myrooms で確認してください");
+  }
+ });
  bot.command("link",async ctx=>{
   if(!privateDM(ctx))return;
   await startLinkEditor(ctx.telegram,ctx.from.id);
