@@ -532,8 +532,9 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
  });
  async function showRecruitmentTargetPicker(
   ctx:{from:{id:number};editMessageText:(text:string,extra?:any)=>Promise<unknown>},
-  d:EditorDraft,page:number,verified=await listVerifiedTopics("announcement"),
+  d:EditorDraft,page:number,provided?:Awaited<ReturnType<typeof listVerifiedTopics>>,
  ){
+  const verified=provided??await listVerifiedTopics("announcement");
   if(!Number.isSafeInteger(page)||page<0||page*10>=verified.length)
    throw Error("RECRUITMENT_TARGET_PAGE_INVALID");
   const input=asInput(d);
