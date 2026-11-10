@@ -55,26 +55,33 @@ export function changeRecruitmentField(
  const basic=parseProfileBasic(current.nickname+"\n"+value.trim());
  return {...current,heightCm:basic.heightCm,weightKg:basic.weightKg,age:basic.age};
 }
+/** Shared identity portion: preserves the adopted recruitment order and
+ * escapes user input for Telegram HTML. ROOM consumes the same fields.
+ */
+export function recruitmentIdentityLines(draft:RecruitmentInput,
+ profile?:ProfileBasicDraft|null):string[]{
+ const e=escapeProfileHtml;
+ if(draft.mode==="manual"){
+  return ["ニックネーム："+e(draft.nickname??""),
+   [draft.heightCm+"cm",draft.weightKg+"kg",draft.age+"歳",
+    draft.position?e(draft.position):""].filter(Boolean).join(" | ")];
+ }
+ if(!profile)throw Error("PROFILE_REQUIRED_FOR_LINKED_RECRUITMENT");
+ return ["🪪 "+e(profile.nickname),
+  profile.heightCm+"cm | "+profile.weightKg+"kg | "+profile.age+"歳"+
+   ("position" in profile&&typeof profile.position==="string"?
+    " | "+e(profile.position):"")];
+}
 export function renderRecruitmentPreview(
  draft:RecruitmentInput,profile?:ProfileBasicDraft|null,
 ):string{
  const e=escapeProfileHtml;
  const rows=["📢 <b>"+e(draft.title)+"</b>"];
- if(draft.mode==="manual"){
-  rows.push("ニックネーム："+e(draft.nickname??""));
-  rows.push([draft.heightCm+"cm",draft.weightKg+"kg",draft.age+"歳",
-   draft.position?e(draft.position):""].filter(Boolean).join(" | "));
- }
+ if(draft.mode==="manual")rows.push(...recruitmentIdentityLines(draft,profile));
  rows.push("");
  rows.push("<b>募集内容</b>");
  rows.push(e(draft.body));
- if(draft.mode==="linked"){
-  if(!profile)throw Error("PROFILE_REQUIRED_FOR_LINKED_RECRUITMENT");
-  rows.push("🪪 "+e(profile.nickname));
-  rows.push(profile.heightCm+"cm | "+profile.weightKg+"kg | "+profile.age+"歳"+
-    ("position" in profile && typeof profile.position==="string"?
-      " | "+e(profile.position):""));
- }
+ if(draft.mode==="linked")rows.push(...recruitmentIdentityLines(draft,profile));
  if(draft.purposeCodes.length)rows.push("🎯 目的："+draft.purposeCodes.map(t=>"#"+e(t)).join(" "));
  if(draft.placeCodes.length)rows.push("📍 場所："+draft.placeCodes.map(t=>"#"+e(t)).join(" "));
  return rows.join("\n");
