@@ -1140,7 +1140,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
    if(module==="room"&&roomTargets){
     // Reject a closed delivery gate before creating any ROOM/source rows.
-    for(const target of roomTargets)await assertFeatureReleased(target.purpose);
+    const me=await ctx.telegram.getMe();
+    for(const target of roomTargets){
+     await assertFeatureReleased(target.purpose);
+     const verified=await getVerifiedTopic(target.topicId,target.purpose);
+     const chat=await ctx.telegram.getChat(verified.chatId);
+     if(chat.id!==verified.chatId||chat.type!=="supergroup")
+      throw Error("ROOM_PUBLISH_CHAT_UNVERIFIED");
+     const member=await ctx.telegram.getChatMember(verified.chatId,me.id);
+     if(member.status!=="administrator"&&member.status!=="creator")
+      throw Error("ROOM_PUBLISH_BOT_NOT_ADMIN");
+    }
     await ownerUsernameLink(ctx.telegram,ctx.from.id);
     if(roomDraft?.data.profileLinked&&
        !(await existingPublishedProfileUrl(ctx.from.id)))
