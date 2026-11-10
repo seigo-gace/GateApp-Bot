@@ -14,14 +14,11 @@ test("new 募集+Room opens with only room creation and URL choices",()=>{
  assert.deepEqual(labels(draft("preview",{modeSelected:false,visibility:"approved_only"})),
   [["Room作成","Room持ち込み"],["キャンセル"]]);
 });
-test("chosen room method asks for input before revealing other settings",()=>{
+test("chosen room method keeps the four-line form and minimal selectable controls",()=>{
  const editing=labels(draft("awaiting_text",{modeSelected:true,externalUrl:null,recruitmentMode:"manual"}));
  assert.deepEqual(editing,[
-  ["📝 タイトル","📝 ニックネーム"],
-  ["📝 身長/体重/年齢","📝 募集内容"],
   ["ポジション選択","#Like","#Love"],
-  ["▶ 即開始","📅 予告する"],
-  ["↩ 戻る","キャンセル"]
+  ["▶ 即開始","📅 予告する","↩ 戻る","キャンセル"]
  ]);
  assert.deepEqual(labels(draft("awaiting_room_url",{modeSelected:true})),
   [["↩ 戻る","キャンセル"]]);
@@ -50,23 +47,18 @@ test("adopted ROOM editor has exact row layout and excludes every removed legacy
  const manual=labels(draft("preview",{modeSelected:true,stage:"details",recruitmentMode:"manual",
   title:"テスト",description:"募集内容"}));
  assert.deepEqual(manual,[
-  ["📝 タイトル","📝 ニックネーム"],
-  ["📝 身長/体重/年齢","📝 募集内容"],
   ["ポジション選択","#Like","#Love"],
-  ["▶ 即開始","📅 予告する"],
-  ["↩ 戻る","キャンセル"]
+  ["▶ 即開始","📅 予告する","↩ 戻る","キャンセル"]
  ]);
  const linked=labels(draft("preview",{modeSelected:true,stage:"details",recruitmentMode:"linked",
   title:"テスト",description:"募集内容"}));
  assert.deepEqual(linked,[
-  ["📝 タイトル","📝 募集内容"],
   ["#Like","#Love"],
-  ["▶ 即開始","📅 予告する"],
-  ["↩ 戻る","キャンセル"]
+  ["▶ 即開始","📅 予告する","↩ 戻る","キャンセル"]
  ]);
  for(const row of [...manual,...linked]){
   for(const text of row){
-   assert.ok(!/無料Jitsi|URL持込|応募受付|下書き保存|タイトル・説明を修正|プロフ連携切替/.test(text));
+   assert.ok(!/無料Jitsi|URL持込|応募受付|下書き保存|タイトル・説明を修正|プロフ連携切替|📝 タイトル|📝 ニックネーム|📝 身長|📝 募集内容/.test(text));
   }
  }
 });
@@ -83,7 +75,7 @@ test("ROOM UI uses semantic Telegram styles on actual InlineKeyboard buttons",()
  const rows=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"details",
   recruitmentMode:"manual",title:"テスト",description:"募集内容"})).reply_markup.inline_keyboard;
  const style=(label:string)=>rows.flat().find(x=>x.text===label)?.style;
- assert.equal(style("📝 タイトル"),"primary");
+ assert.equal(style("ポジション選択"),"primary");
  assert.equal(style("#Like"),"success");
  assert.equal(style("#Love"),"danger");
  assert.equal(style("▶ 即開始"),"success");
