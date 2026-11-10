@@ -7,7 +7,7 @@ import {Markup} from "telegraf";
 import {pool} from "../db/index.js";
 
 export type PublicRoomStatus="scheduled"|"prepared"|"started"|"postponed"|
- "cancelled"|"finished"|"visibility_changed";
+ "cancelled"|"finished"|"visibility_changed"|"details_changed";
 
 export function roomBadge(kind:PublicRoomStatus):string{
  const badges:Record<PublicRoomStatus,string>={
@@ -18,18 +18,28 @@ export function roomBadge(kind:PublicRoomStatus):string{
   cancelled:"🚫 中止",
   finished:"⚫ 終了しました",
   visibility_changed:"🔒 参加条件を更新しました",
+  details_changed:"📝 募集内容を更新しました",
  };
  if(!(kind in badges))throw new Error("ROOM_BADGE_UNRECOGNIZED");
  return badges[kind];
 }
-export function roomStatusMessage(original:string,kind:PublicRoomStatus):string{
+export function roomStatusMessage(original:string,kind:PublicRoomStatus,
+ details?:{title:string;description:string}):string{
  if(!original.trim()||original.length>3700)
   throw new Error("ROOM_STATUS_TEXT_INVALID");
  // ROOM meeting links belong solely in authorized DM, not in a public post.
  if(/https?:\/\/[^\s"'<>]*\/(?:GayBBS-|PRIVATE_)/i.test(original))
   throw new Error("ROOM_PRIVATE_LINK_PUBLIC_REFUSED");
  const badge=roomBadge(kind);
- const base=original.replace(/^状態：[^\r\n]*/mu,"").trimEnd();
+ let base=original.replace(/^状態：[^\r\n]*/mu,"").trimEnd();
+ if(kind==="details_changed"){
+  if(!details?.title.trim()||!details?.description.trim())throw Error("ROOM_DETAILS_REQUIRED");
+  const ix=base.indexOf("\n方式："),first=base.indexOf("\n");
+  if(!base.startsWith("🎬 ROOM：")||ix<0||first<0||ix<=first)
+   throw Error("ROOM_PUBLIC_CARD_LAYOUT_NOT_VERIFIED");
+  const esc=(v:string)=>v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  base="🎬 ROOM："+esc(details.title)+"\n"+esc(details.description)+base.slice(ix);
+ }
  const status="状態："+badge;
  const result=base+"\n"+status;
  if(result.length>4096)throw new Error("ROOM_STATUS_TOO_LONG");
@@ -67,16 +77,17 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  if(gate.rows.length!==1)throw new Error("ROOM_STATUS_FEATURES_NOT_VERIFIED");
  const c=await pool.connect();
  let item:null|{editId:number;chatId:number;messageId:number;
-  original:string;kind:PublicRoomStatus;buttons:Button[][]}=null;
+  original:string;kind:PublicRoomStatus;buttons:Button[][];details?:{title:string;description:string}}=null;
  try{
   await c.query("BEGIN");
   const result=await c.query(
-   `SELECT q.edit_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons
+   `SELECT q.edit_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,r.title AS room_title,r.description AS room_description
     FROM room_status_message_edits q
     JOIN room_source_events e ON e.event_id=q.room_event_id
     JOIN posting_deliveries d ON d.delivery_id=q.delivery_id
     JOIN posting_topics t ON t.topic_id=d.posting_topic_id
     JOIN announcement_posts a ON a.announcement_id::text=d.source_id
+    JOIN room_posts r ON r.room_id=a.room_id
     WHERE q.state='pending' AND e.state='applied'
       AND d.status='sent' AND d.telegram_message_id IS NOT NULL
       AND t.enabled=TRUE AND t.purpose='announcement'
@@ -112,7 +123,8 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
   }
   item={editId,chatId,messageId,original:String(r.rendered_text),
    kind:r.kind as PublicRoomStatus,
-   buttons:verifyButtons(r.inline_buttons)};
+   buttons:verifyButtons(r.inline_buttons),
+   details:r.kind==="details_changed"?{title:String(r.room_title),description:String(r.room_description)}:undefined};
   await c.query(
    `UPDATE room_status_message_edits SET state='sending',updated_at=NOW()
     WHERE edit_id=$1 AND state='pending'`,[editId]);
@@ -126,7 +138,7 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
   const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>
    Markup.button.url(b.text,b.url))));
   await telegram.editMessageText(item.chatId,item.messageId,undefined,
-   roomStatusMessage(item.original,item.kind),{
+   roomStatusMessage(item.original,item.kind,item.details),{
     parse_mode:"HTML",...keyboard,
   });
   const ack=await pool.query(
