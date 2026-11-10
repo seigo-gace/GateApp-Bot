@@ -437,22 +437,6 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await showPreview(ctx.telegram,ctx.from.id,next);
   }
  });
- bot.command("myrecruitments",async ctx=>{
-  if(ctx.chat.type!=="private")return;
-  // Existing posts remain discoverable after the original DM completion screen.
-  const {pool}=await import("../db/index.js");
-  const rows=await pool.query(
-   "SELECT a.announcement_id,a.conditions->>'title' AS title FROM announcement_posts a"+
-   " JOIN posting_deliveries d ON d.source_type='announcement'"+
-   " AND d.source_id=a.announcement_id::text AND d.owner_user_id=a.owner_user_id"+
-   " AND d.status='sent' WHERE a.owner_user_id=$1 AND a.kind='recruitment'"+
-   " AND a.status='published' ORDER BY a.updated_at DESC LIMIT 10",[ctx.from.id]);
-  if(!rows.rows.length){await ctx.reply("公開済みの相手募集はありません。");return;}
-  await ctx.reply("📢 マイ募集｜編集する投稿を選択",
-   Markup.inlineKeyboard(rows.rows.map(row=>[
-    b(String(row.title??"募集").slice(0,35),"recruit:published:back:"+row.announcement_id)
-   ])));
- });
  bot.action(/^recruit:published:edit:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const sourceId=Number(ctx.match[1]);
@@ -504,25 +488,11 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   await ctx.answerCbQuery("削除処理を確認しています");
   try{
    await deletePublishedRecruitment(ctx.telegram,ctx.from.id,sourceId);
-   await ctx.editMessageText("✅ 募集を削除しました。\n投稿№："+sourceId,
-    Markup.inlineKeyboard([[b("📢 マイ募集","recruit:published:list")]]));
+   await ctx.editMessageText("✅ 募集を削除しました。\n投稿№："+sourceId);
   }catch{
    await ctx.editMessageText("⚠️ 削除を確認できませんでした。再投稿や自動再削除は行いません。"+
     "\n投稿№："+sourceId+"\n管理者による送信結果の照合が必要です。");
   }
- });
- bot.action("recruit:published:list",async ctx=>{
-  if(ctx.chat?.type!=="private")return;
-  await ctx.answerCbQuery();
-  const {pool}=await import("../db/index.js");
-  const rows=await pool.query("SELECT a.announcement_id,a.conditions->>'title' AS title FROM announcement_posts a"+
-   " JOIN posting_deliveries d ON d.source_type='announcement'"+
-   " AND d.source_id=a.announcement_id::text AND d.owner_user_id=a.owner_user_id"+
-   " AND d.status='sent' WHERE a.owner_user_id=$1 AND a.kind='recruitment'"+
-   " AND a.status='published' ORDER BY a.updated_at DESC LIMIT 10",[ctx.from.id]);
-  await ctx.editMessageText("📢 マイ募集",Markup.inlineKeyboard(rows.rows.map(row=>[
-   b(String(row.title??"募集").slice(0,35),"recruit:published:back:"+row.announcement_id)
-  ])));
  });
  bot.action(/^recruit:post:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
