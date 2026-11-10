@@ -150,7 +150,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   // arrays. Never discard their other values or reset the user's profile.
   // A missing text body means the existing input screen, not a broken preview.
   if(["preview","awaiting_tags","awaiting_recruitment_edit","awaiting_text"].includes(previous.step)){
-   const recovered={
+   const recovered:Record<string,unknown>={
     ...previous.data,
     mode:previous.data.mode==="linked"||previous.data.recruitmentMode==="linked"?"linked":"manual",
     purposeCodes:Array.isArray(previous.data.purposeCodes)?previous.data.purposeCodes:[],
