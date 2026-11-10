@@ -15,6 +15,7 @@ import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.j
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
+import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
 import {recruitmentDecisionRow,recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
@@ -144,9 +145,12 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    return;
   }
   if(previous.step==="awaiting_text"){
-   await show(telegram,userId,previous,inputInstructions(previous.data.mode==="linked"),
-    previous.data.mode==="manual"?initialKeyboard(previous):
-    Markup.inlineKeyboard([decisionRow(previous.revision)]));return;
+   // Re-selecting this editor must make its input draft the most recently active
+   // owner; otherwise an older screen can lose its next text to another flow.
+   const resumed=await updateDraft(userId,"announcement",previous.revision,"awaiting_text",previous.data);
+   await show(telegram,userId,resumed,inputInstructions(resumed.data.mode==="linked"),
+    resumed.data.mode==="manual"?initialKeyboard(resumed):
+    Markup.inlineKeyboard([decisionRow(resumed.revision)]));return;
   }
  }
  const profile=await getProfile(userId);
@@ -240,6 +244,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
  });
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||ctx.message.text.startsWith("/"))return next();
+  // The same active-owner arbitration used by the other DM wizards.
+  if(await currentDmTextOwner(ctx.from.id)!=="announcement")return next();
   const d=await getDraft(ctx.from.id,"announcement");
   const phase=d?.data.recruitmentFlow==="compact"?
    recruitmentTextPhase(d.step,d.data.recruitPanelReturnStep):null;
