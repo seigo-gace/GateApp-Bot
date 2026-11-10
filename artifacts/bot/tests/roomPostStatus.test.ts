@@ -17,3 +17,17 @@ test("Never show a private meeting URL in an old public ROOM message",()=>{
   /ROOM_PRIVATE_LINK_PUBLIC_REFUSED/);
  assert.throws(()=>roomStatusMessage("","finished"),/INVALID/);
 });
+
+test("Room+募集 title and description edit updates original card and preserves status",()=>{
+ const original="🎬 ROOM：旧タイトル\n旧説明\n方式：無料Jitsi\n開催：今すぐ\n状態：🔴 LIVE中";
+ const edited=roomStatusMessage(original,"details_changed",
+  {title:"新タイトル",description:"新しい説明\n2行目"});
+ assert.match(edited,/^🎬 ROOM：新タイトル\n新しい説明\n2行目\n方式：無料Jitsi/m);
+ assert.match(edited,/状態：📝 募集内容を更新しました/);
+ const done=roomStatusMessage(edited,"finished");
+ assert.match(done,/新タイトル\n新しい説明/);
+ assert.match(done,/状態：⚫ 終了しました/);
+ assert.doesNotMatch(done,/旧タイトル|旧説明/);
+ assert.throws(()=>roomStatusMessage("旧式カード","details_changed",
+  {title:"A",description:"B"}),/ROOM_PUBLIC_CARD_LAYOUT_NOT_VERIFIED/);
+});
