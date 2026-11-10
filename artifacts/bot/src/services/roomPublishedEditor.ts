@@ -6,7 +6,6 @@ import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
 import {BOARD_TITLES,type BoardKey} from "./topicRouting.js";
 import {telegramPublishedMessageUrl} from "./searchDomain.js";
-import {escapeProfileHtml} from "./profileCore.js";
 
 export type RoomPublication={
  announcementId:number;roomId:number;roomRevision:number;
@@ -49,22 +48,21 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
  return data;
 }
 export function roomPublicationEditor(p:RoomPublication){
- const e=escapeProfileHtml;
  const state:Record<string,string>={
   draft:"作成中",scheduled:"📅 予告中",ready:"🟢 準備完了",
   live:"🔴 LIVE中",postponed:"⏸ 延期",cancelled:"🚫 中止",
   finished:"⚫ 終了しました",
  };
  const text=[
-  e(p.groupTitle),
-  e(p.topicTitle)+" / 投稿ID："+p.announcementId,
-  "🎬 <b>"+e(p.title)+"</b>",
-  "<b>募集内容</b>\n"+e(p.description),
+  p.groupTitle,
+  p.topicTitle+" / 投稿ID："+p.announcementId,
+  "🎬 "+p.title,
+  "募集内容\n"+p.description,
   "参加："+(p.visibility==="public"?"自由参加":"応募受付"),
-  "状態："+(state[p.status]??e(p.status)),
+  "状態："+(state[p.status]??p.status),
  ];
- if(p.scheduledAt)text.push("開催："+e(new Date(p.scheduledAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}))+"（日本時間）");
- const rows=[
+ if(p.scheduledAt)text.push("開催："+new Date(p.scheduledAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）");
+ const rows:Array<Array<ReturnType<typeof Markup.button.callback>|ReturnType<typeof Markup.button.url>>>=[
   [Markup.button.callback("✏️ タイトル・説明を編集",`room:published:edit:${p.announcementId}`)],
  ];
  if(p.status==="live")rows.push([
