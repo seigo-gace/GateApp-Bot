@@ -12,6 +12,7 @@ export type RoomPublication={
  groupTitle:string;topicTitle:string;chatId:number;messageId:number;
  title:string;description:string;status:string;visibility:string;
  scheduledAt:string|null;ownerJoinUrl:string|null;
+ destinations?:{chatId:number;messageId:number;topicTitle:string}[];
 };
 export async function loadRoomPublication(owner:number,announcementId:number):Promise<RoomPublication>{
  if(![owner,announcementId].every(n=>Number.isSafeInteger(n)&&n>0))
@@ -28,8 +29,8 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
   JOIN posting_topics t ON t.topic_id=d.posting_topic_id
   WHERE a.owner_user_id=$1 AND a.announcement_id=$2 AND a.room_id IS NOT NULL
    AND a.status='published'
-  ORDER BY d.delivery_id DESC LIMIT 1`,[owner,announcementId]);
- if(r.rows.length!==1)throw Error("ROOM_PUBLICATION_NOT_OWNED_OR_UNCONFIRMED");
+  ORDER BY d.delivery_id ASC`,[owner,announcementId]);
+ if(r.rows.length<1)throw Error("ROOM_PUBLICATION_NOT_OWNED_OR_UNCONFIRMED");
  const x=r.rows[0],board=String(x.board_key) as BoardKey;
  const groupTitle=BOARD_TITLES[board];
  if(!groupTitle)throw Error("ROOM_PUBLICATION_GROUP_UNKNOWN");
@@ -42,6 +43,9 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
   visibility:String(x.join_visibility),
   scheduledAt:x.start_at?new Date(x.start_at).toISOString():null,
   ownerJoinUrl:typeof x.join_url==="string"&&/^https:\/\//.test(x.join_url)?x.join_url:null,
+  destinations:r.rows.map((row:typeof x)=>({
+   chatId:n(row.chat_id),messageId:n(row.telegram_message_id),
+   topicTitle:String(row.topic_title)})),
  };
  if(![data.announcementId,data.roomId,data.roomRevision,data.messageId].every(
   x=>Number.isSafeInteger(x)&&x>0))throw Error("ROOM_PUBLICATION_RECEIPT_INVALID");
@@ -50,9 +54,9 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
 }
 export function roomPublicationEditor(p:RoomPublication){
  const state:Record<string,string>={
-  draft:"作成中",scheduled:"📅 予告中",ready:"🟢 準備完了",
+  draft:"🟡 開始待ち",scheduled:"📅 予告中",ready:"🟡 開始待ち",
   live:"🔴 LIVE中",postponed:"⏸ 延期",cancelled:"🚫 中止",
-  finished:"⚫ 終了しました",
+  finished:"⚫ 終了",
  };
  const text=[
   p.groupTitle,
@@ -63,16 +67,26 @@ export function roomPublicationEditor(p:RoomPublication){
   "状態："+(state[p.status]??p.status),
  ];
  if(p.scheduledAt)text.push("開催："+new Date(p.scheduledAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）");
- const rows:Array<Array<ReturnType<typeof Markup.button.callback>|ReturnType<typeof Markup.button.url>>>=[
-  [Markup.button.callback("✏️ タイトル・説明を編集",`room:published:edit:${p.announcementId}`)],
- ];
- if(p.status==="live")rows.push([
-  Markup.button.callback("⚫ 終了する",`room:published:finish:${p.announcementId}:${p.roomRevision}`)]);
- else if(["scheduled","ready","postponed"].includes(p.status))rows.push([
-  Markup.button.callback("🚫 中止する",`room:published:cancel:${p.announcementId}:${p.roomRevision}`)]);
+ const rows:Array<Array<ReturnType<typeof Markup.button.callback>|ReturnType<typeof Markup.button.url>>>=[];
+ if(["draft","scheduled","ready","postponed"].includes(p.status)){
+  rows.push([
+   Markup.button.callback("▶ 開始する",`room:published:start:${p.announcementId}:${p.roomRevision}`),
+   Markup.button.callback("✏️ 編集",`room:published:edit:${p.announcementId}`),
+   Markup.button.callback("🗑 削除",`room:published:delete:${p.announcementId}`)
+  ]);
+ }else if(p.status==="live"){
+  rows.push([
+   Markup.button.callback("⚫ 終了",`room:published:finish:${p.announcementId}:${p.roomRevision}`),
+   Markup.button.callback("✏️ 編集",`room:published:edit:${p.announcementId}`),
+   Markup.button.callback("🗑 削除",`room:published:delete:${p.announcementId}`)
+  ]);
+ }
  if(p.status==="live"&&p.ownerJoinUrl)rows.push([
   Markup.button.url("🎥 ROOMに入る",p.ownerJoinUrl)]);
- rows.push([Markup.button.url("📍 投稿先を開く",
-  telegramPublishedMessageUrl(p.chatId,p.messageId))]);
+ for(const [i,destination] of (p.destinations??[
+  {chatId:p.chatId,messageId:p.messageId,topicTitle:p.topicTitle}]).entries()){
+  rows.push([Markup.button.url((i===0?"📍 元の投稿先":"🎬 ビデオチャット投稿先")+"を開く",
+   telegramPublishedMessageUrl(destination.chatId,destination.messageId))]);
+ }
  return {text:text.join("\n"),keyboard:Markup.inlineKeyboard(rows)};
 }
