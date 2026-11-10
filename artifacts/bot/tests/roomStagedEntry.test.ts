@@ -11,18 +11,18 @@ function labels(d:EditorDraft):string[][]{
 }
 test("new 募集+Room opens with only room creation and URL choices",()=>{
  assert.deepEqual(labels(draft("preview",{modeSelected:false,visibility:"approved_only"})),
-  [["ルーム作成","URL"]]);
+  [["Room作成","Room持ち込み"],["キャンセル"]]);
 });
 test("chosen room method asks for input before revealing other settings",()=>{
  assert.deepEqual(labels(draft("awaiting_text",{modeSelected:true,externalUrl:null})),
-  [["キャンセル"]]);
+  [["↩ 戻る","キャンセル"]]);
  assert.deepEqual(labels(draft("awaiting_room_url",{modeSelected:true})),
-  [["キャンセル"]]);
+  [["↩ 戻る","キャンセル"]]);
 });
 test("settings appear only after required details are available",()=>{
  const d=draft("preview",{modeSelected:true,title:"テスト",description:"募集内容",visibility:"approved_only"});
  const rows=labels(d).flat();
- assert.ok(rows.includes("▶ 開始する"));
+ assert.ok(rows.includes("▶ 即開始"));
  assert.ok(rows.includes("📅 予告する"));
  assert.ok(!rows.includes("ルーム作成"));
  assert.ok(!rows.includes("URL"));
