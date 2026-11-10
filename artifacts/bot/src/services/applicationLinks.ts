@@ -67,3 +67,25 @@ export async function resolveApplicationSession(
     AND (p.deadline_at IS NULL OR p.deadline_at>NOW())`,[applicantId]);
  return res.rows.length===1?{announcementId:Number(res.rows[0].announcement_id)}:null;
 }
+
+/** Compatibility for published posts that already contain old a_ Bot links.
+ * Resolves ONLY an existing sent recruitment receipt to its owner. The token's
+ * previously invented timeout must not stop a contact link. Read only.
+ */
+export async function legacyRecruitmentContactOwner(payload:string):Promise<number>{
+ const match=/^a_([A-Za-z0-9_-]{32})$/.exec(payload);
+ if(!match)throw Error("LEGACY_RECRUITMENT_LINK_INVALID");
+ const key=applicationTokenHash(match[1]!);
+ const r=await pool.query(
+  `SELECT DISTINCT p.owner_user_id
+    FROM announcement_application_entries e
+    JOIN announcement_posts p ON p.announcement_id=e.announcement_id
+    JOIN posting_deliveries d ON d.source_type='announcement'
+      AND d.source_id=p.announcement_id::text
+    WHERE e.token_hash=$1 AND p.kind='recruitment'
+      AND p.status='published' AND d.status IN ('sent','archived')
+      AND d.telegram_message_id IS NOT NULL LIMIT 2`,[key]);
+ const owner=r.rows.length===1?Number(r.rows[0].owner_user_id):NaN;
+ if(!Number.isSafeInteger(owner)||owner<=0)throw Error("LEGACY_RECRUITMENT_OWNER_UNVERIFIED");
+ return owner;
+}
