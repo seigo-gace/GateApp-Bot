@@ -130,10 +130,10 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
  }catch{
   // Telegram API/SDK or device support cannot be assumed in advance.
  }
- await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+
-  rawDestination.split("\n").map(escapeProfileHtml).join("\n")+"\n"+
+ await show(telegram,id,d,rawDestination.split("\n").map(escapeProfileHtml).join("\n")+"\n"+
   renderRecruitmentPreview(input,profile)+
-  "\n\n📝各項目を変更しても他の入力は保持します。"+
+  "\n\n"+(d.data.publishedSourceId?"📢 公開済み募集を編集中":"📢 相手募集（未投稿）")+
+  "\n📝各項目を変更しても他の入力は保持します。"+
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
 }
 async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:EditorDraft,
@@ -323,9 +323,9 @@ export async function showRecruitmentPublished(
  if(!topic)throw Error("RECRUITMENT_TOPIC_NOT_VERIFIED");
  const profile=record.input.mode==="linked"?await getProfile(ctx.from.id):null;
  const details=renderRecruitmentPreview(record.input,profile);
- const screen="✅ 募集を投稿しました。\n"+escapeProfileHtml(BOARD_TITLES[topic.board])+
+ const screen=escapeProfileHtml(BOARD_TITLES[topic.board])+
   "\n"+escapeProfileHtml(topic.title)+" / 投稿ID："+sent.sourceId+
-  "\n"+details;
+  "\n"+details+"\n\n✅ 募集を投稿しました。";
  await ctx.editMessageText(screen,{
   parse_mode:"HTML",
   ...Markup.inlineKeyboard([
