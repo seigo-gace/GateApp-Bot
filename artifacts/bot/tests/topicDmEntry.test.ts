@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseTopicEntryPayload,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin} from "../src/services/topicDmEntry.js";
+import {parseTopicEntryPayload,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic} from "../src/services/topicDmEntry.js";
 import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 
 test("a forum topic has one DM doorway, not a group-side editor keyboard",()=>{
@@ -52,4 +52,14 @@ test("M2 recruitment origin is bound just like a pinned forum entry",()=>{
  assert.throws(()=>assertBoundTopicDmEntry(saved,changedMenu,changedMenu),/TOPIC_ENTRY_CONTEXT_CHANGED/);
  assert.throws(()=>assertBoundTopicDmEntry(saved,null,fromMenu),/TOPIC_ENTRY_CONTEXT_CHANGED/);
  assert.throws(()=>assertBoundTopicDmEntry(saved,fromMenu,otherBoard),/TOPIC_ENTRY_DESTINATION_MISMATCH/);
+});
+
+test("相手募集 and 募集+Room resolve exactly the authenticated Topic, never another Topic",()=>{
+ const a={id:3,chatId:-1003847210571,threadId:116};
+ const b={id:4,chatId:-1003847210571,threadId:1379};
+ const topics=[a,b];
+ assert.equal(verifiedOriginTopic(topics,{chatId:a.chatId,threadId:a.threadId})?.id,3);
+ assert.equal(verifiedOriginTopic(topics,{chatId:b.chatId,threadId:b.threadId})?.id,4);
+ assert.equal(verifiedOriginTopic(topics,{chatId:a.chatId,threadId:555}),null);
+ assert.equal(verifiedOriginTopic(topics,null),null);
 });
