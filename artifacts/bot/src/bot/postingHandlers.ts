@@ -12,7 +12,7 @@ import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createR
  createAnnouncement,markDraftPublished,markPostSourcePublished,saveRoomEditorDraft,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
-import { currentTopicDmEntry,assertTopicDmEntryDestination } from "../services/topicDmEntry.js";
+import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic } from "../services/topicDmEntry.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
@@ -149,9 +149,7 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
 async function verifiedRoomOrigin(userId:number){
  const pinned=await currentTopicDmEntry(userId);
  const origin=pinned??await currentMenuOrigin(userId);
- if(!origin)return null;
- return (await listVerifiedTopics("room")).find(t=>
-  t.chatId===origin.chatId&&t.threadId===origin.threadId)??null;
+ return verifiedOriginTopic(await listVerifiedTopics("room"),origin);
 }
 async function roomPublishConfirmation(telegram:Telegram,userId:number,d:EditorDraft){
  const topic=await verifiedRoomOrigin(userId);
