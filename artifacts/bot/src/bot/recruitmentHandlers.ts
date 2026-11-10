@@ -18,7 +18,7 @@ import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
 import {recruitmentDecisionRow,recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
- renderRecruitmentPreview,validateRecruitmentReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
+ renderRecruitmentPreview,validateRecruitmentReady,recruitmentTextPhase,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
 type EditField="title"|"nickname"|"stats"|"body";
 const asInput=(d:EditorDraft)=>d.data as RecruitmentInput;
@@ -241,18 +241,19 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||ctx.message.text.startsWith("/"))return next();
   const d=await getDraft(ctx.from.id,"announcement");
-  if(!d||d.data.recruitmentFlow!=="compact"||
-     !["awaiting_text","awaiting_recruitment_edit"].includes(d.step))return next();
+  const phase=d?.data.recruitmentFlow==="compact"?
+   recruitmentTextPhase(d.step,d.data.recruitPanelReturnStep):null;
+  if(!d||!phase)return next();
   const cleared=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
   const warning=cleared?"":"⚠️ 入力メッセージを削除できませんでした。手動で削除してください。";
   try{
-   if(d.step==="awaiting_text"){
+   if(phase==="initial"){
     const input=parseRecruitmentMessage(ctx.message.text,d.data.mode==="linked");
     const updated=await updateDraft(ctx.from.id,"announcement",d.revision,"preview",{
      ...d.data,...input,
      purposeCodes:d.data.purposeCodes??[],placeCodes:d.data.placeCodes??[],
      position:input.mode==="manual"?(d.data.position??input.position):input.position,
-     editField:null});
+     editField:null,recruitPanel:null,recruitPanelReturnStep:null});
     await showPreview(ctx.telegram,ctx.from.id,updated,warning);
    }else{
     const field=d.data.editField as EditField;
@@ -266,7 +267,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    const message="入力内容を確認してください。\n"+
     escapeProfileHtml(e instanceof Error?e.message:"入力エラー")+
     "\n再入力してください。"+(warning?"\n"+escapeProfileHtml(warning):"");
-   const buttons=d.step==="awaiting_recruitment_edit"?
+   const buttons=phase==="edit"?
     Markup.inlineKeyboard([[b("↩ 編集をやめる",`recruit:editcancel:${d.revision}`)]]):
     d.data.mode==="manual"?initialKeyboard(d):
     Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]);
