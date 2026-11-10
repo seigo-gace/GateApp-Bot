@@ -7,6 +7,7 @@ const room=(status:string):RoomPublication=>({
  topicTitle:"新宿",chatId:-1003847210571,messageId:839,
  title:"テストROOM",description:"参加者を募集しています",status,
  visibility:"approved_only",scheduledAt:null,
+ ownerJoinUrl:"https://meet.jit.si/GACE-TEST-ROOM",
 });
 test("published Room+募集 retains owner manager and correct public group/topic, not raw IDs",()=>{
  const ui=roomPublicationEditor(room("live"));
@@ -16,6 +17,8 @@ test("published Room+募集 retains owner manager and correct public group/topic
  const buttons=ui.keyboard.reply_markup.inline_keyboard.flat();
  assert.ok(buttons.some(x=>x.text.includes("編集")));
  assert.ok(buttons.some(x=>x.text.includes("終了")));
+ assert.ok(buttons.some(x=>"url" in x&&x.url==="https://meet.jit.si/GACE-TEST-ROOM"));
+ assert.doesNotMatch(ui.text,/meet\.jit\.si/);
  assert.ok(buttons.some(x=>"url" in x&&x.url==="https://t.me/c/3847210571/839"));
 });
 test("scheduled Room+募集 has cancellation but no direct join URL or live-end action",()=>{
@@ -23,7 +26,7 @@ test("scheduled Room+募集 has cancellation but no direct join URL or live-end 
  assert.match(ui.text,/📅 予告中/);
  assert.match(ui.text,/日本時間/);
  assert.ok(ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("中止")));
- assert.doesNotMatch(JSON.stringify(ui.keyboard.reply_markup),/https?:\/\/(?!t.me\/c\/)/);
+ assert.ok(!ui.keyboard.reply_markup.inline_keyboard.flat().some(x=>"url" in x&&x.url?.includes("meet.jit.si")));
 });
 test("finished Room+募集 stays listed but cannot be edited through meeting actions",()=>{
  const ui=roomPublicationEditor(room("finished"));
