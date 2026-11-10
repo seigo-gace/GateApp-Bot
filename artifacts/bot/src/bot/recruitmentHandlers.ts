@@ -530,6 +530,39 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     "\n投稿№："+sourceId+"\n管理者による送信結果の照合が必要です。");
   }
  });
+ async function showRecruitmentTargetPicker(
+  ctx:{from:{id:number};editMessageText:(text:string,extra?:any)=>Promise<unknown>},
+  d:EditorDraft,page:number,verified=await listVerifiedTopics("announcement"),
+ ){
+  if(!Number.isSafeInteger(page)||page<0||page*10>=verified.length)
+   throw Error("RECRUITMENT_TARGET_PAGE_INVALID");
+  const input=asInput(d);
+  const profile=input.mode==="linked"?await getProfile(ctx.from.id):null;
+  const end=Math.min((page+1)*10,verified.length);
+  const rows=verified.slice(page*10,end).map(t=>[
+   b(BOARD_TITLES[t.board]+" / "+t.title,`recruit:target:${d.revision}:${t.id}`)]);
+  const navigation=[];
+  if(page>0)navigation.push(b("◀ 前へ",`recruit:targets:${d.revision}:${page-1}`));
+  if(end<verified.length)navigation.push(b("次へ ▶",`recruit:targets:${d.revision}:${page+1}`));
+  if(navigation.length)rows.push(navigation);
+  await ctx.editMessageText("📍 投稿先を選択してください（"+(page+1)+"/"+
+   Math.ceil(verified.length/10)+"ページ）。選択後に公開します。\n\n"+
+   renderRecruitmentPreview(input,profile),
+   {parse_mode:"HTML",...Markup.inlineKeyboard(rows)});
+ }
+ bot.action(/^recruit:targets:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]),"preview")){
+   await ctx.answerCbQuery("古い操作です");return;
+  }
+  try{
+   await ctx.answerCbQuery();
+   await showRecruitmentTargetPicker(ctx,d,Number(ctx.match[2]));
+  }catch{
+   await ctx.answerCbQuery("投稿先一覧を確認できません",{show_alert:true}).catch(()=>{});
+  }
+ });
  bot.action(/^recruit:post:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   let d=await getDraft(ctx.from.id,"announcement");
@@ -580,11 +613,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    }
    if(!options.length)throw Error("公開先のTopicがまだ認証されていません。下書きは保持しました。");
    await ctx.answerCbQuery("投稿先を選択してください");
-   const input=asInput(d);
-   const profile=input.mode==="linked"?await getProfile(ctx.from.id):null;
-   await ctx.editMessageText("📍 投稿先を選択してください。選択後に公開します。\n\n"+renderRecruitmentPreview(input,profile),
-    {parse_mode:"HTML",...Markup.inlineKeyboard(options.slice(0,20).map(t=>[
-     b(BOARD_TITLES[t.board]+" / "+t.title,`recruit:target:${d.revision}:${t.id}`)]))});
+   await showRecruitmentTargetPicker(ctx,d,0,options);
   }catch(e){
    await ctx.answerCbQuery("投稿の条件を確認してください").catch(()=>{});
    await showPreview(ctx.telegram,ctx.from.id,d,
