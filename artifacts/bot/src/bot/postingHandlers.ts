@@ -142,7 +142,7 @@ function roomOptions(d:EditorDraft){
    Markup.button.callback("キャンセル",`room:cancel:${revision}`)],
  ]);
 }
-function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
+export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
  if(!d.data.modeSelected&&!d.data.title&&!d.data.description)
   return Markup.inlineKeyboard([[
    Markup.button.callback("ルーム作成",`room:mode:${d.revision}:jitsi`),
