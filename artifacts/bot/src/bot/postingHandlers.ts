@@ -76,7 +76,8 @@ async function destinationMenu(ctx:{reply:Function;telegram:Telegram;from?:{id:n
  const pinned=ctx.from?.id?await currentTopicDmEntry(ctx.from.id):null;
  const options=(await listVerifiedTopics(module as PostPurpose))
   .filter(x=>(!board||x.board===board)&&
-   (!pinned||(x.chatId===pinned.chatId&&x.threadId===pinned.threadId)));
+   (module==="room"||!pinned||
+    (x.chatId===pinned.chatId&&x.threadId===pinned.threadId)));
  if(!options.length){
   const message="投稿先の実Topic IDがまだ確認されていません。管理者によるトピック接続後に公開できます。下書きは保持しています。";
   const draft=ctx.from&&module!=="profile"?await getDraft(ctx.from.id,module as PostModule):null;
@@ -801,6 +802,26 @@ export function registerPostingHandlers(bot:Telegraf):void{
     text=preview(module,d);
    }
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
+   if(module==="room"){
+    const draft=await getDraft(ctx.from.id,"room");
+    if(!draft||draft.step!=="preview"||draft.revision!==rev)
+     throw Error("ROOM_DRAFT_STALE");
+    const updated=await updateDraft(ctx.from.id,"room",rev,"preview",{
+     ...draft.data,topicId:selected.id,destinationExplicit:true,
+     destinationLabel:BOARD_TITLES[selected.board]+" / "+selected.title});
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,updated,
+     "🎬 募集+Room\n"+preview("room",updated)+
+     "\n\n投稿先："+escapeProfileHtml(BOARD_TITLES[selected.board])+
+     " / "+escapeProfileHtml(selected.title),
+     Markup.inlineKeyboard([
+      [Markup.button.callback("✅ この内容で投稿",
+       `post:publish:room:${updated.revision}:${selected.id}`)],
+      [Markup.button.callback("↩ 編集に戻る",
+       `room:confirmback:${updated.revision}`)]
+     ]));
+    return;
+   }
    await assertTopicDmEntryDestination(ctx.from.id,selected.chatId,selected.threadId);
    if(module==="announcement"){
     const d=await getDraft(ctx.from.id,"announcement");
@@ -853,7 +874,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("公開処理を確認しています");
   try{
    const destination=await getVerifiedTopic(topicId,module as PostPurpose);
-   await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
+   const roomDraft=module==="room"?await getDraft(ctx.from.id,"room"):null;
+   if(module==="room"&&roomDraft?.data.destinationExplicit===true){
+    if(roomDraft.step!=="preview"||roomDraft.revision!==revision||
+       roomDraft.data.topicId!==topicId)throw Error("ROOM_EXPLICIT_DESTINATION_STALE");
+   }else await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
    let sourceId:string;let text:string;
    let isRecruitment=false;
    let hostJoinUrl:string|null=null;
