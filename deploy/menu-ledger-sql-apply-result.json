@@ -1,0 +1,10 @@
+{
+  "schema": "tgtumbler.menu-ledger-sql-apply/v1",
+  "applied": true,
+  "master_ref": "issues/7#issuecomment-6715990636",
+  "skipped": [
+    "general_guide_documents",
+    "gaybbs_feature_release_gates",
+    "sendMessage"
+  ]
+}

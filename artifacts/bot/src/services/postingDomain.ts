@@ -19,6 +19,17 @@ export type AnnouncementDraft={
  purposeCodes?:string[]; placeCodes?:string[];
 };
 
+/** Shared one-message ROOM editor: first line is title, remaining lines are required description. */
+export function parseRoomDetails(input:string):{title:string;description:string}{
+ const clean=input.replace(/\r\n?/g,"\n").trim();
+ const at=clean.indexOf("\n");
+ if(at<1)throw new Error("ROOM_TITLE_AND_DESCRIPTION_REQUIRED");
+ const title=clean.slice(0,at).trim();
+ const description=clean.slice(at+1).trim();
+ if(!title||title.length>100||!description||description.length>3500)
+  throw new Error("ROOM_TITLE_AND_DESCRIPTION_REQUIRED");
+ return {title,description};
+}
 export function assertHttpsMeetingUrl(value:string):string {
  const trimmed=value.trim();
  if(trimmed.length>2048)throw new Error("ROOM_URL_TOO_LONG");

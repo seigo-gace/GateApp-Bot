@@ -3,6 +3,8 @@
  * All notifications are queued in the same DB transaction, NOT sent inside it.
  */
 import {pool} from "../db/index.js";
+import {renderRecruitmentPreview,type RecruitmentInput} from "./recruitmentCompose.js";
+import type {ProfileBasicDraft} from "./profileCore.js";
 export type ApplicationDecision="accepted"|"declined"|"held";
 function validId(id:number):number{
  if(!Number.isSafeInteger(id)||id<=0)throw new Error("APPLICATION_ID_INVALID");
@@ -130,4 +132,25 @@ export async function withdrawApplication(
   await c.query("COMMIT");
   return x.rows.length===1;
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}
+
+/** One presentation shared by the owner DM notification and /applications.
+ * Application data was explicitly submitted by the applicant. The meeting
+ * URL, raw applicant ID and chat/topic IDs are never part of this card.
+ */
+export function renderRoomApplicantSummary(value:Record<string,unknown>|null):string{
+ if(!value)throw Error("ROOM_APPLICANT_CONTENT_MISSING");
+ const mode=value.mode==="linked"?"linked":"manual";
+ const input:RecruitmentInput={
+  mode,title:String(value.title||""),body:String(value.body||""),
+  nickname:typeof value.nickname==="string"?value.nickname:undefined,
+  heightCm:Number(value.heightCm)||undefined,
+  weightKg:Number(value.weightKg)||undefined,
+  age:Number(value.age)||undefined,
+  position:typeof value.position==="string"?value.position:undefined,
+  purposeCodes:[],placeCodes:[],
+ };
+ if(!input.title.trim()||!input.body.trim())throw Error("ROOM_APPLICATION_CONTENT_INCOMPLETE");
+ const profile=mode==="linked"?value as unknown as ProfileBasicDraft:null;
+ return "📝 ROOMへの応募\n"+renderRecruitmentPreview(input,profile);
 }

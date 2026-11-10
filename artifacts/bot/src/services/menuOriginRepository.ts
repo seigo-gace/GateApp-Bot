@@ -16,6 +16,8 @@ export async function activateMenuOrigin(
       AND p.state='published'`,[digest]);
   if(found.rows.length!==1)throw new Error("MENU_ORIGIN_NOT_VERIFIED");
   const item=found.rows[0];
+  if(startPayload.startsWith("r_")&&item.feature!=="announcement")
+   throw new Error("RECRUITMENT_MENU_FEATURE_NOT_VERIFIED");
   const origin:MenuOrigin={
    panelId:Number(item.panel_id),feature:item.feature,
    chatId:Number(item.chat_id),threadId:Number(item.message_thread_id)
@@ -28,6 +30,8 @@ export async function activateMenuOrigin(
       token_hash=EXCLUDED.token_hash,feature=EXCLUDED.feature,
       created_at=NOW(),expires_at=EXCLUDED.expires_at`,
    [telegramUserId,digest,origin.feature]);
+  // A new validated M2 entry supersedes any earlier pinned Topic doorway.
+  await c.query("DELETE FROM topic_dm_entry_sessions WHERE owner_user_id=$1",[telegramUserId]);
   await c.query("COMMIT");
   return origin;
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
@@ -41,12 +45,14 @@ export async function currentMenuOrigin(userId:number):Promise<MenuOrigin|null>{
    WHERE s.owner_user_id=$1 AND s.expires_at>NOW()
       AND t.enabled=TRUE AND t.expires_at>NOW() AND p.state='published'`,
   [userId]);
- if(r.rows.length!==1)return null;
- const x=r.rows[0];
- const origin:MenuOrigin={panelId:Number(x.panel_id),chatId:Number(x.chat_id),
-  threadId:Number(x.message_thread_id),feature:x.feature};
- assertMenuOrigin(origin);
- return origin;
+ if(r.rows.length===1){
+  const x=r.rows[0];
+  const origin:MenuOrigin={panelId:Number(x.panel_id),chatId:Number(x.chat_id),
+   threadId:Number(x.message_thread_id),feature:x.feature};
+  assertMenuOrigin(origin);
+  return origin;
+ }
+ return null;
 }
 
 /** Return to the exact existing posting menu that opened this Bot DM.

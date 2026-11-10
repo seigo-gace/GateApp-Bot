@@ -1,0 +1,40 @@
+{
+  "schema": "tgtumbler.menu-posting-publish-result/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6720601687",
+  "method": "publishMenuPanels.mjs → publishExistingMenuPanel → telegramDispatcher inline_keyboard",
+  "runtime_image": "gace-tgtumbler-gaybbs:local sha256:7c47594d73a49ff21231b6583df18663a5262213a600c660f8cc510ed5e17a46",
+  "gates_phase_a": "recordPhaseADmEvidence.mjs (admin DM editor probes, 5 features)",
+  "published": [
+    {
+      "board_key": "area_bbs",
+      "chat_id": -1003847210571,
+      "message_thread_id": 116,
+      "panel_type": "posting",
+      "message_id": 1160,
+      "state": "published"
+    },
+    {
+      "board_key": "gay_board",
+      "chat_id": -1003770334893,
+      "message_thread_id": 4,
+      "panel_type": "posting",
+      "message_id": 1051,
+      "state": "published"
+    },
+    {
+      "board_key": "video_chat",
+      "chat_id": -1002373696859,
+      "message_thread_id": 1605,
+      "panel_type": "posting",
+      "message_id": 4560,
+      "state": "published"
+    }
+  ],
+  "not_published": {
+    "general_guide_L0": {
+      "reason": "GUIDE_DOCUMENTS_NOT_APPROVED (5 types × 3 chats, DB 0)",
+      "topics": [43, 1723, 783]
+    }
+  },
+  "protected_ids_unchanged": true
+}

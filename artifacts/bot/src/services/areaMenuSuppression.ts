@@ -21,9 +21,27 @@ export type AreaCommandSuppressionResult = {
 /** Shared command suppression: group-scoped, never changes default/other groups.
  * Only the verified group and this Bot identity are modified. No Bot ban/kick.
  */
+export const VIDEO_CHAT_CHAT_ID = -1002373696859;
 export const GAY_BOARD_CHAT_ID = -1003770334893;
+const ALLOWED_GROUP_COMMAND_TARGETS=new Set([
+  AREA_BBS_CHAT_ID,VIDEO_CHAT_CHAT_ID,GAY_BOARD_CHAT_ID,
+]);
+export async function suppressBotDmCommandMenu(telegram:Telegram):Promise<string[]>{
+ const scopes=[
+  {type:"default" as const},
+  {type:"all_private_chats" as const},
+ ];
+ const cleared:string[]=[];
+ for(const scope of scopes){
+  await telegram.setMyCommands([],{scope,language_code:""});
+  const after=await telegram.getMyCommands({scope,language_code:""});
+  if(after.length!==0)throw new Error("DM_COMMAND_READBACK_NOT_EMPTY:"+scope.type);
+  cleared.push(scope.type);
+ }
+ return cleared;
+}
 export async function suppressGroupCommandMenu(telegram:Telegram,chatId:number):Promise<string[]>{
- if(chatId!==AREA_BBS_CHAT_ID&&chatId!==GAY_BOARD_CHAT_ID)
+ if(!ALLOWED_GROUP_COMMAND_TARGETS.has(chatId))
   throw new Error("GROUP_COMMAND_TARGET_NOT_ALLOWED");
  const me=await telegram.getMe();
  const status=await telegram.getChatMember(chatId,me.id);

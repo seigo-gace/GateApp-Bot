@@ -7,7 +7,7 @@ import {nextSelection,selectionRows} from "../services/inlineSelection.js";
 import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,toggleLike,validLikeTags,tagPurposeDescription,type ProfileTagPurpose} from "../services/profileLike.js";
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
-import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
+import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {appendProfileMedia,mediaStatus,numberProfileMedia,replaceProfileMedia,deleteProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {
   PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
@@ -318,24 +318,13 @@ export function registerProfileHandlers(
   bot: Telegraf,
   repo: ProfileRepo = profileRepo,
   activeDmOwner:typeof currentDmTextOwner=currentDmTextOwner,
-  getPostingMenuUrl:typeof verifiedPostingMenuReturnUrl=verifiedPostingMenuReturnUrl,
 ): void {
   bot.command("profile", async ctx => startProfileEditor(ctx,repo));
 
   /** Editing one Bot-owned screen, never a synthetic posting-menu URL. */
   const returnToPostingMenu=async(ctx:Context):Promise<void>=>{
     if(!ctx.from)return;
-    let url:string|null=null;
-    try { url=await getPostingMenuUrl(ctx.from.id); }
-    catch { console.warn("[PROFILE_POSTING_MENU_LOOKUP_FAILED]"); }
-    if(url){
-      await ctx.editMessageText("📝 投稿メニューへ戻ります。グループの固定メニューを開いてください。",
-        Markup.inlineKeyboard([[Markup.button.url("↩ 投稿メニューに戻る",url)]]));
-    }else{
-      await ctx.editMessageText(
-        "📝 投稿メニューに戻るには、元のグループの固定投稿メニューを開いてください。\n"+
-        "このチャットの起点メニューが確認できないため、リンクは表示していません。");
-    }
+    await editMessageToDmPostingMenu(ctx,ctx.from.id);
   };
 
   /** Single persistence pathway for A, ②, ③, ④, ⑤ and legacy Save.
@@ -368,7 +357,7 @@ export function registerProfileHandlers(
       await ctx.answerCbQuery("古い画面です。最新の画面から操作してください。");
       return;
     }
-    await ctx.answerCbQuery("キャンセルしました");
+    await ctx.answerCbQuery();
     await returnToPostingMenu(ctx);
   });
 
@@ -514,7 +503,7 @@ export function registerProfileHandlers(
     if(action==="cancel"){
       const cancelled=await repo.discardDraft(ctx.from.id,draft.revision);
       if(!cancelled){await ctx.answerCbQuery("古い操作です");return;}
-      await ctx.answerCbQuery("キャンセルしました");
+      await ctx.answerCbQuery();
       await returnToPostingMenu(ctx);
       return;
     }

@@ -1,0 +1,64 @@
+{
+  "schema": "tgtumbler.feature-gate-e2e-cycle-proof/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6720002874",
+  "problem": "publishExistingMenuPanel requires 5 gaybbs_feature_release_gates with telegram_e2e_evidence before minting board_menu_entry_tokens (m_/r_ URLs).",
+  "source_evidence": [
+    {
+      "file": "artifacts/bot/src/services/menuPanelPublisher.ts",
+      "lines": "61-71",
+      "fact": "POSTING publish blocked until all of announcement,room,link,search,help gates enabled with non-empty telegram_e2e_evidence"
+    },
+    {
+      "file": "artifacts/bot/src/services/menuPanelPublisher.ts",
+      "lines": "72-93",
+      "fact": "Token mint + INSERT board_menu_entry_tokens happens only inside publishExistingMenuPanel after gate check passes"
+    },
+    {
+      "file": "artifacts/bot/src/services/menuOriginRepository.ts",
+      "lines": "12-17",
+      "fact": "activateMenuOrigin requires token in board_menu_entry_tokens AND panel state=published"
+    },
+    {
+      "file": "artifacts/bot/src/gaybbsBot.ts",
+      "lines": "57-82",
+      "fact": "DM slash commands /room /recruit /announce /link /search /help do NOT require menu tokens (parallel entry path)"
+    }
+  ],
+  "cycle": {
+    "panel_token_path": "needs published posting panel → m_/r_ start links",
+    "gate_before_panel": "needs telegram_e2e_evidence before first panel publish"
+  },
+  "staged_resolution_without_bypass": {
+    "phase_a_dm_commands": {
+      "who": "MENU_PUBLISH_ADMIN_ID private chat with @GayBBS_bot",
+      "commands": ["/recruit", "/room", "/announce", "/link", "/search", "/help"],
+      "proves": "Core DM editors for 5 gate features without panel tokens",
+      "evidence_to_store": "Issue comment or deploy/admin-dm-e2e-receipt.json with Telegram message_id + timestamp + admin user_id (no secrets)"
+    },
+    "phase_a_gate_rows": {
+      "when": "Only after phase_a DM sessions completed",
+      "fields": "telegram_e2e_evidence must cite real phase_a receipt URLs/paths; never apply_menu_ledger_and_publish fake script",
+      "ci_evidence": "PR #21 checks + focused test names",
+      "gserver_runtime_evidence": "deploy-gaybbs-1 image digest + DATABASE_URL host only",
+      "source_commit": "40-hex HEAD on integrate branch"
+    },
+    "phase_b_panel_publish": {
+      "action": "/publishpanel in posting topics 116/1605/4 after gates",
+      "mints": "board_menu_entry_tokens for inline 3-1-2-3 entry row"
+    },
+    "phase_c_token_dm": {
+      "action": "Admin taps each m_/r_ URL from published panel once",
+      "proves": "menu origin binding + cancel-to-posting-menu return path (verifiedPostingMenuReturnUrl)",
+      "optional_supplement": "Second evidence append; not substitute for phase_a"
+    }
+  },
+  "forbidden": [
+    "Register telegram_e2e_evidence before executing phase_a",
+    "Unconditional gate disable",
+    "Test-only FAKE_TELEGRAM_* strings in production DB (see gaybbsMigrationIntegration.ts CI-only pattern)"
+  ],
+  "operation_help_3x2": {
+    "path": "Posting menu 操作説明 → m_ help token OR direct /help DM",
+    "renderer": "renderApprovedLinks operation_help is DM-only (menuPanelRenderer.ts); not published by publishExistingMenuPanel as separate panel"
+  }
+}

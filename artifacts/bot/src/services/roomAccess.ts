@@ -15,7 +15,7 @@ export async function getAuthorizedRoom(
  const r=await pool.query(
   `SELECT r.room_id,r.title,r.join_url,r.status
    FROM room_posts r
-   WHERE r.room_id=$2 AND r.status IN ('ready','live')
+   WHERE r.room_id=$2 AND r.status='live'
    AND (
      r.owner_user_id=$1
      OR (r.join_visibility='public' AND EXISTS(
@@ -28,7 +28,7 @@ export async function getAuthorizedRoom(
            WHERE d.source_type='announcement'
              AND d.source_id=public_notice.announcement_id::text
              AND d.status='sent' AND d.telegram_message_id IS NOT NULL
-             AND topic.enabled=TRUE AND topic.purpose='announcement'
+             AND topic.enabled=TRUE AND topic.purpose IN ('announcement','room')
           )
      ))
      OR EXISTS(
@@ -48,7 +48,7 @@ export async function listAuthorizedRooms(userId:number):Promise<
  positive(userId);
  const r=await pool.query(
   `SELECT r.room_id,r.title,r.status FROM room_posts r
-    WHERE r.status IN ('ready','live') AND (
+    WHERE r.status='live' AND (
       r.owner_user_id=$1
       OR (r.join_visibility='public' AND EXISTS(
         SELECT 1 FROM announcement_posts public_notice
@@ -60,7 +60,7 @@ export async function listAuthorizedRooms(userId:number):Promise<
            WHERE d.source_type='announcement'
              AND d.source_id=public_notice.announcement_id::text
              AND d.status='sent' AND d.telegram_message_id IS NOT NULL
-             AND topic.enabled=TRUE AND topic.purpose='announcement'
+             AND topic.enabled=TRUE AND topic.purpose IN ('announcement','room')
           )
       ))
       OR EXISTS (

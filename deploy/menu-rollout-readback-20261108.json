@@ -1,0 +1,56 @@
+{
+  "schema": "tgtumbler.menu-rollout-readback/v2",
+  "verified_at": "2026-11-08T09:13:00+09:00",
+  "repository_head_worktree": "2eb157c2205845ba38df18da894ad2f871fe8b35",
+  "branch": "merge/online-production",
+  "publisher_renderer_fix": {
+    "status": "IMPLEMENTED_UNCOMMITTED",
+    "files": [
+      "artifacts/bot/src/services/menuPanelLinkBuilder.ts",
+      "artifacts/bot/src/services/menuPanelPublisher.ts",
+      "artifacts/bot/src/services/guideMessageUrl.ts",
+      "artifacts/bot/src/services/menuPanelReleaseGate.ts",
+      "artifacts/bot/tests/menuPanelLinkBuilder.test.ts",
+      "artifacts/bot/tests/menuPanelPublisher.test.ts"
+    ],
+    "contract": "2x6 general_guide + 3/1/2/3 posting; entryLinks always empty; NavLink[] complete before renderMenuPanel",
+    "tests": "Docker build stage: menuPanelRenderer + menuPanelLinkBuilder + menuPanelPublisher gates — 10/10 PASS"
+  },
+  "runtime": {
+    "image": "gace-tgtumbler-gaybbs:local",
+    "container": "deploy-gaybbs-1",
+    "GAYBBS_PUBLIC_MENU_RELEASE": "unset (fail-closed; Master approval required to enable)"
+  },
+  "forum_topic_probe": {
+    "artifact": "deploy/forum-topic-probe-20261108.json",
+    "method": "sendMessage+deleteMessage",
+    "all_probes_ok": 10,
+    "notable_threads_api_ok": {
+      "area_guide_back": 43,
+      "video_notion_general_entry": 1723,
+      "gay_notion_general_entry": 783,
+      "online_host": 1000,
+      "community_topics": [273, 1724, 18]
+    },
+    "assignment_note": "Probe PASS does not auto-bind general_guide_topics; purpose (総合案内 vs 投稿メニュー) still needs pinned-menu evidence + /bindguide."
+  },
+  "protected_features": {
+    "community_link_message_ids": [1118, 1119, 1120, 4531, 4532, 4533, 1028, 1029, 1030],
+    "online_room_cards": [1134, 1135, 1136, 1137]
+  },
+  "menu_db_state": {
+    "board_menu_panels": 0,
+    "general_guide_documents": 0,
+    "gaybbs_feature_release_gates": 0,
+    "general_guide_topics": "placeholder thread_id=1 (NOT used for publish)",
+    "general_guide_links": "bootstrap only; missing 2x6/3-1-2-3 display labels beyond コミュニティリンク"
+  },
+  "publish_blocked_until": [
+    "general_guide_documents (4 doc types with real message_id)",
+    "general_guide_links (remaining APPROVED_* labels per board)",
+    "gaybbs_feature_release_gates (profile/announcement/room/link/search evidence)",
+    "general_guide_topics + posting panel topics via /bindguide /bindpanel",
+    "GAYBBS_PUBLIC_MENU_RELEASE=enabled after Master approval",
+    "Telegram E2E all buttons"
+  ]
+}

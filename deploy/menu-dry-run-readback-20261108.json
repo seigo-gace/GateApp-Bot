@@ -1,0 +1,26 @@
+{
+  "schema": "tgtumbler.menu-dry-run-readback/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6715990636",
+  "runtime_head": "f3a5d8b11c64530237a71889f9560fbc59179599",
+  "docker_image": "gace-tgtumbler-gaybbs:local sha256:d70dce9f5e7b561d543632be2b66cf7ce871dbb2b266f17299a9187d6960638d5f",
+  "db_after_sql_apply": {
+    "general_guide_topics": "43 / 1723 / 783",
+    "general_guide_documents": 0,
+    "board_menu_panels": 6,
+    "board_posting_menu_links": 9,
+    "gaybbs_feature_release_gates": 0,
+    "pages_dev_bootstrap_links": "disabled (enabled=false) on all 3 chats"
+  },
+  "dry_run_expectation": {
+    "general_guide": "GUIDE_DOCUMENTS_NOT_APPROVED (all boards until /bindguidemessage)",
+    "posting": "POSTING_DM_FEATURES_NOT_RELEASED (gates 0/5; no bypass)"
+  },
+  "telegram_ref_verify": "deploy/telegram-ref-verify-20261108.json",
+  "telegram_ref_note": "forward_ok=true for protected community intros 1118/4531; forum topic root messages often non-forwardable but thread_id verified via forum-topic-probe",
+  "publish_blocked_until": [
+    "general_guide_documents: 5 types × 3 chats with real Telegram message_id + approved_by",
+    "gaybbs_feature_release_gates: 5 features with honest telegram_e2e_evidence (no fake PR21 apply script)",
+    "Master-confirmed admin E2E path for first posting-menu publish"
+  ],
+  "admin_recovery_path": "/bindguidemessage (reply to existing pinned docs in topics 43/1723/783) then /publishpanel after gates"
+}

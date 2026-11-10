@@ -7,13 +7,14 @@ import {Markup, type Telegram} from "telegraf";
 export type WizardKeyboard = ReturnType<typeof Markup.inlineKeyboard>;
 export async function showWizardScreen(
  telegram:Telegram, chatId:number, previousMessageId:number|undefined,
- text:string, keyboard?:WizardKeyboard,
+ text:string, keyboard?:WizardKeyboard, parseMode?:"HTML",
 ):Promise<{messageId:number;replaced:boolean}>{
  if(!Number.isSafeInteger(chatId)||chatId<=0)throw new Error("WIZARD_PRIVATE_CHAT_REQUIRED");
+ const display=parseMode?{...keyboard,parse_mode:parseMode}:keyboard;
  const oldId=Number.isSafeInteger(previousMessageId)&&Number(previousMessageId)>0?previousMessageId:undefined;
  if(oldId){
   try{
-   await telegram.editMessageText(chatId,oldId,undefined,text,keyboard);
+   await telegram.editMessageText(chatId,oldId,undefined,text,display);
    return {messageId:oldId,replaced:true};
   }catch(e){
    if(e instanceof Error && /message is not modified/i.test(e.message))
@@ -22,7 +23,7 @@ export async function showWizardScreen(
    // Never log profile/post text or a Telegram token.
   }
  }
- const msg=await telegram.sendMessage(chatId,text,keyboard);
+ const msg=await telegram.sendMessage(chatId,text,display);
  if(oldId&&oldId!==msg.message_id){
   try{await telegram.deleteMessage(chatId,oldId);}
   catch{console.warn("[WIZARD_PREVIOUS_SCREEN_DELETE_FAILED]");}

@@ -1,0 +1,46 @@
+{
+  "cu": "6724058249",
+  "issue": 7,
+  "source_head_after": "pending_commit",
+  "docker_image": "sha256:4b87aafe71237e4611d9fca58088d183f0596f5cd062a333adc0bdd78d81b6c2",
+  "design_fix": {
+    "l0_l1_split": "menuPanelPublisher validates 8 nav links (GUIDE_NAV_LINKS_NOT_VERIFIED) independently from 4 legal docs (GUIDE_DOCUMENTS_NOT_APPROVED)",
+    "l1_runtime": "topicBoardContent + topicBoardHandlers + publishTopicBoards.mjs restored from chat/tgtumbler-board-content-20261108"
+  },
+  "l1_telegram_published": {
+    "national": {
+      "chat_id": -1003847210571,
+      "thread_id": 43,
+      "message_id": 1166,
+      "url": "https://t.me/c/3847210571/1166",
+      "prior_wrong_nav": "https://t.me/c/3847210571/993 was Tokyo block topic, not全国索引"
+    },
+    "video": {
+      "chat_id": -1002373696859,
+      "thread_id": 1723,
+      "message_id": 4565,
+      "url": "https://t.me/c/2373696859/4565"
+    },
+    "category": {
+      "chat_id": -1003770334893,
+      "thread_id": 783,
+      "message_id": 1058,
+      "url": "https://t.me/c/3770334893/1058"
+    }
+  },
+  "general_guide_links_synced": "national/video/category destination_url updated on all 3 guide chats",
+  "area_child_links_seeded": 34,
+  "l0_general_guide_panel": {
+    "state": "verified",
+    "message_id": null,
+    "blocker": "GUIDE_DOCUMENTS_NOT_APPROVED (0/4 terms rules safety howto bound)",
+    "nav_only_dry_run": "8/8 GUIDE_NAV_LINKS should PASS after sync"
+  },
+  "l2_posting_menus": {
+    "area": 1160,
+    "gay": 1051,
+    "video": 4560
+  },
+  "telegram_click_verification": "NOT_RUN_BY_COMPOSER",
+  "protected_ids_unchanged": true
+}

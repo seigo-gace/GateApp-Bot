@@ -41,6 +41,8 @@ export async function archiveNextTerminalAnnouncement(telegram:Telegram):Promise
      WHERE d.source_type='announcement' AND d.status='sent'
        AND d.telegram_message_id IS NOT NULL AND t.enabled=TRUE
        AND a.room_id IS NULL AND a.expiry_action='close'
+       -- Recruitment has no Master-approved automatic close/expiry policy.
+       AND a.kind <> 'recruitment'
        AND (a.status IN ('closed','cancelled','finished')
          OR (a.expires_at IS NOT NULL AND a.expires_at<=NOW()))
      ORDER BY d.delivery_id LIMIT 1 FOR UPDATE OF d SKIP LOCKED`);

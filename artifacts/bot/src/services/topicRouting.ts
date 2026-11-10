@@ -4,6 +4,17 @@
  */
 export const BOARD_KEYS = ["area_bbs", "video_chat", "gay_board"] as const;
 export type BoardKey = typeof BOARD_KEYS[number];
+/** Exact visible names for the three existing groups; ROOM UI omits only
+ * the Area BBS subtitle, as the owner explicitly decided. */
+export const BOARD_TITLES:Readonly<Record<BoardKey,string>>={
+ area_bbs:"エリア’s BBS",
+ video_chat:"ビデオChatの掲示板",
+ gay_board:"🆕ゲイのための掲示板♂",
+};
+/** Existing three-group identity registry; never infer a forum Topic from these IDs. */
+export const BOARD_GROUP_CHAT_IDS:Readonly<Record<BoardKey,number>>={
+ area_bbs:-1003847210571,video_chat:-1002373696859,gay_board:-1003770334893,
+};
 export const POST_PURPOSES = ["profile", "room", "announcement", "link"] as const;
 export type PostPurpose = typeof POST_PURPOSES[number];
 export type VerifiedTopic = {

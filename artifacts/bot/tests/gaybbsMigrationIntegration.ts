@@ -274,7 +274,7 @@ try{
  // application snapshots, notification payloads, tokens and MPB delivery ID.
  const ephemeral=await pool.query(
   `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status)
-   VALUES('db-purge-standalone',888001,'recruitment','PRIVATE_ONCE','closed')
+   VALUES('db-purge-standalone',888001,'announcement','PRIVATE_ONCE','closed')
    RETURNING announcement_id`);
  const obsolete=Number(ephemeral.rows[0].announcement_id);
  const active=await pool.query(
@@ -343,7 +343,7 @@ try{
  const receipt=await archiveNextTerminalAnnouncement(archiveBot);
  assert.equal(receipt?.status,"archived");
  assert.deepEqual(announcedEdits.map(x=>x.messageId),[5678]);
- assert.match(announcedEdits[0]!.text,/✅ 募集終了/);
+ assert.match(announcedEdits[0]!.text,/📌 掲載終了/);
  assert.match(announcedEdits[0]!.text,/元の募集投稿/);
  assert.equal(await archiveNextTerminalAnnouncement(archiveBot),null);
  delete process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED;

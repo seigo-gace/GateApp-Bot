@@ -10,14 +10,14 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 function actions(roomId:number,revision:number,status:string,visibility?:string){
  const allowed:Record<string,RoomAction[]>={
-  draft:["schedule","prepare","cancel"],
-  scheduled:["prepare","postpone","cancel"],
+  draft:["schedule","cancel"],
+  scheduled:["start","postpone","cancel"],
   ready:["start","postpone","cancel"],
   live:["finish","postpone","cancel"],
-  postponed:["schedule","prepare","cancel"],
+  postponed:["schedule","start","cancel"],
  };
  const labels:Record<RoomAction,string>={schedule:"📅 予約",prepare:"✅ 準備完了",
-  start:"▶ 開始を申告",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"■ 終了を申告"};
+  start:"▶ 開始する",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"⚫ 終了する"};
  const rows=(allowed[status]||[]).map(x=>[
   Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`)]);
  if(["draft","scheduled","ready"].includes(status)&&visibility){
@@ -59,7 +59,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
   const r=await pool.query(
    `SELECT room_id,title,status,revision,join_visibility FROM room_posts
     WHERE owner_user_id=$1 ORDER BY updated_at DESC LIMIT 20`,[ctx.from.id]);
-  if(!r.rows.length){await ctx.reply("ROOMはまだありません。/room で下書きから作成できます。");return;}
+  if(!r.rows.length){await ctx.reply("ROOMはまだありません。投稿メニューから作成できます。");return;}
   for(const x of r.rows){
    await ctx.reply("🎬 "+String(x.title)+"\n状態："+String(x.status)+
     "\nROOM #"+x.room_id,actions(Number(x.room_id),Number(x.revision),x.status,x.join_visibility));

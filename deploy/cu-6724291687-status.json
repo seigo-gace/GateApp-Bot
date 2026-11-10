@@ -1,0 +1,39 @@
+{
+  "schema": "tgtumbler.issue7-comment-status/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6724291687",
+  "branch": "integrate/profile-menu-merge-online-20261108",
+  "completed": [
+    "APPROVED_GUIDE_ROWS 3/3/3/4 + menuPanelPublisher buildLinks 13-button spec (from 34d0cf1 merge)",
+    "generalGuideLinkCandidates.ts restored",
+    "L1 national/video/category edit OK: message_id 1166/4565/1058 (HTML index, rows=[])",
+    "L1 block boards 1167-1172 inline keyboard (6 blocks; 7 blocks skipped AREA_CHILD_LINK_UNVERIFIED)",
+    "sync_l0_guide_labels.sql applied (freetalk→雑談, community→リンク, national/category/video disabled on links table)",
+    "topicBoardHandlers: needs_reconcile claim + message-is-not-modified tolerance",
+    "dryRunMenuPanels.ts + topicBoardContent.test.ts aligned",
+    "docs/TGTUMBLER_COMMON_UI_CONTRACT.md 13-button text",
+    "Docker image rebuilt; publishTopicBoards.mjs exit 0"
+  ],
+  "blockers": {
+    "l0_publish": "publishMenuPanels.mjs → GUIDE_DOCUMENT_NOT_PUBLISHED:規約 (general_guide_documents rows=0)",
+    "kisoku_label": "規則 row missing until sync privacy→規則 SQL applied (verified privacy.html in DB; not ルール)",
+    "guide_bind": "discover_and_bind_guide_documents.py bound_total=0 (no classifiable legal posts in scan windows 43/1723/783)",
+    "area_reply_keyboard": "removeareakeyboard not executed (area_legacy_reply_keyboard_removals unset)"
+  },
+  "db_readback": {
+    "topic_board_posts": {
+      "national": 1166,
+      "video": 4565,
+      "category": 1058,
+      "blocks": "1167-1172"
+    },
+    "board_menu_panels_general_guide": "verified, message_id null (3 chats)",
+    "l2_posting_menu_preserved": "1160/1051/4560 not touched"
+  },
+  "next_actions": [
+    "Locate or post 4 legal guide messages per board in L0 threads; register via /bindguidemessage or widen discover scan",
+    "Apply privacy→規則 label SQL; verify 検索/フィルター + 6 nav links per chat",
+    "publishMenuPanels.mjs → 3× L0 threads 43/1723/783 with readback",
+    "Admin in area group: /removeareakeyboard once",
+    "Master E2E: L0 13 buttons, L1 HTML + block KB, L2 unchanged"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "tgtumbler.general-guide-document-recovery/v1",
+  "master_ref": "https://github.com/seigo-gace/GateApp-Bot/issues/7#issuecomment-6720002874",
+  "db_fact": "general_guide_documents count=0 on Gserver Postgres after incident cleanup",
+  "not_interpreted_as": "Proof that Telegram has no pinned legal/guide posts in topics 43/1723/783",
+  "bot_api_limit": "No Bot API method to enumerate historical forum messages by thread; cannot auto-discover message_id without human pointer or stored ledger",
+  "legal_bind_path_in_source": {
+    "file": "artifacts/bot/src/bot/generalGuideHandlers.ts",
+    "command": "/bindguidemessage",
+    "requires": "Group admin replies to existing document message inside verified general_guide topic with terms|rules|safety|privacy|howto"
+  },
+  "forbidden_recovery": [
+    "sendMessage URL body seeding (apply_menu_ledger_and_publish.py ABORT)",
+    "Fabricated message_id from t.me/c thread URL tail only",
+    "pages.dev URLs as published document message_id"
+  ],
+  "per_board_admin_actions": [
+    {
+      "board_key": "area_bbs",
+      "chat_id": -1003847210571,
+      "general_guide_thread": 43,
+      "bind_types": ["terms", "rules", "safety", "privacy", "howto"]
+    },
+    {
+      "board_key": "video_chat",
+      "chat_id": -1002373696859,
+      "general_guide_thread": 1723,
+      "bind_types": ["terms", "rules", "safety", "privacy", "howto"]
+    },
+    {
+      "board_key": "gay_board",
+      "chat_id": -1003770334893,
+      "general_guide_thread": 783,
+      "bind_types": ["terms", "rules", "safety", "privacy", "howto"]
+    }
+  ],
+  "notion_pages_dev_note": "deploy/policy-url-readback.json — formal public domain pending; admission flow uses pages.dev links separately from M1 document message_id contract"
+}

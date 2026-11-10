@@ -1,29 +1,20 @@
 [
   {
-    "host_board": "areas_bbs",
-    "host_chat_id": -1003847210571,
-    "message_thread_id": 273,
-    "status": "published",
+    "host": "areas_bbs",
+    "status": "updated",
     "message_id": 1138,
-    "url": "https://t.me/c/3847210571/1138",
     "gate_url": "https://t.me/GayBBS_bot?start=online_XJr2qLcE6gfADAMK8EVcO0gZ"
   },
   {
-    "host_board": "video_chat",
-    "host_chat_id": -1002373696859,
-    "message_thread_id": 1724,
-    "status": "published",
+    "host": "video_chat",
+    "status": "updated",
     "message_id": 4546,
-    "url": "https://t.me/c/2373696859/4546",
     "gate_url": "https://t.me/GayBBS_bot?start=online_XJr2qLcE6gfADAMK8EVcO0gZ"
   },
   {
-    "host_board": "gay_board",
-    "host_chat_id": -1003770334893,
-    "message_thread_id": 18,
-    "status": "published",
+    "host": "gay_board",
+    "status": "updated",
     "message_id": 1039,
-    "url": "https://t.me/c/3770334893/1039",
     "gate_url": "https://t.me/GayBBS_bot?start=online_XJr2qLcE6gfADAMK8EVcO0gZ"
   }
 ]

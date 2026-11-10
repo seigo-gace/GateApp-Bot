@@ -1,25 +1,39 @@
 /** Dedicated @GayBBS_bot user-facing runtime. NOT the existing admin/Gate bot. */
 import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
-import { Telegraf } from "telegraf";
+import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
 import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
+import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "./bot/recruitmentHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
+import { registerTopicBoardHandlers } from "./bot/topicBoardHandlers.js";
+import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js";
+import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
+import {resolveRoomJoinLink} from "./services/roomJoinLinks.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
-import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
+import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
+ suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
+import {
+  BARE_START_POSTING_TEXT,
+  bareStartPostingExtra,
+  defaultBareStartChatId,
+} from "./services/dmBareStartPostingMenu.js";
+import { DM_POSTING_MENU_SCREEN_TEXT } from "./services/dmPostingMenuRestore.js";
+import { currentMenuOrigin } from "./services/menuOriginRepository.js";
+import { activateTopicDmEntry, currentTopicDmEntry } from "./services/topicDmEntry.js";
 
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
@@ -32,6 +46,16 @@ async function main():Promise<void>{
  await runMigrations();
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  if(ctx.startPayload?.startsWith("p_")){
+   try {
+    const origin=await activateTopicDmEntry(ctx.from.id,ctx.startPayload,ctx.telegram);
+    const keyboard=await bareStartPostingExtra(origin.chatId);
+    await ctx.reply(DM_POSTING_MENU_SCREEN_TEXT,keyboard);
+   }catch{
+    await ctx.reply("このトピックの投稿入口を確認できません。元の固定ボタンを利用してください。");
+   }
+   return;
+  }
   if(ctx.startPayload?.startsWith("online_")){
    if(await handleOnlineGateStart(ctx))return;
   }
@@ -43,23 +67,49 @@ async function main():Promise<void>{
    await startProfileViewer(ctx,ctx.startPayload);
    return;
   }
+  if(ctx.startPayload==="search"){
+   await startSearchEditor(ctx.telegram,ctx.from.id);
+   return;
+  }
+  if(ctx.startPayload==="help"){
+   await startOperationHelp(ctx.telegram,ctx.from.id);
+   return;
+  }
+  if(ctx.startPayload?.startsWith("j_")){
+   try{
+    const room=await resolveRoomJoinLink(ctx.from.id,ctx.startPayload);
+    if(!room){
+     await ctx.reply("このROOMはまだ開始していないか、参加承認がありません。開始後に再度［参加する］を押してください。");
+    }else{
+     await ctx.reply("🔴 LIVE中｜"+room.title+"\n参加資格を確認しました。",
+      Markup.inlineKeyboard([[Markup.button.url("🎥 ROOMへ参加",room.joinUrl)]]));
+    }
+   }catch{
+    await ctx.reply("ROOMへの参加状況を確認できません。");
+   }
+   return;
+  }
   if(ctx.startPayload?.startsWith("a_")){
    await startApplicationEditor(ctx,ctx.startPayload);
    return;
   }
-  if(ctx.startPayload?.startsWith("m_")){
+  if(ctx.startPayload && /^(?:m|r)_/.test(ctx.startPayload)){
    try{
     const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
-    // N14 requires the Topic menu button itself to open the shared DM editor,
-    // not another instruction requiring a second /command.
     if(origin.feature==="profile"){
      await startProfileEditor(ctx);
     }else if(origin.feature==="room"){
      await startRoomEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="announcement"){
-     await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+     if(ctx.startPayload.startsWith("r_"))
+      await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
+     else await startAnnouncementEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="link"){
      await startLinkEditor(ctx.telegram,ctx.from.id);
+    }else if(origin.feature==="search"){
+     await startSearchEditor(ctx.telegram,ctx.from.id);
+    }else if(origin.feature==="help"){
+     await startOperationHelp(ctx.telegram,ctx.from.id);
     }else{
      await ctx.reply("この機能の公開準備が完了していません。");
     }
@@ -68,8 +118,36 @@ async function main():Promise<void>{
    }
    return;
   }
-  await ctx.reply("GayBBS 共通メニュー\n/profile — プロフィール作成\n/publishprofile — プロフィール公開・更新\n/myprofileposts — マイ投稿管理\n/room — ROOM作成\n/announce — 告知・予告・募集作成\n/link — リンクボタン作成\n/myapplications — 自分の応募履歴\n/applications — 募集主の応募管理\n/myrooms — 自分のROOM管理\n\n総合案内は所属グループの 📌総合案内トピックにある /guide から確認できます。公開先は管理者が確認したトピックのみです。");
+  const origin=ctx.from?await currentMenuOrigin(ctx.from.id):null;
+  const topicOrigin=origin?null:await currentTopicDmEntry(ctx.from.id);
+  const chatId=defaultBareStartChatId(origin?.chatId??topicOrigin?.chatId);
+  const keyboard=await bareStartPostingExtra(chatId);
+  await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
  });
+ bot.action("dm:nav-unavailable",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery("このリンクはまだ確認できません。", {show_alert:true});
+ });
+ bot.action(/^dm:blocked:(profile|announcement|room|link|search|help)$/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery(
+   "この機能は現在準備中です。各掲示板の固定投稿メニューからお試しください。",
+   { show_alert: true },
+  );
+ });
+ bot.action(/^dm:(profile|recruit|room|announcement|link|search|help)$/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery();
+  const kind=ctx.match[1];
+  if(kind==="profile")await startProfileEditor(ctx);
+  else if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
+  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
+  else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
+  else await startOperationHelp(ctx.telegram,ctx.from.id);
+ });
+ registerCompactRecruitmentHandlers(bot);
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
@@ -77,6 +155,9 @@ async function main():Promise<void>{
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
  registerMenuPanelHandlers(bot);
+ registerTopicBoardHandlers(bot);
+ registerSearchHandlers(bot);
+ registerOperationHelpHandlers(bot);
  registerApplicationHandlers(bot);
  registerRoomHandlers(bot);
  registerGayBbsApprovalHandlers(bot);
@@ -101,6 +182,20 @@ async function main():Promise<void>{
     error instanceof Error?error.message:"unknown");
  }
  try{
+  const dmScopes=await suppressBotDmCommandMenu(bot.telegram);
+  console.log("GAYBBS_DM_COMMAND_MENU_SUPPRESSED scopes="+dmScopes.join(","));
+ }catch(error){
+  console.error("GAYBBS_DM_COMMAND_SUPPRESSION_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
+ try{
+  const videoScopes=await suppressGroupCommandMenu(bot.telegram,VIDEO_CHAT_CHAT_ID);
+  console.log("GAYBBS_VIDEO_CHAT_MENU_SUPPRESSED scopes="+videoScopes.join(","));
+ }catch(error){
+  console.error("GAYBBS_VIDEO_CHAT_MENU_SUPPRESSION_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
+ try{
   const gayScopes=await suppressGroupCommandMenu(bot.telegram,GAY_BOARD_CHAT_ID);
   await pool.query(
     `INSERT INTO area_command_menu_suppressions
@@ -119,19 +214,21 @@ async function main():Promise<void>{
   console.error("[GAYBBS_ERROR]",ctx.updateType,
     error instanceof Error?error.name:"unknown");
  });
- await bot.launch({
-  dropPendingUpdates:false,
-  allowedUpdates:["message","callback_query","chat_join_request"],
- });
- console.log("GAYBBS_BOT_READY bot_id="+me.id);
- const stopWorkers=startGayBbsWorkers(bot.telegram);
+ let stopWorkers:(()=>void)|undefined;
  const stop=async(signal:string)=>{
-  stopWorkers();
+  stopWorkers?.();
   bot.stop(signal);
   await closePool();
  };
  process.once("SIGINT",()=>{void stop("SIGINT")});
  process.once("SIGTERM",()=>{void stop("SIGTERM")});
+ await bot.launch({
+  dropPendingUpdates:false,
+  allowedUpdates:["message","callback_query","chat_join_request"],
+ },()=>{
+  console.log("GAYBBS_BOT_READY bot_id="+me.id);
+  stopWorkers=startGayBbsWorkers(bot.telegram);
+ });
 }
 main().catch(error=>{
  console.error("GAYBBS_STARTUP_FAILED",error instanceof Error?error.message:"unknown");

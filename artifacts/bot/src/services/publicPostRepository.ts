@@ -4,7 +4,7 @@ import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
 
 export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_datetime"|"awaiting_tags"|"preview"|"saved"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
@@ -42,7 +42,7 @@ export async function getDraft(id:number,module:PostModule):Promise<EditorDraft|
 export async function getWaitingDraft(id:number):Promise<EditorDraft|null>{
  const r=await pool.query(
   `SELECT module,step,data,revision FROM public_post_drafts
-   WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_datetime')
+   WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_datetime','awaiting_room_url')
    ORDER BY updated_at DESC LIMIT 1`,[validOwner(id)]
  );
  return r.rows[0]??null;
@@ -58,29 +58,43 @@ export async function updateDraft(id:number,module:PostModule,revision:number,
  if(r.rows.length!==1)throw new Error("POST_DRAFT_STALE");
  return {module,...r.rows[0]};
 }
-export async function createRoom(id:number,revision:number,title:string,externalUrl?:string):
+export async function createRoom(id:number,revision:number,title:string,externalUrl?:string,
+ options?:{description?:string;scheduledAt?:Date;visibility?:"public"|"approved_only"}):
  Promise<{sourceId:string;joinUrl:string}>{
  const key="room:"+validOwner(id)+":"+revision;
  const joinUrl=externalUrl||createJitsiJoinUrl();
  const mode=externalUrl?"external":"jitsi";
+ const description=options?.description??"";
+ if(description.length>3500)throw new Error("ROOM_DESCRIPTION_TOO_LONG");
+ const scheduledAt=options?.scheduledAt;
+ if(scheduledAt&&(!Number.isFinite(scheduledAt.getTime())||scheduledAt.getTime()<Date.now()))
+  throw new Error("ROOM_FUTURE_DATE_REQUIRED");
+ const visibility=options?.visibility??"approved_only";
  const r=await pool.query(
-  `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
-   VALUES($1,$2,$3,$4,$5,'draft')
+  `INSERT INTO room_posts
+     (request_key,owner_user_id,title,description,mode,join_url,status,start_at,join_visibility)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING room_id,join_url`,
-  [key,id,title,mode,joinUrl]
+  [key,id,title,description,mode,joinUrl,
+   scheduledAt?"scheduled":"draft",scheduledAt??null,visibility]
  );
  return {sourceId:String(r.rows[0].room_id),joinUrl:String(r.rows[0].join_url)};
 }
-export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string,eventAt?:Date,purposeCodes:string[]=[],placeCodes:string[]=[],linkedRoomId?:number):
+export async function createAnnouncement(id:number,revision:number,kind:AnnouncementKind,text:string,eventAt?:Date,purposeCodes:string[]=[],placeCodes:string[]=[],linkedRoomId?:number,
+ details?:{profileSnapshot?:Record<string,unknown>|null;conditions?:Record<string,unknown>}):
  Promise<{sourceId:string}>{
  const key=(linkedRoomId?"room-announcement:":"announcement:")+validOwner(id)+":"+revision;
  const r=await pool.query(
-  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,room_id,status)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,'draft')
+  `INSERT INTO announcement_posts
+     (request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,room_id,
+      profile_snapshot,conditions,status)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft')
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
-  [key,id,kind,text,eventAt||null,purposeCodes,placeCodes,linkedRoomId||null]
+  [key,id,kind,text,eventAt||null,purposeCodes,placeCodes,linkedRoomId||null,
+   details?.profileSnapshot?JSON.stringify(details.profileSnapshot):null,
+   JSON.stringify(details?.conditions??{})]
  );
  return {sourceId:String(r.rows[0].announcement_id)};
 }
@@ -96,6 +110,19 @@ export async function markDraftPublished(id:number,module:PostModule,revision:nu
  if(r.rows.length!==1)throw new Error("POST_DRAFT_FINALIZATION_NEEDS_RECONCILE");
 }
 
+/** Save an announcement editor only. No published Announcement or MPB intent
+ * is generated until the owner explicitly chooses a verified destination.
+ */
+export async function saveAnnouncementEditorDraft(id:number,revision:number):Promise<void>{
+ const result=await pool.query(
+  `UPDATE public_post_drafts SET step='saved',updated_at=NOW()
+     WHERE owner_user_id=$1 AND module='announcement'
+       AND revision=$2 AND step IN ('preview','awaiting_text')
+     RETURNING owner_user_id`,
+  [validOwner(id),revision]);
+ if(result.rows.length!==1)throw new Error("ANNOUNCEMENT_DRAFT_STALE");
+}
+
 /** A private ROOM is saved without publishing a Telegram URL or post. */
 export async function markRoomDraftSaved(id:number,revision:number,roomId:number):Promise<void>{
  if(!Number.isSafeInteger(roomId)||roomId<=0)throw new Error("ROOM_ID_INVALID");
@@ -106,6 +133,18 @@ export async function markRoomDraftSaved(id:number,revision:number,roomId:number
      AND step IN ('preview','saved') RETURNING owner_user_id`,
   [validOwner(id),revision,roomId]);
  if(r.rows.length!==1)throw new Error("ROOM_DRAFT_STALE");
+}
+
+/** A saved ROOM editor is private text/selection data, not a published room.
+ * Reopening /room can restore it without creating a duplicate room record.
+ */
+export async function saveRoomEditorDraft(id:number,revision:number):Promise<void>{
+ const q=await pool.query(
+  `UPDATE public_post_drafts SET step='saved',
+     data=data - 'savedTemplate',updated_at=NOW()
+   WHERE owner_user_id=$1 AND module='room' AND revision=$2 AND step='preview'
+   RETURNING owner_user_id`,[validOwner(id),revision]);
+ if(q.rows.length!==1)throw new Error("ROOM_DRAFT_STALE");
 }
 
 /** Idempotent LinkButton source. MPB stores Telegram message IDs separately. */
@@ -138,7 +177,10 @@ export async function markPostSourcePublished(
     WHERE link_post_id=$1 AND owner_user_id=$2
       AND status IN ('draft','published') RETURNING link_post_id`:
   `UPDATE announcement_posts SET status='published',
-      accept_applications=CASE WHEN kind='recruitment' THEN TRUE ELSE FALSE END,
+      accept_applications=CASE WHEN room_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM room_posts r WHERE r.room_id=announcement_posts.room_id
+         AND r.join_visibility='approved_only' AND r.status IN ('draft','scheduled','ready')
+      ) THEN TRUE ELSE FALSE END,
       updated_at=NOW()
     WHERE announcement_id=$1 AND owner_user_id=$2
       AND status IN ('draft','publishing','published') RETURNING announcement_id`;

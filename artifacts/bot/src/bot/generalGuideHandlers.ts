@@ -4,6 +4,8 @@
  */
 import { Markup, type Telegraf } from "telegraf";
 import { pool } from "../db/index.js";
+import { guideMessageUrl } from "../services/guideMessageUrl.js";
+export { guideMessageUrl } from "../services/guideMessageUrl.js";
 
 export const GUIDE_TYPES = ["terms","rules","safety","privacy","howto","search","menu"] as const;
 export type GuideType = typeof GUIDE_TYPES[number];
@@ -12,11 +14,6 @@ const TITLES:Record<GuideType,string>={
  terms:"利用規約",rules:"グループルール",safety:"安全ガイドライン",privacy:"プライバシー",
  howto:"使い方・操作説明",search:"検索",menu:"案内メニュー",
 };
-export function guideMessageUrl(chatId:number,messageId:number):string {
- if(!GROUPS.has(chatId)||!Number.isSafeInteger(messageId)||messageId<=0)
-  throw new Error("GUIDE_LINK_UNVERIFIED");
- return "https://t.me/c/"+String(chatId).replace("-100","")+"/"+messageId;
-}
 export function guideMenuButtons(
  records:ReadonlyArray<{document_type:string;message_id:number|null;status:string}>,
  chatId:number

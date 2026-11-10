@@ -28,7 +28,7 @@ export const ONLINE_MEDIA=MEDIA;
  * later decision requiring Gate Bot START.
  */
 export const ONLINE_HISTORICAL_TARGETS={
- intro:"https://t.me/c/3847210571/43",
+ intro:"https://t.me/c/3847210571/1379",
  area_bbs:"https://t.me/c/3847210571/116",
  video_chat:"https://t.me/c/2373696859/1605",
  gay_board:"https://t.me/c/3770334893/4",

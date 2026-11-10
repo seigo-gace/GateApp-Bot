@@ -3,7 +3,7 @@
  * missing functionality or links to a disabled document.
  */
 export type NavLink={label:string;url:string;verified:boolean};
-export type EntryLink={feature:"profile"|"announcement"|"room"|"link"|"search";url:string;ready:boolean};
+export type EntryLink={feature:"profile"|"announcement"|"room"|"link"|"search"|"help";label:string;url:string;ready:boolean};
 export type PanelSpec={
  type:"general_guide"|"posting";
  board:"area_bbs"|"video_chat"|"gay_board";
@@ -54,9 +54,9 @@ export function renderAreaBlockBoard(spec:AreaBlockBoardSpec):RenderedPanel{
  const chat=checked(spec.chatLink);
  const back=checked(spec.backLink);
  return {
-  text:spec.blockTitle+"\\n"+spec.description,
+  text:spec.blockTitle+"\n"+spec.description,
   rows:[
-   ...packButtonRows(regions,2),
+   ...packButtonRows(regions,3),
    [search,filter],
    [chat,back],
   ],
@@ -68,8 +68,7 @@ function safeUrl(url:string):boolean{
   const x=new URL(url);
   return x.protocol==="https:"&&!x.username&&!x.password&&
    (x.hostname==="t.me"||x.hostname==="telegram.me"||
-    x.hostname.endsWith(".pages.dev")||x.hostname==="hentaigay.org"||
-    x.hostname.endsWith(".hentaigay.org")||x.hostname==="g-acebot.com"||
+    x.hostname.endsWith(".pages.dev")||x.hostname==="g-acebot.com"||
     x.hostname.endsWith(".g-acebot.com"));
  }catch{return false;}
 }
@@ -82,17 +81,29 @@ function assertPublishedLink(link:NavLink|EntryLink):void{
  */
 export const APPROVED_POSTING_ROWS = [
  ["相手募集","募集+Room","告知/予告"],
- ["クリエーター有料ビデオ投稿"],
+ ["プロフ作成","クリエーター有料ビデオ投稿"],
  ["🔗ボタン作成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
 ] as const;
+/** Cloudflare Pages — L0 row 4 only (not Telegram doc posts). */
+export const GUIDE_PAGES_URLS = {
+  規約: "https://tgtumbler-docs.pages.dev/terms.html",
+  規則: "https://tgtumbler-docs.pages.dev/privacy",
+  ルール: "https://tgtumbler-docs.pages.dev/group-rules.html",
+  ガイドライン: "https://tgtumbler-docs.pages.dev/guidelines.html",
+} as const;
+
+/** Verified @GayBBS_bot DM deep links (handlers in gaybbsBot.ts). */
+export const GUIDE_BOT_DM_URLS = {
+  "検索/フィルター": "https://t.me/GayBBS_bot?start=search",
+  使い方: "https://t.me/GayBBS_bot?start=help",
+} as const;
+
 export const APPROVED_GUIDE_ROWS = [
- ["お知らせ","フリートーク/雑談"],
- ["全国エリアボード","カテゴリーボード"],
- ["ビデオチャット/動画","検索/フィルター"],
- ["みんなのプロフ","コミュニティリンク"],
- ["グループルール","使い方"],
- ["安全ガイド","利用規約"],
+ ["お知らせ","雑談","みんなのプロフ"],
+ ["全国ボード","カテゴリーボード","ビデオ/動画"],
+ ["検索/フィルター","使い方","リンク"],
+ ["規約","規則","ルール","ガイドライン"],
 ] as const;
 export const APPROVED_HELP_ROWS = [
  ["プロフ","Room+募集","告知/予告"],
@@ -127,13 +138,22 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
   throw new Error("PANEL_BOARD_INVALID");
  if(spec.type==="general_guide"){
   if(spec.entryLinks.length)throw new Error("GUIDE_EDITOR_ENTRY_FORBIDDEN");
-  return {text:"📌 総合案内\\n各ボタンから案内やトピックへ移動できます。",
+  return {text:"📌 総合案内\n各ボタンから案内やトピックへ移動できます。",
    rows:renderApprovedLinks("general_guide",spec.links)};
  }
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
- // Existing limited feature-release gates cannot yet supply every approved
- // posting-menu button, so fail closed instead of showing an incorrect menu.
- if(spec.entryLinks.length)throw new Error("POSTING_ENTRY_LINK_MUST_MATCH_APPROVED_MENU");
- return {text:"📝 投稿メニュー\\nボタンを選択してください。",
-   rows:renderApprovedLinks("posting",spec.links)};
+ // Reuse the existing verified DM entries alongside verified URL destinations.
+ // Labels and feature ownership must match the exact Master-approved layout.
+ const allowed:Readonly<Record<string,EntryLink["feature"]>>={
+  "相手募集":"announcement","募集+Room":"room",
+  "プロフ作成":"profile",
+  "告知/予告":"announcement","🔗ボタン作成":"link",
+  "検索/フィルター":"search","操作説明":"help",
+ };
+ const entries=spec.entryLinks.map(entry=>{
+  if(allowed[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
+  return {label:entry.label,url:entry.url,verified:entry.ready};
+ });
+ return {text:"📝 投稿メニュー\nボタンを選択してください。",
+   rows:renderApprovedLinks("posting",[...spec.links,...entries])};
 }

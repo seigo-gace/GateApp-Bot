@@ -15,6 +15,10 @@ FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/gaybbs.mjs /app/gaybbs.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/publishMenuPanels.mjs /app/publishMenuPanels.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/recordPhaseADmEvidence.mjs /app/recordPhaseADmEvidence.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/publishTopicBoards.mjs /app/publishTopicBoards.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/deploy/topic-board-ledger-v1.json /app/topic-board-ledger-v1.json
 # undici preload: Node fetch in Docker/WSL must prefer IPv4 for api.telegram.org
 USER root
 RUN npm install --omit=dev undici@6.21.3

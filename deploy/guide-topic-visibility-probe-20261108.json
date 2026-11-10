@@ -1,0 +1,69 @@
+{
+  "schema": "tgtumbler.guide-topic-visibility-probe/v1",
+  "master_ref": "issues/7#issuecomment-6720049968",
+  "groups": [
+    {
+      "board_key": "area_bbs",
+      "chat_id": -1003847210571,
+      "general_guide_thread_id": 43,
+      "getChat_ok": true,
+      "group_pinned_message_id": null,
+      "group_pinned_thread_id": null,
+      "note": "Group-level pin is not per-forum-topic; does not prove guide docs inside thread"
+    },
+    {
+      "board_key": "video_chat",
+      "chat_id": -1002373696859,
+      "general_guide_thread_id": 1723,
+      "getChat_ok": true,
+      "group_pinned_message_id": 1697,
+      "group_pinned_thread_id": 1696,
+      "note": "Group-level pin is not per-forum-topic; does not prove guide docs inside thread"
+    },
+    {
+      "board_key": "gay_board",
+      "chat_id": -1003770334893,
+      "general_guide_thread_id": 783,
+      "getChat_ok": true,
+      "group_pinned_message_id": 211,
+      "group_pinned_thread_id": 210,
+      "note": "Group-level pin is not per-forum-topic; does not prove guide docs inside thread"
+    }
+  ],
+  "copy_checks": [
+    {
+      "key": "online_card_area",
+      "chat_id": -1003847210571,
+      "message_id": 1138,
+      "copy_ok": true,
+      "error": null,
+      "dm_copy_deleted": true
+    },
+    {
+      "key": "online_card_video",
+      "chat_id": -1002373696859,
+      "message_id": 4546,
+      "copy_ok": true,
+      "error": null,
+      "dm_copy_deleted": true
+    },
+    {
+      "key": "online_card_gay",
+      "chat_id": -1003770334893,
+      "message_id": 1039,
+      "copy_ok": true,
+      "error": null,
+      "dm_copy_deleted": true
+    }
+  ],
+  "document_index_conclusion": {
+    "general_guide_documents_db": 0,
+    "bot_can_enumerate_forum_thread_messages": false,
+    "legal_telegram_message_id_in_repo_ledger": false,
+    "notion_markdown_in_repo": "server-core/.../docs/tgtumbler-pages/content/*.md (no message_id)",
+    "minimal_bind_operations_if_posts_exist_in_client": [
+      "Per board: open general_guide topic, reply to each pinned/legal post, /bindguidemessage <type>",
+      "Required types: terms, rules, safety, privacy, howto"
+    ]
+  }
+}

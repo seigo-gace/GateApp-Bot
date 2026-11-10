@@ -1,0 +1,89 @@
+{
+  "schema": "tgtumbler.menu-db-dry-run/v1",
+  "master_ref": "issues/7#issuecomment-6720049968",
+  "renderer_contract_tests": "artifacts/bot/tests/menuPanelRenderer.test.ts (2x6, 3-1-2-3 layout)",
+  "boards": [
+    {
+      "chat_id": -1003847210571,
+      "general_guide_publishable": false,
+      "missing_documents": [
+        "terms",
+        "rules",
+        "safety",
+        "privacy",
+        "howto"
+      ],
+      "missing_nav_labels": [],
+      "posting_nav_complete": true,
+      "missing_posting_nav": [],
+      "posting_entry_buttons_expected": [
+        "相手募集",
+        "募集+Room",
+        "告知/予告",
+        "🔗ボタン作成",
+        "検索/フィルター",
+        "操作説明"
+      ],
+      "posting_publishable": false,
+      "blockers": [
+        "GUIDE_DOCUMENTS",
+        "FEATURE_GATES"
+      ]
+    },
+    {
+      "chat_id": -1002373696859,
+      "general_guide_publishable": false,
+      "missing_documents": [
+        "terms",
+        "rules",
+        "safety",
+        "privacy",
+        "howto"
+      ],
+      "missing_nav_labels": [],
+      "posting_nav_complete": true,
+      "missing_posting_nav": [],
+      "posting_entry_buttons_expected": [
+        "相手募集",
+        "募集+Room",
+        "告知/予告",
+        "🔗ボタン作成",
+        "検索/フィルター",
+        "操作説明"
+      ],
+      "posting_publishable": false,
+      "blockers": [
+        "GUIDE_DOCUMENTS",
+        "FEATURE_GATES"
+      ]
+    },
+    {
+      "chat_id": -1003770334893,
+      "general_guide_publishable": false,
+      "missing_documents": [
+        "terms",
+        "rules",
+        "safety",
+        "privacy",
+        "howto"
+      ],
+      "missing_nav_labels": [],
+      "posting_nav_complete": true,
+      "missing_posting_nav": [],
+      "posting_entry_buttons_expected": [
+        "相手募集",
+        "募集+Room",
+        "告知/予告",
+        "🔗ボタン作成",
+        "検索/フィルター",
+        "操作説明"
+      ],
+      "posting_publishable": false,
+      "blockers": [
+        "GUIDE_DOCUMENTS",
+        "FEATURE_GATES"
+      ]
+    }
+  ],
+  "gates": 0
+}

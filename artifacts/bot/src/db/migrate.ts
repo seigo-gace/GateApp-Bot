@@ -133,6 +133,53 @@ export async function runMigrations(): Promise<void> {
         PRIMARY KEY(chat_id,link_key),
         CHECK(NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
       );
+      CREATE TABLE IF NOT EXISTS topic_board_posts (
+        board_key TEXT PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        message_id BIGINT CHECK(message_id > 0),
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK(state IN ('verified','publishing','published','needs_reconcile')),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS topic_board_area_links (
+        block_name TEXT NOT NULL,
+        area_name TEXT NOT NULL,
+        target_url TEXT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(block_name,area_name)
+      );
+      CREATE TABLE IF NOT EXISTS gaybbs_help_sessions (
+        owner_user_id BIGINT PRIMARY KEY CHECK(owner_user_id > 0),
+        revision INTEGER NOT NULL DEFAULT 1,
+        section TEXT NOT NULL DEFAULT 'home'
+          CHECK(section IN ('home','profile','room','announcement','link','search')),
+        screen_message_id BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS gaybbs_search_sessions (
+        owner_user_id BIGINT PRIMARY KEY CHECK(owner_user_id > 0),
+        step TEXT NOT NULL DEFAULT 'home'
+          CHECK(step IN ('home','keyword','age','filter','region','position','purpose','hair','body','like','love','results')),
+        filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+        revision INTEGER NOT NULL DEFAULT 1,
+        screen_message_id BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS board_posting_menu_links (
+        chat_id BIGINT NOT NULL CHECK (chat_id < 0),
+        label TEXT NOT NULL CHECK (length(trim(label)) > 0),
+        destination_url TEXT NOT NULL CHECK (length(trim(destination_url)) > 0),
+        source TEXT NOT NULL CHECK (length(trim(source)) > 0),
+        verified_by BIGINT,
+        verified_at TIMESTAMPTZ,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        PRIMARY KEY (chat_id,label),
+        CHECK (NOT enabled OR (verified_by IS NOT NULL AND verified_at IS NOT NULL))
+      );
       CREATE TABLE IF NOT EXISTS board_menu_panels (
         panel_id BIGSERIAL PRIMARY KEY,
         chat_id BIGINT NOT NULL CHECK(chat_id < 0),
@@ -149,7 +196,7 @@ export async function runMigrations(): Promise<void> {
         UNIQUE(chat_id,message_thread_id,panel_type)
       );
       CREATE TABLE IF NOT EXISTS gaybbs_feature_release_gates (
-        feature TEXT PRIMARY KEY CHECK(feature IN ('profile','announcement','room','link','search')),
+        feature TEXT PRIMARY KEY CHECK(feature IN ('profile','announcement','room','link','search','help')),
         source_commit TEXT NOT NULL CHECK(length(source_commit)=40),
         ci_evidence TEXT NOT NULL,
         gserver_runtime_evidence TEXT NOT NULL,
@@ -161,17 +208,55 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS board_menu_entry_tokens (
         token_hash TEXT PRIMARY KEY,
         panel_id BIGINT NOT NULL REFERENCES board_menu_panels(panel_id),
-        feature TEXT NOT NULL CHECK(feature IN ('profile','announcement','room','link','search')),
+        feature TEXT NOT NULL CHECK(feature IN ('profile','announcement','room','link','search','help')),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL,
         enabled BOOLEAN NOT NULL DEFAULT TRUE
       );
+      ALTER TABLE gaybbs_feature_release_gates
+        DROP CONSTRAINT IF EXISTS gaybbs_feature_release_gates_feature_check;
+      ALTER TABLE gaybbs_feature_release_gates ADD CONSTRAINT gaybbs_feature_release_gates_feature_check
+        CHECK(feature IN ('profile','announcement','room','link','search','help'));
+      ALTER TABLE gaybbs_feature_release_gates
+        ADD COLUMN IF NOT EXISTS telegram_dm_e2e_evidence TEXT;
+      ALTER TABLE gaybbs_feature_release_gates
+        ADD COLUMN IF NOT EXISTS telegram_panel_origin_e2e_evidence TEXT;
+      UPDATE gaybbs_feature_release_gates
+        SET telegram_dm_e2e_evidence = telegram_e2e_evidence
+        WHERE telegram_dm_e2e_evidence IS NULL
+          AND length(trim(telegram_e2e_evidence)) > 0;
+      ALTER TABLE board_menu_entry_tokens
+        DROP CONSTRAINT IF EXISTS board_menu_entry_tokens_feature_check;
+      ALTER TABLE board_menu_entry_tokens ADD CONSTRAINT board_menu_entry_tokens_feature_check
+        CHECK(feature IN ('profile','announcement','room','link','search','help'));
       CREATE TABLE IF NOT EXISTS board_menu_sessions (
         owner_user_id BIGINT PRIMARY KEY,
         token_hash TEXT NOT NULL REFERENCES board_menu_entry_tokens(token_hash),
         feature TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS topic_dm_entry_pins (
+        chat_id BIGINT NOT NULL CHECK (chat_id < 0),
+        message_thread_id BIGINT NOT NULL CHECK (message_thread_id > 0),
+        title TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        message_id BIGINT CHECK (message_id > 0),
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK (state IN ('verified','publishing','published','needs_reconcile')),
+        pinned BOOLEAN NOT NULL DEFAULT FALSE,
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(chat_id,message_thread_id)
+      );
+      CREATE TABLE IF NOT EXISTS topic_dm_entry_sessions (
+        owner_user_id BIGINT PRIMARY KEY,
+        chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT NOT NULL,
+        token_hash TEXT NOT NULL REFERENCES topic_dm_entry_pins(token_hash),
+        expires_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS posting_topics (
         topic_id BIGSERIAL PRIMARY KEY,
@@ -243,6 +328,7 @@ export async function runMigrations(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE room_posts ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
       CREATE TABLE IF NOT EXISTS room_host_sessions (
         owner_user_id BIGINT PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
@@ -345,6 +431,14 @@ export async function runMigrations(): Promise<void> {
         expires_at TIMESTAMPTZ NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      -- Shared Announcement application sessions also own the ROOM applicant
+      -- editor. Additive columns preserve existing legacy recruitment sessions.
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS draft JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS draft_step TEXT NOT NULL DEFAULT 'awaiting_text';
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS screen_message_id BIGINT;
       CREATE TABLE IF NOT EXISTS announcement_notifications (
         notification_id BIGSERIAL PRIMARY KEY,
         announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),

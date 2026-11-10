@@ -156,15 +156,17 @@ test("invalid numeric text can be retried and keeps position already chosen", as
   assert.equal(f.draft.data.position,"S");
 });
 
-test("cancel is revision-bound: clears active draft only and returns to profile entry",async()=>{
+test("cancel is revision-bound: clears active draft only and returns directly to the DM posting menu",async()=>{
   const f=fixture();
   await f.start();
   const previous=String(f.draft.revision);
   await f.action(cancelAction,[previous]);
   assert.equal(f.draft,null);
   assert.equal(f.discards,1);
+  assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"),"cancel shows no explanation toast");
   assert.ok(f.sent.at(-1)[1].includes("投稿メニュー"));
-  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].url,"https://t.me/c/3847210571/501");
+  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
+  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard.flat().length,10);
   await f.action("pf:restart");
   assert.equal(f.draft.step,"awaiting_basic");
   await f.action(cancelAction,[previous]);
@@ -275,7 +277,7 @@ test("A preview replaces same Bot screen and returns to exact 3/3/2 editor witho
  assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
 });
 
-test("A cancel returns through verified original posting menu without deleting saved profile",async()=>{
+test("A cancel returns directly to the DM posting menu without deleting saved profile",async()=>{
  const f=fixture();
  await f.start();
  await f.send("ゼロ\n175 80 40");
@@ -284,12 +286,14 @@ test("A cancel returns through verified original posting menu without deleting s
  assert.equal(f.draft,null);
  const result=f.sent.at(-1);
  assert.equal(result[0],"edit");
+ assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"));
  assert.match(result[1],/投稿メニュー/);
- assert.equal(result[2].reply_markup.inline_keyboard[0][0].url,"https://t.me/c/3847210571/501");
+ assert.equal(result[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
+ assert.deepEqual(result[2].reply_markup.inline_keyboard.map((row:any[])=>row.length),[3,2,2,3]);
  assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
 });
 
-test("A cancel with no verified origin shows no guessed URL",async()=>{
+test("A cancel with no verified origin still restores the menu and does not invent a URL",async()=>{
  const f=fixture();
  f.withoutMenu();
  await f.start();
@@ -297,8 +301,9 @@ test("A cancel with no verified origin shows no guessed URL",async()=>{
  await f.action(positionAction,[String(f.draft.revision),"2"]);
  await f.action(overviewAction,[String(f.draft.revision),"cancel"]);
  const result=f.sent.at(-1);
- assert.match(result[1],/確認できない/);
- assert.equal(result[2],undefined);
+ assert.match(result[1],/投稿メニュー/);
+ assert.equal(result[2].reply_markup.inline_keyboard.flat().length,10);
+ assert.equal(result[2].reply_markup.inline_keyboard[0][0].url,undefined);
 });
 
 test("A old navigation and saved old callbacks cannot corrupt new draft",async()=>{
