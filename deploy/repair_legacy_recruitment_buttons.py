@@ -50,7 +50,16 @@ async function api(method,payload){
  if(!value.ok){
   if(method==="editMessageReplyMarkup" && /message is not modified/i.test(String(value.description||"")))
     return true;
-  throw new Error("TELEGRAM_API_"+String(value.error_code||res.status)+"_"+(method==="getChat"?"LOOKUP":"EDIT"));
+  const desc=String(value.description||"").toLowerCase();
+  const category=desc.includes("message to edit not found")?"MESSAGE_NOT_FOUND"
+    :desc.includes("message can't be edited")?"MESSAGE_NOT_EDITABLE"
+    :desc.includes("message is not modified")?"NO_CHANGE"
+    :desc.includes("button_url_invalid")?"INVALID_URL"
+    :desc.includes("can't parse")?"INVALID_MARKUP"
+    :desc.includes("chat not found")?"CHAT_NOT_FOUND"
+    :desc.includes("not enough rights")?"INSUFFICIENT_RIGHTS"
+    :"OTHER";
+  throw new Error("TELEGRAM_API_"+String(value.error_code||res.status)+"_"+category);
  }
  return value.result;
 }
@@ -81,7 +90,7 @@ for(const row of rows){
   status="updated";
  }catch(e){
   const error=String(e?.message||"UNKNOWN");
-  status=error.startsWith("TELEGRAM_API_")?"telegram_rejected"
+  status=error.startsWith("TELEGRAM_API_")?"telegram_rejected_"+error.split("_").slice(3).join("_").toLowerCase()
     :error==="USERNAME_NOT_AVAILABLE"?"username_missing"
     :error==="BUTTON_SHAPE_UNVERIFIED"?"button_shape_invalid":"skipped";
   buttons=null;
@@ -164,14 +173,17 @@ def main():
     outcomes=json.loads(process.stdout)
     if len(outcomes)!=len(candidates):
         raise RuntimeError("TELEGRAM_OUTCOME_COUNT_MISMATCH")
-    counts={"updated":0,"ready":0,"telegram_rejected":0,"username_missing":0,
+    counts={"updated":0,"ready":0,"username_missing":0,
             "button_shape_invalid":0,"skipped":0,"db_mismatch":0}
     for row,result in zip(candidates,outcomes):
         if result.get("delivery_id")!=row["delivery_id"]:
             raise RuntimeError("REPAIR_RECEIPT_ID_MISMATCH")
         status=result.get("status")
         if status!="updated":
-            counts[status if status in counts else "skipped"]+=1
+            if isinstance(status,str) and status.startswith("telegram_rejected_"):
+                counts[status]=counts.get(status,0)+1
+            else:
+                counts[status if status in counts else "skipped"]+=1
             continue
         buttons=result.get("buttons")
         if not updated_keyboard(row["inline_buttons"],buttons):
