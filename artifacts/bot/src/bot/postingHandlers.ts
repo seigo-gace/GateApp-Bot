@@ -5,7 +5,7 @@ import { renderPublicProfile, escapeProfileHtml } from "../services/profileCore.
 import {makeProfileViewerButtons,existingPublishedProfileUrl} from "../services/profilePublicView.js";
 import {revisePublishedProfile} from "../services/profilePublicationUpdate.js";
 import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDelivery.js";
-import { publishPost } from "../services/publishService.js";
+import { publishPost,assertFeatureReleased } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,parseRoomDetails,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createRoom,createLinkButton,markRoomDraftSaved,
@@ -1135,6 +1135,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(roomDraft.step!=="preview"||roomDraft.revision!==revision||
        roomDraft.data.topicId!==topicId)throw Error("ROOM_EXPLICIT_DESTINATION_STALE");
    }else await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
+   if(module==="room"&&roomTargets){
+    // Reject a closed delivery gate before creating any ROOM/source rows.
+    for(const target of roomTargets)await assertFeatureReleased(target.purpose);
+    await ownerUsernameLink(ctx.telegram,ctx.from.id);
+    if(roomDraft?.data.profileLinked&&
+       !(await existingPublishedProfileUrl(ctx.from.id)))
+     throw Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
+   }
    let sourceId:string;let text:string;
    let isRecruitment=false;
    let hostJoinUrl:string|null=null;
