@@ -86,13 +86,17 @@ export function renderRecruitmentPreview(
  if(draft.placeCodes.length)rows.push("📍 場所："+draft.placeCodes.map(t=>"#"+e(t)).join(" "));
  return rows.join("\n");
 }
-export function validateRecruitmentReady(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
+/** Shared personal-information validation independent of Announcement-specific tags. */
+export function validateRecruitmentIdentityReady(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
  if(!d.title?.trim()||!d.body?.trim())throw Error("RECRUITMENT_INPUT_INCOMPLETE");
  if(d.mode==="manual"){
   if(!d.nickname||!d.heightCm||!d.weightKg||!d.age||!isProfilePosition(d.position??""))
    throw Error("ポジションを選択してください。");
  }else if(!profile||!isProfilePosition(profile.position??""))
   throw Error("必須項目が揃った保存済みプロフィールが必要です。");
+}
+export function validateRecruitmentReady(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
+ validateRecruitmentIdentityReady(d,profile);
  validateAnnouncementTags({purposeCodes:d.purposeCodes,placeCodes:d.placeCodes});
  if(d.purposeCodes.length===0)throw Error("目的を1つ以上選択してください。");
 }
