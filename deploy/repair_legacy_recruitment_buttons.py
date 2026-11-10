@@ -40,6 +40,7 @@ if(!tokenPath || !tokenPath.startsWith("/run/secrets/")) process.exit(81);
 const token=fs.readFileSync(tokenPath,"utf8").trim();
 const body=fs.readFileSync(0,"utf8");
 const rows=JSON.parse(body);
+const probe=process.argv.includes("probe");
 async function api(method,payload){
  const res=await fetch("https://api.telegram.org/bot"+token+"/"+method,{
    method:"POST",headers:{"content-type":"application/json"},
@@ -68,14 +69,17 @@ for(const row of rows){
       ? {...b,url} : b));
   if(JSON.stringify(buttons)===JSON.stringify(row.inline_buttons))
     throw new Error("NO_MATCHING_BUTTON");
+  if(probe){status="ready"; buttons=null;out.push({delivery_id:row.delivery_id,status,buttons});continue;}
   await api("editMessageReplyMarkup",{
     chat_id:row.chat_id,message_id:row.telegram_message_id,
     reply_markup:{inline_keyboard:buttons}
   });
   status="updated";
  }catch(e){
-  status=String(e?.message||"UNKNOWN").startsWith("TELEGRAM_API_")
-    ?"telegram_rejected":"skipped";
+  const error=String(e?.message||"UNKNOWN");
+  status=error.startsWith("TELEGRAM_API_")?"telegram_rejected"
+    :error==="USERNAME_NOT_AVAILABLE"?"username_missing"
+    :error==="BUTTON_SHAPE_UNVERIFIED"?"button_shape_invalid":"skipped";
   buttons=null;
  }
  out.push({delivery_id:row.delivery_id,status,buttons});
@@ -120,6 +124,7 @@ def as_sql_json(value):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--probe", action="store_true")
     args=parser.parse_args()
     rows=[json.loads(line) for line in psql(QUERY).splitlines() if line.strip()]
     candidates=[]
@@ -138,7 +143,7 @@ def main():
         if legacy_count==0:raise RuntimeError("LEGACY_MATCH_SHAPE_MISMATCH")
         candidates.append(row)
     print("CANDIDATES="+str(len(candidates)))
-    if not args.apply:
+    if not args.apply and not args.probe:
         print("DRY_RUN=PASS")
         return 0
     if not candidates:
@@ -147,7 +152,7 @@ def main():
     process=subprocess.run(
         ["docker","exec","-i","deploy-gaybbs-1","node",
          "--import","/app/preload/telegram-ipv4-preload.mjs",
-         "--input-type=module","-e",NODE],
+         "--input-type=module","-e",NODE]+(["probe"] if args.probe else []),
         input=json.dumps(candidates,ensure_ascii=False),text=True,
         capture_output=True,check=False,timeout=500)
     if process.returncode:
@@ -155,7 +160,8 @@ def main():
     outcomes=json.loads(process.stdout)
     if len(outcomes)!=len(candidates):
         raise RuntimeError("TELEGRAM_OUTCOME_COUNT_MISMATCH")
-    counts={"updated":0,"telegram_rejected":0,"skipped":0,"db_mismatch":0}
+    counts={"updated":0,"ready":0,"telegram_rejected":0,"username_missing":0,
+            "button_shape_invalid":0,"skipped":0,"db_mismatch":0}
     for row,result in zip(candidates,outcomes):
         if result.get("delivery_id")!=row["delivery_id"]:
             raise RuntimeError("REPAIR_RECEIPT_ID_MISMATCH")
@@ -181,7 +187,9 @@ def main():
     for key,value in counts.items():print(key.upper()+"="+str(value))
     if sum(counts.values())!=len(candidates):
         raise RuntimeError("REPAIR_COUNT_INVALID")
-    if counts["db_mismatch"] or counts["telegram_rejected"] or counts["skipped"]:
+    if args.probe:
+        return 0 if counts["ready"]==len(candidates) else 4
+    if sum(counts[k] for k in counts if k!="updated"):
         return 4
     return 0
 
