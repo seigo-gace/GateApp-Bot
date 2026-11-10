@@ -23,7 +23,7 @@ import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
-import {showRecruitmentPublished,inputInstructions,recruitmentEditorFieldRows} from "./recruitmentHandlers.js";
+import {showRecruitmentPublished,inputInstructions,recruitmentEditorFieldRows,styledRecruitmentButton} from "./recruitmentHandlers.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
@@ -159,6 +159,7 @@ function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
 }
 function roomOptions(d:EditorDraft){
  const r=d.revision,linked=d.data.recruitmentMode==="linked";
+ const b=styledRecruitmentButton;
  const rows:any[][]=recruitmentEditorFieldRows(linked?"linked":"manual",r,{
   edit:field=>`room:field:${r}:${field}`,
   position:()=>`room:position:${r}`,
@@ -168,29 +169,30 @@ function roomOptions(d:EditorDraft){
   position:d.data.position?"✅ ポジション":"ポジション選択",
   firstTag:"#Like",secondTag:"#Love",
  });
- rows.push([Markup.button.callback("▶ 即開始",`room:plan:${r}:now`),
-  Markup.button.callback("📅 予告する",`room:plan:${r}:scheduled`)]);
- rows.push([Markup.button.callback("↩ 戻る",`room:back:${r}`),
-  Markup.button.callback("キャンセル",`room:cancel:${r}`)]);
+ rows.push([b("▶ 即開始",`room:plan:${r}:now`,"success"),
+  b("📅 予告する",`room:plan:${r}:scheduled`,"primary")]);
+ rows.push([b("↩ 戻る",`room:back:${r}`),
+  b("キャンセル",`room:cancel:${r}`,"danger")]);
  return Markup.inlineKeyboard(rows);
 }
 export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
  const r=d.revision,stage=String(d.data.stage||"");
- const nav=[[Markup.button.callback("↩ 戻る",`room:back:${r}`),
-  Markup.button.callback("キャンセル",`room:cancel:${r}`)]];
+ const b=styledRecruitmentButton;
+ const nav=[[b("↩ 戻る",`room:back:${r}`),
+  b("キャンセル",`room:cancel:${r}`,"danger")]];
  if(!d.data.modeSelected||stage==="method")
   return Markup.inlineKeyboard([
-   [Markup.button.callback("Room作成",`room:mode:${r}:jitsi`),
-    Markup.button.callback("Room持ち込み",`room:mode:${r}:external`)],
-   [Markup.button.callback("キャンセル",`room:cancel:${r}`)]
+   [b("Room作成",`room:mode:${r}:jitsi`,"success"),
+    b("Room持ち込み",`room:mode:${r}:external`,"primary")],
+   [b("キャンセル",`room:cancel:${r}`,"danger")]
   ]);
  if(stage==="join_choice")return Markup.inlineKeyboard([
-  [Markup.button.callback("自由参加",`room:joinmode:${r}:public`),
-   Markup.button.callback("承認制",`room:joinmode:${r}:approved_only`)],
+  [b("自由参加",`room:joinmode:${r}:public`,"success"),
+   b("承認制",`room:joinmode:${r}:approved_only`,"primary")],
   ...nav
  ]);
  if(stage==="scheduled_ready")return Markup.inlineKeyboard([
-  [Markup.button.callback("✅ 投稿する",`room:publish:${r}`)],
+  [b("✅ 投稿する",`room:publish:${r}`,"success")],
   ...nav
  ]);
  if(stage==="position")return Markup.inlineKeyboard([
@@ -202,7 +204,7 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
   ...nav
  ]);
  if(stage==="tag_categories")return Markup.inlineKeyboard([
-  ...LIKE_CATEGORIES.map((c,i)=>Markup.button.callback(c.name,`room:tagcat:${r}:${i}`))
+  ...LIKE_CATEGORIES.map((c,i)=>b(c.name,`room:tagcat:${r}:${i}`,"primary"))
    .reduce<any[][]>((rows,item,i)=>{if(i%3===0)rows.push([]);rows.at(-1)!.push(item);return rows;},[]),
   ...nav
  ]);
@@ -212,22 +214,24 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
   if(!category)throw Error("ROOM_TAG_CATEGORY_INVALID");
   const selected=roomTags(d,d.data.tagPurpose==="love"?"loveTags":"likeTags");
   const items=category.items.slice(page*LIKE_PAGE_SIZE,(page+1)*LIKE_PAGE_SIZE);
-  const rows=items.map((item,i)=>Markup.button.callback(
+  const rows=items.map((item,i)=>b(
    (selected.some(t=>t.category===category.name&&t.tag===item)?"✅ ":"▫️ ")+item,
-   `room:tagitem:${r}:${cat*100+page*LIKE_PAGE_SIZE+i}`))
+   `room:tagitem:${r}:${cat*100+page*LIKE_PAGE_SIZE+i}`,"success"))
    .reduce<any[][]>((out,item,i)=>{if(i%3===0)out.push([]);out.at(-1)!.push(item);return out;},[]);
   const pagination:any[]=[];
   if(page>0)pagination.push(Markup.button.callback("◀ 前へ",`room:tagpage:${r}:${page-1}`));
   if((page+1)*LIKE_PAGE_SIZE<category.items.length)
    pagination.push(Markup.button.callback("次へ ▶",`room:tagpage:${r}:${page+1}`));
   if(pagination.length)rows.push(pagination);
-  rows.push([Markup.button.callback("✅ 保存",`room:tagsave:${r}`),
-   Markup.button.callback("↩ 戻る",`room:tagback:${r}`)]);
+  rows.push([b("✅ 保存",`room:tagsave:${r}`,"success"),
+   b("↩ 戻る",`room:tagback:${r}`)]);
   rows.push([Markup.button.callback("キャンセル",`room:cancel:${r}`)]);
   return Markup.inlineKeyboard(rows);
  }
- if(d.step==="awaiting_text"||d.step==="awaiting_room_url"||d.step==="awaiting_datetime")
+ if(d.step==="awaiting_room_url"||d.step==="awaiting_datetime")
   return Markup.inlineKeyboard(nav);
+ // Reuse the same Recruitment controls while text is being entered, not just
+ // a lone Cancel button. Incomplete input remains protected by validation.
  return roomOptions(d);
 }
 async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
