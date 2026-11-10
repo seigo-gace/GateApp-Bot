@@ -16,6 +16,7 @@ export function buildRecruitmentRichPreview(
  if(!Number.isSafeInteger(revision)||revision<=0)throw Error("RECRUITMENT_REVISION_INVALID");
  const blocks:unknown[]=[
   paragraph(published?"📢 公開済み募集を編集中":"📢 相手募集（未投稿）"),
+  ...destination.split("\n").filter(Boolean).map(paragraph),
   paragraph([{type:"bold",text:"📢 "+d.title}," ",edit(revision,"title")]),
  ];
  if(d.mode==="manual"){
@@ -34,7 +35,6 @@ export function buildRecruitmentRichPreview(
  }
  if(d.purposeCodes.length)blocks.push(paragraph("🎯 目的："+d.purposeCodes.map(v=>"#"+v).join(" ")));
  if(d.placeCodes.length)blocks.push(paragraph("📍 場所："+d.placeCodes.map(v=>"#"+v).join(" ")));
- blocks.push(paragraph(destination));
  blocks.push(paragraph("📝 編集しても他の入力・選択は保持します。"));
  if(warning)blocks.push(paragraph(warning));
  return {blocks};
