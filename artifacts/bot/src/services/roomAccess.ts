@@ -28,7 +28,7 @@ export async function getAuthorizedRoom(
            WHERE d.source_type='announcement'
              AND d.source_id=public_notice.announcement_id::text
              AND d.status='sent' AND d.telegram_message_id IS NOT NULL
-             AND topic.enabled=TRUE AND topic.purpose='announcement'
+             AND topic.enabled=TRUE AND topic.purpose IN ('announcement','room')
           )
      ))
      OR EXISTS(
@@ -60,7 +60,7 @@ export async function listAuthorizedRooms(userId:number):Promise<
            WHERE d.source_type='announcement'
              AND d.source_id=public_notice.announcement_id::text
              AND d.status='sent' AND d.telegram_message_id IS NOT NULL
-             AND topic.enabled=TRUE AND topic.purpose='announcement'
+             AND topic.enabled=TRUE AND topic.purpose IN ('announcement','room')
           )
       ))
       OR EXISTS (
