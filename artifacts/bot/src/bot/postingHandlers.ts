@@ -1278,7 +1278,24 @@ export function registerPostingHandlers(bot:Telegraf):void{
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
    const msg=e instanceof Error?e.message:"投稿失敗";
-   await ctx.reply(msg==="PUBLISH_NEEDS_RECONCILE"||msg==="POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE"?
+   const uncertain=msg==="PUBLISH_NEEDS_RECONCILE"||
+    msg==="POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE"||
+    msg==="POST_DRAFT_FINALIZATION_NEEDS_RECONCILE";
+   if(module==="room"){
+    // A plan callback already advances the draft revision before publication.
+    // Refresh its screen from the saved draft, never reuse stale callback data.
+    const current=await getDraft(ctx.from.id,"room").catch(()=>null);
+    if(current&&current.step==="preview"&&current.revision===revision){
+     if(uncertain){
+      await showPostScreen(ctx.telegram,ctx.from.id,current,
+       "⚠️ ROOMの投稿状態を照合する必要があります。重複投稿防止のため、この画面から再送できません。");
+     }else{
+      await roomPreviewScreen(ctx.telegram,ctx.from.id,current);
+     }
+     return;
+    }
+   }
+   await ctx.reply(uncertain?
     "投稿と元データの照合が必要です。重複投稿防止のため自動再送は行いません。":
     "投稿を確認できませんでした："+msg);
   }
