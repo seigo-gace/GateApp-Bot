@@ -148,3 +148,20 @@ export async function deletePublishedRecruitment(
   throw e;
  }
 }
+
+/** Keep the Bot DM message ID after the temporary wizard draft is finalized.
+ * The public delivery and the private management screen have different IDs.
+ */
+export async function rememberPublishedRecruitmentDmScreen(
+ owner:number,sourceId:number,dmMessageId:number,
+):Promise<void>{
+ if(!validId(owner)||!validId(sourceId)||!validId(dmMessageId))
+  throw Error("RECRUITMENT_DM_RECEIPT_INVALID");
+ const q=await pool.query(
+  "UPDATE announcement_posts SET conditions=jsonb_set(conditions,"+
+  " '{dmScreenMessageId}',to_jsonb($3::bigint),true),updated_at=NOW()"+
+  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment'"+
+  " AND status IN ('published','publishing') RETURNING announcement_id",
+  [sourceId,owner,dmMessageId]);
+ if(q.rows.length!==1)throw Error("RECRUITMENT_DM_RECEIPT_NOT_FOUND");
+}
