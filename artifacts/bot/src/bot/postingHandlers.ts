@@ -261,14 +261,17 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
  if(d.step==="awaiting_text"){
   const field=String(d.data.editField||"");
   const linked=d.data.recruitmentMode==="linked";
+  // The old ROOM-only two-line editor is not the creation entry.
+  // Follow the adopted Recruitment parser's linked/manual input modes.
   const guide=field==="title"?"タイトルを1行で送信してください。":
    field==="nickname"?"ニックネームを送信してください。":
    field==="stats"?"身長 体重 年齢 を送信してください。":
    field==="body"?"募集内容を送信してください。":
-   linked?"1行目：タイトル\n2行目以降：募集内容":
-   "1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：募集内容";
+   linked?"【プロフィール連携済み：相手募集と共通】\n1行目：タイトル\n2行目以降：募集内容":
+   "【プロフィール未連携：相手募集と共通】\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：募集内容";
   await showPostScreen(telegram,userId,d,
-   "🎬 募集+Room｜入力\n"+guide+"\n\n入力したテキストは回収し、同じ画面のプレビューへ反映します。",
+   "🎬 募集+Room｜相手募集と共通の入力\n"+guide+
+   "\n\nまとめて1通で送信してください。Botが入力文を回収し、同じ画面に反映します。",
    roomStageKeyboard(d));return;
  }
  const ready=String(d.data.title||"").trim()&&String(d.data.description||"").trim();
