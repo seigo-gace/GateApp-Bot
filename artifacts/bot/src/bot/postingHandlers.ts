@@ -24,7 +24,7 @@ import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished} from "./recruitmentHandlers.js";
-import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
+import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,changeRecruitmentField,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {roomCrossPostTargets} from "../services/roomCrossPost.js";
@@ -527,6 +527,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="plan"){
     if(d.step!=="preview")throw Error("ROOM_DETAILS_REQUIRED");
+    validateRecruitmentIdentityReady(roomRecruitmentData(d),
+     d.data.recruitmentMode==="linked"?await getProfile(ctx.from.id):null);
     if(choice==="scheduled"){
      const next=await updateDraft(ctx.from.id,"room",rev,"preview",
       {...d.data,startAt:null,stage:"join_choice"});
@@ -562,6 +564,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
      {...d.data,editField:choice,stage:"details"});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="position"){
+    if(d.data.recruitmentMode==="linked"){
+     await ctx.answerCbQuery("保存済みプロフィールのポジションを利用します。");return;
+    }
     const next=await updateDraft(ctx.from.id,"room",rev,"preview",{...d.data,stage:"position"});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="positionchoice"){
