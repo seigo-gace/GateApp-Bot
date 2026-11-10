@@ -182,8 +182,10 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   // Keep the authenticated Topic as the normal destination, even for an
   // existing private draft. Never overwrite an explicit fallback selection.
   const incoming=await currentRecruitmentMenuTopic(userId);
-  if(previous.data.destinationExplicit!==true&&incoming&&
-     Number(previous.data.selectedTopicId)!==incoming.id){
+  const newMenu=Number.isSafeInteger(menuMessageId)&&Number(menuMessageId)>0&&
+   previous.data.screenMessageId!==Number(menuMessageId);
+  if(incoming&&(newMenu||previous.data.destinationExplicit!==true)&&
+     (newMenu||Number(previous.data.selectedTopicId)!==incoming.id)){
    previous=await updateDraft(userId,"announcement",previous.revision,previous.step,{
     ...previous.data,selectedTopicId:incoming.id,destinationExplicit:false,
     entryChatId:incoming.chatId,entryThreadId:incoming.threadId,
