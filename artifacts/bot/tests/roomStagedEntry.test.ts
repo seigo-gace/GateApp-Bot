@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {roomStageKeyboard} from "../src/bot/postingHandlers.js";
+import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
 import type {EditorDraft} from "../src/services/publicPostRepository.js";
 
 function draft(step:EditorDraft["step"],data:Record<string,unknown>={}):EditorDraft{
@@ -26,4 +27,15 @@ test("settings appear only after required details are available",()=>{
  assert.ok(rows.includes("📅 予告する"));
  assert.ok(!rows.includes("ルーム作成"));
  assert.ok(!rows.includes("URL"));
+});
+
+test("ROOM's entry guidance uses the complete adopted recruitment input contract",()=>{
+ const manual=inputInstructions(false);
+ assert.match(manual,/1行目：タイトル/);
+ assert.match(manual,/2行目：ニックネーム/);
+ assert.match(manual,/3行目：身長 体重 年齢/);
+ assert.match(manual,/4行目以降：募集内容/);
+ const linked=inputInstructions(true);
+ assert.match(linked,/保存済みプロフィールと連動します/);
+ assert.match(linked,/2行目以降：募集内容/);
 });
