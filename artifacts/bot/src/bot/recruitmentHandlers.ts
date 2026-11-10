@@ -165,6 +165,17 @@ async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:Edit
   callback:`recruit:destback:${rev}:${board==="area_bbs"?"blocks":"groups"}`});
  await show(telegram,id,d,heading,Markup.inlineKeyboard(items.map(x=>[b(x.text,x.callback)])));
 }
+/** The authenticated Topic doorway is the normal destination.
+ * The hierarchical chooser is only a fallback for an invalid or changed origin.
+ */
+async function currentRecruitmentMenuTopic(userId:number){
+ const pinned=await currentTopicDmEntry(userId);
+ const origin=pinned?null:await currentMenuOrigin(userId);
+ const entry=pinned??origin;
+ if(!entry)return null;
+ const topics=await listVerifiedTopics("announcement");
+ return topics.find(t=>t.chatId===entry.chatId&&t.threadId===entry.threadId)??null;
+}
 export async function startCompactRecruitmentEditor(telegram:Telegram,userId:number,menuMessageId?:number){
  let previous=await getDraft(userId,"announcement");
  if(previous?.data.recruitmentFlow==="compact"&&!previous.data.publishedSourceId){
@@ -201,36 +212,25 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
      missingText?"awaiting_text":previous.step,recovered);
    }
    if(missingText){
-    if(!Number.isSafeInteger(previous.data.selectedTopicId))
-     await showRecruitmentDestinationStep(telegram,userId,previous,"groups");
-    else await show(telegram,userId,previous,inputInstructions(recovered.mode==="linked"),
+    await show(telegram,userId,previous,inputInstructions(recovered.mode==="linked"),
      recovered.mode==="linked"?Markup.inlineKeyboard([decisionRow(previous.revision)]):initialKeyboard(previous));
     return;
    }
   }
   if(previous.step==="preview"){
-   if(!Number.isSafeInteger(previous.data.selectedTopicId))
-    await showRecruitmentDestinationStep(telegram,userId,previous,"groups");
-   else await showPreview(telegram,userId,previous);
-   return;
+   await showPreview(telegram,userId,previous);return;
   }
   if(["awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)){
    const returnStep=previous.step==="awaiting_tags"&&
      previous.data.recruitPanelReturnStep==="awaiting_text"?"awaiting_text":"preview";
    const restored=await updateDraft(userId,"announcement",previous.revision,returnStep,
     {...previous.data,recruitPanel:null,recruitPanelReturnStep:null,editField:null});
-   if(!Number.isSafeInteger(restored.data.selectedTopicId)){
-    await showRecruitmentDestinationStep(telegram,userId,restored,"groups");
-   }else if(returnStep==="awaiting_text"){
+   if(returnStep==="awaiting_text"){
     await show(telegram,userId,restored,inputInstructions(restored.data.mode==="linked"),initialKeyboard(restored));
    }else{
     await showPreview(telegram,userId,restored);
    }
    return;
-  }
-  if(previous.step==="awaiting_text"&&!Number.isSafeInteger(previous.data.selectedTopicId)){
-   const resumed=await updateDraft(userId,"announcement",previous.revision,"awaiting_text",previous.data);
-   await showRecruitmentDestinationStep(telegram,userId,resumed,"groups");return;
   }
   if(previous.step==="awaiting_text"){
    // Re-selecting this editor must make its input draft the most recently active
@@ -245,6 +245,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
  const pinned=await currentTopicDmEntry(userId);
  const origin=pinned?null:await currentMenuOrigin(userId);
  const entry=pinned??origin;
+ const defaultTopic=await currentRecruitmentMenuTopic(userId);
  const linked=!!profile&&isProfilePosition(profile.position??"");
  const d=await beginDraft(userId,"announcement","awaiting_text",{
   kind:"recruitment",recruitmentFlow:"compact",
@@ -252,12 +253,14 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   mode:linked?"linked":"manual",profileRevision:linked?profile!.revision:null,
   purposeCodes:[],placeCodes:[],
   ...(entry?{entryChatId:entry.chatId,entryThreadId:entry.threadId}:{}),
+  ...(defaultTopic?{selectedTopicId:defaultTopic.id,destinationExplicit:false}:{}),
  });
  if(Number.isSafeInteger(menuMessageId)&&Number(menuMessageId)>0){
   await bindDraftScreen(userId,"announcement",d.revision,Number(menuMessageId));
   d.data.screenMessageId=Number(menuMessageId);
  }
- await showRecruitmentDestinationStep(telegram,userId,d,"groups");
+ await show(telegram,userId,d,inputInstructions(linked),
+  linked?Markup.inlineKeyboard([decisionRow(d.revision)]):initialKeyboard(d));
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number,explicitTopicChoice=false
@@ -394,8 +397,9 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   }
   const target=await getVerifiedTopic(Number(ctx.match[2]),"announcement");
   const next=await updateDraft(ctx.from.id,"announcement",d.revision,d.step,{
-   ...d.data,selectedTopicId:target.id,entryChatId:target.chatId,
-   entryThreadId:target.threadId,destinationLabel:BOARD_TITLES[target.board]+" / "+target.title});
+   ...d.data,selectedTopicId:target.id,destinationExplicit:true,
+   entryChatId:target.chatId,entryThreadId:target.threadId,
+   destinationLabel:BOARD_TITLES[target.board]+" / "+target.title});
   await ctx.answerCbQuery("投稿先を設定しました");
   if(next.step==="awaiting_text"){
    await show(ctx.telegram,ctx.from.id,next,
