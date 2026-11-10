@@ -1,3 +1,4 @@
+import {styledInlineButton} from "../services/inlineButtonStyle.js";
 /** User-facing compact recruitment flow; no changes to generic announcements.
  * One free-text message -> owned draft -> field-specific edit -> reviewed post.
  * Native inline keyboard is a fallback for unverified rich inline editor support.
@@ -39,13 +40,7 @@ async function show(telegram:Telegram,id:number,d:EditorDraft,text:string,keyboa
  const res=await showWizardScreen(telegram,id,old,text,html?{...keyboard,parse_mode:"HTML"}:keyboard);
  if(res.messageId!==old)await bindDraftScreen(id,"announcement",d.revision,res.messageId);
 }
-/** One InlineKeyboard style primitive shared by Recruitment and ROOM.
- * Telegram clients supporting Bot API button styles display blue/green/red.
- */
-export function styledRecruitmentButton(text:string,id:string,style?:"primary"|"success"|"danger"){
- return {...Markup.button.callback(text,id),...(style?{style}:{})};
-}
-const b=styledRecruitmentButton;
+const b=styledInlineButton;
 function decisionRow(revision:number){
  return recruitmentDecisionRow(revision).map(item=>b(item.text,item.callback_data,"style" in item?item.style:undefined));
 }
