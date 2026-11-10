@@ -458,11 +458,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   await startRoomEditor(ctx.telegram,ctx.from.id);
  });
- bot.action(/^room:(mode|joinmode|profile|edit|plan|board|cancel):(\d+)(?::([a-z_0-9]+))?$/,async ctx=>{
+ bot.action(/^room:(mode|joinmode|profile|edit|plan|board|cancel|back|field|position|positionchoice|tag|tagcat|tagitem|tagpage|tagsave|tagback|publish):(\d+)(?::([a-z_0-9]+))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),choice=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"room");
-  if(!d||!["preview","awaiting_text","awaiting_room_url"].includes(d.step)||d.revision!==rev){
+  if(!d||!["preview","awaiting_text","awaiting_room_url","awaiting_datetime"].includes(d.step)||d.revision!==rev){
    await ctx.answerCbQuery("操作が古くなりました。投稿メニューから再度お試しください。");return;
   }
   try{
@@ -476,21 +476,32 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }
     if(choice!=="jitsi"&&choice!=="external")throw new Error("ROOM_MODE_INVALID");
     if(choice==="external"){
+     const profile=await getProfile(ctx.from.id);
+     const linked=!!profile&&isProfilePosition(profile.position??"");
      const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_room_url",
-      {...d.data,modeSelected:true});
+      {...d.data,modeSelected:true,stage:"url_input",recruitmentMode:linked?"linked":"manual",
+       ...(linked?{profileRevision:profile!.revision,likeTags:profile!.likeTags??[],
+         loveTags:profile!.loveTags??[],position:profile!.position}:{} )});
      await ctx.answerCbQuery();
      await showPostScreen(ctx.telegram,ctx.from.id,next,
       "外部ROOMのHTTPS参加URLを1通で送信してください。",
       roomStageKeyboard(next));
      return;
     }
+    const profile=await getProfile(ctx.from.id);
+    const linked=!!profile&&isProfilePosition(profile.position??"");
     const next=await updateDraft(ctx.from.id,"room",rev,
      d.data.title&&d.data.description?"preview":"awaiting_text",
-     {...d.data,modeSelected:true,externalUrl:null});
+     {...d.data,modeSelected:true,externalUrl:null,stage:"details",
+      recruitmentMode:linked?"linked":"manual",...(linked?{
+       profileRevision:profile!.revision,likeTags:profile!.likeTags??[],
+       loveTags:profile!.loveTags??[],position:profile!.position}:{} )});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="joinmode"){
-    if(choice!=="public"&&choice!=="approved_only")throw new Error("ROOM_VISIBILITY_INVALID");
-    const next=await updateDraft(ctx.from.id,"room",rev,d.step,{...d.data,visibility:choice});
+    if(d.data.stage!=="join_choice"||!["public","approved_only"].includes(choice))
+     throw Error("ROOM_VISIBILITY_INVALID");
+    const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
+     {...d.data,visibility:choice,stage:"date_input",startAt:null});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="profile"){
     if(!d.data.profileLinked&&!await existingPublishedProfileUrl(ctx.from.id)){
@@ -504,19 +515,89 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery();
     await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="plan"){
+    if(d.step!=="preview")throw Error("ROOM_DETAILS_REQUIRED");
     if(choice==="scheduled"){
-     const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
-      {...d.data,startAt:null});
-     await ctx.answerCbQuery();
-     await showPostScreen(ctx.telegram,ctx.from.id,next,
-      "予告日時を日本時間で1通送信してください。例：2026/11/20 20:00");
+     const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+      {...d.data,startAt:null,stage:"join_choice"});
+     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
     }else if(choice==="now"){
      const next=await updateDraft(ctx.from.id,"room",rev,"preview",
-      {...d.data,startAt:null});
+      {...d.data,startAt:null,visibility:"public",stage:"immediate_ready"});
      await ctx.answerCbQuery();
      if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,next))
       await destinationMenu(ctx,"room",next.revision);
     }else throw new Error("ROOM_PLAN_INVALID");
+   }else if(op==="back"){
+    let step:EditorDraft["step"]="preview";
+    let data={...d.data};
+    const stage=String(data.stage||"");
+    if(stage==="join_choice")data={...data,stage:"details"};
+    else if(stage==="scheduled_ready")data={...data,stage:"join_choice",startAt:null};
+    else if(stage==="date_input")data={...data,stage:"join_choice",startAt:null};
+    else if(stage==="tag_items")data={...data,stage:"tag_categories"};
+    else if(["tag_categories","position"].includes(stage))
+     data={...data,stage:"details",tagPurpose:null};
+    else if(stage==="details"||stage==="url_input")
+     data={...data,stage:"method",modeSelected:false,
+      title:null,description:null,externalUrl:null};
+    else if(stage==="immediate_ready")data={...data,stage:"details"};
+    if(!data.modeSelected)step="preview";
+    const next=await updateDraft(ctx.from.id,"room",rev,step,data);
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="field"){
+    if(!["title","nickname","stats","body"].includes(choice))throw Error("ROOM_FIELD_INVALID");
+    if(d.data.recruitmentMode==="linked"&&["nickname","stats"].includes(choice))
+     throw Error("ROOM_PROFILE_LINKED_READONLY");
+    const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_text",
+     {...d.data,editField:choice,stage:"details"});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="position"){
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",{...d.data,stage:"position"});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="positionchoice"){
+    const value=PROFILE_POSITIONS[Number(choice)];
+    if(!isProfilePosition(value??"")||d.data.recruitmentMode==="linked")
+     throw Error("ROOM_POSITION_INVALID");
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,position:value,stage:"details"});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="tag"){
+    if(!["like","love"].includes(choice))throw Error("ROOM_TAG_PURPOSE_INVALID");
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,stage:"tag_categories",tagPurpose:choice});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="tagcat"){
+    const cat=Number(choice);
+    if(!LIKE_CATEGORIES[cat]||d.data.stage!=="tag_categories")throw Error("ROOM_TAG_CATEGORY_INVALID");
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,stage:"tag_items",tagCategory:cat,tagPage:0});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="tagitem"){
+    const packed=Number(choice),cat=Math.floor(packed/100),item=packed%100;
+    if(!LIKE_CATEGORIES[cat]||cat!==Number(d.data.tagCategory)||d.data.stage!=="tag_items")
+     throw Error("ROOM_TAG_INVALID");
+    const purpose=d.data.tagPurpose==="love"?"loveTags":"likeTags";
+    const nextTags=toggleLike(roomTags(d,purpose),cat,item);
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,[purpose]:nextTags});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="tagpage"){
+    const page=Number(choice),cat=LIKE_CATEGORIES[Number(d.data.tagCategory)];
+    if(d.data.stage!=="tag_items"||!cat||page<0||page>=Math.ceil(cat.items.length/LIKE_PAGE_SIZE))
+     throw Error("ROOM_TAG_PAGE_INVALID");
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,tagPage:page});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="tagback"||op==="tagsave"){
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,stage:op==="tagback"?"tag_categories":"details"});
+    await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+   }else if(op==="publish"){
+    if(d.step!=="preview"||d.data.stage!=="scheduled_ready"||!d.data.startAt)
+     throw Error("ROOM_SCHEDULE_NOT_READY");
+    await ctx.answerCbQuery();
+    if(!await roomPublishConfirmation(ctx.telegram,ctx.from.id,d))
+     await destinationMenu(ctx,"room",d.revision);
    }else if(op==="board"){
     const boardIndex=Number(choice);
     if(!Number.isInteger(boardIndex)||boardIndex<0||boardIndex>=BOARD_KEYS.length)
