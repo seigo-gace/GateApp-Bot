@@ -13,6 +13,7 @@ export async function currentDmTextOwner(userId:number):Promise<DmTextOwner|null
      UNION ALL
      SELECT module,updated_at,2 AS priority
        FROM public_post_drafts WHERE owner_user_id=$1
+         AND step NOT IN ('cancelled','published','saved')
      UNION ALL
      SELECT 'room_host'::text AS module,updated_at,3 AS priority
        FROM room_host_sessions
