@@ -18,7 +18,8 @@ import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
-import {updateRoomState} from "../services/roomLifecycle.js";
+import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
+import {loadRoomPublication,roomPublicationEditor} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished} from "./recruitmentHandlers.js";
@@ -31,6 +32,13 @@ async function showPostScreen(
  const shown=await showWizardScreen(telegram,userId,old,text,keyboard);
  if(shown.messageId!==old)
   await bindDraftScreen(userId,draft.module,draft.revision,shown.messageId);
+}
+async function showRoomPublished(telegram:Telegram,owner:number,sourceId:number,screenId?:number):Promise<void>{
+ const published=await loadRoomPublication(owner,sourceId);
+ const view=roomPublicationEditor(published);
+ const draft=await getDraft(owner,"room");
+ const old=screenId??Number(draft?.data.screenMessageId);
+ await showWizardScreen(telegram,owner,old,view.text,view.keyboard);
 }
 type Module="profile"|"room"|"announcement"|"link";
 const LABELS:Record<Module,string>={profile:"プロフィール",room:"ROOM",announcement:"告知・募集",link:"リンクボタン"};
@@ -171,6 +179,13 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
  if(screenId&&existing){
   await bindDraftScreen(userId,"room",existing.revision,screenId);
   existing.data.screenMessageId=screenId;
+ }
+ if(existing?.data.roomEditSourceId){
+  const fresh=await beginDraft(userId,"room","awaiting_text",
+   {visibility:"approved_only",profileLinked:false,...(screenId?{screenMessageId:screenId}:{})});
+  await showPostScreen(telegram,userId,fresh,
+   "🎬 募集+Room\n1行目：タイトル（必須）\n2行目以降：募集内容・ROOMの説明（必須）");
+  return;
  }
  if(existing?.step==="saved"&&existing.data.title&&existing.data.description){
   const {savedTemplate:_unused,...template}=existing.data;
