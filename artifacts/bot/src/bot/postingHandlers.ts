@@ -177,7 +177,7 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
  const r=d.revision,stage=String(d.data.stage||"");
  const nav=[[Markup.button.callback("↩ 戻る",`room:back:${r}`),
   Markup.button.callback("キャンセル",`room:cancel:${r}`)]];
- if(!d.data.modeSelected&&!d.data.title&&!d.data.description)
+ if(!d.data.modeSelected||stage==="method")
   return Markup.inlineKeyboard([
    [Markup.button.callback("Room作成",`room:mode:${r}:jitsi`),
     Markup.button.callback("Room持ち込み",`room:mode:${r}:external`)],
@@ -231,7 +231,7 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
 }
 async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
  const stage=String(d.data.stage||"");
- if(!d.data.modeSelected&&!d.data.title&&!d.data.description){
+ if(!d.data.modeSelected||stage==="method"){
   await showPostScreen(telegram,userId,d,"🎬 募集+Room\nRoom作成方法を選択してください。",
    roomStageKeyboard(d));return;
  }
@@ -544,16 +544,18 @@ export function registerPostingHandlers(bot:Telegraf):void{
     let data={...d.data};
     const stage=String(data.stage||"");
     if(stage==="join_choice")data={...data,stage:"details"};
-    else if(stage==="scheduled_ready")data={...data,stage:"join_choice",startAt:null};
-    else if(stage==="date_input")data={...data,stage:"join_choice",startAt:null};
+    else if(stage==="scheduled_ready")data={...data,stage:"join_choice"};
+    else if(stage==="date_input")data={...data,stage:"join_choice"};
     else if(stage==="tag_items")data={...data,stage:"tag_categories"};
     else if(["tag_categories","position"].includes(stage))
      data={...data,stage:"details",tagPurpose:null};
     else if(stage==="details"||stage==="url_input")
-     data={...data,stage:"method",modeSelected:false,
-      title:null,description:null,externalUrl:null};
+     data={...data,stage:"method",modeSelected:false};
     else if(stage==="immediate_ready")data={...data,stage:"details"};
-    if(!data.modeSelected)step="preview";
+    if(d.step==="awaiting_text"&&d.data.editField){
+     data={...d.data,stage:"details",editField:null};
+    }
+    if(!data.modeSelected||d.step==="awaiting_text")step="preview";
     const next=await updateDraft(ctx.from.id,"room",rev,step,data);
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="field"){
