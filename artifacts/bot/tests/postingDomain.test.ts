@@ -10,6 +10,15 @@ test("Jitsi room URL is unpredictable and valid",()=>{
  assert.notEqual(a,b);
  assert.match(a,/^https:\/\/meet\.jit\.si\/GayBBS-[a-f0-9]{32}$/);
 });
+test("new Jitsi rooms can use a verified anonymous meeting origin",()=>{
+ const url=createJitsiJoinUrl("https://jitsi.example.org");
+ assert.match(url,/^https:\/\/jitsi\.example\.org\/GayBBS-[a-f0-9]{32}$/);
+ for(const invalid of ["http://jitsi.example.org","https://localhost",
+   "https://jitsi.example.org/room","https://user:secret@jitsi.example.org",
+   "https://jitsi.example.org/?x=1"])
+  assert.throws(()=>createJitsiJoinUrl(invalid));
+});
+
 test("unsafe meeting URL schemes/hosts and credentials are refused",()=>{
  for(const u of ["javascript:alert(1)","http://meet.example/x","https://localhost/a",
   "https://127.0.0.1/x","https://10.1.2.3/x","https://user:pass@example.org/x"]){
