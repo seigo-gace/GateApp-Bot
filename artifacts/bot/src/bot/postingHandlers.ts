@@ -743,6 +743,35 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await roomPreviewScreen(ctx.telegram,ctx.from.id,d);
  });
+ bot.action(/^room:reconcile:(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const revision=Number(ctx.match[1]);
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==revision||d.step!=="preview"){
+   await ctx.answerCbQuery("操作情報が変更されています");return;
+  }
+  try{
+   const targets=await verifiedRoomTargets(ctx.from.id);
+   const sourceId=await recoverFullySentRoom(ctx.from.id,revision,
+    targets.map(t=>t.topicId));
+   await ctx.answerCbQuery();
+   if(sourceId){
+    await markDraftPublished(ctx.from.id,"room",revision).catch(err=>
+     console.error("[ROOM_DRAFT_CLEANUP_FAILED]",
+      err instanceof Error?err.message:"unknown"));
+    await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
+     "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
+   }else await showPostScreen(ctx.telegram,ctx.from.id,d,
+    "⚠️ 投稿結果に未確認の送信記録があります。確認済みの投稿は再送しません。",
+    Markup.inlineKeyboard([[
+     Markup.button.callback("🔄 投稿状態を確認","room:reconcile:"+revision)
+    ]]));
+  }catch(err){
+   console.error("[ROOM_RECONCILE_FAILED]",
+    err instanceof Error?err.message:"unknown");
+   await ctx.answerCbQuery("投稿記録を確認できませんでした").catch(()=>undefined);
+  }
+ });
  bot.action(/^room:published:edit:(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const sourceId=Number(ctx.match[1]);
@@ -1430,7 +1459,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(current&&current.step==="preview"&&current.revision===revision){
      if(uncertain){
       await showPostScreen(ctx.telegram,ctx.from.id,current,
-       "⚠️ ROOMの投稿状態を照合する必要があります。重複投稿防止のため、この画面から再送できません。");
+       "⚠️ ROOMの送信記録を確認しています。送信済みの投稿は再送しません。",
+       Markup.inlineKeyboard([[
+        Markup.button.callback("🔄 投稿状態を確認","room:reconcile:"+revision)
+       ]]));
      }else{
       await roomPreviewScreen(ctx.telegram,ctx.from.id,current);
      }
