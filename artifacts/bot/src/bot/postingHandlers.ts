@@ -23,7 +23,7 @@ import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
-import {showRecruitmentPublished,inputInstructions} from "./recruitmentHandlers.js";
+import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
@@ -301,10 +301,20 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
  * Only an unavailable/unverified ROOM destination opens the fallback picker.
  */
 async function verifiedRoomTargets(userId:number){
- const pinned=await currentTopicDmEntry(userId);
- const origin=pinned??await currentMenuOrigin(userId);
- return roomCrossPostTargets(await listVerifiedTopics("room"),
-  await listVerifiedTopics("announcement"),origin);
+ const recruitment=await listVerifiedTopics("announcement");
+ const draft=await getDraft(userId,"room");
+ // Same verified posting destinations as 相手募集. Explicit choice is saved
+ // on the existing ROOM draft; no separate ROOM destination registry.
+ let origin:{chatId:number;threadId:number}|null=null;
+ if(draft?.data.destinationExplicit===true){
+  const chosen=recruitment.find(t=>t.id===Number(draft.data.selectedTopicId));
+  if(!chosen)throw Error("ROOM_ORIGIN_NOT_VERIFIED");
+  origin={chatId:chosen.chatId,threadId:chosen.threadId};
+ }else{
+  const pinned=await currentTopicDmEntry(userId);
+  origin=pinned??await currentMenuOrigin(userId);
+ }
+ return roomCrossPostTargets([],recruitment,origin);
 }
 /** Check the existing verified destinations and Bot access before consuming
  * a callback revision. This creates no ROOM, delivery, or DB route. */
@@ -314,7 +324,9 @@ async function verifyRoomPublicationPreflight(
 ):Promise<void>{
  const origin=targets[0];
  if(!origin)throw Error("ROOM_ORIGIN_NOT_VERIFIED");
- await assertTopicDmEntryDestination(userId,origin.chatId,origin.threadId);
+ const draft=await getDraft(userId,"room");
+ if(draft?.data.destinationExplicit!==true)
+  await assertTopicDmEntryDestination(userId,origin.chatId,origin.threadId);
  const me=await telegram.getMe();
  for(const target of targets){
   await assertFeatureReleased(target.purpose);
@@ -665,12 +677,62 @@ export function registerPostingHandlers(bot:Telegraf):void{
     "ROOM_ORIGIN_NOT_VERIFIED",
     "TOPIC_NOT_VERIFIED",
    ].includes(reason);
-   const message=routingFailure?
-    "ROOM投稿先の登録・確認が未完了です。入力内容は保持されています。管理者による投稿先の復旧が必要です。":
-    "ROOM操作に失敗しました。入力内容は保持されています。画面を再表示してお試しください。";
-   // publishAccepted may have acknowledged this callback already.
-   await ctx.answerCbQuery(message).catch(()=>undefined);
+   if(routingFailure){
+    await ctx.answerCbQuery().catch(()=>undefined);
+    const current=await getDraft(ctx.from.id,"room");
+    if(current)await showRecruitmentDestinationStep(
+     ctx.telegram,ctx.from.id,current,"groups",undefined,0,0,"room");
+    return;
+   }
+   await ctx.answerCbQuery(
+    "ROOM操作に失敗しました。入力内容は保持されています。画面を再表示してお試しください。"
+   ).catch(()=>undefined);
   }
+ });
+ bot.action(/^room:destback:(\d+):(groups|blocks)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==Number(ctx.match[1])){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,
+   ctx.match[2] as "groups"|"blocks",ctx.match[2]==="blocks"?"area_bbs":undefined,0,0,"room");
+ });
+ bot.action(/^room:destgroup:(\d+):(area_bbs|gay_board|video_chat)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==Number(ctx.match[1])){await ctx.answerCbQuery("古い操作です");return;}
+  const board=ctx.match[2] as BoardKey;
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,
+   board==="area_bbs"?"blocks":"topics",board,0,0,"room");
+ });
+ bot.action(/^room:destblock:(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==Number(ctx.match[1])){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,
+   "topics","area_bbs",Number(ctx.match[2]),0,"room");
+ });
+ bot.action(/^room:destpage:(\d+):(area_bbs|gay_board|video_chat):(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==Number(ctx.match[1])){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,d,"topics",
+   ctx.match[2] as BoardKey,Number(ctx.match[3]),Number(ctx.match[4]),"room");
+ });
+ bot.action(/^room:destchoose:(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==Number(ctx.match[1])){await ctx.answerCbQuery("古い操作です");return;}
+  const selected=await getVerifiedTopic(Number(ctx.match[2]),"announcement");
+  const next=await updateDraft(ctx.from.id,"room",d.revision,d.step,{
+   ...d.data,selectedTopicId:selected.id,destinationExplicit:true,
+   entryChatId:selected.chatId,entryThreadId:selected.threadId,
+   destinationLabel:BOARD_TITLES[selected.board]+" / "+selected.title});
+  await ctx.answerCbQuery("投稿先を設定しました");
+  await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
  });
  bot.action(/^room:confirmback:(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
@@ -1181,7 +1243,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const roomDraft=module==="room"?await getDraft(ctx.from.id,"room"):null;
    if(module==="room"&&roomDraft?.data.destinationExplicit===true){
     if(roomDraft.step!=="preview"||roomDraft.revision!==revision||
-       roomDraft.data.topicId!==topicId)throw Error("ROOM_EXPLICIT_DESTINATION_STALE");
+       Number(roomDraft.data.selectedTopicId)!==topicId)
+     throw Error("ROOM_EXPLICIT_DESTINATION_STALE");
    }else await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
    if(module==="room"&&roomTargets){
     await verifyRoomPublicationPreflight(ctx.telegram,ctx.from.id,roomTargets,
