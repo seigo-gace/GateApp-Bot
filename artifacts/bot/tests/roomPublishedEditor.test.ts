@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {roomPublicationEditor,type RoomPublication} from "../src/services/roomPublishedEditor.js";
+import {roomPublicationEditor,assertRoomDeletionReceipt,type RoomPublication} from "../src/services/roomPublishedEditor.js";
 
 const room=(status:string):RoomPublication=>({
  announcementId:57,roomId:31,roomRevision:4,groupTitle:"エリア’s BBS",
@@ -32,4 +32,27 @@ test("finished Room+募集 stays listed but cannot be edited through meeting act
  const ui=roomPublicationEditor(room("finished"));
  assert.match(ui.text,/⚫ 終了/);
  assert.ok(!ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("終了する")||b.text.includes("中止する")));
+});
+
+test("deletion still accepts immutable sent receipts after destination is disabled",()=>{
+ assert.doesNotThrow(()=>assertRoomDeletionReceipt({
+  board_key:"area_bbs",purpose:"announcement",
+  chat_id:-1003847210571,message_thread_id:116,telegram_message_id:839,
+ }));
+ assert.doesNotThrow(()=>assertRoomDeletionReceipt({
+  board_key:"video_chat",purpose:"room",
+  chat_id:-1002373696859,message_thread_id:1605,telegram_message_id:4591,
+ }));
+});
+test("deletion refuses cross-community, invalid topic or fake message receipts",()=>{
+ const valid={board_key:"area_bbs",purpose:"announcement",chat_id:-1003847210571,
+  message_thread_id:116,telegram_message_id:839};
+ for(const invalid of [
+  {...valid,chat_id:-1002373696859},
+  {...valid,message_thread_id:0},
+  {...valid,telegram_message_id:0},
+  {...valid,purpose:"profile"},
+  {...valid,board_key:"unregistered"},
+ ])
+  assert.throws(()=>assertRoomDeletionReceipt(invalid),/ROOM_DELETE_TOPIC_STALE/);
 });
