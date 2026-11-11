@@ -20,7 +20,7 @@ import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
-import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom} from "../services/roomPublishedEditor.js";
+import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom,recoverFullySentRoom} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
@@ -1396,6 +1396,30 @@ export function registerPostingHandlers(bot:Telegraf):void{
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
    const msg=e instanceof Error?e.message:"投稿失敗";
+   console.error("[POST_PUBLICATION_FAILED]",{module,revision,reason:msg});
+   if(module==="room"&&roomSourceMayExist){
+    // Fully ACKed Telegram receipts are authoritative; recover the
+    // existing DM editor without sending either post a second time.
+    try{
+     const targets=await verifiedRoomTargets(ctx.from.id);
+     const completed=await recoverFullySentRoom(ctx.from.id,revision,
+      targets.map(t=>t.topicId));
+     if(completed){
+      const draft=await getDraft(ctx.from.id,"room");
+      if(draft?.revision===revision&&draft.step==="preview")
+       await markDraftPublished(ctx.from.id,"room",revision).catch(err=>
+        console.error("[ROOM_DRAFT_CLEANUP_FAILED]",
+         err instanceof Error?err.message:"unknown"));
+      const screenId="message" in ctx.callbackQuery?
+       ctx.callbackQuery.message?.message_id:undefined;
+      await showRoomPublished(ctx.telegram,ctx.from.id,completed,screenId);
+      return;
+     }
+    }catch(recoveryError){
+     console.error("[ROOM_RECEIPT_RECOVERY_FAILED]",
+      recoveryError instanceof Error?recoveryError.message:"unknown");
+    }
+   }
    const uncertain=roomSourceMayExist||msg==="PUBLISH_NEEDS_RECONCILE"||
     msg==="POST_SENT_SOURCE_SYNC_NEEDS_RECONCILE"||
     msg==="POST_DRAFT_FINALIZATION_NEEDS_RECONCILE";
