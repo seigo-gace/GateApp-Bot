@@ -306,6 +306,30 @@ async function verifiedRoomTargets(userId:number){
  return roomCrossPostTargets(await listVerifiedTopics("room"),
   await listVerifiedTopics("announcement"),origin);
 }
+/** Check the existing verified destinations and Bot access before consuming
+ * a callback revision. This creates no ROOM, delivery, or DB route. */
+async function verifyRoomPublicationPreflight(
+ telegram:Telegram,userId:number,targets:ReturnType<typeof roomCrossPostTargets>,
+ profileLinked:boolean,
+):Promise<void>{
+ const origin=targets[0];
+ if(!origin)throw Error("ROOM_ORIGIN_NOT_VERIFIED");
+ await assertTopicDmEntryDestination(userId,origin.chatId,origin.threadId);
+ const me=await telegram.getMe();
+ for(const target of targets){
+  await assertFeatureReleased(target.purpose);
+  const verified=await getVerifiedTopic(target.topicId,target.purpose);
+  const chat=await telegram.getChat(verified.chatId);
+  if(chat.id!==verified.chatId||chat.type!=="supergroup")
+   throw Error("ROOM_PUBLISH_CHAT_UNVERIFIED");
+  const member=await telegram.getChatMember(verified.chatId,me.id);
+  if(member.status!=="administrator"&&member.status!=="creator")
+   throw Error("ROOM_PUBLISH_BOT_NOT_ADMIN");
+ }
+ await ownerUsernameLink(telegram,userId);
+ if(profileLinked&&!(await existingPublishedProfileUrl(userId)))
+  throw Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
+}
 async function roomPublishConfirmation(telegram:Telegram,userId:number,d:EditorDraft){
  let targets;
  try{targets=await verifiedRoomTargets(userId);}catch{return false;}
@@ -542,6 +566,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
      // Resolve the destination before advancing the callback revision.
      // A missing/stale verified Topic must leave this button usable.
      const targets=await verifiedRoomTargets(ctx.from.id);
+     await verifyRoomPublicationPreflight(ctx.telegram,ctx.from.id,targets,
+      d.data.profileLinked===true);
      const next=await updateDraft(ctx.from.id,"room",rev,"preview",
       {...d.data,startAt:null,visibility:"public",stage:"immediate_ready"});
      await publishAccepted(ctx,"room",next.revision,targets[0]!.topicId);
@@ -1153,22 +1179,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
        roomDraft.data.topicId!==topicId)throw Error("ROOM_EXPLICIT_DESTINATION_STALE");
    }else await assertTopicDmEntryDestination(ctx.from.id,destination.chatId,destination.threadId);
    if(module==="room"&&roomTargets){
-    // Reject a closed delivery gate before creating any ROOM/source rows.
-    const me=await ctx.telegram.getMe();
-    for(const target of roomTargets){
-     await assertFeatureReleased(target.purpose);
-     const verified=await getVerifiedTopic(target.topicId,target.purpose);
-     const chat=await ctx.telegram.getChat(verified.chatId);
-     if(chat.id!==verified.chatId||chat.type!=="supergroup")
-      throw Error("ROOM_PUBLISH_CHAT_UNVERIFIED");
-     const member=await ctx.telegram.getChatMember(verified.chatId,me.id);
-     if(member.status!=="administrator"&&member.status!=="creator")
-      throw Error("ROOM_PUBLISH_BOT_NOT_ADMIN");
-    }
-    await ownerUsernameLink(ctx.telegram,ctx.from.id);
-    if(roomDraft?.data.profileLinked&&
-       !(await existingPublishedProfileUrl(ctx.from.id)))
-     throw Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
+    await verifyRoomPublicationPreflight(ctx.telegram,ctx.from.id,roomTargets,
+     roomDraft?.data.profileLinked===true);
    }
    let sourceId:string;let text:string;
    let isRecruitment=false;
