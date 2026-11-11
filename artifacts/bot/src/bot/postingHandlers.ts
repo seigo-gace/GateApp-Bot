@@ -249,9 +249,20 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
    "📅 予告する\n参加方法を選択してください。\n自由参加 または 承認制",roomStageKeyboard(d));return;
  }
  if(stage==="scheduled_ready"){
+  // The scheduled path must use the same complete Recruitment preview as
+  // immediate ROOM, not the obsolete short ROOM-only confirmation card.
+  const profile=d.data.recruitmentMode==="linked"?await getProfile(userId):null;
+  const detail=renderRecruitmentPreview(roomRecruitmentData(d),profile);
+  const like=roomTags(d,"likeTags").map(t=>"#"+escapeProfileHtml(t.tag)).join(" ");
+  const love=roomTags(d,"loveTags").map(t=>"#"+escapeProfileHtml(t.tag)).join(" ");
+  const when=d.data.startAt?new Date(String(d.data.startAt)):null;
+  if(!when||!Number.isFinite(when.getTime()))throw Error("ROOM_SCHEDULE_NOT_READY");
   await showPostScreen(telegram,userId,d,
-   "📅 募集+Room｜予告確認\n"+preview("room",d)+
-   "\n\n内容を確認して［投稿する］を押してください。",roomStageKeyboard(d));return;
+   "🎬 募集+Room（未投稿）\n"+detail+
+   "\n#Like："+like+"\n#Love："+love+
+   "\n\nRoom方式："+(d.data.externalUrl?"持ち込み":"Room作成")+
+   "\n開催："+when.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）",
+   roomStageKeyboard(d),true);return;
  }
  if(stage==="position"||stage==="tag_categories"||stage==="tag_items"){
   await showPostScreen(telegram,userId,d,stage==="position"?"ポジションを選んでください。":
