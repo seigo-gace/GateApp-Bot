@@ -87,9 +87,14 @@ async def main() -> None:
         if not await client.is_user_authorized():
             if not args.enroll:
                 raise RuntimeError("USERBOT_SESSION_UNAUTHORIZED_REAUTH_REQUIRED")
-            phone = getpass.getpass("初回のみ電話番号（+81...）: ").strip()
-            if not phone.startswith("+") or not phone[1:].isdigit():
-                raise RuntimeError("PHONE_NUMBER_FORMAT_INVALID")
+            raw_phone = getpass.getpass("電話番号（国番号付き。例 +81...）: ").strip()
+            phone = raw_phone.translate(str.maketrans("０１２３４５６７８９＋－", "0123456789+-"))
+            for char in (" ", "-", "(", ")", "\t", "\u3000"):
+                phone = phone.replace(char, "")
+            if phone.startswith("00"):
+                phone = "+" + phone[2:]
+            if not phone.startswith("+") or not phone[1:].isascii() or not phone[1:].isdigit() or not 6 <= len(phone[1:]) <= 15:
+                raise RuntimeError("PHONE_NUMBER_FORMAT_INVALID: 国番号から入力してください（例 +81...）。数字以外の記号は不要です")
             sent = await client.send_code_request(phone)
             code = getpass.getpass("Telegram認証コード（非表示）: ").strip()
             try:
