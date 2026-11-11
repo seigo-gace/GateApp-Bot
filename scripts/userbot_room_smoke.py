@@ -105,17 +105,23 @@ async def run():
                                any(b.text == "キャンセル" for row in m.buttons for b in row)
                                and ("募集+Room" in (m.raw_text or "") or TEST_TITLE in (m.raw_text or ""))), None)
                 if cancel:
+                    # A pre-existing /start menu is NOT proof of cancellation.
+                    before_cancel = await client.get_messages(bot, limit=1)
+                    cursor = before_cancel[0].id if before_cancel else 0
                     await cancel.click(text="キャンセル")
                     for _ in range(12):
                         await asyncio.sleep(1)
-                        screens = await client.get_messages(bot, limit=12)
-                        restored = next((m for m in screens if not m.out and
-                                         m.buttons and any(
-                                            b.text == "募集+Room"
-                                            for row in m.buttons for b in row
-                                         ) and "キャンセル" not in
-                                         [b.text for row in m.buttons for b in row]), None)
-                        if restored:
+                        current = await client.get_messages(bot, ids=cancel.id)
+                        recent = await client.get_messages(bot, limit=8)
+                        candidates = ([current] if current else []) + [
+                            m for m in recent if not m.out and m.id > cursor
+                        ]
+                        def restored_menu(message):
+                            if message is None or not message.buttons:
+                                return False
+                            labels = [[b.text for b in row] for row in message.buttons]
+                            return labels == expected
+                        if any(restored_menu(message) for message in candidates):
                             print("E2E_ROOM_CANCEL_MENU_RESTORED_PASS", flush=True)
                             break
                     else:
