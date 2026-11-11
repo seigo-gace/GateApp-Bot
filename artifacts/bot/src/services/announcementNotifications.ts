@@ -5,7 +5,7 @@ import type {Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
 import {renderRoomApplicantSummary} from "./announcementApplications.js";
-import {ownerUsernameLink} from "./telegramUsernameLink.js";
+import {applicantDmLink} from "./telegramUsernameLink.js";
 
 type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number};
 export function renderAnnouncementNotification(payload:EventPayload):string{
@@ -68,16 +68,20 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
    if(entry.rows.length!==1)throw Error("ROOM_APPLICATION_NOTIFICATION_NOT_OWNED");
    if(entry.rows[0].room_id!==null){
     message=renderRoomApplicantSummary(entry.rows[0].consented_profile as Record<string,unknown>|null);
-    const rows:any[][]=[];
-    // Telegram permits a direct user-chat URL only when a public username exists.
-    // Missing usernames must not prevent the application decision notification.
+    const applicantId=Number(entry.rows[0].applicant_user_id);
+    if(!Number.isSafeInteger(applicantId)||applicantId<=0)
+     throw Error("ROOM_APPLICANT_ID_INVALID");
+    let username:unknown;
     try{
-     const applicantId=Number(entry.rows[0].applicant_user_id);
-     const dmUrl=await ownerUsernameLink(telegram,applicantId);
-     rows.push([Markup.button.url("💬 応募者へDM",dmUrl)]);
+     const chat=await telegram.getChat(applicantId);
+     username="username" in chat?chat.username:undefined;
     }catch{
-     message+="\n（応募者のDMリンクは公開ユーザー名がないため表示できません）";
+     // Applicant already contacted the bot to submit. Keep the ID link
+     // available even when getChat fails or no public username is set.
     }
+    const rows:any[][]=[[
+     Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))
+    ]];
     rows.push([
      Markup.button.callback("✅ 承諾",`application:decide:${payload.applicationId}:accepted`),
      Markup.button.callback("❌ 拒否",`application:decide:${payload.applicationId}:declined`)
