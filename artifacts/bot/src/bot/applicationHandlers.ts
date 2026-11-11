@@ -225,7 +225,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   await ctx.editMessageText("📨 応募管理\n確認する応募を選択してください。",
     Markup.inlineKeyboard(rows));
  });
- bot.action(/^application:manage:view:(\\d+)$/,async ctx=>{
+ bot.action(/^application:manage:view:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const id=Number(ctx.match[1]);
   const r=await pool.query(
