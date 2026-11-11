@@ -667,6 +667,16 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await editMessageToDmPostingMenu(ctx,ctx.from.id);
    }
   }catch(error){
+   // Immediate publication can advance the persisted draft revision before
+   // its API work fails. Restore the latest screen so callbacks stay usable.
+   if(op==="plan"&&choice==="now"){
+    const fresh=await getDraft(ctx.from.id,"room").catch(()=>null);
+    if(fresh&&fresh.revision!==rev&&fresh.step==="preview"){
+     await ctx.answerCbQuery("ROOM生成に失敗しました。入力内容は保持しています。").catch(()=>undefined);
+     await roomPreviewScreen(ctx.telegram,ctx.from.id,fresh);
+     return;
+    }
+   }
    // Do not silently collapse a missing verified destination into a stale-DM error.
    // The draft remains intact, so retrying /start must not be required.
    const reason=error instanceof Error?error.message:"ROOM_ACTION_UNKNOWN";
