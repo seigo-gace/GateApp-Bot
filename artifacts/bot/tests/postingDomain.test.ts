@@ -8,7 +8,7 @@ import {
 test("Jitsi room URL is unpredictable and valid",()=>{
  const a=createJitsiJoinUrl(),b=createJitsiJoinUrl();
  assert.notEqual(a,b);
- assert.match(a,/^https:\/\/meet\.jit\.si\/GayBBS-[a-f0-9]{32}$/);
+ assert.match(a,/^https:\/\/meet\.ffmuc\.net\/GayBBS-[a-f0-9]{32}$/);
 });
 test("new Jitsi rooms can use a verified anonymous meeting origin",()=>{
  const url=createJitsiJoinUrl("https://jitsi.example.org");
