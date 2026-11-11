@@ -5,10 +5,9 @@
 import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
 import {styledInlineButton as colored} from "./inlineButtonStyle.js";
-import {BOARD_TITLES,type BoardKey} from "./topicRouting.js";
+import {BOARD_TITLES,BOARD_GROUP_CHAT_IDS,type BoardKey} from "./topicRouting.js";
 import {telegramPublishedMessageUrl} from "./searchDomain.js";
 import type {Telegram} from "telegraf";
-import {getVerifiedTopic} from "./postingDelivery.js";
 import {createTelegramDispatcher} from "./telegramDispatcher.js";
 import {updateRoomState} from "./roomLifecycle.js";
 
@@ -96,6 +95,23 @@ export function roomPublicationEditor(p:RoomPublication){
  return {text:text.join("\n"),keyboard:Markup.inlineKeyboard(rows)};
 }
 
+/** A published receipt may outlive a disabled posting destination.
+ * Deletion must be possible without re-enabling a route, but only in the
+ * original known community and with a valid stored Telegram message ID. */
+export function assertRoomDeletionReceipt(row:{
+ board_key:string;purpose:string;chat_id:unknown;
+ message_thread_id:unknown;telegram_message_id:unknown;
+}):void{
+ const board=row.board_key as BoardKey;
+ const chatId=Number(row.chat_id),threadId=Number(row.message_thread_id);
+ const messageId=Number(row.telegram_message_id);
+ if(!Object.prototype.hasOwnProperty.call(BOARD_GROUP_CHAT_IDS,board)||
+    BOARD_GROUP_CHAT_IDS[board]!==chatId||
+    !["room","announcement"].includes(row.purpose)||
+    !Number.isSafeInteger(threadId)||threadId<=0||
+    !Number.isSafeInteger(messageId)||messageId<=0)
+  throw Error("ROOM_DELETE_TOPIC_STALE");
+}
 /** Reuse MPB's Telegram dispatcher and its existing per-destination receipts.
  * An uncertain delete is never automatically repeated and each successful
  * destination remains recorded, even if another destination fails.
@@ -108,7 +124,7 @@ export async function deletePublishedRoom(telegram:Telegram,owner:number,
   throw Error("ROOM_DELETE_STALE");
  const rows=await pool.query(
   `SELECT d.delivery_id,d.posting_topic_id,d.telegram_message_id,
-          t.purpose,t.chat_id,t.message_thread_id
+          t.board_key,t.purpose,t.chat_id,t.message_thread_id
     FROM posting_deliveries d
     JOIN posting_topics t ON t.topic_id=d.posting_topic_id
     WHERE d.source_type='announcement' AND d.source_id=$1
@@ -116,13 +132,7 @@ export async function deletePublishedRoom(telegram:Telegram,owner:number,
       AND d.telegram_message_id IS NOT NULL
     ORDER BY d.delivery_id`,[String(announcementId),owner]);
  if(!rows.rows.length)throw Error("ROOM_DELETE_RECEIPT_MISSING");
- for(const x of rows.rows){
-  const verified=await getVerifiedTopic(Number(x.posting_topic_id),
-   String(x.purpose)==="room"?"room":"announcement");
-  if(verified.chatId!==Number(x.chat_id)||
-     verified.threadId!==Number(x.message_thread_id))
-   throw Error("ROOM_DELETE_TOPIC_STALE");
- }
+ for(const x of rows.rows)assertRoomDeletionReceipt(x);
  const claim=await pool.query(
   `UPDATE announcement_posts SET status='publishing',updated_at=NOW()
    WHERE announcement_id=$1 AND owner_user_id=$2 AND status='published'
