@@ -332,7 +332,7 @@ async function verifiedRoomTargets(userId:number){
  // Same verified posting destinations as 相手募集. Explicit choice is saved
  // on the existing ROOM draft; no separate ROOM destination registry.
  let origin:{chatId:number;threadId:number}|null=null;
- if(hasExplicitRoomTopicChoice(draft?.data)){
+ if(draft&&hasExplicitRoomTopicChoice(draft.data)){
   const chosen=recruitment.find(t=>t.id===Number(draft.data.selectedTopicId));
   if(!chosen)throw Error("ROOM_ORIGIN_NOT_VERIFIED");
   origin={chatId:chosen.chatId,threadId:chosen.threadId};
@@ -1325,7 +1325,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const destination=await getVerifiedTopic(topicId,
     roomTargets?roomTargets[0]!.purpose:module as PostPurpose);
    const roomDraft=module==="room"?await getDraft(ctx.from.id,"room"):null;
-   if(module==="room"&&hasExplicitRoomTopicChoice(roomDraft?.data)){
+   if(module==="room"&&roomDraft&&hasExplicitRoomTopicChoice(roomDraft.data)){
     if(roomDraft.step!=="preview"||roomDraft.revision!==revision||
        Number(roomDraft.data.selectedTopicId)!==topicId)
      throw Error("ROOM_EXPLICIT_DESTINATION_STALE");
