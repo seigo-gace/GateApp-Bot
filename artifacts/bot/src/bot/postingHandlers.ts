@@ -301,7 +301,13 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
  * Only an unavailable/unverified ROOM destination opens the fallback picker.
  */
 async function verifiedRoomTargets(userId:number){
- const recruitment=await listVerifiedTopics("announcement");
+ const [recruitment,registeredRoomTopics]=await Promise.all([
+  listVerifiedTopics("announcement"),listVerifiedTopics("room")
+ ]);
+ // Prefer the shared announcement registration where both purposes refer to
+ // one Telegram Topic; do not treat that as two different source Topics.
+ const roomTopics=registeredRoomTopics.filter(room=>!recruitment.some(ann=>
+  ann.chatId===room.chatId&&ann.threadId===room.threadId));
  const draft=await getDraft(userId,"room");
  // Same verified posting destinations as 相手募集. Explicit choice is saved
  // on the existing ROOM draft; no separate ROOM destination registry.
@@ -314,7 +320,7 @@ async function verifiedRoomTargets(userId:number){
   const pinned=await currentTopicDmEntry(userId);
   origin=pinned??await currentMenuOrigin(userId);
  }
- return roomCrossPostTargets([],recruitment,origin);
+ return roomCrossPostTargets(roomTopics,recruitment,origin);
 }
 /** Check the existing verified destinations and Bot access before consuming
  * a callback revision. This creates no ROOM, delivery, or DB route. */
