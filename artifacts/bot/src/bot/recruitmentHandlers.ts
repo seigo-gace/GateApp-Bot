@@ -38,7 +38,7 @@ const active=(d:EditorDraft|null,rev:number,step?:string):d is EditorDraft=>
 async function show(telegram:Telegram,id:number,d:EditorDraft,text:string,keyboard?:any,html=false){
  const old=typeof d.data.screenMessageId==="number"?d.data.screenMessageId:undefined;
  const res=await showWizardScreen(telegram,id,old,text,html?{...keyboard,parse_mode:"HTML"}:keyboard);
- if(res.messageId!==old)await bindDraftScreen(id,"announcement",d.revision,res.messageId);
+ if(res.messageId!==old)await bindDraftScreen(id,d.module,d.revision,res.messageId);
 }
 const b=styledInlineButton;
 function decisionRow(revision:number){
@@ -154,18 +154,18 @@ async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning="")
   "\n📝各項目を変更しても他の入力は保持します。"+
   (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
 }
-async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:EditorDraft,
- stage:"groups"|"blocks"|"topics",board?:"area_bbs"|"gay_board"|"video_chat",index=0,page=0){
+export async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:EditorDraft,
+ stage:"groups"|"blocks"|"topics",board?:"area_bbs"|"gay_board"|"video_chat",index=0,page=0,namespace:"recruit"|"room"="recruit"){
  const all=await listVerifiedTopics("announcement");
  const rev=d.revision;
  let heading="📍 投稿先グループを選択してください";
  let items:{text:string;callback:string}[]=[];
  if(stage==="groups"){
-  items=recruitmentGroups(all).map(x=>({text:x.label,callback:`recruit:destgroup:${rev}:${x.board}`}));
+  items=recruitmentGroups(all).map(x=>({text:x.label,callback:`${namespace}:destgroup:${rev}:${x.board}`}));
  }else if(stage==="blocks"){
   heading="📍 エリアブロックを選択してください";
   items=recruitmentAreaBlockOptions(all).map(x=>({
-   text:x.label,callback:`recruit:destblock:${rev}:${x.index}`}));
+   text:x.label,callback:`${namespace}:destblock:${rev}:${x.index}`}));
  }else{
   const matches=board==="area_bbs"?
    recruitmentTopicsForAreaBlock(all,index):
@@ -173,14 +173,14 @@ async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:Edit
   if(page<0||page*10>=matches.length)throw Error("RECRUITMENT_DESTINATION_PAGE_INVALID");
   heading="📍 投稿するトピックを選択してください";
   items=matches.slice(page*10,(page+1)*10).map(t=>({
-   text:t.title,callback:`recruit:destchoose:${rev}:${t.id}`}));
-  if(page>0)items.push({text:"◀ 前へ",callback:`recruit:destpage:${rev}:${board}:${index}:${page-1}`});
-  if((page+1)*10<matches.length)items.push({text:"次へ ▶",callback:`recruit:destpage:${rev}:${board}:${index}:${page+1}`});
+   text:t.title,callback:`${namespace}:destchoose:${rev}:${t.id}`}));
+  if(page>0)items.push({text:"◀ 前へ",callback:`${namespace}:destpage:${rev}:${board}:${index}:${page-1}`});
+  if((page+1)*10<matches.length)items.push({text:"次へ ▶",callback:`${namespace}:destpage:${rev}:${board}:${index}:${page+1}`});
  }
  if(!items.length)throw Error("RECRUITMENT_DESTINATIONS_NOT_VERIFIED");
- if(stage==="blocks")items.push({text:"◀ グループ選択",callback:`recruit:destback:${rev}:groups`});
+ if(stage==="blocks")items.push({text:"◀ グループ選択",callback:`${namespace}:destback:${rev}:groups`});
  if(stage==="topics")items.push({text:board==="area_bbs"?"◀ エリアブロック":"◀ グループ選択",
-  callback:`recruit:destback:${rev}:${board==="area_bbs"?"blocks":"groups"}`});
+  callback:`${namespace}:destback:${rev}:${board==="area_bbs"?"blocks":"groups"}`});
  await show(telegram,id,d,heading,Markup.inlineKeyboard(items.map(x=>[b(x.text,x.callback)])));
 }
 /** The authenticated Topic doorway is the normal destination.
