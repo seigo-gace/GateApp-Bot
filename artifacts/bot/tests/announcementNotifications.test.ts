@@ -12,3 +12,10 @@ test("only adopted notification actions; user content and meeting URL never copi
  }
  assert.throws(()=>renderAnnouncementNotification({action:"<script>alert(1)</script>"}),/NOT_SUPPORTED/);
 });
+
+test("application and room notices never require user slash commands",()=>{
+ for(const action of ["submitted","accepted","held","declined","cancelled","started","visibility_changed"]){
+  const result=renderAnnouncementNotification({action,applicationId:2,roomId:3});
+  assert.doesNotMatch(result,/\/(?:applications|myapplications|joinrooms|myrooms)\b/);
+ }
+});
