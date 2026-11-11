@@ -7,7 +7,9 @@ No messages are sent, no contacts exported and no production Bot is touched.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
+import sqlite3
 import getpass
 import os
 import pathlib
@@ -18,6 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SECRETS = ROOT / "deploy" / "secrets"
 ENV = SECRETS / "userbot.env"
 SESSION_BASE = SECRETS / "userbot_verify"
+SESSION_BACKUP = SECRETS / "userbot_verify.session.backup"
 
 
 def load_credentials() -> tuple[int, str]:
@@ -37,7 +40,34 @@ def load_credentials() -> tuple[int, str]:
     return int(api_id), api_hash
 
 
+def backup_session(session: pathlib.Path) -> None:
+    """SQLite online backup only after disconnect, never live WAL file copy."""
+    if not session.is_file() or session.is_symlink():
+        raise RuntimeError("USERBOT_SESSION_MISSING_OR_UNSAFE")
+    if session.stat().st_mode & 0o077:
+        session.chmod(0o600)
+    tmp = SESSION_BACKUP.with_suffix(".backup.tmp")
+    if SESSION_BACKUP.is_symlink() or tmp.is_symlink():
+        raise RuntimeError("USERBOT_BACKUP_SYMLINK_REFUSED")
+    if tmp.exists():
+        tmp.unlink()
+    try:
+        with sqlite3.connect(f"file:{session}?mode=ro", uri=True) as src:
+            with sqlite3.connect(tmp) as dst:
+                src.backup(dst)
+                if dst.execute("PRAGMA integrity_check").fetchone() != ("ok",):
+                    raise RuntimeError("USERBOT_BACKUP_INTEGRITY_FAILED")
+        tmp.chmod(0o600)
+        os.replace(tmp, SESSION_BACKUP)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
 async def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--enroll", action="store_true", help="Explicit one-time initial login")
+    args = parser.parse_args()
     os.umask(0o077)
     SECRETS.mkdir(mode=0o700, parents=True, exist_ok=True)
     if SECRETS.is_symlink() or SECRETS.stat().st_mode & 0o077:
@@ -55,6 +85,8 @@ async def main() -> None:
     await client.connect()
     try:
         if not await client.is_user_authorized():
+            if not args.enroll:
+                raise RuntimeError("USERBOT_SESSION_UNAUTHORIZED_REAUTH_REQUIRED")
             phone = getpass.getpass("初回のみ電話番号（+81...）: ").strip()
             if not phone.startswith("+") or not phone[1:].isdigit():
                 raise RuntimeError("PHONE_NUMBER_FORMAT_INVALID")
@@ -75,6 +107,8 @@ async def main() -> None:
         print("PHONE_OR_LOGIN_CODE_OUTPUT=NO")
     finally:
         await client.disconnect()
+    backup_session(session)
+    print("SESSION_SQLITE_BACKUP=VERIFIED")
 
 
 if __name__ == "__main__":
