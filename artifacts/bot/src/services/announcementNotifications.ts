@@ -11,17 +11,17 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
  // Source type is informational. Only an allowlisted action is rendered.
  const action=String(payload.action||payload.kind||"");
  const label:Record<string,string>={
-  submitted:"📨 新しい応募が届きました。/applications で確認できます。",
-  accepted:"✅ 応募が承認されました。/myapplications で確認できます。",
-  held:"⏸ 応募が保留されました。/myapplications で確認できます。",
-  declined:"❌ 応募が見送られました。/myapplications で確認できます。",
-  cancelled:"❌ ROOM開催が中止されました。/myapplications または /myrooms で確認できます。",
+  submitted:"📨 新しい応募が届きました。下のボタンから確認できます。",
+  accepted:"✅ 応募が承認されました。下のボタンから参加状況を確認できます。",
+  held:"⏸ 応募が保留されました。主催者の連絡をお待ちください。",
+  declined:"❌ 応募が見送られました。",
+  cancelled:"❌ ROOM開催が中止されました。",
   finished:"■ ROOMの終了が申告されました。",
   postponed:"⏸ ROOMの延期が申告されました。",
-  started:"🔴 ROOMが開始されました。承認済みの方は /joinrooms から参加できます。",
+  started:"🔴 ROOMが開始されました。参加許可のある方は下のボタンから参加できます。",
   prepared:"✅ ROOMホストの準備が完了しました。",
   scheduled:"📅 ROOMの開催予定が更新されました。",
-  visibility_changed:"🔐 ROOMの参加方式が変更されました。/myrooms で確認できます。",
+  visibility_changed:"🔐 ROOMの参加方式が変更されました。",
  };
  const value=label[action];
  if(!value)throw new Error("NOTIFICATION_ACTION_NOT_SUPPORTED");
@@ -72,6 +72,24 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
     ]]);
     useHtml=true;
    }
+  }
+  if(payload.action==="accepted"&&Number.isSafeInteger(payload.applicationId)&&Number(payload.applicationId)>0){
+   const linked=await pool.query(
+    `SELECT p.room_id FROM announcement_applications ap
+       JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
+       WHERE ap.application_id=$1 AND ap.applicant_user_id=$2
+         AND ap.status='accepted' AND p.room_id IS NOT NULL`,
+    [payload.applicationId,userId]);
+   if(linked.rows.length===1){
+    extra=Markup.inlineKeyboard([[
+     Markup.button.callback("🔗 ROOMへ参加",`room:join:${Number(linked.rows[0].room_id)}`)
+    ]]);
+   }
+  }
+  if(payload.action==="started"&&Number.isSafeInteger(payload.roomId)&&Number(payload.roomId)>0){
+   extra=Markup.inlineKeyboard([[
+    Markup.button.callback("🔗 ROOMへ参加",`room:join:${payload.roomId}`)
+   ]]);
   }
   await telegram.sendMessage(userId,message,
    useHtml?{parse_mode:"HTML",...extra}:extra);
