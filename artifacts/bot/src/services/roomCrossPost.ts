@@ -14,10 +14,22 @@ export function roomCrossPostTargets(
  if(matches.length!==1)throw Error("ROOM_ORIGIN_AMBIGUOUS_OR_NOT_VERIFIED");
  const source=matches[0]!;
  // Never migrate a recruitment from one community into another community.
- const online=roomTopics.filter(t=>t.enabled&&t.board===source.board&&
-  t.chatId===source.chatId);
- if(online.length!==1)throw Error("ROOM_ONLINE_DESTINATION_NOT_VERIFIED");
- const video=online[0]!;
+ // Use the already verified recruitment posting registry for ROOM, too.
+ // The three ONLINE thread IDs were independently Bot-API verified in
+ // deploy/online-topic-verified.json. Never create a parallel ROOM registry.
+ const onlineThreads:Record<string,number>={
+  area_bbs:116,video_chat:1605,gay_board:4,
+ };
+ const requiredThread=onlineThreads[source.board];
+ const online=[...roomTopics,...recruitmentTopics].filter(t=>t.enabled&&
+  t.board===source.board&&t.chatId===source.chatId&&
+  t.threadId===requiredThread);
+ // One Telegram destination can have two purpose registrations. Prefer the
+ // already verified recruitment entry, which is the adopted shared route.
+ const announcements=online.filter(t=>t.purpose==="announcement");
+ const candidates=announcements.length?announcements:online;
+ if(candidates.length!==1)throw Error("ROOM_ONLINE_DESTINATION_NOT_VERIFIED");
+ const video=candidates[0]!;
  const make=(t:VerifiedTopic):RoomTarget=>({
   topicId:t.id,purpose:t.purpose==="room"?"room":"announcement",
   chatId:t.chatId,threadId:t.threadId,title:t.title,
