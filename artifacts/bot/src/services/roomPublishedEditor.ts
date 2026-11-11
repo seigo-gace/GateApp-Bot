@@ -18,6 +18,63 @@ export type RoomPublication={
  scheduledAt:string|null;ownerJoinUrl:string|null;
  destinations?:{chatId:number;messageId:number;topicTitle:string}[];
 };
+/** Only a fully acknowledged ROOM can be recovered as published.
+ * Reuse existing MPB receipts; never send or infer an uncertain Telegram post. */
+export function completeRoomDeliveryReceipts(
+ expectedTopicIds:readonly number[],
+ receipts:readonly {posting_topic_id:unknown;status:string;telegram_message_id:unknown}[],
+):boolean{
+ if(!expectedTopicIds.length||new Set(expectedTopicIds).size!==expectedTopicIds.length||
+    expectedTopicIds.some(id=>!Number.isSafeInteger(id)||id<=0)||
+    receipts.length!==expectedTopicIds.length)return false;
+ const expected=new Set(expectedTopicIds);
+ for(const d of receipts){
+  const id=Number(d.posting_topic_id),messageId=Number(d.telegram_message_id);
+  if(!expected.delete(id)||d.status!=="sent"||
+     !Number.isSafeInteger(messageId)||messageId<=0)return false;
+ }
+ return expected.size===0;
+}
+/** Reconcile source status after BOTH Telegram sends have existing MPB ACKs.
+ * Nothing is published by this method; incomplete/uncertain sends remain blocked. */
+export async function recoverFullySentRoom(owner:number,revision:number,
+ expectedTopicIds:readonly number[]):Promise<number|null>{
+ if(!Number.isSafeInteger(owner)||owner<=0||
+    !Number.isSafeInteger(revision)||revision<=0)return null;
+ const source=await pool.query(
+  `SELECT a.announcement_id,a.status
+   FROM announcement_posts a JOIN room_posts r
+     ON r.room_id=a.room_id AND r.owner_user_id=a.owner_user_id
+   WHERE a.owner_user_id=$1 AND a.kind='recruitment'
+     AND a.request_key=$2 AND r.request_key=$3
+     AND a.status IN ('draft','published')`,
+  [owner,"room-announcement:"+owner+":"+revision,"room:"+owner+":"+revision]);
+ if(source.rows.length!==1)return null;
+ const id=Number(source.rows[0].announcement_id);
+ if(!Number.isSafeInteger(id)||id<=0)return null;
+ const rows=await pool.query(
+  `SELECT posting_topic_id,status,telegram_message_id FROM posting_deliveries
+   WHERE source_type='announcement' AND source_id=$1 AND owner_user_id=$2`,
+  [String(id),owner]);
+ if(!completeRoomDeliveryReceipts(expectedTopicIds,rows.rows))return null;
+ if(source.rows[0].status==="draft"){
+  const change=await pool.query(
+   `UPDATE announcement_posts SET status='published',
+      accept_applications=CASE WHEN EXISTS (
+       SELECT 1 FROM room_posts r WHERE r.room_id=announcement_posts.room_id
+        AND r.join_visibility='approved_only' AND r.status IN ('draft','scheduled','ready')
+      ) THEN TRUE ELSE FALSE END,updated_at=NOW()
+     WHERE announcement_id=$1 AND owner_user_id=$2 AND status='draft'
+     RETURNING announcement_id`,[id,owner]);
+  if(change.rows.length!==1){
+   const already=await pool.query(
+    "SELECT announcement_id FROM announcement_posts WHERE announcement_id=$1 AND owner_user_id=$2 AND status='published'",
+    [id,owner]);
+   if(already.rows.length!==1)return null;
+  }
+ }
+ return id;
+}
 export async function loadRoomPublication(owner:number,announcementId:number):Promise<RoomPublication>{
  if(![owner,announcementId].every(n=>Number.isSafeInteger(n)&&n>0))
   throw Error("ROOM_PUBLICATION_OWNER_INVALID");
