@@ -9,7 +9,7 @@ import {Telegraf} from "telegraf";
 import {readConfiguredBotToken} from "../src/config/botToken.js";
 import {pool,closePool} from "../src/db/index.js";
 import {AREA_BLOCKS,AREA_CHAT_ID} from "../src/services/topicBoardContent.js";
-import {publishTopicDmEntry} from "../src/services/topicDmEntry.js";
+import {publishTopicDmEntry,recoverExistingTopicDmEntry,canReuseUncertainEntry} from "../src/services/topicDmEntry.js";
 
 export type AreaDestination={block:string;title:string;candidateThread:number};
 export function intendedAreaDestinations():AreaDestination[]{
@@ -69,7 +69,9 @@ async function main(){
   const published=priorPin?.state==="published"&&priorPin.pinned===true&&
    Number(priorPin.message_id)>0;
   if(published)counters.pinned++;
-  if(priorPin&&!published&&priorPin.state!=="verified"){
+  const recoverKnown=!!priorPin&&!published&&
+   canReuseUncertainEntry(String(priorPin.state),priorPin.message_id);
+  if(priorPin&&!published&&priorPin.state!=="verified"&&!recoverKnown){
    counters.skippedProtected++;continue;
   }
   if(valid&&published)continue;
@@ -103,8 +105,11 @@ async function main(){
      [AREA_CHAT_ID,t.candidateThread,t.title,me.id]);
     if(inserted.rows.length!==1)throw Error("AREA_ROUTE_CONCURRENT_CHANGE");
    }
-   // Reuse the already deployed shared pinned DM doorway exactly as-is.
-   if(!published)await publishTopicDmEntry(
+   // An uncertain send with a recorded Telegram message ID is repaired
+   // IN PLACE. No additional group message is sent in that case.
+   if(recoverKnown)await recoverExistingTopicDmEntry(
+    bot.telegram,AREA_CHAT_ID,t.candidateThread,me.id);
+   else if(!published)await publishTopicDmEntry(
     bot.telegram,AREA_CHAT_ID,t.candidateThread,t.title,me.id);
    const readback=await pool.query(
     `SELECT p.topic_id,t.message_id FROM posting_topics p
