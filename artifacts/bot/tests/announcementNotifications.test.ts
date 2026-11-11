@@ -19,3 +19,11 @@ test("application and room notices never require user slash commands",()=>{
   assert.doesNotMatch(result,/\/(?:applications|myapplications|joinrooms|myrooms)\b/);
  }
 });
+
+import {applicantDmLink} from "../src/services/telegramUsernameLink.js";
+test("owner gets a direct applicant chat link with or without username",()=>{
+ assert.equal(applicantDmLink(123456,"Applicant_1"),"https://t.me/Applicant_1");
+ assert.equal(applicantDmLink(123456),"tg://user?id=123456");
+ assert.equal(applicantDmLink(123456,"not a username"),"tg://user?id=123456");
+ assert.throws(()=>applicantDmLink(-1),/APPLICANT_ID_INVALID/);
+});
