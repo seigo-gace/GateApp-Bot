@@ -93,6 +93,9 @@ async def main() -> None:
                 phone = phone.replace(char, "")
             if phone.startswith("00"):
                 phone = "+" + phone[2:]
+            elif phone.startswith("0") and len(phone) in (10, 11) and phone.isascii() and phone.isdigit():
+                # Japanese domestic landline/mobile notation -> E.164.
+                phone = "+81" + phone[1:]
             if not phone.startswith("+") or not phone[1:].isascii() or not phone[1:].isdigit() or not 6 <= len(phone[1:]) <= 15:
                 raise RuntimeError("PHONE_NUMBER_FORMAT_INVALID: 国番号から入力してください（例 +81...）。数字以外の記号は不要です")
             sent = await client.send_code_request(phone)
