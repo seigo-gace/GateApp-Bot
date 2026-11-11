@@ -5,6 +5,7 @@ import type {Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
 import {renderRoomApplicantSummary} from "./announcementApplications.js";
+import {ownerUsernameLink} from "./telegramUsernameLink.js";
 
 type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number};
 export function renderAnnouncementNotification(payload:EventPayload):string{
@@ -59,17 +60,29 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
   let useHtml=false;
   if(payload.action==="submitted"&&Number.isSafeInteger(payload.applicationId)&&Number(payload.applicationId)>0){
    const entry=await pool.query(
-    `SELECT ap.consented_profile,p.room_id FROM announcement_applications ap
+    `SELECT ap.consented_profile,ap.applicant_user_id,p.room_id
+       FROM announcement_applications ap
        JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
        WHERE ap.application_id=$1 AND p.owner_user_id=$2`,
     [payload.applicationId,userId]);
    if(entry.rows.length!==1)throw Error("ROOM_APPLICATION_NOTIFICATION_NOT_OWNED");
    if(entry.rows[0].room_id!==null){
     message=renderRoomApplicantSummary(entry.rows[0].consented_profile as Record<string,unknown>|null);
-    extra=Markup.inlineKeyboard([[
-     Markup.button.callback("✅ 承認",`application:decide:${payload.applicationId}:accepted`),
+    const rows:any[][]=[];
+    // Telegram permits a direct user-chat URL only when a public username exists.
+    // Missing usernames must not prevent the application decision notification.
+    try{
+     const applicantId=Number(entry.rows[0].applicant_user_id);
+     const dmUrl=await ownerUsernameLink(telegram,applicantId);
+     rows.push([Markup.button.url("💬 応募者へDM",dmUrl)]);
+    }catch{
+     message+="\n（応募者のDMリンクは公開ユーザー名がないため表示できません）";
+    }
+    rows.push([
+     Markup.button.callback("✅ 承諾",`application:decide:${payload.applicationId}:accepted`),
      Markup.button.callback("❌ 拒否",`application:decide:${payload.applicationId}:declined`)
-    ]]);
+    ]);
+    extra=Markup.inlineKeyboard(rows);
     useHtml=true;
    }
   }
