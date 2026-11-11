@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {roomPublicationEditor,assertRoomDeletionReceipt,completeRoomDeliveryReceipts,type RoomPublication} from "../src/services/roomPublishedEditor.js";
+import {roomPublicationEditor,assertRoomDeletionReceipt,completeRoomDeliveryReceipts,canResumeRoomDeliveries,type RoomPublication} from "../src/services/roomPublishedEditor.js";
 
 const room=(status:string):RoomPublication=>({
  announcementId:57,roomId:31,roomRevision:4,groupTitle:"エリア’s BBS",
@@ -73,4 +73,29 @@ test("uncertain, incomplete and duplicate crossposts must never be auto-confirme
   [valid,{posting_topic_id:999,status:"sent",telegram_message_id:701}],
   [valid,{posting_topic_id:202,status:"sent",telegram_message_id:null}],
  ]) assert.equal(completeRoomDeliveryReceipts([101,202],receipts),false);
+});
+
+test("no Telegram attempt or one confirmed destination can resume only missing posts",()=>{
+ const expected=[101,202];
+ assert.equal(canResumeRoomDeliveries(expected,[]),true);
+ assert.equal(canResumeRoomDeliveries(expected,[
+  {posting_topic_id:101,status:"sent",telegram_message_id:700}
+ ]),true);
+ assert.equal(canResumeRoomDeliveries(expected,[
+  {posting_topic_id:101,status:"sent",telegram_message_id:700},
+  {posting_topic_id:202,status:"pending",telegram_message_id:null},
+ ]),true);
+});
+test("uncertain, in-flight, deleted, unexpected or duplicate receipts never permit retransmission",()=>{
+ const valid={posting_topic_id:101,status:"sent",telegram_message_id:700};
+ for(const receipts of [
+  [valid,{posting_topic_id:202,status:"sending",telegram_message_id:null}],
+  [valid,{posting_topic_id:202,status:"needs_reconcile",telegram_message_id:null}],
+  [valid,{posting_topic_id:202,status:"deleted",telegram_message_id:701}],
+  [valid,{posting_topic_id:202,status:"sent",telegram_message_id:null}],
+  [valid,{posting_topic_id:202,status:"pending",telegram_message_id:701}],
+  [valid,{posting_topic_id:101,status:"sent",telegram_message_id:701}],
+  [valid,{posting_topic_id:999,status:"sent",telegram_message_id:701}],
+ ]) assert.equal(canResumeRoomDeliveries([101,202],receipts),false);
+ assert.equal(canResumeRoomDeliveries([],[]),false);
 });
