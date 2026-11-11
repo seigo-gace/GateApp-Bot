@@ -99,4 +99,10 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except RuntimeError as exc:
+        if str(exc) == "USERBOT_SESSION_REVOKED_REAUTH_REQUIRED":
+            print("USERBOT_AUTHORIZATION_REVOKED_NO_AUTOMATIC_LOGIN", flush=True)
+            raise SystemExit(42) from None
+        raise
