@@ -623,8 +623,22 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery();
     await editMessageToDmPostingMenu(ctx,ctx.from.id);
    }
-  }catch{
-   await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
+  }catch(error){
+   // Do not silently collapse a missing verified destination into a stale-DM error.
+   // The draft remains intact, so retrying /start must not be required.
+   const reason=error instanceof Error?error.message:"ROOM_ACTION_UNKNOWN";
+   console.error("[ROOM_ACTION_FAILED]",{operation:op,reason});
+   const routingFailure=[
+    "ROOM_ONLINE_DESTINATION_NOT_VERIFIED",
+    "ROOM_ORIGIN_AMBIGUOUS_OR_NOT_VERIFIED",
+    "ROOM_ORIGIN_NOT_VERIFIED",
+    "TOPIC_NOT_VERIFIED",
+   ].includes(reason);
+   const message=routingFailure?
+    "ROOM投稿先の登録・確認が未完了です。入力内容は保持されています。管理者による投稿先の復旧が必要です。":
+    "ROOM操作に失敗しました。入力内容は保持されています。画面を再表示してお試しください。";
+   // publishAccepted may have acknowledged this callback already.
+   await ctx.answerCbQuery(message).catch(()=>undefined);
   }
  });
  bot.action(/^room:confirmback:(\d+)$/,async ctx=>{
