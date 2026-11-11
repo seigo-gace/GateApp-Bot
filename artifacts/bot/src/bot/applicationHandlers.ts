@@ -65,8 +65,7 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
  if(data.mode!=="linked"&&!isProfilePosition(String(data.position||"")))
   rows.push([Markup.button.callback("ポジション選択","application:position")]);
  else rows.push([Markup.button.callback("✅ 応募する","application:confirm")]);
- rows.push([Markup.button.callback("↩ 入力し直す","application:retry"),
-  Markup.button.callback("キャンセル","application:cancel")]);
+ rows.push([Markup.button.callback("キャンセル","application:cancel")]);
  await showWizardScreen(telegram,id,screenId,text,Markup.inlineKeyboard(rows),"HTML");
 }
 export function registerApplicationHandlers(bot:Telegraf):void{
@@ -145,15 +144,6 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
    Number(r.rows[0].screen_message_id)||undefined);
- });
- bot.action("application:retry",async ctx=>{
-  if(ctx.chat?.type!=="private")return;
-  await pool.query(
-   `UPDATE announcement_application_sessions SET draft_step='awaiting_text'
-    WHERE applicant_user_id=$1 AND draft_step='preview'`,[ctx.from.id]);
-  await ctx.answerCbQuery();
-  await ctx.editMessageText("📝 応募内容を修正して再送信してください。",
-   Markup.inlineKeyboard([[Markup.button.callback("キャンセル","application:cancel")]]));
  });
  bot.action("application:confirm",async ctx=>{
   if(ctx.chat?.type!=="private")return;
