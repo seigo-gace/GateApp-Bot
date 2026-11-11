@@ -9,7 +9,8 @@ import {resolveApplicationSession,legacyRecruitmentContactOwner,
  activateApplicationSession,isRoomApplicationLink} from "../services/applicationLinks.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {submitApplication,decideApplication,withdrawApplication,renderRoomApplicantSummary} from "../services/announcementApplications.js";
-import {parseRecruitmentMessage,renderRecruitmentPreview,type RecruitmentInput} from "../services/recruitmentCompose.js";
+import {parseRecruitmentMessage,renderRecruitmentPreview,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
+import {recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
@@ -116,11 +117,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await ctx.editMessageText("ポジションを選択してください。",
    Markup.inlineKeyboard([
-    ...PROFILE_POSITIONS.reduce<any[][]>((rows,value,i)=>{
-     if(i%3===0)rows.push([]);
-     rows[rows.length-1]!.push(Markup.button.callback(value,`application:pos:${i}`));
-     return rows;
-    },[]),
+    ...recruitmentSelectionRows(PROFILE_POSITIONS.map((value,i)=>
+     Markup.button.callback(value,`application:pos:${i}`)),true),
     [Markup.button.callback("↩ 戻る","application:preview")]
    ]));
  });
@@ -168,10 +166,9 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   }
   const draft=applicationData(record.rows[0].draft as Record<string,unknown>);
   const profile=draft.mode==="linked"?await getProfile(ctx.from.id):null;
-  if(!draft.title.trim()||!draft.body.trim()||
-    (draft.mode==="linked"&&!profile)||
-    (draft.mode==="manual"&&(!draft.nickname||!draft.heightCm||
-      !draft.weightKg||!draft.age||!isProfilePosition(draft.position??"")))){
+  try{
+   validateRecruitmentIdentityReady(draft,profile);
+  }catch{
    await ctx.answerCbQuery("必要項目を入力してください");return;
   }
   const snapshot={...draft,
