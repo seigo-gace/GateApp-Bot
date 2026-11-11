@@ -35,6 +35,42 @@ export function completeRoomDeliveryReceipts(
  }
  return expected.size===0;
 }
+/** An absent delivery or untouched pending claim can be resumed using the same
+ * request key; already acknowledged sends are reused. An in-flight or unknown
+ * Telegram outcome can never be sent again automatically. */
+export function canResumeRoomDeliveries(
+ expectedTopicIds:readonly number[],
+ receipts:readonly {posting_topic_id:unknown;status:string;telegram_message_id:unknown}[],
+):boolean{
+ if(!expectedTopicIds.length||new Set(expectedTopicIds).size!==expectedTopicIds.length||
+    expectedTopicIds.some(id=>!Number.isSafeInteger(id)||id<=0))return false;
+ const expected=new Set(expectedTopicIds),seen=new Set<number>();
+ for(const d of receipts){
+  const id=Number(d.posting_topic_id);
+  if(!expected.has(id)||seen.has(id))return false;
+  seen.add(id);
+  if(d.status==="sent"){
+   const msg=Number(d.telegram_message_id);
+   if(!Number.isSafeInteger(msg)||msg<=0)return false;
+  }else if(d.status==="pending"){
+   if(d.telegram_message_id!==null)return false;
+  }else return false;
+ }
+ return true;
+}
+export async function mayResumeRoomPublication(owner:number,revision:number,
+ expectedTopicIds:readonly number[]):Promise<boolean>{
+ if(!Number.isSafeInteger(owner)||owner<=0||
+    !Number.isSafeInteger(revision)||revision<=0)return false;
+ const rows=await pool.query(
+  `SELECT d.posting_topic_id,d.status,d.telegram_message_id
+   FROM posting_deliveries d JOIN announcement_posts a
+    ON d.source_type='announcement' AND d.source_id=a.announcement_id::text
+   JOIN room_posts r ON r.room_id=a.room_id AND r.owner_user_id=a.owner_user_id
+   WHERE a.owner_user_id=$1 AND a.request_key=$2 AND r.request_key=$3`,
+  [owner,"room-announcement:"+owner+":"+revision,"room:"+owner+":"+revision]);
+ return canResumeRoomDeliveries(expectedTopicIds,rows.rows);
+}
 /** Reconcile source status after BOTH Telegram sends have existing MPB ACKs.
  * Nothing is published by this method; incomplete/uncertain sends remain blocked. */
 export async function recoverFullySentRoom(owner:number,revision:number,
