@@ -42,9 +42,18 @@ export function assertHttpsMeetingUrl(value:string):string {
     url.hostname==="[::1]")throw new Error("ROOM_URL_NOT_PUBLIC_HTTPS");
  return url.toString();
 }
-export function createJitsiJoinUrl():string {
- // 128 bits of entropy in URL path; never derived from Telegram user or group.
- return "https://meet.jit.si/GayBBS-" + randomBytes(16).toString("hex");
+/** Meeting base for newly created Jitsi rooms.
+ * An alternative must be configured only after an anonymous host/guest
+ * real-browser check. Existing persisted room URLs are never rewritten.
+ */
+export function createJitsiJoinUrl(baseUrl=process.env.JITSI_MEET_BASE_URL):string {
+ const raw=(baseUrl||"https://meet.jit.si").trim();
+ const parsed=new URL(assertHttpsMeetingUrl(raw));
+ if(parsed.search||parsed.hash||parsed.username||parsed.password)
+  throw new Error("ROOM_JITSI_BASE_INVALID");
+ // A base is an origin, not a room URL; preserve the 128-bit random suffix.
+ if(parsed.pathname!=="/")throw new Error("ROOM_JITSI_BASE_INVALID");
+ return parsed.origin+"/GayBBS-"+randomBytes(16).toString("hex");
 }
 export function validateRoom(d:RoomDraft):RoomDraft{
  if(!Number.isSafeInteger(d.ownerId)||d.ownerId<=0)throw new Error("ROOM_OWNER_INVALID");
