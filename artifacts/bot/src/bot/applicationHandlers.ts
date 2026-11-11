@@ -186,7 +186,10 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery();
    await ctx.editMessageText(r.duplicate?
     "応募状況を確認しました："+r.status:
-    "✅ 応募を送りました。主催者の承認・拒否をお待ちください。");
+    "✅ 応募を送りました。主催者の承認・拒否をお待ちください。",
+    ["submitted","held"].includes(r.status)?
+     Markup.inlineKeyboard([[Markup.button.callback("応募を取り下げる",
+      `application:withdraw:${session.announcementId}`)]]):undefined);
   }catch{
    await ctx.answerCbQuery("応募に失敗しました。募集状況をご確認ください。");
   }
@@ -198,6 +201,54 @@ export function registerApplicationHandlers(bot:Telegraf):void{
      WHERE applicant_user_id=$1`,[ctx.from.id]);
   await ctx.answerCbQuery("応募を中止しました");
   await ctx.editMessageText("応募を中止しました。応募は送信していません。");
+ });
+ bot.action("application:manage",async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const r=await pool.query(
+   `SELECT ap.application_id,ap.status,ap.consented_profile,p.room_id
+      FROM announcement_applications ap
+      JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
+      WHERE p.owner_user_id=$1 AND p.kind='recruitment'
+      ORDER BY ap.updated_at DESC LIMIT 10`,[ctx.from.id]);
+  await ctx.answerCbQuery();
+  if(!r.rows.length){
+   await ctx.editMessageText("確認できる応募はありません。");
+   return;
+  }
+  const rows=r.rows.map(x=>{
+   const id=Number(x.application_id);
+   const label=x.room_id!==null?
+     "🎬 ROOM応募 "+id+"："+String(x.status):
+     "応募 "+id+"："+String(x.status);
+   return [Markup.button.callback(label,`application:manage:view:${id}`)];
+  });
+  await ctx.editMessageText("📨 応募管理\n確認する応募を選択してください。",
+    Markup.inlineKeyboard(rows));
+ });
+ bot.action(/^application:manage:view:(\\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const id=Number(ctx.match[1]);
+  const r=await pool.query(
+   `SELECT ap.status,ap.consented_profile,p.room_id
+      FROM announcement_applications ap
+      JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
+      WHERE ap.application_id=$1 AND p.owner_user_id=$2
+        AND p.kind='recruitment'`,[id,ctx.from.id]);
+  if(r.rows.length!==1){await ctx.answerCbQuery("応募が見つかりません");return;}
+  const x=r.rows[0];
+  const card=x.room_id!==null?
+   renderRoomApplicantSummary(x.consented_profile as Record<string,unknown>|null):
+   "応募 #"+id;
+  const buttons:any[][]=[];
+  if(["submitted","held"].includes(String(x.status)))
+   buttons.push([
+    Markup.button.callback("✅ 承認",`application:decide:${id}:accepted`),
+    Markup.button.callback("❌ 拒否",`application:decide:${id}:declined`)
+   ]);
+  buttons.push([Markup.button.callback("↩ 応募管理へ戻る","application:manage")]);
+  await ctx.answerCbQuery();
+  await ctx.editMessageText(card+"\n状態："+String(x.status),
+   {parse_mode:x.room_id!==null?"HTML":undefined,...Markup.inlineKeyboard(buttons)});
  });
  bot.command("applications",async ctx=>{
   if(ctx.chat.type!=="private")return;
@@ -233,7 +284,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    const result=await decideApplication(ctx.from.id,Number(row.rows[0].announcement_id),id,decision);
    await ctx.answerCbQuery("更新しました");
    await ctx.editMessageText("✅ 応募ID #"+id+" を "+result.status+" に更新しました。"+
-    (result.filled?" 定員到達につき受付終了。":""));
+    (result.filled?" 定員到達につき受付終了。":""),
+    Markup.inlineKeyboard([[Markup.button.callback("ほかの応募を確認","application:manage")]]));
   }catch{await ctx.answerCbQuery("処理できません。権限・人数・受付状態を確認してください。");}
  });
  bot.command("myapplications",async ctx=>{
