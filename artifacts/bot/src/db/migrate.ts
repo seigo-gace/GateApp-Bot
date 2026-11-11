@@ -329,6 +329,404 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       ALTER TABLE room_posts ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+      CREATE TABLE IF NOT EXISTS room_join_links (
+        room_id BIGINT PRIMARY KEY REFERENCES room_posts(room_id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE CHECK (token ~ '^[A-Za-z0-9_-]{32}
+      CREATE TABLE IF NOT EXISTS room_host_sessions (
+        owner_user_id BIGINT PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
+        expected_revision INTEGER NOT NULL CHECK(expected_revision > 0),
+        requested_action TEXT NOT NULL CHECK(requested_action IN ('schedule','postpone')),
+        expires_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE room_host_sessions ADD COLUMN IF NOT EXISTS screen_message_id INTEGER;
+      CREATE TABLE IF NOT EXISTS room_source_events (
+        event_id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
+        source_revision INTEGER NOT NULL CHECK(source_revision > 0),
+        kind TEXT NOT NULL CHECK(kind IN
+          ('scheduled','prepared','started','postponed','cancelled','finished','visibility_changed')),
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','processing','applied','needs_reconcile')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(room_id,source_revision)
+      );
+      CREATE TABLE IF NOT EXISTS room_participation_reports (
+        report_id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
+        reporter_user_id BIGINT NOT NULL,
+        report_type TEXT NOT NULL CHECK(report_type IN ('join_failed','left')),
+        description TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS announcement_posts (
+        announcement_id BIGSERIAL PRIMARY KEY,
+        request_key TEXT NOT NULL UNIQUE,
+        owner_user_id BIGINT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('announcement','preview','recruitment')),
+        text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft','scheduled','publishing','published','closed','filled',
+                           'cancelled','finished','sync_error','needs_reconcile')),
+        accept_applications BOOLEAN NOT NULL DEFAULT FALSE,
+        profile_snapshot JSONB,
+        conditions JSONB NOT NULL DEFAULT '{}'::jsonb,
+        area_code TEXT,
+        scheduled_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ,
+        expiry_action TEXT NOT NULL DEFAULT 'close'
+          CHECK (expiry_action IN ('close','delete_post')),
+        event_at TIMESTAMPTZ,
+        publish_at TIMESTAMPTZ,
+        deadline_at TIMESTAMPTZ,
+        capacity INTEGER,
+        purpose_codes TEXT[] NOT NULL DEFAULT '{}',
+        place_codes TEXT[] NOT NULL DEFAULT '{}',
+        room_id BIGINT REFERENCES room_posts(room_id),
+        revision INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS announcement_applications (
+        application_id BIGSERIAL PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        applicant_user_id BIGINT NOT NULL,
+        consented_profile JSONB,
+        status TEXT NOT NULL DEFAULT 'submitted'
+          CHECK(status IN ('submitted','held','accepted','declined','withdrawn','expired')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(announcement_id,applicant_user_id)
+      );
+      CREATE TABLE IF NOT EXISTS announcement_room_dispatches (
+        dispatch_id BIGSERIAL PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        room_event_id BIGINT NOT NULL REFERENCES room_source_events(event_id),
+        source_revision INTEGER NOT NULL CHECK(source_revision > 0),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','sending','sent','needs_reconcile','skipped')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(announcement_id,room_event_id)
+      );
+      CREATE TABLE IF NOT EXISTS room_status_message_edits (
+        edit_id BIGSERIAL PRIMARY KEY,
+        room_event_id BIGINT NOT NULL REFERENCES room_source_events(event_id),
+        delivery_id BIGINT NOT NULL REFERENCES posting_deliveries(delivery_id),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','sending','confirmed','needs_reconcile')),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(room_event_id,delivery_id)
+      );
+      CREATE TABLE IF NOT EXISTS announcement_application_entries (
+        token_hash TEXT PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS announcement_application_sessions (
+        applicant_user_id BIGINT PRIMARY KEY,
+        token_hash TEXT NOT NULL REFERENCES announcement_application_entries(token_hash),
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      -- Shared Announcement application sessions also own the ROOM applicant
+      -- editor. Additive columns preserve existing legacy recruitment sessions.
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS draft JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS draft_step TEXT NOT NULL DEFAULT 'awaiting_text';
+      ALTER TABLE announcement_application_sessions
+        ADD COLUMN IF NOT EXISTS screen_message_id BIGINT;
+      CREATE TABLE IF NOT EXISTS announcement_notifications (
+        notification_id BIGSERIAL PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        recipient_user_id BIGINT NOT NULL,
+        event_key TEXT NOT NULL UNIQUE,
+        payload JSONB NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','sending','sent','needs_reconcile','failed')),
+        sent_at TIMESTAMPTZ
+      );
+      ALTER TABLE announcement_posts ADD COLUMN IF NOT EXISTS purpose_codes TEXT[] NOT NULL DEFAULT '{}';
+      ALTER TABLE announcement_posts ADD COLUMN IF NOT EXISTS place_codes TEXT[] NOT NULL DEFAULT '{}';
+
+      CREATE TABLE IF NOT EXISTS profile_drafts (
+        owner_user_id BIGINT PRIMARY KEY,
+        step TEXT NOT NULL,
+        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        revision INTEGER NOT NULL DEFAULT 1,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS owners (
+        owner_user_id BIGINT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'admin',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS targets (
+        target_id SERIAL PRIMARY KEY,
+        owner_user_id BIGINT NOT NULL,
+        target_type TEXT NOT NULL,
+        chat_id BIGINT NOT NULL,
+        title TEXT NOT NULL,
+        gate_code TEXT NOT NULL UNIQUE,
+        log_chat_id BIGINT,
+        log_thread_id BIGINT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS bot_challenges (
+        challenge_id SERIAL PRIMARY KEY,
+        target_id INTEGER NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        difficulty TEXT NOT NULL DEFAULT 'standard',
+        max_fail INTEGER NOT NULL DEFAULT 3,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS questions (
+        question_id SERIAL PRIMARY KEY,
+        target_id INTEGER NOT NULL,
+        order_index INTEGER NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        question_text TEXT NOT NULL DEFAULT '',
+        button1_label TEXT NOT NULL DEFAULT '',
+        button2_label TEXT NOT NULL DEFAULT '',
+        button3_label TEXT NOT NULL DEFAULT '',
+        correct_button INTEGER NOT NULL DEFAULT 1,
+        next_label TEXT NOT NULL DEFAULT '次へ',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(target_id, order_index)
+      );
+
+      CREATE TABLE IF NOT EXISTS rules (
+        rule_id SERIAL PRIMARY KEY,
+        target_id INTEGER NOT NULL UNIQUE,
+        rule_text TEXT NOT NULL DEFAULT '',
+        accept_label TEXT NOT NULL DEFAULT '同意する',
+        reject_label TEXT NOT NULL DEFAULT '同意しない',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS approvals (
+        approval_id SERIAL PRIMARY KEY,
+        target_id INTEGER NOT NULL,
+        tg_user_id BIGINT NOT NULL,
+        username TEXT,
+        display_name TEXT,
+        is_premium BOOLEAN DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        rejected_reason TEXT,
+        approved_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS invite_links (
+        invite_id SERIAL PRIMARY KEY,
+        target_id INTEGER NOT NULL,
+        tg_user_id BIGINT NOT NULL,
+        invite_link TEXT NOT NULL,
+        expire_at TIMESTAMP NOT NULL,
+        used_at TIMESTAMP,
+        revoked_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS blacklist (
+        user_id BIGINT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'blocked',
+        reason TEXT,
+        source TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS log_groups (
+        log_group_id SERIAL PRIMARY KEY,
+        owner_user_id BIGINT NOT NULL,
+        chat_id BIGINT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS log_topics (
+        log_topic_id SERIAL PRIMARY KEY,
+        log_group_id INTEGER NOT NULL,
+        thread_id BIGINT NOT NULL,
+        title TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS gate_sessions (
+        tg_user_id BIGINT PRIMARY KEY,
+        target_id INTEGER NOT NULL,
+        step TEXT NOT NULL DEFAULT 'start',
+        challenge_fails INTEGER NOT NULL DEFAULT 0,
+        challenge_data JSONB,
+        last_message_id INTEGER,
+        last_attempt TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
+      -- @GayBBS_bot approval: extend existing GATE data instead of a parallel DB.
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS document_version TEXT;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS step_token TEXT;
+      ALTER TABLE approvals ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+      ALTER TABLE approvals ADD COLUMN IF NOT EXISTS document_version TEXT;
+      ALTER TABLE invite_links ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS gate_approval_attempt_uidx
+        ON approvals(target_id,tg_user_id,attempt_id) WHERE attempt_id IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS gate_invite_url_uidx
+        ON invite_links(invite_link) WHERE attempt_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS gate_consents (
+        id BIGSERIAL PRIMARY KEY,
+        target_id INTEGER NOT NULL,
+        tg_user_id BIGINT NOT NULL,
+        attempt_id TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK(stage IN ('question1','question2','rules')),
+        document_version TEXT NOT NULL,
+        accepted BOOLEAN NOT NULL,
+        accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(target_id,tg_user_id,attempt_id,stage)
+      );
+      CREATE INDEX IF NOT EXISTS gate_consents_target_user_idx
+        ON gate_consents(target_id,tg_user_id,accepted_at DESC);
+
+      CREATE TABLE IF NOT EXISTS community_link_publications (
+        board_key TEXT PRIMARY KEY CHECK (board_key IN ('areas_bbs','video_chat','gay_board')),
+        chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT,
+        message_id BIGINT,
+        media_file_id TEXT,
+        image_repo_path TEXT NOT NULL,
+        gate_url TEXT NOT NULL,
+        intro_fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'not_verified'
+          CHECK (status IN ('not_verified','published','needs_reconcile')),
+        posted_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS community_link_topic_cards (
+        host_chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT NOT NULL,
+        promoted_board_key TEXT NOT NULL
+          CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board','online_hub')),
+        message_id BIGINT,
+        media_file_id TEXT,
+        image_repo_path TEXT NOT NULL,
+        gate_url TEXT NOT NULL,
+        intro_fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'not_verified'
+          CHECK (status IN ('not_verified','published','needs_reconcile')),
+        posted_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (host_chat_id, message_thread_id, promoted_board_key)
+      );
+
+      CREATE TABLE IF NOT EXISTS area_legacy_reply_keyboard_removals (
+        chat_id BIGINT PRIMARY KEY,
+        message_thread_id BIGINT NOT NULL,
+        message_id BIGINT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS area_command_menu_suppressions (
+        chat_id BIGINT PRIMARY KEY,
+        scopes_cleared TEXT NOT NULL,
+        legacy_bot_id BIGINT NOT NULL,
+        legacy_bot_status TEXT NOT NULL,
+        legacy_bot_removed BOOLEAN NOT NULL DEFAULT FALSE,
+        suppressed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        verified_by BIGINT
+      );
+
+      CREATE TABLE IF NOT EXISTS online_room_board_sets (
+        set_id BIGSERIAL PRIMARY KEY,
+        chat_id BIGINT NOT NULL CHECK(chat_id = -1003847210571),
+        message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
+        revision INTEGER NOT NULL DEFAULT 1,
+        state TEXT NOT NULL DEFAULT 'verified'
+          CHECK(state IN ('verified','publishing','published','needs_reconcile')),
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(chat_id,message_thread_id)
+      );
+      CREATE TABLE IF NOT EXISTS online_room_board_cards (
+        set_id BIGINT NOT NULL REFERENCES online_room_board_sets(set_id),
+        card_key TEXT NOT NULL CHECK(card_key IN ('intro','area_bbs','video_chat','gay_board')),
+        message_id BIGINT NOT NULL CHECK(message_id > 0),
+        published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(set_id,card_key),
+        UNIQUE(set_id,message_id)
+      );
+      CREATE TABLE IF NOT EXISTS online_gate_routes (
+        card_key TEXT PRIMARY KEY CHECK(card_key IN ('area_bbs','video_chat','gay_board','online_hub')),
+        token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
+        start_url TEXT NOT NULL CHECK(start_url LIKE 'https://t.me/%?start=online_%'),
+        chat_id BIGINT NOT NULL,
+        topic_url TEXT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS online_gate_sessions (
+        tg_user_id BIGINT PRIMARY KEY,
+        card_key TEXT NOT NULL REFERENCES online_gate_routes(card_key),
+        target_id INTEGER NOT NULL REFERENCES targets(target_id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS admin_sessions (
+        tg_user_id BIGINT PRIMARY KEY,
+        state TEXT NOT NULL DEFAULT 'top',
+        target_id INTEGER,
+        log_group_id INTEGER,
+        awaiting_input TEXT,
+        temp_data TEXT,
+        last_message_id INTEGER,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
+
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS approval_media_file_id TEXT;
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS approval_media_type TEXT;
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS approval_caption TEXT;
+      ALTER TABLE targets ADD COLUMN IF NOT EXISTS invite_counter INTEGER NOT NULL DEFAULT 0;
+    `);
+  } finally {
+    client.release();
+  }
+}
+),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS room_host_sessions (
         owner_user_id BIGINT PRIMARY KEY,
         room_id BIGINT NOT NULL REFERENCES room_posts(room_id),
