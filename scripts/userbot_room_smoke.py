@@ -83,7 +83,7 @@ async def run():
                       "3行目" not in guide.raw_text and
                       "ニックネーム" not in guide.raw_text)
             payload = TEST_TEXT_LINKED if linked else TEST_TEXT_MANUAL
-            await client.send_message(bot, payload)
+            input_message = await client.send_message(bot, payload)
             for _ in range(12):
                 await asyncio.sleep(1)
                 messages = await client.get_messages(bot, limit=15)
@@ -91,6 +91,10 @@ async def run():
                                 TEST_TITLE in (m.raw_text or "") and m.buttons), None)
                 if preview:
                     print("E2E_ROOM_INPUT_PREVIEW_PASS", flush=True)
+                    remaining = await client.get_messages(bot, ids=input_message.id)
+                    if remaining is not None:
+                        raise RuntimeError("ROOM_WIZARD_INPUT_NOT_DELETED")
+                    print("E2E_ROOM_INPUT_DELETED_PASS", flush=True)
                     break
             else:
                 raise RuntimeError("ROOM_INPUT_PREVIEW_NOT_UPDATED")
@@ -102,7 +106,20 @@ async def run():
                                and ("募集+Room" in (m.raw_text or "") or TEST_TITLE in (m.raw_text or ""))), None)
                 if cancel:
                     await cancel.click(text="キャンセル")
-                    print("E2E_ROOM_CANCEL_REQUESTED", flush=True)
+                    for _ in range(12):
+                        await asyncio.sleep(1)
+                        screens = await client.get_messages(bot, limit=12)
+                        restored = next((m for m in screens if not m.out and
+                                         m.buttons and any(
+                                            b.text == "募集+Room"
+                                            for row in m.buttons for b in row
+                                         ) and "キャンセル" not in
+                                         [b.text for row in m.buttons for b in row]), None)
+                        if restored:
+                            print("E2E_ROOM_CANCEL_MENU_RESTORED_PASS", flush=True)
+                            break
+                    else:
+                        raise RuntimeError("ROOM_CANCEL_MENU_NOT_RESTORED")
 
 
 if __name__ == "__main__":
