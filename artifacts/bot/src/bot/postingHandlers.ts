@@ -20,7 +20,7 @@ import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
-import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom,recoverFullySentRoom} from "../services/roomPublishedEditor.js";
+import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom,recoverFullySentRoom,mayResumeRoomPublication} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
@@ -781,6 +781,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const targets=await verifiedRoomTargets(ctx.from.id);
    const sourceId=await recoverFullySentRoom(ctx.from.id,revision,
     targets.map(t=>t.topicId));
+   if(!sourceId&&await mayResumeRoomPublication(ctx.from.id,revision,
+    targets.map(t=>t.topicId))){
+    // Never repeat an acknowledged or uncertain send. Only missing
+    // destinations are resumed under the same original request key.
+    await publishAccepted(ctx,"room",revision,targets[0]!.topicId);
+    return;
+   }
    await ctx.answerCbQuery();
    if(sourceId){
     await markDraftPublished(ctx.from.id,"room",revision).catch(err=>
@@ -1485,10 +1492,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const current=await getDraft(ctx.from.id,"room").catch(()=>null);
     if(current&&current.step==="preview"&&current.revision===revision){
      if(uncertain){
+      const targets=await verifiedRoomTargets(ctx.from.id).catch(()=>[]);
+      const safe=targets.length>0&&await mayResumeRoomPublication(ctx.from.id,revision,
+       targets.map(t=>t.topicId)).catch(()=>false);
       await showPostScreen(ctx.telegram,ctx.from.id,current,
-       "⚠️ ROOMの送信記録を確認しています。送信済みの投稿は再送しません。",
+       safe?"⚠️ 投稿が完了していません。確認済みの送信は保持し、未送信分だけ再開できます。":
+        "⚠️ ROOMの送信結果に未確認の記録があります。確認済みの投稿は再送しません。",
        Markup.inlineKeyboard([[
-        Markup.button.callback("🔄 投稿状態を確認","room:reconcile:"+revision)
+        Markup.button.callback(safe?"🔄 未送信分を再開":"🔄 投稿状態を確認","room:reconcile:"+revision)
        ]]));
      }else{
       await roomPreviewScreen(ctx.telegram,ctx.from.id,current);
