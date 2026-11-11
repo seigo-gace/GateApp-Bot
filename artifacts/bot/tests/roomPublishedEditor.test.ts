@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {roomPublicationEditor,assertRoomDeletionReceipt,type RoomPublication} from "../src/services/roomPublishedEditor.js";
+import {roomPublicationEditor,assertRoomDeletionReceipt,completeRoomDeliveryReceipts,type RoomPublication} from "../src/services/roomPublishedEditor.js";
 
 const room=(status:string):RoomPublication=>({
  announcementId:57,roomId:31,roomRevision:4,groupTitle:"エリア’s BBS",
@@ -55,4 +55,22 @@ test("deletion refuses cross-community, invalid topic or fake message receipts",
   {...valid,board_key:"unregistered"},
  ])
   assert.throws(()=>assertRoomDeletionReceipt(invalid),/ROOM_DELETE_TOPIC_STALE/);
+});
+
+test("two confirmed receipts restore the existing ROOM DM editor without retransmission",()=>{
+ const expected=[101,202];
+ assert.equal(completeRoomDeliveryReceipts(expected,[
+  {posting_topic_id:101,status:"sent",telegram_message_id:700},
+  {posting_topic_id:202,status:"sent",telegram_message_id:701}
+ ]),true);
+});
+test("uncertain, incomplete and duplicate crossposts must never be auto-confirmed",()=>{
+ const valid={posting_topic_id:101,status:"sent",telegram_message_id:700};
+ for(const receipts of [
+  [valid],
+  [valid,{posting_topic_id:202,status:"needs_reconcile",telegram_message_id:null}],
+  [valid,{posting_topic_id:101,status:"sent",telegram_message_id:701}],
+  [valid,{posting_topic_id:999,status:"sent",telegram_message_id:701}],
+  [valid,{posting_topic_id:202,status:"sent",telegram_message_id:null}],
+ ]) assert.equal(completeRoomDeliveryReceipts([101,202],receipts),false);
 });
