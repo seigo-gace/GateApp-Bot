@@ -308,6 +308,15 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
   "\n\nRoom方式："+(d.data.externalUrl?"持ち込み":"Room作成"),
   roomStageKeyboard(d),true);
 }
+/** A historical ROOM draft can carry the explicit-choice flag without the
+ * selected Topic ID. Treat only a complete, verified ID as an explicit
+ * destination; the incomplete flag must not bypass origin authorization.
+ */
+export function hasExplicitRoomTopicChoice(data:Record<string,unknown>|null|undefined):boolean{
+ return data?.destinationExplicit===true&&
+  typeof data.selectedTopicId==="number"&&
+  Number.isSafeInteger(data.selectedTopicId)&&data.selectedTopicId>0;
+}
 /** Use the authenticated Topic-origin contract shared with 相手募集.
  * Only an unavailable/unverified ROOM destination opens the fallback picker.
  */
@@ -323,7 +332,7 @@ async function verifiedRoomTargets(userId:number){
  // Same verified posting destinations as 相手募集. Explicit choice is saved
  // on the existing ROOM draft; no separate ROOM destination registry.
  let origin:{chatId:number;threadId:number}|null=null;
- if(draft?.data.destinationExplicit===true){
+ if(hasExplicitRoomTopicChoice(draft?.data)){
   const chosen=recruitment.find(t=>t.id===Number(draft.data.selectedTopicId));
   if(!chosen)throw Error("ROOM_ORIGIN_NOT_VERIFIED");
   origin={chatId:chosen.chatId,threadId:chosen.threadId};
@@ -342,7 +351,7 @@ async function verifyRoomPublicationPreflight(
  const origin=targets[0];
  if(!origin)throw Error("ROOM_ORIGIN_NOT_VERIFIED");
  const draft=await getDraft(userId,"room");
- if(draft?.data.destinationExplicit!==true)
+ if(!hasExplicitRoomTopicChoice(draft?.data))
   await assertTopicDmEntryDestination(userId,origin.chatId,origin.threadId);
  const me=await telegram.getMe();
  for(const target of targets){
@@ -801,8 +810,20 @@ export function registerPostingHandlers(bot:Telegraf):void{
      Markup.button.callback("🔄 投稿状態を確認","room:reconcile:"+revision)
     ]]));
   }catch(err){
-   console.error("[ROOM_RECONCILE_FAILED]",
-    err instanceof Error?err.message:"unknown");
+   const reason=err instanceof Error?err.message:"unknown";
+   console.error("[ROOM_RECONCILE_FAILED]",reason);
+   if(["ROOM_ORIGIN_NOT_VERIFIED","ROOM_ORIGIN_AMBIGUOUS_OR_NOT_VERIFIED",
+       "ROOM_ONLINE_DESTINATION_NOT_VERIFIED","TOPIC_NOT_VERIFIED"].includes(reason)){
+    // Keep the original draft and request revision. Reuse the already adopted
+    // recruitment destination picker; never guess a public Topic or create a
+    // second ROOM just because a legacy destination selection is incomplete.
+    await ctx.answerCbQuery().catch(()=>undefined);
+    const current=await getDraft(ctx.from.id,"room");
+    if(current?.revision===revision)
+     await showRecruitmentDestinationStep(ctx.telegram,ctx.from.id,current,
+      "groups",undefined,0,0,"room");
+    return;
+   }
    await ctx.answerCbQuery("投稿記録を確認できませんでした").catch(()=>undefined);
   }
  });
@@ -1304,7 +1325,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const destination=await getVerifiedTopic(topicId,
     roomTargets?roomTargets[0]!.purpose:module as PostPurpose);
    const roomDraft=module==="room"?await getDraft(ctx.from.id,"room"):null;
-   if(module==="room"&&roomDraft?.data.destinationExplicit===true){
+   if(module==="room"&&hasExplicitRoomTopicChoice(roomDraft?.data)){
     if(roomDraft.step!=="preview"||roomDraft.revision!==revision||
        Number(roomDraft.data.selectedTopicId)!==topicId)
      throw Error("ROOM_EXPLICIT_DESTINATION_STALE");
