@@ -30,6 +30,7 @@ async function main(){
  const expected=intendedAreaDestinations();
  if(!process.env.DATABASE_URL)throw Error("DATABASE_URL_REQUIRED");
  const apply=process.env.AREA_ENTRY_REPAIR_APPLY==="enabled";
+ const recoverOnly=process.env.AREA_ENTRY_RECOVER_KNOWN_ONLY==="enabled";
  if(apply&&process.env.GAYBBS_PUBLIC_MENU_RELEASE!=="enabled")
   throw Error("PUBLIC_MENUS_NOT_RELEASED");
  const limit=Number(process.env.AREA_ENTRY_REPAIR_LIMIT??"5");
@@ -76,6 +77,7 @@ async function main(){
   }
   if(valid&&published)continue;
   counters.missing++;
+  if(recoverOnly&&!recoverKnown)continue;
   if(!apply||remaining<=0)continue;
   remaining--;
   try{
