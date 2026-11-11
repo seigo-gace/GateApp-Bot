@@ -20,7 +20,7 @@ import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
-import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom,recoverFullySentRoom,mayResumeRoomPublication} from "../services/roomPublishedEditor.js";
+import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom,recoverFullySentRoom,mayResumeRoomPublication,ensureImmediatePublishedRoomLive} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
@@ -64,7 +64,7 @@ function preview(module:Module,draft:EditorDraft):string {
    externalUrl,status:"draft"});
   const when=draft.data.startAt?new Date(String(draft.data.startAt)):null;
   const stage=String(draft.data.stage||"");
-  const state=stage==="scheduled_ready"||when?"📅 予告中":"🟡 開始待ち";
+  const state=stage==="immediate_ready"?"🔴 LIVE中":stage==="scheduled_ready"||when?"📅 予告中":"🟡 開始待ち";
   return ["🎬 ROOM："+escapeProfileHtml(title),
     escapeProfileHtml(description),
     "方式："+(externalUrl?"URL持込":"無料Jitsi"),
@@ -799,6 +799,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    await ctx.answerCbQuery();
    if(sourceId){
+    if(d.data.stage==="immediate_ready")
+     await ensureImmediatePublishedRoomLive(ctx.from.id,sourceId);
     await markDraftPublished(ctx.from.id,"room",revision).catch(err=>
      console.error("[ROOM_DRAFT_CLEANUP_FAILED]",
       err instanceof Error?err.message:"unknown"));
@@ -1456,7 +1458,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
        "SELECT status,revision FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
        [roomId,ctx.from.id]);
       if(room.rows.length!==1)throw new Error("ROOM_SOURCE_NOT_OWNED");
-      // Never auto-start ROOM at publication. Owner's Start is explicit.
+      // Explicit "即開始" selection starts the existing ROOM only after
+      // both Telegram destinations acknowledge sends.
+      if(!isScheduledRoom)await ensureImmediatePublishedRoomLive(ctx.from.id,Number(sourceId));
       // Close this temporary editor: the published ROOM has its own durable
       // source and delivery receipts; a new ROOM must get a fresh request key.
       await markDraftPublished(ctx.from.id,"room",revision);
@@ -1490,6 +1494,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
       targets.map(t=>t.topicId));
      if(completed){
       const draft=await getDraft(ctx.from.id,"room");
+      if(draft?.data.stage==="immediate_ready")
+       await ensureImmediatePublishedRoomLive(ctx.from.id,completed);
       if(draft?.revision===revision&&draft.step==="preview")
        await markDraftPublished(ctx.from.id,"room",revision).catch(err=>
         console.error("[ROOM_DRAFT_CLEANUP_FAILED]",
