@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {roomStageKeyboard} from "../src/bot/postingHandlers.js";
+import {roomStageKeyboard,hasExplicitRoomTopicChoice} from "../src/bot/postingHandlers.js";
 import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
 import type {EditorDraft} from "../src/services/publicPostRepository.js";
 
@@ -103,4 +103,15 @@ test("ROOM UI uses semantic Telegram styles on actual InlineKeyboard buttons",()
  assert.equal(choices[0]?.[1]?.style,"primary");
  const schedule=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"scheduled_ready"})).reply_markup.inline_keyboard;
  assert.equal(schedule[0]?.[0]?.style,"success");
+});
+
+
+test("ROOM legacy explicit choice without a saved Topic ID must revalidate the authenticated origin",()=>{
+ assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true}),false);
+ assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true,selectedTopicId:null}),false);
+ assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true,selectedTopicId:0}),false);
+ assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true,selectedTopicId:120.5}),false);
+ assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true,selectedTopicId:"120"}),false);
+ assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true,selectedTopicId:120}),true);
+ assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:false,selectedTopicId:120}),false);
 });
