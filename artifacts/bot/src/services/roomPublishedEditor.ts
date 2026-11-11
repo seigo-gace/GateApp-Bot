@@ -111,6 +111,41 @@ export async function recoverFullySentRoom(owner:number,revision:number,
  }
  return id;
 }
+/** "即開始" becomes LIVE only after all destination MPB receipts are confirmed
+ * and the linked announcement is published. Reconcile reuses this transition;
+ * it never creates another ROOM or sends another Telegram message.
+ */
+export async function ensureImmediatePublishedRoomLive(
+ owner:number,announcementId:number,
+):Promise<void>{
+ if(![owner,announcementId].every(n=>Number.isSafeInteger(n)&&n>0))
+  throw Error("ROOM_IMMEDIATE_START_OWNER_INVALID");
+ const rows=await pool.query(
+  `SELECT r.room_id,r.status,r.revision
+    FROM announcement_posts a JOIN room_posts r
+      ON r.room_id=a.room_id AND r.owner_user_id=a.owner_user_id
+    WHERE a.owner_user_id=$1 AND a.announcement_id=$2
+      AND a.status='published' AND r.start_at IS NULL
+      AND r.join_visibility='public'`,
+  [owner,announcementId]);
+ if(rows.rows.length!==1)throw Error("ROOM_IMMEDIATE_START_SOURCE_UNVERIFIED");
+ const room=rows.rows[0];
+ if(room.status==="live")return;
+ if(room.status!=="draft")throw Error("ROOM_IMMEDIATE_START_STATE_INVALID");
+ try{
+  await updateRoomState(owner,Number(room.room_id),Number(room.revision),"start");
+ }catch(error){
+  // Two legitimate recovery callbacks may race. An already committed LIVE
+  // result is success; all other concurrent changes remain fail-closed.
+  if(error instanceof Error&&error.message==="ROOM_REVISION_STALE"){
+   const current=await pool.query(
+    "SELECT status FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
+    [Number(room.room_id),owner]);
+   if(current.rows.length===1&&current.rows[0].status==="live")return;
+  }
+  throw error;
+ }
+}
 export async function loadRoomPublication(owner:number,announcementId:number):Promise<RoomPublication>{
  if(![owner,announcementId].every(n=>Number.isSafeInteger(n)&&n>0))
   throw Error("ROOM_PUBLICATION_OWNER_INVALID");
