@@ -559,6 +559,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
     validateRecruitmentIdentityReady(roomRecruitmentData(d),
      d.data.recruitmentMode==="linked"?await getProfile(ctx.from.id):null);
     if(choice==="scheduled"){
+     // A scheduled editor must not consume a revision when no verified
+     // destination or Telegram posting rights exist.
+     const targets=await verifiedRoomTargets(ctx.from.id);
+     await verifyRoomPublicationPreflight(ctx.telegram,ctx.from.id,targets,
+      d.data.profileLinked===true);
      const next=await updateDraft(ctx.from.id,"room",rev,"preview",
       {...d.data,startAt:null,stage:"join_choice"});
      await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
