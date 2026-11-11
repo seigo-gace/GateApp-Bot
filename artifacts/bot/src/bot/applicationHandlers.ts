@@ -14,6 +14,7 @@ import {recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
+import {applicantDmLink} from "../services/telegramUsernameLink.js";
 
 /** Existing plain-recruitment links keep direct owner contact.
  * Only a linked ROOM post uses the application/approval flow.
@@ -265,14 +266,22 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const id=Number(ctx.match[1]);const decision=ctx.match[2] as "accepted"|"held"|"declined";
   const row=await pool.query(
-   "SELECT announcement_id FROM announcement_applications WHERE application_id=$1",[id]);
+   "SELECT announcement_id,applicant_user_id FROM announcement_applications WHERE application_id=$1",[id]);
   if(row.rows.length!==1){await ctx.answerCbQuery("応募が見つかりません。");return;}
   try{
    const result=await decideApplication(ctx.from.id,Number(row.rows[0].announcement_id),id,decision);
    await ctx.answerCbQuery("更新しました");
-   await ctx.editMessageText("✅ 応募ID #"+id+" を "+result.status+" に更新しました。"+
-    (result.filled?" 定員到達につき受付終了。":""),
-    Markup.inlineKeyboard([[Markup.button.callback("ほかの応募を確認","application:manage")]]));
+   let username:unknown;
+   const applicantId=Number(row.rows[0].applicant_user_id);
+   try{
+    const chat=await ctx.telegram.getChat(applicantId);
+    username="username" in chat?chat.username:undefined;
+   }catch{/* A valid applicant ID can still be used as a Telegram deep link. */}
+   await ctx.editMessageText("✅ 応募を"+(decision==="accepted"?"承諾":"拒否")+"しました。"+
+    (result.filled?" 受付状態が更新されました。":""),
+    Markup.inlineKeyboard([[
+     Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))
+    ]]));
   }catch{await ctx.answerCbQuery("処理できません。権限・人数・受付状態を確認してください。");}
  });
  bot.command("myapplications",async ctx=>{
