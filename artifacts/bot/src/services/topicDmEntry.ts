@@ -123,6 +123,57 @@ export async function assertTopicDmEntryDestination(
   throw Error("TOPIC_ENTRY_DESTINATION_MISMATCH");
 }
 
+/** Reconcile only an already-known Telegram message, never create another
+ * group message when the first send may have succeeded. */
+export function canReuseUncertainEntry(state:string,messageId:unknown):boolean{
+ const id=Number(messageId);
+ return (state==="needs_reconcile"||state==="publishing") &&
+   Number.isSafeInteger(id)&&id>0;
+}
+
+/** Restore an existing shared DM doorway by editing its original message ID.
+ * We never publish a second message for an uncertain prior send. */
+export async function recoverExistingTopicDmEntry(
+ telegram:Telegram,chatId:number,threadId:number,adminId:number,
+):Promise<{messageId:number;updatedExisting:true}>{
+ if(process.env.GAYBBS_PUBLIC_MENU_RELEASE!=="enabled")
+  throw Error("PUBLIC_MENUS_NOT_RELEASED");
+ if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
+  throw Error("TOPIC_ENTRY_TARGET_INVALID");
+ const operator=await telegram.getChatMember(chatId,adminId);
+ if(operator.status!=="administrator"&&operator.status!=="creator")
+  throw Error("TOPIC_ENTRY_ADMIN_REQUIRED");
+ const botInfo=await telegram.getMe();
+ const botMember=await telegram.getChatMember(chatId,botInfo.id);
+ if(botMember.status!=="creator"&&
+   (botMember.status!=="administrator"||!botMember.can_pin_messages))
+  throw Error("TOPIC_ENTRY_BOT_PIN_PERMISSION_REQUIRED");
+ const existing=await pool.query(
+  `SELECT state,pinned,message_id,title FROM topic_dm_entry_pins
+   WHERE chat_id=$1 AND message_thread_id=$2`,[chatId,threadId]);
+ if(existing.rows.length!==1)throw Error("TOPIC_ENTRY_RECONCILE_NOT_FOUND");
+ const row=existing.rows[0];
+ if(!canReuseUncertainEntry(String(row.state),row.message_id))
+  throw Error("TOPIC_ENTRY_RECONCILE_NO_KNOWN_MESSAGE");
+ const messageId=Number(row.message_id);
+ const token=newMenuToken(),hash=tokenHash(token);
+ const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ // Telegram's successful edit proves this exact message exists and is
+ // writable by the Bot. Retain it rather than posting a duplicate.
+ await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
+  reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl}]]},
+ });
+ await telegram.pinChatMessage(chatId,messageId,{disable_notification:true});
+ const saved=await pool.query(
+  `UPDATE topic_dm_entry_pins SET token_hash=$4,state='published',
+     pinned=TRUE,updated_at=NOW()
+   WHERE chat_id=$1 AND message_thread_id=$2 AND message_id=$3
+     AND state IN ('needs_reconcile','publishing')
+   RETURNING message_id`,[chatId,threadId,messageId,hash]);
+ if(saved.rows.length!==1)throw Error("TOPIC_ENTRY_RECONCILE_CONCURRENT_CHANGE");
+ return {messageId,updatedExisting:true};
+}
+
 /** Uses the existing pinned message ID on reruns. Any ambiguous Telegram result
  * is recorded needs_reconcile: never automatically send a duplicate.
  */
