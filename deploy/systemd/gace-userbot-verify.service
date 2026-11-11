@@ -8,6 +8,7 @@ Type=simple
 WorkingDirectory=/home/gace/Project/Gserver/projects/TGtumbler/GateApp-Bot
 ExecStart=/home/gace/Project/Gserver/projects/TGtumbler/GateApp-Bot/deploy/.userbot-venv/bin/python -u /home/gace/Project/Gserver/projects/TGtumbler/GateApp-Bot/scripts/userbot_keepalive.py
 Restart=on-failure
+RestartPreventExitStatus=42
 RestartSec=15s
 UMask=0077
 NoNewPrivileges=true
