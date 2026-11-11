@@ -47,7 +47,7 @@ export function assertHttpsMeetingUrl(value:string):string {
  * real-browser check. Existing persisted room URLs are never rewritten.
  */
 export function createJitsiJoinUrl(baseUrl=process.env.JITSI_MEET_BASE_URL):string {
- const raw=(baseUrl||"https://meet.jit.si").trim();
+ const raw=(baseUrl||"https://meet.ffmuc.net").trim();
  const parsed=new URL(assertHttpsMeetingUrl(raw));
  if(parsed.search||parsed.hash||parsed.username||parsed.password)
   throw new Error("ROOM_JITSI_BASE_INVALID");
