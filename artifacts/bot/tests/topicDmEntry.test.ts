@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseTopicEntryPayload,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic} from "../src/services/topicDmEntry.js";
+import {parseTopicEntryPayload,canReuseUncertainEntry,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic} from "../src/services/topicDmEntry.js";
 import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 
 test("a forum topic has one DM doorway, not a group-side editor keyboard",()=>{
@@ -62,4 +62,15 @@ test("相手募集 and 募集+Room resolve exactly the authenticated Topic, neve
  assert.equal(verifiedOriginTopic(topics,{chatId:b.chatId,threadId:b.threadId})?.id,4);
  assert.equal(verifiedOriginTopic(topics,{chatId:a.chatId,threadId:555}),null);
  assert.equal(verifiedOriginTopic(topics,null),null);
+});
+
+test("uncertain entry can be repaired only when original Telegram message ID exists",()=>{
+ assert.equal(canReuseUncertainEntry("needs_reconcile",1407),true);
+ assert.equal(canReuseUncertainEntry("publishing","1407"),true);
+ for(const state of ["verified","published","deleted"]){
+  assert.equal(canReuseUncertainEntry(state,1407),false);
+ }
+ for(const id of [null,undefined,0,-1,"abc",1.2]){
+  assert.equal(canReuseUncertainEntry("needs_reconcile",id),false);
+ }
 });
