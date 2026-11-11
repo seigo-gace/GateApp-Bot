@@ -29,6 +29,38 @@ function actions(roomId:number,revision:number,status:string,visibility?:string)
  return Markup.inlineKeyboard(rows);
 }
 export function registerRoomHandlers(bot:Telegraf):void{
+ bot.action("room:manage",async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rooms=await pool.query(
+   `SELECT room_id,title,status FROM room_posts
+     WHERE owner_user_id=$1 ORDER BY updated_at DESC LIMIT 10`,[ctx.from.id]);
+  await ctx.answerCbQuery();
+  if(!rooms.rows.length){
+   await ctx.editMessageText("管理できるROOMはありません。");
+   return;
+  }
+  await ctx.editMessageText("🎬 ROOM管理\n操作するROOMを選択してください。",
+   Markup.inlineKeyboard(rooms.rows.map(x=>[
+    Markup.button.callback(String(x.title)+" / "+String(x.status),
+     `room:manage:view:${Number(x.room_id)}`)
+   ])));
+ });
+ bot.action(/^room:manage:view:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const id=Number(ctx.match[1]);
+  const room=await pool.query(
+   `SELECT title,status,revision,join_visibility FROM room_posts
+      WHERE room_id=$1 AND owner_user_id=$2`,[id,ctx.from.id]);
+  if(room.rows.length!==1){await ctx.answerCbQuery("ROOMが見つかりません");return;}
+  const x=room.rows[0];
+  await ctx.answerCbQuery();
+  const base=actions(id,Number(x.revision),String(x.status),x.join_visibility);
+  await ctx.editMessageText("🎬 "+String(x.title)+"\n状態："+String(x.status),
+   Markup.inlineKeyboard([
+    ...base.reply_markup.inline_keyboard,
+    [Markup.button.callback("↩ ROOM管理へ戻る","room:manage")]
+   ]));
+ });
  bot.command("joinrooms",async ctx=>{
   if(ctx.chat.type!=="private")return;
   const rooms=await listAuthorizedRooms(ctx.from.id);
@@ -110,8 +142,11 @@ export function registerRoomHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("操作を保存しました");
    await ctx.editMessageText("🎬 ROOM #"+roomId+" / 状態："+res.state+
     "\n関連する告知への通知は永続イベントに登録しました。",
-    actions(roomId,res.revision,res.state));
-  }catch{await ctx.answerCbQuery("状態が変わったか権限がありません。/myrooms で確認してください。");}
+    Markup.inlineKeyboard([
+     ...actions(roomId,res.revision,res.state).reply_markup.inline_keyboard,
+     [Markup.button.callback("↩ ROOM管理へ戻る","room:manage")]
+    ]));
+  }catch{await ctx.answerCbQuery("状態が変わったか権限がありません。ROOM管理で確認してください。");}
  });
  bot.action("room:host:cancel",async ctx=>{
   if(ctx.chat?.type!=="private")return;
@@ -121,7 +156,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("日時入力をキャンセルしました");
   const roomId=Number(q.rows[0]?.room_id);
   if(!roomId){
-   await ctx.editMessageText("古い操作です。/myrooms から開き直してください。");
+   await ctx.editMessageText("古い操作です。ROOM管理から開き直してください。");
    return;
   }
   const room=await pool.query(
@@ -129,7 +164,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
    [ctx.from.id,roomId]);
   const current=room.rows[0];
   if(!current){
-   await ctx.editMessageText("ROOMを確認できません。/myrooms から開き直してください。");
+   await ctx.editMessageText("ROOMを確認できません。ROOM管理から開き直してください。");
    return;
   }
   await ctx.editMessageText("🎬 ROOM #"+roomId+" / 状態："+String(current.status),
@@ -155,7 +190,7 @@ export function registerRoomHandlers(bot:Telegraf):void{
    await showWizardScreen(ctx.telegram,ctx.chat.id,
     Number(data.screen_message_id)||undefined,
     "✅ 開催日時を保存しました。ROOM #"+data.room_id+
-    "\n状態："+outcome.state+"\n/myrooms から確認できます。"+warning);
+    "\n状態："+outcome.state+"\nROOM管理ボタンから確認できます。"+warning);
   }catch(e){
    await showWizardScreen(ctx.telegram,ctx.chat.id,
     Number(data.screen_message_id)||undefined,
