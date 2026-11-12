@@ -3,7 +3,7 @@
  * All notifications are queued in the same DB transaction, NOT sent inside it.
  */
 import {pool} from "../db/index.js";
-import {renderRecruitmentPreview,type RecruitmentInput} from "./recruitmentCompose.js";
+import {type RecruitmentInput} from "./recruitmentCompose.js";
 import type {ProfileBasicDraft} from "./profileCore.js";
 import {renderRoomApplicationPreview} from "./roomApplicationTags.js";
 import {validLikeTags} from "./profileLike.js";
