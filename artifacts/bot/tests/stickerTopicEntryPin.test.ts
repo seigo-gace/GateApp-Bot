@@ -179,8 +179,8 @@ test("wrong public bot username is rejected before any GroupBot or DB mutation",
   getVerifiedStickerTopic:async()=>({...topic}),
   creatorBotUsername:"fake_creator_bot",
   postingBotApi:async()=>{calls++;throw Error("UNEXPECTED_MUTATION");},
-  store:{claim:async()=>{calls++;throw Error("UNEXPECTED_DB");}}
-    as unknown as ReturnType<typeof createStickerEntryPinStore>
+  store:({claim:async()=>{calls++;throw Error("UNEXPECTED_DB");}}
+    as unknown as ReturnType<typeof createStickerEntryPinStore>)
  });
  await assert.rejects(run(),/STICKER_PIN_TARGET_USERNAME_UNAPPROVED/);
  assert.equal(calls,0);
