@@ -49,6 +49,10 @@ services:
       GAYBBS_PUBLIC_MENU_RELEASE: enabled
       GAYBBS_TOPIC_BOARD_RELEASE: enabled
       GAYBBS_NOTIFICATION_DELIVERY_ENABLED: enabled
+      # Both Room and Announcement release rows have verified evidence.
+      # Enable the existing FIFO projector and in-place public card updater.
+      GAYBBS_ROOM_EVENT_WORKER_ENABLED: enabled
+      GAYBBS_ROOM_STATUS_EDIT_ENABLED: enabled
       MENU_PUBLISH_ADMIN_ID: "7880448530"
     secrets:
       - bot_token
