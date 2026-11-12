@@ -12,7 +12,7 @@
 import "dotenv/config";
 import {readConfiguredBotToken} from "../src/config/botToken.js";
 import {createStickerTopicOwnerPort} from "../src/services/stickerTopicOwnerPort.js";
-import {closePool} from "../src/db/index.js";
+import {pool,closePool} from "../src/db/index.js";
 
 const api=(token:string)=>async(method:string,params:Record<string,unknown>):Promise<unknown>=>{
  const result=await fetch("https://api.telegram.org/bot"+token+"/"+method,{
@@ -24,9 +24,45 @@ const api=(token:string)=>async(method:string,params:Record<string,unknown>):Pro
    throw new Error("STICKER_PIN_TELEGRAM_"+method+"_FAILED");
  return json.result;
 };
+async function inspectReadOnly():Promise<void>{
+ const q=await pool.query(
+  "SELECT to_regclass('public.posting_topics') IS NOT NULL AS topics,"+
+  " to_regclass('public.posting_sticker_entry_pins') IS NOT NULL AS pins"
+ );
+ const topics=q.rows[0]?.topics===true;
+ const pins=q.rows[0]?.pins===true;
+ console.log("STICKER_PIN_DB_TOPIC_TABLE="+(topics?"PRESENT":"MISSING"));
+ console.log("STICKER_PIN_DB_RECEIPT_TABLE="+(pins?"PRESENT":"MISSING"));
+ if(!topics)return;
+ const t=await pool.query(
+  "SELECT COUNT(*)::integer AS total,"+
+  " COUNT(*) FILTER (WHERE purpose='sticker')::integer AS sticker_purpose,"+
+  " COUNT(*) FILTER (WHERE purpose='sticker' AND verified_at IS NOT NULL"+
+  " AND verified_by IS NOT NULL)::integer AS verified"+
+  " FROM posting_topics WHERE board_key='video_chat' AND enabled=TRUE"+
+  " AND title=$1 AND chat_id=$2",
+  ["ステッカーの公開と販売",-1002373696859]
+ );
+ const row=t.rows[0];
+ console.log("STICKER_PIN_TOPIC_MATCHES="+Number(row?.total??0));
+ console.log("STICKER_PIN_TOPIC_STICKER_PURPOSE="+Number(row?.sticker_purpose??0));
+ console.log("STICKER_PIN_TOPIC_VERIFIED="+Number(row?.verified??0));
+ if(pins){
+  const p=await pool.query(
+   "SELECT status,COUNT(*)::integer AS total FROM posting_sticker_entry_pins"+
+   " WHERE topic_id IN (SELECT topic_id FROM posting_topics WHERE"+
+   " board_key='video_chat' AND title=$1 AND chat_id=$2) GROUP BY status",
+   ["ステッカーの公開と販売",-1002373696859]
+  );
+  for(const receipt of p.rows)
+   if(["sending","sent","pin_requested","pinned_ack","needs_reconcile"].includes(receipt.status))
+    console.log("STICKER_PIN_RECEIPT_"+receipt.status.toUpperCase()+"="+Number(receipt.total));
+ }
+}
 async function main():Promise<void>{
  if(typeof process.env.DATABASE_URL!=="string"||!process.env.DATABASE_URL)
    throw Error("STICKER_PIN_DATABASE_NOT_CONFIGURED");
+ if(process.env.STICKER_PIN_MODE==="inspect")return inspectReadOnly();
  const postingBotApi=api(readConfiguredBotToken());
  const owner=await postingBotApi("getMe",{}) as {id?:number;username?:string;is_bot?:boolean};
  if(owner.is_bot!==true||owner.username?.toLowerCase()!=="gaybbs_bot"||
@@ -48,6 +84,13 @@ catch(e){
  const msg=e instanceof Error?e.message:"UNKNOWN";
  console.error("STICKER_PIN_RESULT=FAIL");
  console.error("STICKER_PIN_ERROR="+
-  (/^(STICKER_|TOPIC_)/.test(msg)?msg:"UNCLASSIFIED_FAILURE"));
+  (/^(STICKER_|TOPIC_)/.test(msg)?msg:
+   /relation .*posting_sticker_entry_pins.* does not exist/.test(msg)?"STICKER_PIN_RECEIPT_SCHEMA_MISSING":
+   /relation .*posting_topics.* does not exist/.test(msg)?"STICKER_PIN_TOPIC_SCHEMA_MISSING":
+   /column .* does not exist/.test(msg)?"STICKER_PIN_DB_SCHEMA_STALE":
+   /BOT_TOKEN/.test(msg)?"STICKER_PIN_GROUP_TOKEN_READER_ERROR":
+   /authentication failed/.test(msg)?"STICKER_PIN_DATABASE_AUTH_FAILED":
+   /ENOTFOUND|ECONNREFUSED/.test(msg)?"STICKER_PIN_DATABASE_NETWORK_FAILED":
+   "UNCLASSIFIED_FAILURE"));
  process.exitCode=1;
 }finally{await closePool();}
