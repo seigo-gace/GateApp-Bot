@@ -179,6 +179,35 @@ export const tagPurposeDescription=(purpose:ProfileTagPurpose)=>purpose==="like"
  ? "自分についての特徴・好み・趣味・スタイルを選択してください。"
  : "相手に求める特徴・好み・趣味・スタイルを選択してください。";
 export const LIKE_PAGE_SIZE=12;
+
+/** Pages are at most 12 items, but never leave a one-item final page
+ * when two items can be moved from the penultimate page instead.
+ * Shared by profile and ROOM application tag selectors.
+ */
+export function likePageBounds(category:number,page:number):{start:number;end:number;total:number}{
+ const c=LIKE_CATEGORIES[category];
+ if(!c)throw Error("PROFILE_LIKE_INVALID");
+ const count=c.items.length,total=Math.ceil(count/LIKE_PAGE_SIZE);
+ if(!Number.isInteger(page)||page<0||page>=total)throw Error("PROFILE_LIKE_PAGE_INVALID");
+ if(count>LIKE_PAGE_SIZE&&count%LIKE_PAGE_SIZE===1&&page>=total-2){
+  const start=(total-2)*LIKE_PAGE_SIZE;
+  return page===total-2?{start,end:start+11,total}:
+   {start:start+11,end:count,total};
+ }
+ const start=page*LIKE_PAGE_SIZE;
+ return {start,end:Math.min(start+LIKE_PAGE_SIZE,count),total};
+}
+export function likePageIndex(category:number,index:number):number{
+ const c=LIKE_CATEGORIES[category];
+ if(!c||!Number.isInteger(index)||index<0||index>=c.items.length)
+  throw Error("PROFILE_LIKE_INVALID");
+ for(let p=0;p<Math.ceil(c.items.length/LIKE_PAGE_SIZE);p++){
+  const b=likePageBounds(category,p);
+  if(index>=b.start&&index<b.end)return p;
+ }
+ throw Error("PROFILE_LIKE_PAGE_INVALID");
+}
+
 export function validLikeTags(tags:readonly LikeTag[]):LikeTag[]{
  if(!Array.isArray(tags))throw Error("PROFILE_LIKE_INVALID");
  const keys=new Set<string>();
@@ -212,10 +241,10 @@ export function likeCategoryRows(revision:number,tags:readonly LikeTag[],purpose
 }
 export function likeItemRows(revision:number,category:number,page:number,tags:readonly LikeTag[],purpose:ProfileTagPurpose="like"){
  const c=LIKE_CATEGORIES[category];
- if(!c||!Number.isInteger(page)||page<0||page>=Math.ceil(c.items.length/LIKE_PAGE_SIZE))
-  throw Error("PROFILE_LIKE_PAGE_INVALID");
+ if(!c)throw Error("PROFILE_LIKE_PAGE_INVALID");
+ const bounds=likePageBounds(category,page);
  const selected=validLikeTags(tags).filter(t=>t.category===c.name).map(t=>t.tag);
- const start=page*LIKE_PAGE_SIZE,values=c.items.slice(start,start+LIKE_PAGE_SIZE);
+ const start=bounds.start,values=c.items.slice(bounds.start,bounds.end);
  const chunks: string[][]=[];
  for(let i=0;i<values.length;i+=3)chunks.push([...values.slice(i,i+3)]);
  const rows=selectionRows(chunks,selected,
