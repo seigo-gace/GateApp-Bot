@@ -23,8 +23,8 @@ test("ROOM applicant shares profile Like/Love categories and keeps separate togg
 
 test("tag keyboards reuse original category, pagination, clear and back layout",()=>{
  const cat=applicationTagRows("like",123,{},undefined);
- assert.equal(cat[0]!.length,3);
- assert.equal(cat[1]!.length,3);
+ assert.equal(cat[0]!.length,4);
+ assert.equal(cat[1]!.length,2);
  assert.equal(cat[0]![0]!.text,LIKE_CATEGORIES[0]!.name);
  assert.equal(cat[0]![0]!.callback_data,"application:tag:like:123:open:0");
  const item=applicationTagRows("love",123,{},2);
@@ -50,9 +50,12 @@ test("4/3/2 adaptive choice rows, no arbitrary singleton and labels are preserve
   assert(rows.every(row=>row.length>=2&&row.length<=4),"size="+size);
   assert.deepEqual(rows.flat(),items);
  }
- const long=Array.from({length:6},(_,i)=>({text:"長めの候補テキスト"+i}));
- const rows=roomChoiceRows(long);
- assert.deepEqual(rows.map(r=>r.length),[2,2,2]);
+ for(const size of [3,5,7,9]){
+  const long=Array.from({length:size},(_,i)=>({text:"長めの候補テキスト"+i}));
+  const rows=roomChoiceRows(long);
+  assert.deepEqual(rows.flat(),long);
+  assert(rows.every(r=>r.length>=2&&r.length<=3));
+ }
 });
 test("ROOM position must use exact 3+4 order, tag controls permit lone save only",()=>{
  const rows=applicationTagRows("like",123,{likeTags:[]},2,0);
