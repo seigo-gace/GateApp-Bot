@@ -123,7 +123,7 @@ export async function bootstrapExistingStickerTopic({
  });
  if(!claimed.claimed){
   if(claimed.prior==="pinned_ack"&&Number(claimed.messageId)>0)
-   return {acknowledged:true,messageId:claimed.messageId,
+   return {acknowledged:true,messageId:Number(claimed.messageId),
     threadVerified:true,alreadyAcknowledged:true};
   throw Error("STICKER_BOOTSTRAP_PRIOR_SEND_NEEDS_RECONCILE");
  }
@@ -133,14 +133,15 @@ export async function bootstrapExistingStickerTopic({
   url:"https://t.me/"+DESTINATION.targetBot+"?start=sticker"}]]};
  // This is the FIRST actual proof of the candidate thread. No pinning before
  // the returned Telegram Message confirms the requested forum destination.
- let message:{chat?:{id?:number};message_id?:number;
-   message_thread_id?:number;is_topic_message?:boolean}|null=null;
+ type TelegramSent={chat?:{id?:number};message_id?:number;
+   message_thread_id?:number;is_topic_message?:boolean};
+ let message:TelegramSent;
  try{
   message=await api("sendMessage",{
    chat_id:DESTINATION.chatId,
    message_thread_id:DESTINATION.candidateThread,
    text,reply_markup
-  }) as typeof message;
+  }) as TelegramSent;
  }catch{
   // Persistent receipt stays "sending": no second Telegram send on retry.
   throw Error("STICKER_BOOTSTRAP_SEND_FAILED_OR_UNKNOWN");
