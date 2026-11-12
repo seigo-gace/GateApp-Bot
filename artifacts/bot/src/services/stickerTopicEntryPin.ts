@@ -140,7 +140,7 @@ export function createStickerEntryPinService({
    const sent=await postingBotApi("sendMessage",{
     chat_id:t.chatId,message_thread_id:t.threadId,
     text:"📌 投稿はこちら\nステッカー・カスタム絵文字の作成、パック管理、販売はBotのDMで操作してください。",
-    reply_markup:{inline_keyboard:[[{text:"🎨 投稿はこちら",
+    reply_markup:{inline_keyboard:[[{text:"ステッカーの作成・公開・販売はこちら",
       url:"https://t.me/"+bot.username+"?start=sticker"}]]}
    }) as {message_id?:number}|null;
    if(!Number.isSafeInteger(sent?.message_id)||Number(sent?.message_id)<=0)
