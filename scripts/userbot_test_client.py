@@ -31,7 +31,7 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
             raise ValueError("ROOM_READ_TARGET_ONLY_FOR_READBACK")
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
-        reply = await asyncio.wait_for(reader.readline(), 40)
+        reply = await asyncio.wait_for(reader.readline(), 100 if action == "room_public_post_smoke" else 40)
         result = json.loads(reply)
         if result.get("request_id") not in {request_id, None}:
             raise RuntimeError("USERBOT_IPC_REQUEST_ID_MISMATCH")
@@ -59,6 +59,9 @@ def main() -> int:
             print("USERBOT_TEST_MENU_ROWS=" + ",".join(map(str, result["row_sizes"])))
         if "steps" in result:
             print("USERBOT_TEST_STEPS=" + ",".join(str(step) for step in result["steps"]))
+        if action == "room_public_post_smoke":
+            print("USERBOT_ROOM_PUBLIC_POST=" + ("PASS" if result.get("published") else "FAIL"))
+            print("USERBOT_ROOM_PUBLIC_FINISH_DM=" + ("PASS" if result.get("finished_dm") else "FAIL"))
         if "marker" in result:
             print("USERBOT_ROOM_PUBLIC_MARKER=" + result["marker"])
             print("USERBOT_ROOM_PUBLIC_JOIN_BUTTON=" + ("YES" if result["has_join_button"] else "NO"))
