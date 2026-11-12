@@ -1,132 +1,127 @@
 #!/usr/bin/env python3
-"""Real Telegram DM regression: /start -> Room editor -> input -> cancel.
+"""Private Room DM smoke test executed ONLY by the resident Userbot IPC.
 
-Uses the already authorized local Telethon session, without phone login.
-Never posts to any group or creates a meeting. Run with the Userbot service
-temporarily stopped and restart it in a finally/trap outside this script.
+Never opens a TelegramClient, touches a live session file, logs in, restarts the
+worker, publishes a Room, or contacts a public group. The CLI delegates to the
+existing owner-only resident test client.
 """
 from __future__ import annotations
 
 import asyncio
-from telethon import TelegramClient
-from userbot_session import SESSION_BASE, load_credentials
+from typing import Any
 
 BOT = "GayBBS_bot"
 TEST_TITLE = "E2E動作検証（未投稿）"
 TEST_TEXT_MANUAL = TEST_TITLE + "\nE2Eテスト\n170 70 30\n公開せず入力プレビューを確認する検証"
 TEST_TEXT_LINKED = TEST_TITLE + "\n公開せず入力プレビューを確認する検証"
+EXPECTED_MENU = [
+    ["相手募集", "募集+Room", "告知/予告"],
+    ["プロフ作成", "クリエーター有料ビデオ投稿"],
+    ["🔗ボタン作成", "検索/フィルター"],
+    ["雑談", "紹介/招待", "操作説明"],
+]
 
 
-async def get_screen(client, bot, required_label=None):
-    for _ in range(12):
-        messages = await client.get_messages(bot, limit=15)
-        candidates = [m for m in messages if not m.out and m.buttons]
-        if required_label:
-            candidates = [m for m in candidates
-                          if required_label in [b.text for row in m.buttons for b in row]]
-        if candidates:
-            return candidates[0]
-        await asyncio.sleep(1)
-    raise RuntimeError("EXPECTED_TELEGRAM_SCREEN_NOT_FOUND:" + str(required_label))
+def rows(message: Any) -> list[list[str]]:
+    return [[button.text for button in row] for row in (message.buttons or [])]
 
 
-async def run():
-    api_id, api_hash = load_credentials()
-    async with TelegramClient(str(SESSION_BASE), api_id, api_hash) as client:
-        if not await client.is_user_authorized():
-            raise RuntimeError("USERBOT_SESSION_UNAUTHORIZED")
-        bot = await client.get_entity(BOT)
-        if not bot.bot:
-            raise RuntimeError("TELEGRAM_TARGET_NOT_BOT")
-        previous = await client.get_messages(bot, limit=1)
-        start_before = previous[0].id if previous else 0
-        await client.send_message(bot, "/start")
-        for _ in range(12):
-            messages = await client.get_messages(bot, limit=12)
-            menu = next((m for m in messages if m.id > start_before and not m.out and m.buttons
-                         and any(b.text == "募集+Room" for row in m.buttons for b in row)), None)
-            if menu:
-                break
-            await asyncio.sleep(1)
-        else:
-            raise RuntimeError("TELEGRAM_START_MENU_MISSING")
-        layout = [[b.text for b in row] for row in menu.buttons]
-        expected = [
-            ["相手募集", "募集+Room", "告知/予告"],
-            ["プロフ作成", "クリエーター有料ビデオ投稿"],
-            ["🔗ボタン作成", "検索/フィルター"],
-            ["雑談", "紹介/招待", "操作説明"],
-        ]
-        if layout != expected:
-            raise RuntimeError("POSTING_MENU_CONTRACT_MISMATCH")
-        print("E2E_START_MENU_PASS", flush=True)
-        entered = False
-        try:
-            await menu.click(text="募集+Room")
-            method = await get_screen(client, bot, "Room作成")
-            entered = True
-            print("E2E_ROOM_METHOD_PICKER_PASS", flush=True)
-            await method.click(text="Room作成")
-            # The next step must be the adopted recruitment text-input
-            # contract, for a linked or profile-less applicant.
-            for _ in range(12):
-                messages = await client.get_messages(bot, limit=12)
-                guide = next((m for m in messages if not m.out and
-                              ("1行目" in (m.raw_text or "")) and
-                              ("募集+Room" in (m.raw_text or ""))), None)
-                if guide:
-                    break
-                await asyncio.sleep(1)
-            else:
-                raise RuntimeError("ROOM_SHARED_INPUT_GUIDE_MISSING")
-            linked = ("2行目以降" in guide.raw_text and
-                      "3行目" not in guide.raw_text and
-                      "ニックネーム" not in guide.raw_text)
-            payload = TEST_TEXT_LINKED if linked else TEST_TEXT_MANUAL
-            input_message = await client.send_message(bot, payload)
-            for _ in range(12):
-                await asyncio.sleep(1)
-                messages = await client.get_messages(bot, limit=15)
-                preview = next((m for m in messages if not m.out and
-                                TEST_TITLE in (m.raw_text or "") and m.buttons), None)
-                if preview:
-                    print("E2E_ROOM_INPUT_PREVIEW_PASS", flush=True)
-                    remaining = await client.get_messages(bot, ids=input_message.id)
-                    if remaining is not None:
-                        raise RuntimeError("ROOM_WIZARD_INPUT_NOT_DELETED")
-                    print("E2E_ROOM_INPUT_DELETED_PASS", flush=True)
-                    break
-            else:
-                raise RuntimeError("ROOM_INPUT_PREVIEW_NOT_UPDATED")
-        finally:
-            if entered:
-                messages = await client.get_messages(bot, limit=15)
-                cancel = next((m for m in messages if not m.out and m.buttons and
-                               any(b.text == "キャンセル" for row in m.buttons for b in row)
-                               and ("募集+Room" in (m.raw_text or "") or TEST_TITLE in (m.raw_text or ""))), None)
-                if cancel:
-                    # A pre-existing /start menu is NOT proof of cancellation.
-                    before_cancel = await client.get_messages(bot, limit=1)
-                    cursor = before_cancel[0].id if before_cancel else 0
-                    await cancel.click(text="キャンセル")
-                    for _ in range(12):
-                        await asyncio.sleep(1)
-                        current = await client.get_messages(bot, ids=cancel.id)
-                        recent = await client.get_messages(bot, limit=8)
-                        candidates = ([current] if current else []) + [
-                            m for m in recent if not m.out and m.id > cursor
-                        ]
-                        def restored_menu(message):
-                            if message is None or not message.buttons:
-                                return False
-                            labels = [[b.text for b in row] for row in message.buttons]
-                            return labels == expected
-                        if any(restored_menu(message) for message in candidates):
-                            print("E2E_ROOM_CANCEL_MENU_RESTORED_PASS", flush=True)
-                            break
-                    else:
-                        raise RuntimeError("ROOM_CANCEL_MENU_NOT_RESTORED")
+async def wait_for_screen(client: Any, bot: Any, original_id: int | None,
+                          before_id: int, predicate: Any, code: str) -> Any:
+    """Observe only the fresh /start screen or its same-ID edits/replacements."""
+    for _ in range(10):
+        candidates = []
+        if original_id is not None:
+            original = await client.get_messages(bot, ids=original_id)
+            if original is not None:
+                candidates.append(original)
+        for message in await client.get_messages(bot, limit=15):
+            if message.id > before_id:
+                candidates.append(message)
+        for message in candidates:
+            if not message.out and predicate(message):
+                return message
+        await asyncio.sleep(0.35)
+    raise RuntimeError(code)
+
+
+async def run(client: Any) -> dict[str, Any]:
+    """No public post; verify /start → Room draft → preview → input deletion → cancel."""
+    bot = await client.get_entity(BOT)
+    if not bot.bot:
+        raise RuntimeError("ROOM_TEST_TARGET_NOT_BOT")
+    latest = await client.get_messages(bot, limit=1)
+    before_id = latest[0].id if latest else 0
+    await client.send_message(bot, "/start")
+    menu = await wait_for_screen(
+        client, bot, None, before_id,
+        lambda msg: bool(msg.buttons) and rows(msg) == EXPECTED_MENU,
+        "ROOM_NEW_START_MENU_NOT_FOUND",
+    )
+    steps = ["start_menu"]
+    entered = False
+    try:
+        await menu.click(text="募集+Room")
+        entered = True
+        method = await wait_for_screen(
+            client, bot, menu.id, before_id,
+            lambda msg: any(button.text == "Room作成" for row in (msg.buttons or [])
+                            for button in row),
+            "ROOM_METHOD_PICKER_NOT_FOUND",
+        )
+        steps.append("room_method")
+        await method.click(text="Room作成")
+        guide = await wait_for_screen(
+            client, bot, method.id, before_id,
+            lambda msg: "1行目" in (msg.raw_text or "") and
+                        "募集+Room" in (msg.raw_text or ""),
+            "ROOM_INPUT_GUIDE_NOT_FOUND",
+        )
+        linked = ("2行目以降" in (guide.raw_text or "") and
+                  "3行目" not in (guide.raw_text or "") and
+                  "ニックネーム" not in (guide.raw_text or ""))
+        payload = TEST_TEXT_LINKED if linked else TEST_TEXT_MANUAL
+        input_message = await client.send_message(bot, payload)
+        preview = await wait_for_screen(
+            client, bot, guide.id, before_id,
+            lambda msg: TEST_TITLE in (msg.raw_text or "") and bool(msg.buttons),
+            "ROOM_INPUT_PREVIEW_NOT_UPDATED",
+        )
+        steps.append("room_input_preview")
+        if await client.get_messages(bot, ids=input_message.id) is not None:
+            raise RuntimeError("ROOM_INPUT_MESSAGE_NOT_DELETED")
+        steps.append("room_input_deleted")
+    finally:
+        if entered:
+            cancel = await wait_for_screen(
+                client, bot, menu.id, before_id,
+                lambda msg: any(button.text == "キャンセル" for row in (msg.buttons or [])
+                                for button in row) and
+                            ("募集+Room" in (msg.raw_text or "") or
+                             TEST_TITLE in (msg.raw_text or "")),
+                "ROOM_CANCEL_BUTTON_NOT_FOUND",
+            )
+            await cancel.click(text="キャンセル")
+            await wait_for_screen(
+                client, bot, cancel.id, before_id,
+                lambda msg: bool(msg.buttons) and rows(msg) == EXPECTED_MENU,
+                "ROOM_CANCEL_MENU_NOT_RESTORED",
+            )
+            steps.append("cancel_menu_restored")
+    return {"status": "PASS", "action": "room_private_smoke", "steps": steps}
+
+
+def main() -> int:
+    # The command line never opens a Telethon session. The resident owns it.
+    from userbot_test_client import invoke
+    result = asyncio.run(invoke("room_private_smoke"))
+    if result.get("status") != "PASS":
+        print("ROOM_PRIVATE_SMOKE=FAIL")
+        return 1
+    print("ROOM_PRIVATE_SMOKE=PASS")
+    print("ROOM_PRIVATE_SMOKE_STEPS=" + ",".join(result.get("steps", [])))
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    raise SystemExit(main())

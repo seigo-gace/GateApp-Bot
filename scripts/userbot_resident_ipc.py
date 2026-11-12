@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu"})
+ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke"})
 EXPECTED_MENU = [
     ["相手募集", "募集+Room", "告知/予告"],
     ["プロフ作成", "クリエーター有料ビデオ投稿"],
@@ -44,6 +44,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "room_private_smoke":
+        from userbot_room_smoke import run
+        return {"request_id": request_id, **await run(client)}
     bot = await client.get_entity("GayBBS_bot")
     if not bot.bot:
         raise RuntimeError("TARGET_NOT_BOT")

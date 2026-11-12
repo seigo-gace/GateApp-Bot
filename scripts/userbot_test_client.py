@@ -48,6 +48,8 @@ def main() -> int:
         print("USERBOT_TEST_ACTION=" + args.action)
         if "row_sizes" in result:
             print("USERBOT_TEST_MENU_ROWS=" + ",".join(map(str, result["row_sizes"])))
+        if "steps" in result:
+            print("USERBOT_TEST_STEPS=" + ",".join(str(step) for step in result["steps"]))
         return 0
     except Exception as exc:
         print("USERBOT_TEST_RESULT=BLOCKED")
