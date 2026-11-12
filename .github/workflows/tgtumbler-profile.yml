@@ -32,8 +32,8 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Check new Bot Token enrollment script syntax
-        run: python3 -m py_compile scripts/register_gaybbs_bot_token.py scripts/gaybbs_runtime_preflight.py
+      - name: Validate unified read-only Telegram rights preflight without contacting Telegram
+        run: pnpm --dir artifacts/bot exec esbuild scripts/gaybbsRuntimePreflight.ts --bundle --platform=node --format=esm --outfile=/tmp/gaybbs-runtime-preflight.mjs
       - name: Typecheck existing Bot plus profile
         run: pnpm --dir artifacts/bot run typecheck
       - name: Verify isolated PostgreSQL migration and application concurrency

@@ -12,6 +12,7 @@ export const invite_links = pgTable("invite_links", {
   target_id: integer("target_id").notNull(),
   tg_user_id: bigint("tg_user_id", { mode: "number" }).notNull(),
   invite_link: text("invite_link").notNull(),
+  attempt_id: text("attempt_id"),
   expire_at: timestamp("expire_at").notNull(),
   used_at: timestamp("used_at"),
   revoked_at: timestamp("revoked_at"),

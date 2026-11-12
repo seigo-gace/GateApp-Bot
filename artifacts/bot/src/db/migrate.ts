@@ -541,6 +541,30 @@ export async function runMigrations(): Promise<void> {
 
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
+      -- @GayBBS_bot approval: extend existing GATE data instead of a parallel DB.
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS document_version TEXT;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS step_token TEXT;
+      ALTER TABLE approvals ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+      ALTER TABLE approvals ADD COLUMN IF NOT EXISTS document_version TEXT;
+      ALTER TABLE invite_links ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS gate_approval_attempt_uidx
+        ON approvals(target_id,tg_user_id,attempt_id) WHERE attempt_id IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS gate_invite_url_uidx
+        ON invite_links(invite_link) WHERE attempt_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS gate_consents (
+        id BIGSERIAL PRIMARY KEY,
+        target_id INTEGER NOT NULL,
+        tg_user_id BIGINT NOT NULL,
+        attempt_id TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK(stage IN ('question1','question2','rules')),
+        document_version TEXT NOT NULL,
+        accepted BOOLEAN NOT NULL,
+        accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(target_id,tg_user_id,attempt_id,stage)
+      );
+      CREATE INDEX IF NOT EXISTS gate_consents_target_user_idx
+        ON gate_consents(target_id,tg_user_id,accepted_at DESC);
 
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,
