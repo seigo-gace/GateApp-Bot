@@ -261,16 +261,26 @@ try{
     VALUES('announcement',$1,555001,1,$2,$3,'sent',10001)`,
   [linkedDraft.sourceId,topic.rows[0].topic_id,
    "db-test-published-room:"+linkedDraft.sourceId]);
- const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
- assert.equal(guest?.id,Number(privateSaved.sourceId));
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Published but not LIVE ROOM must not leak join URL");
  const reverted=await changeRoomVisibility(
   555001,Number(privateSaved.sourceId),prepared.revision,"approved_only");
  assert.equal(reverted.visibility,"approved_only");
- assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
-  "Switch back to approval-only must revoke public URL access");
  await assert.rejects(
   ()=>changeRoomVisibility(999999,Number(privateSaved.sourceId),
     reverted.revision,"public"),/ROOM_NOT_OWNED/);
+ const reopened=await changeRoomVisibility(
+  555001,Number(privateSaved.sourceId),reverted.revision,"public");
+ const startedPublic=await updateRoomState(
+  555001,Number(privateSaved.sourceId),reopened.revision,"start");
+ const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
+ assert.equal(guest?.id,Number(privateSaved.sourceId),
+  "Public applicant can get URL only after explicitly starting LIVE");
+ const stoppedPublic=await updateRoomState(
+  555001,Number(privateSaved.sourceId),startedPublic.revision,"cancel");
+ assert.equal(stoppedPublic.state,"cancelled");
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Cancelled ROOM must revoke URL even when previously public");
  console.log("GAYBBS_DB_ROOM_EXPLICIT_PUBLIC_MODE_AND_REVOCATION=PASS");
 
 
