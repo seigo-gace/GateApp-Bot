@@ -9,7 +9,7 @@ import {resolveApplicationSession,legacyRecruitmentContactOwner,
  activateApplicationSession,isRoomApplicationLink} from "../services/applicationLinks.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {submitApplication,decideApplication,withdrawApplication,renderRoomApplicantSummary} from "../services/announcementApplications.js";
-import {parseRecruitmentMessage,renderRecruitmentPreview,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
+import {parseRecruitmentMessage,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
