@@ -166,20 +166,33 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    ...(profile?{nickname:profile.nickname,heightCm:profile.heightCm,
     weightKg:profile.weightKg,age:profile.age,position:profile.position,
     likeTags:profile.likeTags??[],loveTags:profile.loveTags??[]}:{} )};
+  let submitted:Awaited<ReturnType<typeof submitApplication>>;
   try{
-   const r=await submitApplication(session.announcementId,ctx.from.id,snapshot);
-   await pool.query(
-    `UPDATE announcement_application_sessions SET draft_step='submitted'
-      WHERE applicant_user_id=$1`,[ctx.from.id]);
-   await ctx.answerCbQuery();
-   await ctx.editMessageText(r.duplicate?
-    "応募状況を確認しました："+r.status:
-    "✅ 応募を送りました。主催者の承認・拒否をお待ちください。",
-    ["submitted","held"].includes(r.status)?
-     Markup.inlineKeyboard([[Markup.button.callback("応募を取り下げる",
-      `application:withdraw:${session.announcementId}`)]]):undefined);
+   submitted=await submitApplication(session.announcementId,ctx.from.id,snapshot);
   }catch{
    await ctx.answerCbQuery("応募に失敗しました。募集状況をご確認ください。");
+   return;
+  }
+  // The DB commit is the business result. Failing to update the wizard
+  // screen/session must not falsely report the submitted application as FAIL.
+  await pool.query(
+   `UPDATE announcement_application_sessions SET draft_step='submitted'
+     WHERE applicant_user_id=$1`,[ctx.from.id]).catch(()=>{
+      console.warn("[ROOM_APPLICATION_SESSION_STEP_NEEDS_RECONCILE]");
+     });
+  await ctx.answerCbQuery("応募を受け付けました").catch(()=>undefined);
+  const receipt=submitted.duplicate?
+   "応募状況を確認しました："+submitted.status:
+   "✅ 応募を送りました。主催者の承認・拒否をお待ちください。";
+  const keyboard=["submitted","held"].includes(submitted.status)?
+   Markup.inlineKeyboard([[Markup.button.callback("応募を取り下げる",
+    `application:withdraw:${session.announcementId}`)]]):undefined;
+  try{
+   await ctx.editMessageText(receipt,keyboard);
+  }catch{
+   await ctx.telegram.sendMessage(ctx.from.id,receipt,keyboard).catch(()=>{
+    console.warn("[ROOM_APPLICATION_SUBMISSION_RECEIPT_NEEDS_RECONCILE]");
+   });
   }
  });
  bot.action("application:cancel",async ctx=>{
