@@ -5,6 +5,8 @@
 import {pool} from "../db/index.js";
 import {renderRecruitmentPreview,type RecruitmentInput} from "./recruitmentCompose.js";
 import type {ProfileBasicDraft} from "./profileCore.js";
+import {renderRoomApplicationPreview} from "./roomApplicationTags.js";
+import {validLikeTags} from "./profileLike.js";
 export type ApplicationDecision="accepted"|"declined"|"held";
 function validId(id:number):number{
  if(!Number.isSafeInteger(id)||id<=0)throw new Error("APPLICATION_ID_INVALID");
@@ -152,5 +154,9 @@ export function renderRoomApplicantSummary(value:Record<string,unknown>|null):st
  };
  if(!input.title.trim()||!input.body.trim())throw Error("ROOM_APPLICATION_CONTENT_INCOMPLETE");
  const profile=mode==="linked"?value as unknown as ProfileBasicDraft:null;
- return "📝 ROOMへの応募\n"+renderRecruitmentPreview(input,profile);
+ return "📝 ROOMへの応募\n"+renderRoomApplicationPreview({
+  ...input,
+  likeTags:validLikeTags(value.likeTags as []??[]),
+  loveTags:validLikeTags(value.loveTags as []??[]),
+ },profile);
 }
