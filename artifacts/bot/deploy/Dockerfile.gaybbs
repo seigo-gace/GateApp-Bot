@@ -9,12 +9,15 @@ RUN corepack enable && corepack prepare pnpm@10.16.1 --activate
 COPY . .
 RUN pnpm install --frozen-lockfile --filter '@workspace/bot...'
 RUN pnpm --dir artifacts/bot run build:gaybbs
+RUN pnpm --dir artifacts/bot run build:sticker-pin
 RUN node --check artifacts/bot/dist/gaybbs.mjs
+RUN node --check artifacts/bot/dist/sticker-topic-pin.mjs
 
 FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/gaybbs.mjs /app/gaybbs.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/sticker-topic-pin.mjs /app/sticker-topic-pin.mjs
 USER node
 # Runtime requires separately supplied BOT_TOKEN_FILE and DATABASE_URL.
 # No real Bot is started by building the image.
