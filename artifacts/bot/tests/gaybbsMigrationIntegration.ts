@@ -436,7 +436,7 @@ try{
  // until the *same* existing Telegram message displays the end badge.
  const endEdit=await updateNextRoomStatusMessage(historicalBot);
  assert.equal(endEdit?.state,"confirmed");
- assert.match(edits[1]!.text,/⚫ 終了しました/);
+ assert.match(edits[1]!.text,/✅ 終了/);
  assert.equal(edits[1]!.messageId,87654);
  assert.equal(edits.length,2);
  delete process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED;
