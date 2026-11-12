@@ -16,7 +16,7 @@ import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js"
 import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
-import {resolveRoomJoinLink} from "./services/roomJoinLinks.js";
+import {resolveRoomJoinLink,roomJoinDenialReason} from "./services/roomJoinLinks.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
@@ -79,7 +79,7 @@ async function main():Promise<void>{
    try{
     const room=await resolveRoomJoinLink(ctx.from.id,ctx.startPayload);
     if(!room){
-     await ctx.reply("このROOMはまだ開始していないか、参加承認がありません。開始後に再度［参加する］を押してください。");
+     await ctx.reply(await roomJoinDenialReason(ctx.startPayload));
     }else{
      await ctx.reply("🔴 LIVE中｜"+room.title+"\n参加資格を確認しました。",
       Markup.inlineKeyboard([[Markup.button.url("🎥 ROOMへ参加",room.joinUrl)]]));
