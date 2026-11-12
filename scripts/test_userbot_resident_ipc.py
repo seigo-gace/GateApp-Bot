@@ -249,5 +249,43 @@ class RoomPublicReadbackTests(unittest.TestCase):
 
 
 
+class DialogResolvedClient(PublicRoomReadClient):
+    """Only existing joined dialogs can provide missing Telegram input entities."""
+    def __init__(self, joined=True):
+        super().__init__()
+        self.joined = joined
+        self.entity = SimpleNamespace(id=3847210571)
+
+    async def get_dialogs(self, limit=None):
+        self.requested_dialog_limit = limit
+        if not self.joined:
+            return []
+        return [SimpleNamespace(id=-1003847210571, entity=self.entity)]
+
+    async def get_messages(self, chat, ids=None):
+        if type(chat) is int:
+            raise ValueError("Telethon private entity details must be redacted")
+        assert chat is self.entity
+        return await super().get_messages(-1003847210571, ids=ids)
+
+
+class ResidentDialogResolutionTests(unittest.TestCase):
+    def test_cold_cache_reads_only_joined_group(self):
+        client = DialogResolvedClient()
+        result = asyncio.run(process_request(client, {
+            "request_id": "joined-read", "action": "room_public_readback",
+            "chat_id": -1003847210571, "message_id": 123}))
+        self.assertEqual(result["marker"], "finished")
+        self.assertEqual(client.requested_dialog_limit, 500)
+
+    def test_not_joined_fails_without_joining(self):
+        client = DialogResolvedClient(joined=False)
+        with self.assertRaisesRegex(RuntimeError, "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS"):
+            asyncio.run(process_request(client, {
+                "request_id": "not-joined", "action": "room_public_readback",
+                "chat_id": -1003847210571, "message_id": 123}))
+        self.assertEqual(client.requests, [])
+
+
 if __name__ == "__main__":
     unittest.main()
