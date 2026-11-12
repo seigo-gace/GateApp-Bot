@@ -10,7 +10,6 @@ import {resolveApplicationSession,legacyRecruitmentContactOwner,
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {submitApplication,decideApplication,withdrawApplication,renderRoomApplicantSummary} from "../services/announcementApplications.js";
 import {parseRecruitmentMessage,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
-import {recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
