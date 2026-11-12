@@ -68,9 +68,14 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
   Markup.button.callback("💘 #Love","application:tag:love:open")
  ]];
  if(data.mode!=="linked"&&!isProfilePosition(String(data.position||"")))
-  rows.push([Markup.button.callback("ポジション選択","application:position")]);
- else rows.push([Markup.button.callback("✅ 応募する","application:confirm")]);
- rows.push([Markup.button.callback("キャンセル","application:cancel")]);
+  rows.push([
+   Markup.button.callback("ポジション選択","application:position"),
+   Markup.button.callback("キャンセル","application:cancel")
+  ]);
+ else rows.push([
+  Markup.button.callback("✅ 応募する","application:confirm"),
+  Markup.button.callback("キャンセル","application:cancel")
+ ]);
  await showWizardScreen(telegram,id,screenId,text,Markup.inlineKeyboard(rows),"HTML");
 }
 export function registerApplicationHandlers(bot:Telegraf):void{
@@ -191,7 +196,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    Markup.inlineKeyboard([
     PROFILE_POSITIONS.slice(0,3).map((value,i)=>Markup.button.callback(value,`application:pos:${i}`)),
     PROFILE_POSITIONS.slice(3).map((value,i)=>Markup.button.callback(value,`application:pos:${i+3}`)),
-    [Markup.button.callback("↩ 戻る","application:preview")]
+    [Markup.button.callback("↩ 戻る","application:preview"),
+     Markup.button.callback("キャンセル","application:cancel")]
    ]));
  });
  bot.action(/^application:pos:(\d+)$/,async ctx=>{
