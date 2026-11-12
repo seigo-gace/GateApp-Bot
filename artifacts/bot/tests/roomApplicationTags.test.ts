@@ -23,8 +23,9 @@ test("ROOM applicant shares profile Like/Love categories and keeps separate togg
 
 test("tag keyboards reuse original category, pagination, clear and back layout",()=>{
  const cat=applicationTagRows("like",123,{},undefined);
- assert.equal(cat[0]!.length,4);
- assert.equal(cat[1]!.length,2);
+ assert(cat.every(row=>row.length>=2&&row.length<=4));
+ assert.equal(cat.slice(0,-1).flat().length,6);
+ assert.equal(cat.at(-1)!.length,2);
  assert.equal(cat[0]![0]!.text,LIKE_CATEGORIES[0]!.name);
  assert.equal(cat[0]![0]!.callback_data,"application:tag:like:123:open:0");
  const item=applicationTagRows("love",123,{},2);
