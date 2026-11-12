@@ -1,15 +1,16 @@
 /**
  * One-shot owner operation, not another bot/poller.
- * Runs only with the EXISTING GayBBS group Bot token + the existing
- * CreateVdoBot token, each from its separately admitted secret file.
+ * Runs with the EXISTING GayBBS group Bot API only. The target username
+ * is the Master-approved public @CreateVdobot deep link, NOT a fabricated
+ * getMe verification of a second Bot.
  * Existing verified topic row is mandatory; never infer a thread from a URL.
  *
- * Inputs: DATABASE_URL, BOT_TOKEN or BOT_TOKEN_FILE (GayBBS);
- *         CREATEVDOBOT_TOKEN_FILE (CreatorBot, read-only).
+ * Inputs: DATABASE_URL, BOT_TOKEN or BOT_TOKEN_FILE (existing GayBBS).
+ * No CreateVdobot token, polling, or Userbot session access.
  * No token or request URL is printed.
  */
 import "dotenv/config";
-import {readBotTokenSecret,readConfiguredBotToken} from "../src/config/botToken.js";
+import {readConfiguredBotToken} from "../src/config/botToken.js";
 import {createStickerTopicOwnerPort} from "../src/services/stickerTopicOwnerPort.js";
 import {closePool} from "../src/db/index.js";
 
@@ -26,25 +27,17 @@ const api=(token:string)=>async(method:string,params:Record<string,unknown>):Pro
 async function main():Promise<void>{
  if(typeof process.env.DATABASE_URL!=="string"||!process.env.DATABASE_URL)
    throw Error("STICKER_PIN_DATABASE_NOT_CONFIGURED");
- const creatorFile=process.env.CREATEVDOBOT_TOKEN_FILE;
- if(!creatorFile||!creatorFile.startsWith("/"))
-   throw Error("STICKER_PIN_CREATOR_SECRET_NOT_CONFIGURED");
- const creatorToken=readBotTokenSecret(creatorFile);
- const groupToken=readConfiguredBotToken();
- if(creatorToken===groupToken)throw Error("STICKER_PIN_BOT_IDENTITY_CONFLICT");
- const creatorBotApi=api(creatorToken);
- const postingBotApi=api(groupToken);
- const creator=await creatorBotApi("getMe",{}) as {id?:number;username?:string;is_bot?:boolean};
+ const postingBotApi=api(readConfiguredBotToken());
  const owner=await postingBotApi("getMe",{}) as {id?:number;username?:string;is_bot?:boolean};
- if(creator.is_bot!==true||!creator.username||
-    !Number.isSafeInteger(creator.id)||creator.username.toLowerCase()==="gaybbs_bot"||
-    owner.is_bot!==true||owner.username?.toLowerCase()!=="gaybbs_bot"||
-    !Number.isSafeInteger(owner.id)||owner.id===creator.id)
-   throw Error("STICKER_PIN_BOT_IDENTITIES_NOT_VERIFIED");
- const service=createStickerTopicOwnerPort({creatorBotApi,postingBotApi});
+ if(owner.is_bot!==true||owner.username?.toLowerCase()!=="gaybbs_bot"||
+    !Number.isSafeInteger(owner.id)||Number(owner.id)<=0)
+   throw Error("STICKER_PIN_GROUP_BOT_NOT_VERIFIED");
+ const service=createStickerTopicOwnerPort({
+   creatorBotUsername:"CreateVdobot",postingBotApi});
  const result=await service.ensureStickerEntryPin();
  console.log("STICKER_PIN_OWNER=GAYBBS");
  console.log("STICKER_PIN_TARGET=CREATEVDOBOT");
+ console.log("STICKER_PIN_TARGET_SOURCE=MASTER_FIXED_USERNAME");
  console.log("STICKER_PIN_TELEGRAM_ACK="+(result.acknowledged?"YES":"NO"));
  console.log("STICKER_PIN_MESSAGE_ID="+String(result.messageId??0));
  console.log("STICKER_PIN_INDEPENDENT_READBACK="+(result.readbackVerified?"PASS":"NOT_VERIFIED"));
