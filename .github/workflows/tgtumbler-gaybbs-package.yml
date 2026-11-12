@@ -1,0 +1,34 @@
+name: TGtumbler GayBBS Docker package verification
+on:
+  pull_request:
+    paths:
+      - 'artifacts/bot/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/tgtumbler-gaybbs-package.yml'
+  push:
+    branches: ['chat/tgtumbler-gserver-deploy-20261106']
+jobs:
+  gaybbs-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify sticker Topic type ownership and pin contracts
+        run: |
+          pnpm --dir artifacts/bot run typecheck
+          pnpm --dir artifacts/bot exec tsx --test tests/topicRouting.test.ts tests/stickerTopicEntryPin.test.ts tests/stickerPinTelegrafAdapter.test.ts tests/stickerTopicBootstrap.test.ts
+      - name: Build isolated GayBBS image (no credentials)
+        run: docker build --file artifacts/bot/deploy/Dockerfile.gaybbs --tag gaybbs:ci --pull=false .
+      - name: Check bundled program without Telegram, DB, or network
+        run: docker run --rm --network none --entrypoint node gaybbs:ci --check /app/gaybbs.mjs

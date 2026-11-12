@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push --config ./drizzle.config.ts",
     "db:push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "build:gaybbs": "tsx build-gaybbs.ts",
+    "build:sticker-pin": "tsx build-sticker-pin.ts",
     "start:gaybbs": "node dist/gaybbs.mjs"
   },
   "dependencies": {

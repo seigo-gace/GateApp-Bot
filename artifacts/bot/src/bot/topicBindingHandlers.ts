@@ -11,7 +11,7 @@ const BOARDS: Readonly<Record<string,BoardKey>>={
  "-1003770334893":"gay_board",
 };
 const COMMANDS: Readonly<Record<string,PostPurpose>>={
- bindprofile:"profile",bindroom:"room",bindannounce:"announcement",bindlink:"link",
+ bindprofile:"profile",bindroom:"room",bindannounce:"announcement",bindlink:"link",bindsticker:"sticker",
 };
 export function registerTopicBindingHandlers(bot:Telegraf):void{
  for(const [command,purpose] of Object.entries(COMMANDS)){
@@ -39,6 +39,10 @@ export function registerTopicBindingHandlers(bot:Telegraf):void{
    const title=ctx.message.text.replace(/^\/\S+(?:@\w+)?\s*/,"").trim();
    if(!title||title.length>100){
      await ctx.reply("トピック名を付けてください。例：/bindprofile みんなのプロフ");
+     return;
+   }
+   if(purpose==='sticker'&&(board!=='video_chat'||title!=='ステッカーの公開と販売')){
+     await ctx.reply("ステッカーの公開と販売は指定のビデオチャット掲示板Topicのみ登録できます。");
      return;
    }
    await pool.query(

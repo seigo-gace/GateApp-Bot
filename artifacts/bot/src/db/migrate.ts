@@ -176,7 +176,7 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS posting_topics (
         topic_id BIGSERIAL PRIMARY KEY,
         board_key TEXT NOT NULL CHECK (board_key IN ('area_bbs','video_chat','gay_board')),
-        purpose TEXT NOT NULL CHECK (purpose IN ('profile','room','announcement','link')),
+        purpose TEXT NOT NULL CHECK (purpose IN ('profile','room','announcement','link','sticker')),
         chat_id BIGINT NOT NULL CHECK (chat_id < 0),
         message_thread_id BIGINT NOT NULL CHECK (message_thread_id > 0),
         title TEXT NOT NULL,
@@ -186,6 +186,27 @@ export async function runMigrations(): Promise<void> {
         UNIQUE (board_key,purpose,chat_id,message_thread_id),
         CHECK (NOT enabled OR (verified_at IS NOT NULL AND verified_by IS NOT NULL))
       );
+      ALTER TABLE posting_topics DROP CONSTRAINT IF EXISTS posting_topics_purpose_check;
+      ALTER TABLE posting_topics ADD CONSTRAINT posting_topics_purpose_check
+        CHECK (purpose IN ('profile','room','announcement','link','sticker'));
+      CREATE TABLE IF NOT EXISTS posting_sticker_entry_pins (
+        topic_id BIGINT PRIMARY KEY REFERENCES posting_topics(topic_id) ON DELETE RESTRICT,
+        creator_bot_id BIGINT NULL CHECK (creator_bot_id > 0),
+        creator_bot_username TEXT NOT NULL
+          CHECK (creator_bot_username ~ '^[A-Za-z][A-Za-z0-9_]{4,31}$'),
+        status TEXT NOT NULL CHECK (status IN
+          ('sending','sent','pin_requested','pinned_ack','needs_reconcile')),
+        telegram_message_id BIGINT CHECK (telegram_message_id > 0),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (status = 'sending' OR telegram_message_id IS NOT NULL)
+      );
+      -- Legacy installations had a mandatory numeric CreatorBot ID.
+      -- Public fixed DM deep links need only the approved username; null
+      -- means no Token/getMe attestation, never a fabricated bot identity.
+      ALTER TABLE posting_sticker_entry_pins
+        ALTER COLUMN creator_bot_id DROP NOT NULL;
+
       CREATE TABLE IF NOT EXISTS posting_deliveries (
         delivery_id BIGSERIAL PRIMARY KEY,
         source_type TEXT NOT NULL CHECK (source_type IN ('profile','room','announcement','link')),
@@ -512,6 +533,56 @@ export async function runMigrations(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS gate_consents_target_user_idx
         ON gate_consents(target_id,tg_user_id,accepted_at DESC);
+
+      CREATE TABLE IF NOT EXISTS community_link_publications (
+        board_key TEXT PRIMARY KEY CHECK (board_key IN ('areas_bbs','video_chat','gay_board')),
+        chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT,
+        message_id BIGINT,
+        media_file_id TEXT,
+        image_repo_path TEXT NOT NULL,
+        gate_url TEXT NOT NULL,
+        intro_fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'not_verified'
+          CHECK (status IN ('not_verified','published','needs_reconcile')),
+        posted_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS community_link_topic_cards (
+        host_chat_id BIGINT NOT NULL,
+        message_thread_id BIGINT NOT NULL,
+        promoted_board_key TEXT NOT NULL
+          CHECK (promoted_board_key IN ('areas_bbs','video_chat','gay_board')),
+        message_id BIGINT,
+        media_file_id TEXT,
+        image_repo_path TEXT NOT NULL,
+        gate_url TEXT NOT NULL,
+        intro_fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'not_verified'
+          CHECK (status IN ('not_verified','published','needs_reconcile')),
+        posted_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (host_chat_id, message_thread_id, promoted_board_key)
+      );
+
+      CREATE TABLE IF NOT EXISTS area_legacy_reply_keyboard_removals (
+        chat_id BIGINT PRIMARY KEY,
+        message_thread_id BIGINT NOT NULL,
+        message_id BIGINT NOT NULL,
+        verified_by BIGINT NOT NULL,
+        removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS area_command_menu_suppressions (
+        chat_id BIGINT PRIMARY KEY,
+        scopes_cleared TEXT NOT NULL,
+        legacy_bot_id BIGINT NOT NULL,
+        legacy_bot_status TEXT NOT NULL,
+        legacy_bot_removed BOOLEAN NOT NULL DEFAULT FALSE,
+        suppressed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        verified_by BIGINT
+      );
 
       CREATE TABLE IF NOT EXISTS admin_sessions (
         tg_user_id BIGINT PRIMARY KEY,

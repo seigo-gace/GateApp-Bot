@@ -16,6 +16,10 @@ import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
 import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
+import {suppressAreaCommandMenu} from "./services/areaMenuSuppression.js";
+import {pool} from "./db/index.js";
+import {createStickerTopicOwnerPort} from "./services/stickerTopicOwnerPort.js";
+import {createStickerPinTelegrafApi} from "./services/stickerPinTelegrafAdapter.js";
 
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
@@ -71,6 +75,25 @@ async function main():Promise<void>{
  registerApplicationHandlers(bot);
  registerRoomHandlers(bot);
  registerGayBbsApprovalHandlers(bot);
+ try{
+  const areaMenu=await suppressAreaCommandMenu(bot.telegram);
+  await pool.query(
+    `INSERT INTO area_command_menu_suppressions
+      (chat_id,scopes_cleared,legacy_bot_id,legacy_bot_status,legacy_bot_removed,verified_by)
+     VALUES ($1,$2,$3,$4,$5,0)
+     ON CONFLICT (chat_id) DO UPDATE SET
+      scopes_cleared=EXCLUDED.scopes_cleared,
+      legacy_bot_status=EXCLUDED.legacy_bot_status,
+      legacy_bot_removed=EXCLUDED.legacy_bot_removed OR area_command_menu_suppressions.legacy_bot_removed,
+      suppressed_at=NOW()`,
+    [areaMenu.chatId,areaMenu.scopesCleared.join(","),areaMenu.legacyBotId,
+     areaMenu.legacyBotStatus,areaMenu.legacyBotRemoved]);
+  console.log("GAYBBS_AREA_MENU_SUPPRESSED chat="+areaMenu.chatId+
+    " legacy_status="+areaMenu.legacyBotStatus);
+ }catch(error){
+  console.error("GAYBBS_AREA_MENU_SUPPRESSION_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
  bot.catch((error,ctx)=>{
   console.error("[GAYBBS_ERROR]",ctx.updateType,
     error instanceof Error?error.name:"unknown");
@@ -80,6 +103,24 @@ async function main():Promise<void>{
   allowedUpdates:["message","callback_query","chat_join_request"],
  });
  console.log("GAYBBS_BOT_READY bot_id="+me.id);
+ // STK-04: the running GayBBS owner already has the authorized Telegram
+ // identity and PostgreSQL connection. Do not require any CreatorBot
+ // credential or launch another Bot just to pin the approved DM link.
+ // The verified Topic registry and durable one-message receipt gate effects.
+ try{
+  const pin=await createStickerTopicOwnerPort({
+   creatorBotUsername:"CreateVdobot",
+   postingBotApi:createStickerPinTelegrafApi(bot.telegram)
+  }).ensureStickerEntryPin();
+  console.log("GAYBBS_STICKER_TOPIC_PIN="+
+   (pin.acknowledged?"TELEGRAM_ACK_ONLY":"NOT_VERIFIED"));
+ }catch(error){
+  const reason=error instanceof Error?error.message:"UNKNOWN";
+  // Failing to pin one optional Topic must not disable the admission,
+  // profile, ROOM or other existing user-facing Bot services.
+  console.error("GAYBBS_STICKER_TOPIC_PIN_NOT_VERIFIED",
+   reason.startsWith("STICKER_")||reason.startsWith("TOPIC_")?reason:"UNCLASSIFIED");
+ }
  const stopWorkers=startGayBbsWorkers(bot.telegram);
  const stop=async(signal:string)=>{
   stopWorkers();

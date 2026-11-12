@@ -26,6 +26,29 @@ export async function getVerifiedTopic(id:number,purpose:PostPurpose):Promise<Ve
  const t=fromRow(r.rows[0]);
  return assertVerifiedTopic(t,t.board,purpose);
 }
+/** The existing GateApp verified posting_topics DB is the sole source of
+ * live sticker Topic IDs. The public t.me/c message URL is never a thread ID.
+ * Multiple rows are an error, not a broadcast or arbitrary first-choice.
+ */
+export async function getVerifiedStickerTopic():Promise<{
+ id:number;board:"video_chat";purpose:"sticker";chatId:number;threadId:number;
+ title:string;groupTitle:string;enabled:true;verified:true;verifiedAt:Date
+}> {
+ const r=await pool.query(
+  "SELECT * FROM posting_topics WHERE board_key='video_chat' AND purpose='sticker'"+
+  " AND title=$1 AND enabled=TRUE AND verified_at IS NOT NULL"+
+  " AND verified_by IS NOT NULL ORDER BY topic_id LIMIT 2",
+  ["ステッカーの公開と販売"]
+ );
+ if(r.rows.length!==1)throw new Error("STICKER_TOPIC_NOT_VERIFIED_OR_AMBIGUOUS");
+ const t=fromRow(r.rows[0]);
+ const verified=assertVerifiedTopic(t,"video_chat","sticker");
+ if(verified.title!=="ステッカーの公開と販売"||
+    verified.chatId!==-1002373696859)
+   throw new Error("STICKER_TOPIC_OWNER_MISMATCH");
+ return {...verified,board:"video_chat",purpose:"sticker",
+  groupTitle:"ビデオChatの掲示板",enabled:true,verified:true};
+}
 export type DeliveryState={id:number,status:string,messageId:number|null};
 export async function claimDelivery(
  sourceType:PostPurpose,sourceId:string,ownerId:number,revision:number,topicId:number,

@@ -29,16 +29,15 @@ export async function openAttempt(userId:number,targetId:number,token:string,app
      (!old.attempt_id || !old.step_token || !old.document_version))
    throw new Error("GATE_LEGACY_SESSION_CONFLICT");
   if(old && active.has(old.step) && old.updated_at.getTime()>Date.now()-24*3600_000){
-   if(old.target_id!==targetId)throw new Error("GATE_ANOTHER_TARGET_ACTIVE");
+   if(old.target_id!==targetId && old.step!=="approved")throw new Error("GATE_ANOTHER_TARGET_ACTIVE");
    if(old.document_version===documentVersion){
     await c.query("COMMIT");
     return {attempt:old,existing:true};
    }
    // Document or rule changes make previous consent invalid; start afresh.
   }
-  // An already approved invitation is not silently replaced by another attempt.
-  if(old && old.step==="approved" && old.updated_at.getTime()>Date.now()-24*3600_000 &&
-     old.target_id===targetId && old.document_version===documentVersion){
+  // Shared approval persists beyond invite-link expiry; do not restart the questionnaire.
+  if(old && old.step==="approved" && old.document_version===documentVersion){
    await c.query("COMMIT");
    return {attempt:old,existing:true};
   }
@@ -294,4 +293,58 @@ export async function getRequestEligibility(client:PoolClient,args:{
 }
 export async function withAdmissionClient<T>(fn:(c:PoolClient)=>Promise<T>):Promise<T>{
  const c=await pool.connect();try{return await fn(c)}finally{c.release()}
+}
+
+/** Approved users only: mint fresh join-request links when prior invites expired (24h). */
+export async function refreshJoinInvitesIfNeeded(
+  telegram:import("telegraf").Telegram,
+  attempt:GateAttempt,
+  boards:readonly {targetId:number;chatId:number}[],
+):Promise<boolean>{
+ if(attempt.step!=="approved")return false;
+ const live=await currentIssuedInvites(attempt);
+ if(live.length===3)return true;
+ const expires=new Date(Date.now()+24*60*60*1000);
+ const created:{chatId:number;targetId:number;link:string;expires:Date}[]=[];
+ for(const board of boards){
+  const old=await pool.query(
+    `SELECT invite_link FROM invite_links WHERE target_id=$1 AND tg_user_id=$2
+     AND attempt_id=$3 AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1`,
+    [board.targetId,attempt.tg_user_id,attempt.attempt_id],
+  );
+  if(old.rows[0]?.invite_link){
+   try{await telegram.revokeChatInviteLink(board.chatId,String(old.rows[0].invite_link))}
+   catch{/* keep DB guard */}
+  }
+  const link=await telegram.createChatInviteLink(board.chatId,{
+   name:"TGtumbler common admission",creates_join_request:true,
+   expire_date:Math.floor(expires.getTime()/1000),
+  });
+  created.push({chatId:board.chatId,targetId:board.targetId,link:link.invite_link,expires});
+ }
+ await pool.query(
+   `UPDATE invite_links SET revoked_at=NOW()
+    WHERE tg_user_id=$1 AND attempt_id=$2 AND used_at IS NULL AND revoked_at IS NULL`,
+   [attempt.tg_user_id,attempt.attempt_id],
+ );
+ return appendRefreshedInvites(attempt,created);
+}
+
+export async function appendRefreshedInvites(
+  a:GateAttempt,
+  links:readonly IssuedBoardInvite[],
+): Promise<boolean>{
+ if(a.step!=="approved"||links.length!==3)return false;
+ if(!(await consentsComplete(a)))return false;
+ const allowed=await withAdmissionClient(c=>
+  sharedBoardApprovalAccepted(c,a.tg_user_id,a.attempt_id,a.document_version));
+ if(!allowed)return false;
+ for(const i of links){
+  await pool.query(
+    `INSERT INTO invite_links (target_id,tg_user_id,invite_link,expire_at,attempt_id)
+     VALUES ($1,$2,$3,$4,$5)`,
+    [i.targetId,a.tg_user_id,i.link,i.expires,a.attempt_id],
+  );
+ }
+ return true;
 }

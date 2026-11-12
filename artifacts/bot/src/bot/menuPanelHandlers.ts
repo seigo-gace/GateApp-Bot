@@ -5,6 +5,7 @@
 import type {Telegraf} from "telegraf";
 import {pool} from "../db/index.js";
 import {publishExistingMenuPanel} from "../services/menuPanelPublisher.js";
+import {suppressAreaCommandMenu} from "../services/areaMenuSuppression.js";
 
 const GROUPS=new Set([-1003847210571,-1002373696859,-1003770334893]);
 async function checked(ctx:any):Promise<{chatId:number;threadId:number;adminId:number}|null>{
@@ -25,6 +26,71 @@ async function checked(ctx:any):Promise<{chatId:number;threadId:number;adminId:n
  return {chatId:ctx.chat.id,threadId:thread,adminId:ctx.from.id};
 }
 export function registerMenuPanelHandlers(bot:Telegraf):void{
+ // Remove the obsolete Area BBS reply keyboard from the Telegram input area.
+ // Does not delete pinned posts or affect other groups. Idempotent via DB ledger.
+ bot.command("removeareakeyboard",async ctx=>{
+  const where=await checked(ctx);if(!where)return;
+  if(where.chatId!==-1003847210571){
+   await ctx.reply("エリア’s BBS以外は対象外です。");return;
+  }
+  const guide=await pool.query(
+   "SELECT message_thread_id FROM general_guide_topics WHERE chat_id=$1 AND enabled=TRUE",
+   [where.chatId]);
+  if(guide.rows.length!==1){
+   await ctx.reply("総合案内Topicが未登録です。/bindguide を先に実行してください。");return;
+  }
+  const done=await pool.query(
+   "SELECT message_id FROM area_legacy_reply_keyboard_removals WHERE chat_id=$1",
+   [where.chatId]);
+  if(done.rows.length){
+   await ctx.reply("既に旧キーボード撤去を送信済みです（message_id="+
+    done.rows[0].message_id+"）。再送しません。");return;
+  }
+  try{
+   // selective:false addresses all recipients, not just the administrator.
+   const sent=await ctx.telegram.sendMessage(where.chatId,
+    "📌 旧キーボードメニューは廃止しました。今後は総合案内の投稿ボタンをご利用ください。",{
+     message_thread_id:where.threadId,
+     reply_markup:{remove_keyboard:true,selective:false},
+    });
+   await pool.query(
+    `INSERT INTO area_legacy_reply_keyboard_removals
+      (chat_id,message_thread_id,message_id,verified_by)
+     VALUES($1,$2,$3,$4)`,
+    [where.chatId,where.threadId,sent.message_id,where.adminId]);
+   await ctx.reply("✅ 旧返信キーボードの撤去要求を送信しました（message_id="+sent.message_id+"）。");
+  }catch{
+   await ctx.reply("キーボード撤去メッセージの送信結果を確認できません。再送前にTelegramで表示を確認してください。");
+  }
+ });
+ bot.command("removeareacommands",async ctx=>{
+  const where=await checked(ctx);if(!where)return;
+  if(where.chatId!==-1003847210571){
+   await ctx.reply("エリア’s BBS以外は対象外です。");return;
+  }
+  try{
+   const result=await suppressAreaCommandMenu(ctx.telegram);
+   await pool.query(
+    `INSERT INTO area_command_menu_suppressions
+      (chat_id,scopes_cleared,legacy_bot_id,legacy_bot_status,legacy_bot_removed,verified_by)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (chat_id) DO UPDATE SET
+      scopes_cleared=EXCLUDED.scopes_cleared,
+      legacy_bot_id=EXCLUDED.legacy_bot_id,
+      legacy_bot_status=EXCLUDED.legacy_bot_status,
+      legacy_bot_removed=EXCLUDED.legacy_bot_removed,
+      suppressed_at=NOW(),verified_by=EXCLUDED.verified_by`,
+    [result.chatId,result.scopesCleared.join(","),result.legacyBotId,
+     result.legacyBotStatus,result.legacyBotRemoved,where.adminId]);
+   await ctx.reply(
+    "✅ エリア’s BBSのコマンドメニュー抑止を反映しました。"+
+    " legacy_bot=@ShowTimeLIVE_Bot status="+result.legacyBotStatus+
+    (result.legacyBotRemoved?"（グループから退出済み）":""));
+  }catch(e){
+   const message=e instanceof Error?e.message:"UNKNOWN";
+   await ctx.reply("コマンドメニュー抑止を確認できませんでした："+message);
+  }
+ });
  bot.command("bindpanel",async ctx=>{
   const where=await checked(ctx);if(!where)return;
   const mode=ctx.message.text.replace(/^\/\S+(?:@\w+)?\s*/,"").trim();
@@ -55,7 +121,7 @@ export function registerMenuPanelHandlers(bot:Telegraf):void{
       state=CASE WHEN board_menu_panels.state='published' THEN 'published'
                  ELSE 'verified' END,updated_at=NOW()`,
    [where.chatId,where.threadId,mode,where.adminId]);
-  await ctx.reply("✅ 既存トピックのメニュー台帳を確認しました。投稿・固定・既存メッセージ変更はしていません。");
+  await ctx.reply("✅ 既存トピックのメニュー台帳を接続しました。投稿・固定・既存メッセージ変更はしていません。");
  });
  bot.command("publishpanel",async ctx=>{
   const where=await checked(ctx);if(!where)return;

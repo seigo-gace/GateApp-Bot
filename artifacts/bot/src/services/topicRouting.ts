@@ -4,7 +4,7 @@
  */
 export const BOARD_KEYS = ["area_bbs", "video_chat", "gay_board"] as const;
 export type BoardKey = typeof BOARD_KEYS[number];
-export const POST_PURPOSES = ["profile", "room", "announcement", "link"] as const;
+export const POST_PURPOSES = ["profile", "room", "announcement", "link", "sticker"] as const;
 export type PostPurpose = typeof POST_PURPOSES[number];
 export type VerifiedTopic = {
   id: number;

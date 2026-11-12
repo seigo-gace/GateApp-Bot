@@ -19,7 +19,14 @@ import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
  ADMISSION_BOARD_CHAT_IDS,sharedAdmissionDocumentVersion} from "./contract.js";
 import {openAttempt,readAttempt,rememberScreen,transition,consentsComplete,
  saveIssuedInvites,currentIssuedInvites,verifiedApprovalDocumentLinks,getRequestEligibility,
+ refreshJoinInvitesIfNeeded,
  withAdmissionClient,type GateAttempt} from "./store.js";
+import {
+  membershipForBoards,
+  resolveGateEntry,
+  showMemberDirectLinks,
+  groupDeepLink,
+} from "./admissionRouting.js";
 
 const token=()=>randomBytes(9).toString("hex");
 const action=(a:GateAttempt,choice:string)=>`gba:${a.step_token}:${a.step}:${choice}`;
@@ -81,8 +88,13 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
  if(a.document_version!==cfg.documentVersion)throw new Error("GATE_DOCUMENT_STALE");
  if(a.step==="approved"){
   const links=await currentIssuedInvites(a);
+  const members=await membershipForBoards(telegram,Number(a.tg_user_id),
+   cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title})));
   const remaining=cfg.boards.flatMap((board,i)=>{
    const found=links.find(link=>link.targetId===board.target.target_id);
+   if(members.joined.includes(board.target.chat_id)){
+    return [Markup.button.url(`${i+1}．${board.target.title}（参加済）`,groupDeepLink(board.target.chat_id))];
+   }
    return found?[Markup.button.url(`${i+1}．${board.target.title}`,found.link)]:[];
   });
   if(!remaining.length){
@@ -199,6 +211,24 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
  const bl=await blacklistRepo.getBlacklisted(ctx.from.id);
  if(bl?.status==="blocked"){
   await ctx.reply("参加できません。");return;
+ }
+ const route=await resolveGateEntry(
+   ctx.telegram,ctx.from.id,cfg.documentVersion,
+   cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title})),
+   false,
+ );
+ if(route.kind==="member_direct"){
+  await showMemberDirectLinks(ctx.telegram,ctx.from.id,cfg.boards.map(b=>({
+    targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title,
+  })),route);
+  return;
+ }
+ if(route.kind==="approved_join"&&route.attempt){
+  await refreshJoinInvitesIfNeeded(ctx.telegram,route.attempt,
+    cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id})));
+  const latest=await readAttempt(ctx.from.id);
+  if(latest)await show(ctx.telegram,latest,cfg);
+  return;
  }
  try{
   const result=await openAttempt(ctx.from.id,cfg.target.target_id,token(),{
