@@ -18,8 +18,8 @@ function setup(mode:"valid"|"wrong_thread"|"send_unknown"="valid"){
     return {rows:[{topic_id:17}],rowCount:1};
    }
    if(sql.startsWith("UPDATE posting_sticker_entry_pins")){
-    if(sql.includes("status='sent'"))receipt="sent";
-    else if(sql.includes("status='pinned_ack'"))receipt="pinned_ack";
+    if(sql.includes("SET status='pinned_ack'"))receipt="pinned_ack";
+    else if(sql.includes("SET status='sent'"))receipt="sent";
     else if(sql.includes("status='needs_reconcile'"))receipt="needs_reconcile";
     return {rows:[{topic_id:17}],rowCount:1};
    }
