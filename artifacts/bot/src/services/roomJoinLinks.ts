@@ -36,3 +36,26 @@ export async function resolveRoomJoinLink(userId:number,payload:string):
  if(found.rows.length!==1)return null;
  return getAuthorizedRoom(userId,Number(found.rows[0].room_id));
 }
+
+/** Readback for users who clicked a *previously published* ROOM entrance.
+ * Do not reveal the meeting URL; the sole LIVE-capability gate stays in
+ * getAuthorizedRoom. Distinguish ended/standby/permission instead of blaming
+ * the applicant with an ambiguous error.
+ */
+export async function roomJoinDenialReason(payload:string):Promise<string>{
+ const match=/^j_([A-Za-z0-9_-]{32})$/.exec(payload);
+ if(!match)return "参加リンクを確認できません。";
+ const rows=await pool.query(
+  `SELECT r.status FROM room_join_links l
+   JOIN room_posts r ON r.room_id=l.room_id
+   WHERE l.token=$1 AND l.enabled=TRUE`,[match[1]]);
+ if(rows.rows.length!==1)return "このROOMの参加リンクは無効です。";
+ const status=String(rows.rows[0].status);
+ if(status==="finished"||status==="cancelled")
+  return "このROOMは終了しています。参加受付も終了しました。";
+ if(status==="scheduled"||status==="ready"||status==="draft"||status==="postponed")
+  return "このROOMはまだLIVEではありません。開始後に参加できます。";
+ if(status==="live")
+  return "このROOMへの参加には募集主の承諾が必要です。";
+ return "このROOMは現在参加できません。";
+}
