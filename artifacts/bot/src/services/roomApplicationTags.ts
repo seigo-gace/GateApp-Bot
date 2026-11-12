@@ -60,7 +60,13 @@ export function applicationTagRows(
   const categoryButtons=mapped.slice(0,2).flat();
   return [...roomChoiceRows(categoryButtons),mapped[2]!];
  }
- const isCandidate=(key:string)=>/^application:tag:(?:like|love):\\d+:tag:\\d+:\\d+$/.test(key);
+ const isCandidate=(key:string)=>{
+  const parts=key.split(":");
+  return parts.length===7&&parts[0]==="application"&&parts[1]==="tag"&&
+   (parts[2]==="like"||parts[2]==="love")&&parts[4]==="tag"&&
+   Number.isSafeInteger(Number(parts[3]))&&Number.isSafeInteger(Number(parts[5]))&&
+   Number.isSafeInteger(Number(parts[6]));
+ };
  const candidates=mapped.filter(row=>row.some(b=>isCandidate(b.callback_data))).flat();
  const other=mapped.filter(row=>!row.some(b=>isCandidate(b.callback_data)));
  const navigation=other.filter(row=>row.some(b=>b.callback_data.includes(":page:")));
