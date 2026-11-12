@@ -262,7 +262,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    await ctx.reply(text,buttons?{parse_mode:isRoom?"HTML":undefined,...buttons}:undefined);
   }
  });
- bot.action(/^application:decide:(\\d+):(accepted|held|declined)$/,async ctx=>{
+ bot.action(/^application:decide:(\d+):(accepted|held|declined)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const id=Number(ctx.match[1]),decision=ctx.match[2] as "accepted"|"held"|"declined";
   const row=await pool.query(
