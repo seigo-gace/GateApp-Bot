@@ -9,6 +9,7 @@ import {parseJstDateTime} from "../services/postingDomain.js";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../services/roomAccess.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
+import {adaptiveChoiceRows} from "../services/inlineSelection.js";
 function actions(roomId:number,revision:number,status:string,visibility?:string){
  const allowed:Record<string,RoomAction[]>={
   draft:["schedule","cancel"],
@@ -19,15 +20,17 @@ function actions(roomId:number,revision:number,status:string,visibility?:string)
  };
  const labels:Record<RoomAction,string>={schedule:"📅 予約",prepare:"✅ 準備完了",
   start:"▶ 開始する",postpone:"⏸ 延期",cancel:"❌ 中止",finish:"⚫ 終了する"};
- const rows=(allowed[status]||[]).map(x=>[
-  Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`)]);
+ const buttons=(allowed[status]||[]).map(x=>
+  Markup.button.callback(labels[x],`room:action:${roomId}:${revision}:${x}`));
  if(["draft","scheduled","ready"].includes(status)&&visibility){
   const next=visibility==="public"?"approved_only":"public";
-  rows.push([Markup.button.callback(
+  buttons.push(Markup.button.callback(
     next==="public"?"🔓 自由参加へ変更":"🔐 承認制へ変更",
-    `room:visibility:${roomId}:${revision}:${next}`)]);
+    `room:visibility:${roomId}:${revision}:${next}`));
  }
- return Markup.inlineKeyboard(rows);
+ // Keep all existing ROOM actions, but avoid a stack of single-button rows.
+ // Telegram controls actual pixel widths: the shared choice layout is best-effort.
+ return Markup.inlineKeyboard(adaptiveChoiceRows(buttons));
 }
 export function registerRoomHandlers(bot:Telegraf):void{
  bot.action("room:manage",async ctx=>{
