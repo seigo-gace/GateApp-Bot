@@ -22,7 +22,7 @@ function requireIdentity(value:unknown):CreatorIdentity{
  if(id?.is_bot!==true||!Number.isSafeInteger(id.id)||Number(id.id)<=0||
     typeof id.username!=="string"||!/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(id.username))
   throw new Error("STICKER_PIN_CREATOR_IDENTITY_UNVERIFIED");
- return {id:id.id!,username:approvedUsername(id.username!),is_bot:true};
+ return {id:id.id!,username:id.username!,is_bot:true};
 }
 function stickerTopic(t:VerifiedTopic & {groupTitle?:string;verified?:boolean}){
  assertVerifiedTopic(t,"video_chat","sticker");
@@ -117,6 +117,9 @@ export function createStickerEntryPinService({
   const bot=creatorBotApi?
    requireIdentity(await creatorBotApi("getMe",{})):
    fixedCreatorIdentity(creatorBotUsername!);
+  // Only the target DM account is pinned to the Master-approved name.
+  // The sending GroupBot is independently checked by getChatMember.
+  bot.username=approvedUsername(bot.username);
   const writer=requireIdentity(await postingBotApi("getMe",{}));
   const rights=await postingBotApi("getChatMember",{
     chat_id:t.chatId,user_id:writer.id});
