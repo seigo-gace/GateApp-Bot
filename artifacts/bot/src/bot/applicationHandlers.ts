@@ -262,27 +262,53 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    await ctx.reply(text,buttons?{parse_mode:isRoom?"HTML":undefined,...buttons}:undefined);
   }
  });
- bot.action(/^application:decide:(\d+):(accepted|held|declined)$/,async ctx=>{
+ bot.action(/^application:decide:(\\d+):(accepted|held|declined)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
-  const id=Number(ctx.match[1]);const decision=ctx.match[2] as "accepted"|"held"|"declined";
+  const id=Number(ctx.match[1]),decision=ctx.match[2] as "accepted"|"held"|"declined";
   const row=await pool.query(
-   "SELECT announcement_id,applicant_user_id FROM announcement_applications WHERE application_id=$1",[id]);
+   "SELECT announcement_id,applicant_user_id,status FROM announcement_applications WHERE application_id=$1",[id]);
   if(row.rows.length!==1){await ctx.answerCbQuery("応募が見つかりません。");return;}
+  let finalStatus=decision;
+  let filled=false;
   try{
    const result=await decideApplication(ctx.from.id,Number(row.rows[0].announcement_id),id,decision);
-   await ctx.answerCbQuery("更新しました");
-   let username:unknown;
-   const applicantId=Number(row.rows[0].applicant_user_id);
-   try{
-    const chat=await ctx.telegram.getChat(applicantId);
-    username="username" in chat?chat.username:undefined;
-   }catch{/* A valid applicant ID can still be used as a Telegram deep link. */}
-   await ctx.editMessageText("✅ 応募を"+(decision==="accepted"?"承諾":"拒否")+"しました。"+
-    (result.filled?" 受付状態が更新されました。":""),
-    Markup.inlineKeyboard([[
-     Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))
-    ]]));
-  }catch{await ctx.answerCbQuery("処理できません。権限・人数・受付状態を確認してください。");}
+   finalStatus=result.status;
+   filled=result.filled;
+  }catch{
+   // A duplicate callback after a successful database commit is NOT a new
+   // failed decision. Read back ownership and actual status before responding.
+   const readback=await pool.query(
+    `SELECT ap.status FROM announcement_applications ap
+      JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
+      WHERE ap.application_id=$1 AND p.owner_user_id=$2`,[id,ctx.from.id]);
+   if(readback.rows.length!==1||readback.rows[0].status!==decision){
+    await ctx.answerCbQuery("処理できません。権限・受付状態を確認してください。");return;
+   }
+   finalStatus=decision;
+  }
+  // Business state is already committed. A Telegram edit or callback
+  // acknowledgment failure must never be presented as a DB decision failure.
+  await ctx.answerCbQuery("応募状態を更新しました").catch(()=>undefined);
+  const applicantId=Number(row.rows[0].applicant_user_id);
+  let username:unknown;
+  try{
+   const chat=await ctx.telegram.getChat(applicantId);
+   username="username" in chat?chat.username:undefined;
+  }catch{/* The existing deep-link fallback remains available. */}
+  const receipt=(finalStatus==="accepted"?"✅ 応募を承諾しました。":
+   finalStatus==="held"?"⏸ 応募を保留しました。":"❌ 応募を拒否しました。")+
+   (filled?" 受付状態が更新されました。":"");
+  const keyboard=Markup.inlineKeyboard([[
+   Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))
+  ]]);
+  try{
+   await ctx.editMessageText(receipt,keyboard);
+  }catch{
+   // Keep a usable owner receipt instead of returning a false business FAIL.
+   await ctx.telegram.sendMessage(ctx.from.id,receipt,keyboard).catch(()=>{
+    console.warn("[ROOM_APPLICATION_DECISION_RECEIPT_NEEDS_RECONCILE]");
+   });
+  }
  });
  bot.command("myapplications",async ctx=>{
   if(ctx.chat.type!=="private")return;
