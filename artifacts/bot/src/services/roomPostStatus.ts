@@ -16,7 +16,7 @@ export function roomBadge(kind:PublicRoomStatus):string{
   started:"🔴 LIVE中",
   postponed:"⏸ 延期",
   cancelled:"🚫 中止",
-  finished:"⚫ 終了",
+  finished:"✅ 終了",
   visibility_changed:"🔒 参加条件を更新しました",
   details_changed:"📝 募集内容を更新しました",
  };
