@@ -1,9 +1,20 @@
 import type {VerifiedTopic} from "./topicRouting.js";
 import {assertVerifiedTopic} from "./topicRouting.js";
 
-type CreatorIdentity={id:number;username:string;is_bot:boolean};
+type CreatorIdentity={id:number|null;username:string;is_bot:true};
+const MASTER_FIXED_STICKER_BOT_USERNAME="CreateVdobot";
+function approvedUsername(name:string):string{
+ if(name.toLowerCase()!==MASTER_FIXED_STICKER_BOT_USERNAME.toLowerCase())
+  throw new Error("STICKER_PIN_TARGET_USERNAME_UNAPPROVED");
+ return MASTER_FIXED_STICKER_BOT_USERNAME;
+}
+function fixedCreatorIdentity(name:string):CreatorIdentity{
+ // A user-approved deep-link destination is public configuration, NOT a
+ // Telegram Bot-API identity attestation. No sales-bot token is needed.
+ return {id:null,username:approvedUsername(name),is_bot:true};
+}
 type CreatorBotApi=(method:string,params:Record<string,unknown>)=>Promise<unknown>;
-type PinRow={topic_id:number;creator_bot_id:number;creator_bot_username:string;
+type PinRow={topic_id:number;creator_bot_id:number|null;creator_bot_username:string;
  status:string;telegram_message_id:number|null};
 type Database={query(sql:string,args:unknown[]):Promise<{rowCount:number|null;rows:Record<string,unknown>[]}>};
 function requireIdentity(value:unknown):CreatorIdentity{
@@ -11,7 +22,7 @@ function requireIdentity(value:unknown):CreatorIdentity{
  if(id?.is_bot!==true||!Number.isSafeInteger(id.id)||Number(id.id)<=0||
     typeof id.username!=="string"||!/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(id.username))
   throw new Error("STICKER_PIN_CREATOR_IDENTITY_UNVERIFIED");
- return id as CreatorIdentity;
+ return {id:id.id!,username:approvedUsername(id.username!),is_bot:true};
 }
 function stickerTopic(t:VerifiedTopic & {groupTitle?:string;verified?:boolean}){
  assertVerifiedTopic(t,"video_chat","sticker");
@@ -21,7 +32,7 @@ function stickerTopic(t:VerifiedTopic & {groupTitle?:string;verified?:boolean}){
  return t;
 }
 function row(raw:Record<string,unknown>):PinRow{
- return {topic_id:Number(raw.topic_id),creator_bot_id:Number(raw.creator_bot_id),
+ return {topic_id:Number(raw.topic_id),creator_bot_id:raw.creator_bot_id===null?null:Number(raw.creator_bot_id),
   creator_bot_username:String(raw.creator_bot_username),status:String(raw.status),
   telegram_message_id:raw.telegram_message_id==null?null:Number(raw.telegram_message_id)};
 }
@@ -49,8 +60,10 @@ export function createStickerEntryPinStore(db:Database){
     [t.id,bot.id,bot.username,t.chatId,t.threadId,t.title]);
    if(q.rowCount===1)return {claimed:true};
    const existing=await this.read(t.id);
-   if(!existing||existing.creator_bot_id!==bot.id||
-      existing.creator_bot_username!==bot.username)
+   if(!existing||
+      (bot.id!==null&&existing.creator_bot_id!==null&&
+       existing.creator_bot_id!==bot.id)||
+      existing.creator_bot_username.toLowerCase()!==bot.username.toLowerCase())
     throw new Error("STICKER_PIN_EXISTING_OWNER_MISMATCH");
    return {claimed:false,status:existing.status,messageId:existing.telegram_message_id};
   },
@@ -83,22 +96,27 @@ export function createStickerEntryPinStore(db:Database){
  };
 }
 export function createStickerEntryPinService({
- getVerifiedStickerTopic,creatorBotApi,postingBotApi=creatorBotApi,store
+ getVerifiedStickerTopic,creatorBotApi,creatorBotUsername,postingBotApi,store
 }:{
  getVerifiedStickerTopic:()=>Promise<VerifiedTopic & {groupTitle?:string;verified?:boolean}>;
- // Target bot's authenticated getMe supplies the destination username only.
- creatorBotApi:CreatorBotApi;
+ // Optional strong proof when the owner has an already-mounted Creator
+ // credential; no new secret required for the user-approved public URL.
+ creatorBotApi?:CreatorBotApi;
+ creatorBotUsername?:string;
  // GateApp-Bot is the existing group administrator and owns the pin.
- postingBotApi?:CreatorBotApi;
+ postingBotApi:CreatorBotApi;
  store:ReturnType<typeof createStickerEntryPinStore>;
 }){
  if(typeof getVerifiedStickerTopic!=="function"||
-   typeof creatorBotApi!=="function"||typeof postingBotApi!=="function"||
-   typeof store?.claim!=="function")
+   typeof postingBotApi!=="function"||typeof store?.claim!=="function"||
+   (typeof creatorBotApi==="function"&&creatorBotUsername!==undefined)||
+   (typeof creatorBotApi!=="function"&&creatorBotUsername===undefined))
   throw new Error("STICKER_PIN_OWNER_DEPS_MISSING");
  return async function ensureStickerEntryPin(){
   const t=stickerTopic(await getVerifiedStickerTopic());
-  const bot=requireIdentity(await creatorBotApi("getMe",{}));
+  const bot=creatorBotApi?
+   requireIdentity(await creatorBotApi("getMe",{})):
+   fixedCreatorIdentity(creatorBotUsername!);
   const writer=requireIdentity(await postingBotApi("getMe",{}));
   const rights=await postingBotApi("getChatMember",{
     chat_id:t.chatId,user_id:writer.id});
