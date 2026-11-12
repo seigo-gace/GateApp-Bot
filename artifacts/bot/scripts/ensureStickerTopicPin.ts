@@ -13,6 +13,7 @@ import "dotenv/config";
 import {readConfiguredBotToken} from "../src/config/botToken.js";
 import {createStickerTopicOwnerPort} from "../src/services/stickerTopicOwnerPort.js";
 import {pool,closePool} from "../src/db/index.js";
+import {bootstrapExistingStickerTopic} from "../src/services/stickerTopicBootstrap.js";
 
 const api=(token:string)=>async(method:string,params:Record<string,unknown>):Promise<unknown>=>{
  const result=await fetch("https://api.telegram.org/bot"+token+"/"+method,{
@@ -89,6 +90,17 @@ async function main():Promise<void>{
  if(typeof process.env.DATABASE_URL!=="string"||!process.env.DATABASE_URL)
    throw Error("STICKER_PIN_DATABASE_NOT_CONFIGURED");
  if(process.env.STICKER_PIN_MODE==="inspect")return inspectReadOnly();
+ if(process.env.STICKER_PIN_MODE==="bootstrap_adopted_link"){
+  const r=await bootstrapExistingStickerTopic({
+   api:api(readConfiguredBotToken()),pool
+  });
+  console.log("STICKER_BOOTSTRAP_THREAD_VERIFIED="+(r.threadVerified?"YES":"NO"));
+  console.log("STICKER_PIN_TELEGRAM_ACK="+(r.acknowledged?"YES":"NO"));
+  console.log("STICKER_PIN_MESSAGE_ID="+String(r.messageId??0));
+  console.log("STICKER_PIN_PRIOR_ACK="+(r.alreadyAcknowledged?"YES":"NO"));
+  console.log("STICKER_PIN_INDEPENDENT_READBACK=NOT_VERIFIED");
+  return;
+ }
  const postingBotApi=api(readConfiguredBotToken());
  const owner=await postingBotApi("getMe",{}) as {id?:number;username?:string;is_bot?:boolean};
  if(owner.is_bot!==true||owner.username?.toLowerCase()!=="gaybbs_bot"||
