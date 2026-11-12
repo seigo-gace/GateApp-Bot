@@ -181,18 +181,24 @@ try{
  const recruitmentId=Number(recruitment.rows[0].announcement_id);
  const accepted=await submitApplication(recruitmentId,333001,null);
  await submitApplication(recruitmentId,333002,null);
- assert.ok(await getAuthorizedRoom(111001,privateRoomId),
-  "ROOM host must retain private access");
+ assert.equal(await getAuthorizedRoom(111001,privateRoomId),null,
+  "Owner must not expose ROOM URL before LIVE");
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Pending applicant must not receive the URL");
  await decideApplication(111001,recruitmentId,accepted.applicationId,"accepted");
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Accepted applicant must not get ROOM URL while ready");
+ const startedPrivate=await updateRoomState(111001,privateRoomId,1,"start");
+ assert.equal(startedPrivate.state,"live");
+ assert.ok(await getAuthorizedRoom(111001,privateRoomId),
+  "Host receives ROOM URL once LIVE");
  assert.ok((await getAuthorizedRoom(333001,privateRoomId))?.joinUrl.includes("PRIVATE_ACCEPTED_ONLY"));
  assert.equal(await getAuthorizedRoom(333002,privateRoomId),null,
   "Another pending applicant must not gain URL access");
  assert.equal(await getAuthorizedRoom(444001,privateRoomId),null,
   "Unrelated user must never obtain ROOM URL");
  assert.equal((await listAuthorizedRooms(333001)).some(r=>r.id===privateRoomId),true);
- const cancelled=await updateRoomState(111001,privateRoomId,1,"cancel");
+ const cancelled=await updateRoomState(111001,privateRoomId,startedPrivate.revision,"cancel");
  assert.equal(cancelled.state,"cancelled");
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Cancelled ROOM must remove join URL and user records");
