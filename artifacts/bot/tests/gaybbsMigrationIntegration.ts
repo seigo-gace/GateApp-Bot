@@ -1,0 +1,1144 @@
+/** Isolated PostgreSQL integration test: never connect to a production DB.
+ * CI assigns temporary Postgres 16 and a dedicated test database.
+ */
+import assert from "node:assert/strict";
+import {runMigrations} from "../src/db/migrate.js";
+import {pool,closePool} from "../src/db/index.js";
+import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
+import {updateRoomState,updateRoomDetails,changeRoomVisibility} from "../src/services/roomLifecycle.js";
+import {projectNextRoomEvent,enqueueDueRoomStartReminders} from "../src/services/announcementRoomEvents.js";
+import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
+import type {Telegram} from "telegraf";
+import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
+import {createRoom,createAnnouncement,beginDraft,getDraft,updateDraft,saveAnnouncementEditorDraft} from "../src/services/publicPostRepository.js";
+import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
+import {announcementPanel,announcementSummary,registerPostingHandlers,startRoomEditor,startAnnouncementEditor} from "../src/bot/postingHandlers.js";
+import {makeApplicationLink} from "../src/services/applicationLinks.js";
+import {publishPost} from "../src/services/publishService.js";
+import {publishExistingMenuPanel} from "../src/services/menuPanelPublisher.js";
+import {markPostSourcePublished} from "../src/services/publicPostRepository.js";
+import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
+import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
+import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
+import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
+import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
+import {beginSearch,getSearchSession,updateSearch,findPublicSearchHits} from "../src/services/searchRepository.js";
+import {initialSearchFilters} from "../src/services/searchDomain.js";
+import {activateMenuOrigin} from "../src/services/menuOriginRepository.js";
+import {startOperationHelp,registerOperationHelpHandlers} from "../src/bot/operationHelpHandlers.js";
+import {newMenuToken,tokenHash} from "../src/services/menuOrigin.js";
+if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
+ throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
+
+try{
+ await runMigrations();
+ await runMigrations(); // idempotency when a container is restarted.
+ for(const table of ["profiles","profile_tags","profile_media","profile_publications",
+  "posting_topics","posting_deliveries","public_post_drafts",
+  "room_posts","announcement_posts","announcement_applications",
+  "announcement_notifications","announcement_application_entries",
+  "announcement_room_dispatches","room_source_events","room_host_sessions",
+  "link_button_posts","general_guide_topics","general_guide_documents",
+  "board_menu_panels","board_posting_menu_links","board_menu_entry_tokens","gaybbs_search_sessions","gaybbs_help_sessions","gaybbs_feature_release_gates"]){
+  const found=await pool.query("SELECT to_regclass($1)::text AS reg",[table]);
+  assert.ok(found.rows[0]?.reg,table);
+ }
+ // A06: field data and consented profile summary belong to one announcement
+ // source; no new profile record or redundant database is created.
+ const manual=await createAnnouncement(811001,11,"recruitment","本文1行\n本文2行",
+  undefined,["サシ"],["場所なし"],undefined,{
+   conditions:{inputMode:"manual",title:"募集タイトル",nickname:"ゼロ",
+    heightCm:175,weightKg:80,age:40,position:"タチ"},
+  });
+ const linkedRecruit=await createAnnouncement(811002,12,"recruitment","別の募集文",
+  undefined,["飲み/飯"],[],undefined,{
+   conditions:{inputMode:"linked",title:"食事募集"},
+   profileSnapshot:{nickname:"テスト",heightCm:170,weightKg:70,age:35,position:"リバ"},
+  });
+ const savedManual=await pool.query(
+  "SELECT text,conditions,profile_snapshot FROM announcement_posts WHERE announcement_id=$1",
+  [manual.sourceId]);
+ assert.equal(savedManual.rows[0].text,"本文1行\n本文2行");
+ assert.equal(savedManual.rows[0].conditions.title,"募集タイトル");
+ assert.equal(savedManual.rows[0].conditions.position,"タチ");
+ assert.equal(savedManual.rows[0].profile_snapshot,null);
+ const savedLinked=await pool.query(
+  "SELECT conditions,profile_snapshot FROM announcement_posts WHERE announcement_id=$1",
+  [linkedRecruit.sourceId]);
+ assert.equal(savedLinked.rows[0].conditions.title,"食事募集");
+ assert.equal(savedLinked.rows[0].profile_snapshot.nickname,"テスト");
+ // Reopening after cancellation gets a new revision and no old private fields.
+ // A06: an r_ entry is authenticated against the same existing announcement
+ // token ledger; a profile token must never masquerade as recruitment.
+ const panel=await pool.query(
+  `INSERT INTO board_menu_panels
+    (chat_id,message_thread_id,panel_type,state,verified_by,verified_at)
+   VALUES(-1003847210571,712345,'posting','published',811001,NOW())
+   RETURNING panel_id`);
+ const panelId=Number(panel.rows[0].panel_id);
+ const recruitToken=newMenuToken(),profileToken=newMenuToken();
+ await pool.query(
+  `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at)
+   VALUES($1,$3,'announcement',NOW()+INTERVAL '1 day'),
+         ($2,$3,'profile',NOW()+INTERVAL '1 day')`,
+  [tokenHash(recruitToken),tokenHash(profileToken),panelId]);
+ const recruitingOrigin=await activateMenuOrigin(811004,"r_"+recruitToken);
+ assert.equal(recruitingOrigin.feature,"announcement");
+ assert.equal(recruitingOrigin.threadId,712345);
+ await assert.rejects(()=>activateMenuOrigin(811004,"r_"+profileToken),
+  /RECRUITMENT_MENU_FEATURE_NOT_VERIFIED/);
+ const first=await beginDraft(811003,"announcement","awaiting_text",
+  {kind:"recruitment",recruitmentFlow:"compact",title:"キャンセル対象"});
+ const cancelledRecruitment=await updateDraft(811003,"announcement",first.revision,"cancelled",
+  {recruitmentFlow:"compact",cancelled:true});
+ assert.equal(cancelledRecruitment.step,"cancelled");
+ assert.notEqual(await currentDmTextOwner(811003),"announcement","cancelled draft must not capture DM input");
+ assert.equal(cancelledRecruitment.data.title,undefined);
+ const again=await beginDraft(811003,"announcement","awaiting_text",
+  {kind:"recruitment",recruitmentFlow:"compact"});
+ assert.ok(again.revision>cancelledRecruitment.revision);
+ assert.equal((await getDraft(811003,"announcement"))?.data.title,undefined);
+ const draft=await pool.query(
+  `INSERT INTO announcement_posts
+    (request_key,owner_user_id,kind,text,status,capacity,accept_applications)
+   VALUES('db-int-1',111001,'recruitment','テスト募集','published',1,TRUE)
+   RETURNING announcement_id`);
+ const id=Number(draft.rows[0].announcement_id);
+ const a=await submitApplication(id,222001,null);
+ const b=await submitApplication(id,222002,null);
+ assert.equal(a.duplicate,false);
+ assert.equal((await submitApplication(id,222001,null)).duplicate,true);
+ assert.equal(b.duplicate,false);
+ const decisions=await Promise.allSettled([
+  decideApplication(111001,id,a.applicationId,"accepted"),
+  decideApplication(111001,id,b.applicationId,"accepted"),
+ ]);
+ assert.equal(decisions.filter(x=>x.status==="fulfilled").length,1,
+  "capacity=1 concurrent decisions must commit one only");
+ assert.equal(decisions.filter(x=>x.status==="rejected").length,1);
+ const posts=await pool.query(
+  "SELECT status,accept_applications FROM announcement_posts WHERE announcement_id=$1",[id]);
+ assert.equal(posts.rows[0].status,"filled");
+ assert.equal(posts.rows[0].accept_applications,false);
+ const count=await pool.query(
+  `SELECT count(*)::int AS n FROM announcement_applications
+   WHERE announcement_id=$1 AND status='accepted'`,[id]);
+ assert.equal(Number(count.rows[0].n),1);
+ const notify=await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE announcement_id=$1",[id]);
+ assert.equal(Number(notify.rows[0].n),3,
+  "two submitted notifications and one owner decision notification");
+ // Integration: ROOM is state owner. Announcement receives immutable events
+ // and queues a separate MPB edit; no raw join URL enters notification payload.
+ const room=await pool.query(
+  `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
+   VALUES('db-room-1',111001,'test room','jitsi','https://meet.jit.si/PRIVATE','ready')
+   RETURNING room_id,revision`);
+ const roomId=Number(room.rows[0].room_id);
+ const linked=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status,room_id)
+   VALUES('db-room-ann-1',111001,'announcement','ROOM案内','published',$1)
+   RETURNING announcement_id`,[roomId]);
+ const linkedId=Number(linked.rows[0].announcement_id);
+ const deliveryTopic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,
+    title,verified_by,verified_at,enabled)
+   VALUES('video_chat','announcement',-1002373696859,987,'Room purge test',111001,NOW(),TRUE)
+   RETURNING topic_id`);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+   (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
+     operation_key,status,telegram_message_id,inline_buttons,rendered_text)
+   VALUES('announcement',$1,111001,1,$2,'db-room-delivery','sent',87654,
+     '[]'::jsonb,'🎬 <b>元の公開ROOM告知</b>・保持する詳細')`,
+  [String(linkedId),deliveryTopic.rows[0].topic_id]);
+ const source=await updateRoomState(111001,roomId,1,"start");
+ assert.equal(source.state,"live");
+ const consumed=await projectNextRoomEvent();
+ assert.equal(consumed?.eventId,source.eventId);
+ assert.deepEqual(consumed?.announcementIds,[linkedId]);
+ assert.equal(await projectNextRoomEvent(),null);
+ const once=await pool.query(
+  `SELECT count(*)::int AS n FROM announcement_room_dispatches
+   WHERE announcement_id=$1 AND room_event_id=$2`,[linkedId,source.eventId]);
+ assert.equal(once.rows[0].n,1);
+ const ownerNotice=await pool.query(
+  `SELECT payload::text AS payload FROM announcement_notifications
+   WHERE announcement_id=$1 AND event_key=$2`,
+  [linkedId,"room-event:"+source.eventId+":owner:"+linkedId]);
+ assert.equal(ownerNotice.rows.length,1);
+ assert.ok(!ownerNotice.rows[0].payload.includes("meet.jit.si"));
+ console.log("GAYBBS_DB_ROOM_ANNOUNCEMENT_OUTBOX=PASS");
+ // Entirely disposable CI database; no feature gate is enabled in production.
+ await pool.query(
+  `INSERT INTO gaybbs_feature_release_gates
+  (feature,source_commit,ci_evidence,gserver_runtime_evidence,
+    telegram_e2e_evidence,approved_by,enabled)
+  VALUES('announcement',repeat('a',40),'CI_TEST_ONLY',
+    'DB_TEST_ONLY','FAKE_TELEGRAM_TEST_ONLY',111001,TRUE)`);
+ await pool.query("UPDATE announcement_notifications SET state='sent' WHERE state='pending'");
+ await pool.query(
+  `INSERT INTO announcement_notifications
+    (announcement_id,recipient_user_id,event_key,payload)
+  VALUES($1,222001,'db-notify-success','{"action":"accepted"}'::jsonb)`,
+  [linkedId]);
+ const calls:string[]=[];
+ const fake={sendMessage:async(_user:number,message:string)=>{
+  calls.push(message);return {message_id:9001};
+ }} as unknown as Telegram;
+ process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED="enabled";
+ const sent=await deliverNextAnnouncementNotification(fake);
+ assert.equal(sent?.state,"sent");
+ assert.equal(calls.length,1);
+ assert.equal(await deliverNextAnnouncementNotification(fake),null);
+ await pool.query(
+  `INSERT INTO announcement_notifications
+    (announcement_id,recipient_user_id,event_key,payload)
+   VALUES($1,222001,'db-notify-ambiguous','{"action":"accepted"}'::jsonb)`,
+  [linkedId]);
+ const ambiguous={sendMessage:async()=>{throw new Error("SIMULATED_TIMEOUT")}} as unknown as Telegram;
+ const uncertain=await deliverNextAnnouncementNotification(ambiguous);
+ assert.equal(uncertain?.state,"needs_reconcile");
+ assert.equal(await deliverNextAnnouncementNotification(fake),null,
+  "Unknown Telegram outcome must never be auto-sent again");
+ delete process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED;
+ console.log("GAYBBS_DB_NOTIFICATION_UNKNOWN_NEVER_RETRY=PASS");
+ // Simulate all auxiliary meeting records to detect forgotten cleanup paths.
+ await pool.query(
+  `INSERT INTO room_participation_reports(room_id,reporter_user_id,report_type)
+   VALUES($1,222001,'join_failed')`,[roomId]);
+ await pool.query(
+  `INSERT INTO room_host_sessions
+     (owner_user_id,room_id,expected_revision,requested_action,expires_at)
+   VALUES(111001,$1,$2,'postpone',NOW()+INTERVAL '20 minutes')`,
+  [roomId,source.revision]);
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data)
+   VALUES(111001,'room','saved',$1::jsonb)`,
+  [JSON.stringify({roomId})]);
+ await pool.query(
+  `INSERT INTO announcement_application_entries(token_hash,announcement_id,expires_at)
+   VALUES('db-room-entry',$1,NOW()+INTERVAL '1 day')`,[linkedId]);
+ await pool.query(
+  `INSERT INTO announcement_application_sessions(applicant_user_id,token_hash,expires_at)
+   VALUES(222001,'db-room-entry',NOW()+INTERVAL '1 hour')`);
+ const ended=await updateRoomState(111001,roomId,source.revision,"finish");
+ assert.equal(ended.state,"finished");
+ assert.ok(ended.eventId);
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM room_posts WHERE room_id=$1",[roomId]
+ )).rows[0].n,1,"ROOM DB must remain until Telegram end badge confirmed");
+ await projectNextRoomEvent();
+ // Terminal reconciliation and actual DB disposal are verified in a
+ // separate, fully-gated scenario below.
+
+ const joinRoom=await pool.query(
+  `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
+   VALUES('db-approved-room',111001,'承認制ROOM','jitsi',
+      'https://meet.jit.si/PRIVATE_ACCEPTED_ONLY','ready')
+   RETURNING room_id`);
+ const privateRoomId=Number(joinRoom.rows[0].room_id);
+ const recruitment=await pool.query(
+  `INSERT INTO announcement_posts
+    (request_key,owner_user_id,kind,text,status,room_id,capacity,accept_applications)
+   VALUES('db-approved-room-recruit',111001,'recruitment',
+      '承認制テスト','published',$1,2,TRUE)
+   RETURNING announcement_id`,[privateRoomId]);
+ const recruitmentId=Number(recruitment.rows[0].announcement_id);
+ const accepted=await submitApplication(recruitmentId,333001,null);
+ await submitApplication(recruitmentId,333002,null);
+ assert.ok(await getAuthorizedRoom(111001,privateRoomId),
+  "ROOM host must retain private access");
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Pending applicant must not receive the URL");
+ await decideApplication(111001,recruitmentId,accepted.applicationId,"accepted");
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Even an approved applicant must not enter a ROOM before the host starts it");
+ const acceptedLive=await updateRoomState(111001,privateRoomId,1,"start");
+ assert.ok((await getAuthorizedRoom(333001,privateRoomId))?.joinUrl.includes("PRIVATE_ACCEPTED_ONLY"));
+ assert.equal(await getAuthorizedRoom(333002,privateRoomId),null,
+  "Another pending applicant must not gain URL access");
+ assert.equal(await getAuthorizedRoom(444001,privateRoomId),null,
+  "Unrelated user must never obtain ROOM URL");
+ assert.equal((await listAuthorizedRooms(333001)).some(r=>r.id===privateRoomId),true);
+ const cancelled=await updateRoomState(111001,privateRoomId,acceptedLive.revision,"cancel");
+ assert.equal(cancelled.state,"cancelled");
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Cancelled ROOM must remove join URL and user records");
+ assert.equal((await pool.query(
+  "SELECT status FROM room_posts WHERE room_id=$1",[privateRoomId]
+ )).rows[0].status,"cancelled","cancelled ROOM retained only pending status/notification sync");
+ console.log("GAYBBS_DB_ROOM_JOIN_AUTHORIZATION=PASS");
+ // Separate private creation is idempotent and has no MPB send.
+ const privateSaved=await createRoom(555001,1,"プライベート作成");
+ const privateSame=await createRoom(555001,1,"プライベート作成");
+ assert.equal(privateSaved.sourceId,privateSame.sourceId);
+ assert.equal(privateSaved.joinUrl,privateSame.joinUrl);
+ const status=await pool.query(
+  "SELECT status,join_visibility FROM room_posts WHERE room_id=$1",
+  [privateSaved.sourceId]);
+ assert.equal(status.rows[0].status,"draft");
+ assert.equal(status.rows[0].join_visibility,"approved_only");
+ const linkedDraft=await createAnnouncement(555001,1,"announcement",
+  "ROOM作成のお知らせ（非公開）",undefined,[],[],
+  Number(privateSaved.sourceId));
+ const linkedSame=await createAnnouncement(555001,1,"announcement",
+  "ROOM作成のお知らせ（非公開）",undefined,[],[],
+  Number(privateSaved.sourceId));
+ assert.equal(linkedDraft.sourceId,linkedSame.sourceId);
+ const linkState=await pool.query(
+  "SELECT status,room_id FROM announcement_posts WHERE announcement_id=$1",
+  [linkedDraft.sourceId]);
+ assert.equal(linkState.rows[0].status,"draft");
+ assert.equal(Number(linkState.rows[0].room_id),Number(privateSaved.sourceId));
+ const actualPosts=await pool.query(
+  "SELECT count(*)::int AS n FROM posting_deliveries WHERE source_type='announcement' AND source_id=$1",
+  [linkedDraft.sourceId]);
+ assert.equal(actualPosts.rows[0].n,0,"private save cannot publish Telegram");
+ console.log("GAYBBS_DB_ROOM_PRIVATE_SAVE_IDEMPOTENT=PASS");
+ // Free joining requires both explicit host choice AND an actually published
+ // matching Announcement; no default grant and no URL in public message data.
+ const chosen=await changeRoomVisibility(555001,Number(privateSaved.sourceId),1,"public");
+ assert.equal(chosen.visibility,"public");
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Unready room can never distribute the URL");
+ const prepared=await updateRoomState(555001,Number(privateSaved.sourceId),
+  chosen.revision,"prepare");
+ assert.equal(prepared.state,"ready");
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Even a prepared public-mode room requires published Announcement");
+ await pool.query(
+  "UPDATE announcement_posts SET status='published' WHERE announcement_id=$1",
+  [linkedDraft.sourceId]);
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Business status alone must never grant public join access without Telegram delivery");
+ const topic=await pool.query(
+  `INSERT INTO posting_topics
+    (board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled)
+    VALUES('video_chat','announcement',-1002373696859,123,'CI-only topic',
+      111001,NOW(),TRUE) RETURNING topic_id`);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+    (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
+      operation_key,status,telegram_message_id)
+    VALUES('announcement',$1,555001,1,$2,$3,'sent',10001)`,
+  [linkedDraft.sourceId,topic.rows[0].topic_id,
+   "db-test-published-room:"+linkedDraft.sourceId]);
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Prepared ROOM with a public post is still not LIVE");
+ const reverted=await changeRoomVisibility(
+  555001,Number(privateSaved.sourceId),prepared.revision,"approved_only");
+ assert.equal(reverted.visibility,"approved_only");
+ await assert.rejects(
+  ()=>changeRoomVisibility(999999,Number(privateSaved.sourceId),
+    reverted.revision,"public"),/ROOM_NOT_OWNED/);
+ const publicAgain=await changeRoomVisibility(
+  555001,Number(privateSaved.sourceId),reverted.revision,"public");
+ const live=await updateRoomState(555001,Number(privateSaved.sourceId),publicAgain.revision,"start");
+ assert.equal(live.state,"live");
+ const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
+ assert.equal(guest?.id,Number(privateSaved.sourceId));
+ console.log("GAYBBS_DB_ROOM_EXPLICIT_PUBLIC_MODE_AND_REVOCATION=PASS");
+
+
+
+
+ // Disposable standalone Announcement: terminal/expired rows disappear with
+ // application snapshots, notification payloads, tokens and MPB delivery ID.
+ const ephemeral=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status)
+   VALUES('db-purge-standalone',888001,'recruitment','PRIVATE_ONCE','closed')
+   RETURNING announcement_id`);
+ const obsolete=Number(ephemeral.rows[0].announcement_id);
+ const active=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status)
+   VALUES('db-purge-active',888002,'announcement','ACTIVE_KEEP','published')
+   RETURNING announcement_id`);
+ const keepId=Number(active.rows[0].announcement_id);
+ const expired=await pool.query(
+  `INSERT INTO announcement_posts
+    (request_key,owner_user_id,kind,text,status,expires_at)
+   VALUES('db-purge-time',888003,'preview','TIME_OUT','published',
+      NOW()-INTERVAL '1 minute') RETURNING announcement_id`);
+ const expiredId=Number(expired.rows[0].announcement_id);
+ await pool.query(
+  `INSERT INTO announcement_applications(announcement_id,applicant_user_id,consented_profile)
+    VALUES($1,888010,'{"private":"remove"}'::jsonb)`,[obsolete]);
+ await pool.query(
+  `INSERT INTO announcement_notifications
+    (announcement_id,recipient_user_id,event_key,payload)
+   VALUES($1,888010,'purge-notif','{"text":"remove"}'::jsonb)`,[obsolete]);
+ await pool.query(
+  `INSERT INTO announcement_application_entries(token_hash,announcement_id,expires_at)
+   VALUES('purge-application-token',$1,NOW()+INTERVAL '1 day')`,[obsolete]);
+ await pool.query(
+  `INSERT INTO announcement_application_sessions(applicant_user_id,token_hash,expires_at)
+   VALUES(888010,'purge-application-token',NOW()+INTERVAL '1 day')`);
+ await pool.query(
+  `INSERT INTO posting_deliveries(source_type,source_id,owner_user_id,
+    source_revision,posting_topic_id,operation_key,status,telegram_message_id,rendered_text)
+   VALUES('announcement',$1,888001,1,$2,'purge-delivery','sent',5678,
+     '📣 <b>元の募集投稿</b>・公開した本文')`,
+  [String(obsolete),topic.rows[0].topic_id]);
+ const abandoned=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,
+    status,created_at)
+   VALUES('db-purge-no-expiry',888004,'announcement','STALE',
+    'published',NOW()-INTERVAL '8 days') RETURNING announcement_id`);
+ const abandonedId=Number(abandoned.rows[0].announcement_id);
+ const future=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,
+    status,created_at,event_at)
+   VALUES('db-purge-future',888005,'preview','FUTURE_EVENT',
+    'published',NOW()-INTERVAL '8 days',NOW()+INTERVAL '10 days')
+   RETURNING announcement_id`);
+ const futureId=Number(future.rows[0].announcement_id);
+ // The actual Telegram post must first show a terminal status. The DB
+ // may be deleted only after both the post edit and recipient notices finish.
+ // The fake API below never sends a real Telegram message.
+ const deferred=await purgeDisposableAnnouncements();
+ assert.ok(deferred>=1,"independent expired item may still be purged");
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [obsolete])).rows[0].n,1,"sent Telegram message blocks destructive DB purge");
+ // Keep the historical Telegram announcement and visibly mark its end.
+ // A *fake* Telegram edit proves the exact transport request without touching
+ // any real group (deleteMessage and sendMessage remain forbidden).
+ const announcedEdits:Array<{messageId:number;text:string}>=[];
+ const archiveBot={
+  editMessageText:async(_chat:number,messageId:number,_inline:unknown,text:string)=>{
+   announcedEdits.push({messageId,text});return {message_id:messageId};
+  },
+  deleteMessage:async()=>{throw new Error("HISTORY_POST_DELETE_FORBIDDEN")},
+  sendMessage:async()=>{throw new Error("DUPLICATE_POST_FORBIDDEN")},
+ } as unknown as Telegram;
+ process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED="enabled";
+ const receipt=await archiveNextTerminalAnnouncement(archiveBot);
+ assert.equal(receipt?.status,"archived");
+ assert.deepEqual(announcedEdits.map(x=>x.messageId),[5678]);
+ assert.match(announcedEdits[0]!.text,/✅ 募集終了/);
+ assert.match(announcedEdits[0]!.text,/元の募集投稿/);
+ assert.equal(await archiveNextTerminalAnnouncement(archiveBot),null);
+ delete process.env.GAYBBS_ANNOUNCEMENT_ARCHIVE_ENABLED;
+ await purgeDisposableAnnouncements();
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [obsolete])).rows[0].n,1,
+  "Do not delete applicant notification content just because Telegram archive succeeded");
+ // Simulate a confirmed notification delivery ACK in this disposable fixture.
+ // Real Telegram notification delivery is tested separately.
+ await pool.query(
+  "UPDATE announcement_notifications SET state='sent' WHERE announcement_id=$1",
+  [obsolete]);
+ const removed=await purgeDisposableAnnouncements();
+ assert.ok(removed>=1,"terminal entry may be purged only after Telegram edit and notification ACK");
+ for(const id of [obsolete,expiredId]){
+  assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+   [id])).rows[0].n,0);
+ }
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+   [keepId])).rows[0].n,1);
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [abandonedId])).rows[0].n,1,"active post without expiry must not be deleted just because it is old");
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_posts WHERE announcement_id=$1",
+  [futureId])).rows[0].n,1,"future event must survive idle TTL");
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM announcement_application_sessions WHERE applicant_user_id=888010"
+  )).rows[0].n,0);
+ assert.equal((await pool.query(
+   "SELECT count(*)::int AS n FROM posting_deliveries WHERE operation_key='purge-delivery'"
+  )).rows[0].n,0);
+ assert.equal(await purgeDisposableAnnouncements(),0);
+ // Obsolete draft purging is bounded; a live draft is never removed.
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data,updated_at)
+    VALUES(899001,'announcement','awaiting_text','{"text":"old"}'::jsonb,
+    NOW()-INTERVAL '9 days')`);
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data,updated_at)
+    VALUES(899002,'announcement','awaiting_text','{"text":"active"}'::jsonb,NOW())`);
+ assert.equal(await purgeAbandonedDrafts(7),1);
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM public_post_drafts WHERE owner_user_id=899002"
+ )).rows[0].n,1);
+ console.log("GAYBBS_DB_DISPOSABLE_PURGE_NO_RESIDUE_AND_ACTIVE_PROTECTION=PASS");
+ // ROOM historical post is updated twice in place; no Telegram delete
+ // call, no duplicate send, no private join URL in the message.
+ await pool.query(
+  `INSERT INTO gaybbs_feature_release_gates
+    (feature,source_commit,ci_evidence,gserver_runtime_evidence,
+     telegram_e2e_evidence,approved_by,enabled)
+   VALUES('room',repeat('a',40),'CI_TEST_ONLY','FAKE_DB_ONLY',
+     'FAKE_TELEGRAM_ONLY',111001,TRUE)`);
+ const edits:Array<{chatId:number;messageId:number;text:string}>=[];
+ const historicalBot={
+  editMessageText:async(chatId:number,messageId:number,_inline:unknown,
+    text:string,_options:unknown)=>{
+   edits.push({chatId,messageId,text});return {message_id:messageId};
+  },
+  deleteMessage:async()=>{throw new Error("HISTORY_DELETE_FORBIDDEN")},
+  sendMessage:async()=>{throw new Error("DUPLICATE_PUBLIC_POST_FORBIDDEN")},
+ } as unknown as Telegram;
+ process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED="enabled";
+ await makeRoomJoinLink(111001,roomId);
+ const liveEdit=await updateNextRoomStatusMessage(historicalBot);
+ assert.equal(liveEdit?.state,"confirmed");
+ assert.match(edits[0]!.text,/🔴 LIVE中/);
+ assert.match(edits[0]!.text,/元の公開ROOM告知/);
+ assert.equal(edits[0]!.messageId,87654);
+ // The final ROOM event may have been projected later; no terminal DB purge
+ // until the *same* existing Telegram message displays the end badge.
+ const endEdit=await updateNextRoomStatusMessage(historicalBot);
+ assert.equal(endEdit?.state,"confirmed");
+ assert.match(edits[1]!.text,/✅ 終了/);
+ assert.equal(edits[1]!.messageId,87654);
+ assert.equal(edits.length,2);
+ delete process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED;
+ // An unresolved DM is explicitly reconciled here in the isolated fixture.
+ await pool.query(
+  `UPDATE announcement_notifications SET state='sent'
+   WHERE announcement_id=$1 AND state IN ('pending','needs_reconcile')`,[linkedId]);
+ process.env.GAYBBS_ROOM_TERMINAL_PURGE_ENABLED="enabled";
+ const purged=await finalizeNextRoom();
+ assert.equal(purged,roomId);
+ delete process.env.GAYBBS_ROOM_TERMINAL_PURGE_ENABLED;
+ for(const [query,params] of [
+  ["SELECT 1 FROM room_posts WHERE room_id=$1",[roomId]],
+  ["SELECT 1 FROM room_source_events WHERE room_id=$1",[roomId]],
+  ["SELECT 1 FROM room_status_message_edits WHERE edit_id=$1",[liveEdit!.editId]],
+  ["SELECT 1 FROM announcement_posts WHERE announcement_id=$1",[linkedId]],
+  ["SELECT 1 FROM posting_deliveries WHERE operation_key=$1",["db-room-delivery"]],
+ ] as const){
+  assert.equal((await pool.query(query,[...params])).rows.length,0,query);
+ }
+ assert.equal(edits.length,2,"Telegram historical post must remain, no deletion calls");
+ console.log("GAYBBS_DB_ROOM_LIVE_END_BADGES_POST_KEPT_DB_PURGED=PASS");
+ // Regression: a recruitment may be full before ROOM starts. Its public
+ // message must still receive LIVE and final status rather than being skipped.
+ const fullRoom=await pool.query(
+  `INSERT INTO room_posts(request_key,owner_user_id,title,mode,join_url,status)
+   VALUES('db-room-filled',777001,'満員ROOM','jitsi',
+    'https://meet.jit.si/PRIVATE_FULL','ready') RETURNING room_id`);
+ const fullRoomId=Number(fullRoom.rows[0].room_id);
+ const fullAnnouncement=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,
+    status,room_id,capacity,accept_applications)
+   VALUES('db-room-filled-ann',777001,'recruitment','満員募集',
+     'filled',$1,1,FALSE) RETURNING announcement_id`,[fullRoomId]);
+ const fullAnnouncementId=Number(fullAnnouncement.rows[0].announcement_id);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+    (source_type,source_id,owner_user_id,source_revision,posting_topic_id,
+    operation_key,status,telegram_message_id,inline_buttons,rendered_text)
+   VALUES('announcement',$1,777001,1,$2,'db-room-filled-message','sent',
+    34567,'[]'::jsonb,'📢 <b>満員の募集本文</b>')`,
+  [String(fullAnnouncementId),deliveryTopic.rows[0].topic_id]);
+ const fullStarted=await updateRoomState(777001,fullRoomId,1,"start");
+ // The same isolated DB holds unrelated earlier ROOM events. Process the
+ // bounded queue in order, then assert by the intended event ID.
+ let fullProjected:Awaited<ReturnType<typeof projectNextRoomEvent>>=null;
+ for(let attempt=0;attempt<30;attempt++){
+  const next=await projectNextRoomEvent();
+  if(!next)break;
+  if(next.eventId===fullStarted.eventId){fullProjected=next;break;}
+ }
+ assert.equal(fullProjected?.eventId,fullStarted.eventId);
+ assert.deepEqual(fullProjected?.announcementIds,[fullAnnouncementId],
+  "filled Announcement must still receive ROOM LIVE event");
+ const fullEdit=await pool.query(
+  `SELECT q.state FROM room_status_message_edits q
+   WHERE q.room_event_id=$1`,[fullStarted.eventId]);
+ assert.equal(fullEdit.rows.length,1,
+  "filled Announcement must queue existing message edit");
+ console.log("GAYBBS_DB_FILLED_RECRUITMENT_ROOM_STATUS=PASS");
+ // Only the title and description change. Linked Announcement and public
+ // message edits are projected without a new post or a duplicate DM.
+ await makeRoomJoinLink(777001,fullRoomId);
+ const changedDetails=await updateRoomDetails(777001,fullRoomId,
+  fullStarted.revision,"修正タイトル","修正後の説明文\n改行も維持");
+ let detailsProjected=false;
+ for(let attempt=0;attempt<40;attempt++){
+  const projected=await projectNextRoomEvent();
+  if(!projected)break;
+  if(projected.eventId===changedDetails.eventId){detailsProjected=true;break;}
+ }
+ assert.equal(detailsProjected,true);
+ const updated=await pool.query(
+  "SELECT title,description FROM room_posts WHERE room_id=$1",[fullRoomId]);
+ assert.equal(updated.rows[0].title,"修正タイトル");
+ assert.equal(updated.rows[0].description,"修正後の説明文\n改行も維持");
+ const updatedAnnouncement=await pool.query(
+  "SELECT text FROM announcement_posts WHERE announcement_id=$1",[fullAnnouncementId]);
+ assert.equal(updatedAnnouncement.rows[0].text,"修正タイトル\n修正後の説明文\n改行も維持");
+ const queuedEdit=await pool.query(
+  "SELECT state FROM room_status_message_edits WHERE room_event_id=$1",
+  [changedDetails.eventId]);
+ assert.equal(queuedEdit.rows.length,1);
+ const redundantNotice=await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key LIKE $1",
+  ["room-event:"+changedDetails.eventId+":owner:%"]);
+ assert.equal(redundantNotice.rows[0].n,0);
+ console.log("GAYBBS_DB_ROOM_DETAILS_ONLY_SOURCE_PROJECTION=PASS");
+ // Scheduled ROOM: accepted applicant cannot obtain URL before host starts;
+ // the existing Announcement outbox contains precisely one start event.
+ const futureAt=new Date(Date.now()+3600000);
+ const scheduledRoom=await createRoom(777003,77,"予告タイトル",undefined,{
+  description:"事前応募のある予告",scheduledAt:futureAt,visibility:"approved_only"});
+ const scheduledRoomId=Number(scheduledRoom.sourceId);
+ await makeRoomJoinLink(777003,scheduledRoomId);
+ const scheduledAnn=await createAnnouncement(777003,77,"recruitment",
+  "予告タイトル\n事前応募のある予告",futureAt,[],[],scheduledRoomId);
+ const scheduledAnnId=Number(scheduledAnn.sourceId);
+ await pool.query(
+  "UPDATE announcement_posts SET status='published',accept_applications=TRUE WHERE announcement_id=$1",
+  [scheduledAnnId]);
+ const applied=await submitApplication(scheduledAnnId,777004,null);
+ await decideApplication(777003,scheduledAnnId,applied.applicationId,"accepted");
+ await submitApplication(scheduledAnnId,777005,null);
+ assert.equal(await getAuthorizedRoom(777004,scheduledRoomId),null);
+ const scheduledStarted=await updateRoomState(777003,scheduledRoomId,1,"start");
+ let startProjected=false;
+ for(let attempt=0;attempt<50;attempt++){
+  const next=await projectNextRoomEvent();
+  if(!next)break;
+  if(next.eventId===scheduledStarted.eventId){startProjected=true;break;}
+ }
+ assert.equal(startProjected,true);
+ assert.equal((await getAuthorizedRoom(777004,scheduledRoomId))?.id,scheduledRoomId);
+ const deliveryNotice=await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key=$1",
+  ["room:"+scheduledRoomId+":started:participant:777004"]);
+ assert.equal(deliveryNotice.rows[0].n,1);
+ const waitingNotice=await pool.query(
+  "SELECT payload->>'applicationStatus' AS status FROM announcement_notifications WHERE event_key=$1",
+  ["room:"+scheduledRoomId+":started:participant:777005"]);
+ assert.equal(waitingNotice.rows.length,1);
+ assert.equal(waitingNotice.rows[0].status,"submitted");
+ assert.equal(await getAuthorizedRoom(777005,scheduledRoomId),null,
+  "Unapproved applicant must not get meeting link after host starts");
+ assert.equal(await projectNextRoomEvent(),null);
+ assert.equal((await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key=$1",
+  ["room:"+scheduledRoomId+":started:participant:777004"])).rows[0].n,1);
+ // Exercise actual shared notification delivery with a fake Telegram sender:
+ // one accepted recipient receives a private Bot join button; waiting
+ // recipient receives one DM without a join button or private meeting URL.
+ const acceptedKey="room:"+scheduledRoomId+":started:participant:777004";
+ const waitingKey="room:"+scheduledRoomId+":started:participant:777005";
+ await pool.query(
+  `UPDATE announcement_notifications SET state='sent'
+    WHERE state='pending' AND event_key NOT IN ($1,$2)`,
+  [acceptedKey,waitingKey]);
+ const startDms:Array<{to:number;body:string;opts:unknown}>=[];
+ const notifyBot={sendMessage:async(to:number,body:string,opts:unknown)=>{
+  startDms.push({to,body,opts});return {message_id:22000+startDms.length};
+ }} as unknown as Telegram;
+ process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED="enabled";
+ assert.equal((await deliverNextAnnouncementNotification(notifyBot))?.state,"sent");
+ assert.equal((await deliverNextAnnouncementNotification(notifyBot))?.state,"sent");
+ assert.equal(await deliverNextAnnouncementNotification(notifyBot),null);
+ delete process.env.GAYBBS_NOTIFICATION_DELIVERY_ENABLED;
+ assert.equal(startDms.length,2);
+ const acceptDm=startDms.find(x=>x.to===777004);
+ const waitDm=startDms.find(x=>x.to===777005);
+ assert.ok(acceptDm);
+ assert.ok(waitDm);
+ assert.match(acceptDm.body,/LIVE中/);
+ assert.match(waitDm.body,/承認待ち/);
+ assert.match(JSON.stringify(acceptDm.opts),/start=j_/);
+ assert.ok(!JSON.stringify(waitDm.opts??null).includes("start=j_"));
+ assert.ok(!startDms.some(x=>x.body.includes("meet.jit.si")));
+ // Host reminder is one-time at the due time; it must not start
+ // the meeting, notify applicants again, or reveal the join URL.
+ const due=await pool.query(
+  `INSERT INTO room_posts(request_key,owner_user_id,title,description,mode,join_url,status,start_at)
+   VALUES('db-due-reminder',777006,'開始確認','開始ボタン待ち','jitsi',
+    'https://meet.jit.si/PRIVATE_DUE','scheduled',NOW()-INTERVAL '1 minute')
+   RETURNING room_id`);
+ const dueRoomId=Number(due.rows[0].room_id);
+ const dueAnn=await createAnnouncement(777006,78,"recruitment",
+  "開始確認\n開始ボタン待ち",undefined,[],[],dueRoomId);
+ await pool.query("UPDATE announcement_posts SET status='published' WHERE announcement_id=$1",
+  [dueAnn.sourceId]);
+ const dueCount=await enqueueDueRoomStartReminders();
+ assert.ok(dueCount>=1);
+ assert.equal(await enqueueDueRoomStartReminders(),0);
+ assert.equal((await pool.query("SELECT status FROM room_posts WHERE room_id=$1",
+  [dueRoomId])).rows[0].status,"scheduled");
+ const reminder=await pool.query(
+  "SELECT count(*)::int AS n FROM announcement_notifications WHERE event_key LIKE $1",
+  ["room:"+dueRoomId+":due:%"]);
+ assert.equal(reminder.rows[0].n,1);
+ console.log("GAYBBS_DB_ROOM_DUE_REMINDER_ONCE_NO_AUTOSTART=PASS");
+ console.log("GAYBBS_DB_ROOM_SCHEDULED_APPROVED_ONE_START_DM=PASS");
+ // Six-function shared DM: one text input has exactly one most-recent owner.
+ // Older drafts are retained for explicit resume, but cannot steal a reply.
+ await pool.query(
+  `INSERT INTO profile_drafts(owner_user_id,step,data,updated_at)
+   VALUES(777501,'awaiting_basic','{}'::jsonb,NOW()-INTERVAL '10 minutes')`);
+ assert.equal(await currentDmTextOwner(777501),"profile");
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data,updated_at)
+   VALUES(777501,'announcement','awaiting_text','{}'::jsonb,NOW()-INTERVAL '5 minutes')`);
+ assert.equal(await currentDmTextOwner(777501),"announcement");
+ await pool.query(
+  `INSERT INTO room_host_sessions
+    (owner_user_id,room_id,expected_revision,requested_action,expires_at,updated_at)
+   VALUES(777501,$1,1,'postpone',NOW()+INTERVAL '20 minutes',NOW())`,
+  [fullRoomId]);
+ assert.equal(await currentDmTextOwner(777501),"room_host");
+ await pool.query(
+  `UPDATE profile_drafts SET updated_at=NOW()+INTERVAL '1 second'
+   WHERE owner_user_id=777501`);
+ assert.equal(await currentDmTextOwner(777501),"profile");
+ assert.equal(await currentDmTextOwner(777502),null);
+ console.log("GAYBBS_DB_DM_INPUT_OWNER_NO_CROSS_MODULE_CAPTURE=PASS");
+ // Cross-module handoff: a ROOM destination has purpose='room', while
+ // its reusable Announcement source and MPB delivery use 'announcement'.
+ // This is the real entrypoint used by the ROOM publish callback, with a
+ // fake Telegram adapter and without production credentials.
+ const owner=777701;
+ const publicationRoom=await createRoom(owner,881,"ROOM公開契約",undefined,
+  {description:"公開契約の説明",visibility:"approved_only"});
+ const pubRoomId=Number(publicationRoom.sourceId);
+ const publication=await createAnnouncement(owner,881,"recruitment",
+  "ROOM公開契約\n公開契約の説明",undefined,[],[],pubRoomId);
+ const applicationLink=await makeApplicationLink(owner,Number(publication.sourceId));
+ const joinLink=await makeRoomJoinLink(owner,pubRoomId);
+ assert.match(applicationLink,/start=a_/);
+ assert.match(joinLink,/start=j_/);
+ const newTopic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,
+    title,verified_by,verified_at,enabled)
+   VALUES('gay_board','room',-1003770334893,91001,'ROOM投稿先',
+    $1,NOW(),TRUE) RETURNING topic_id`,[owner]);
+ const newTopicId=Number(newTopic.rows[0].topic_id);
+ const sendCalls:Array<{chatId:number;threadId:number;text:string;buttons:unknown}>=[];
+ const fakePublishBot={
+  getChat:async()=>({id:-1003770334893,type:"supergroup"}),
+  getMe:async()=>({id:778888}),
+  getChatMember:async()=>({status:"administrator"}),
+  sendMessage:async(chatId:number,text:string,opts:{
+   message_thread_id:number;reply_markup?:unknown})=>{
+   sendCalls.push({chatId,threadId:opts.message_thread_id,text,
+    buttons:opts.reply_markup});
+   return {message_id:91002};
+  }
+ } as unknown as Telegram;
+ const pubReq={
+  sourceType:"announcement" as const,destinationPurpose:"room" as const,
+  sourceId:publication.sourceId,ownerId:owner,revision:881,topicId:newTopicId,
+  text:"🎬 ROOM：ROOM公開契約\n公開契約の説明\n状態：🔴 LIVE中",
+  buttons:[[{text:"📨 参加希望",url:applicationLink},
+   {text:"🎥 参加する",url:joinLink}]],approved:true
+ };
+ await pool.query("UPDATE gaybbs_feature_release_gates SET enabled=FALSE WHERE feature='room'");
+ await assert.rejects(()=>publishPost(fakePublishBot,pubReq),/FEATURE_RELEASE_NOT_VERIFIED/);
+ assert.equal(sendCalls.length,0,"Gate must reject before any Telegram call");
+ await pool.query("UPDATE gaybbs_feature_release_gates SET enabled=TRUE WHERE feature='room'");
+ const sentPublication=await publishPost(fakePublishBot,pubReq);
+ assert.equal(sentPublication.messageId,91002);
+ assert.equal(sendCalls.length,1);
+ assert.equal(sendCalls[0].threadId,91001);
+ await markPostSourcePublished(owner,"announcement",publication.sourceId);
+ const repeatedPublication=await publishPost(fakePublishBot,pubReq);
+ assert.equal(repeatedPublication.messageId,91002);
+ assert.equal(sendCalls.length,1,"Same publication must not duplicate send");
+ const publicationDelivery=await pool.query(
+  `SELECT d.source_type,t.purpose,d.status FROM posting_deliveries d
+   JOIN posting_topics t ON t.topic_id=d.posting_topic_id
+   WHERE d.source_id=$1 AND d.operation_key=$2`,
+  [publication.sourceId,"announcement:"+publication.sourceId+":881:"+newTopicId]);
+ assert.equal(publicationDelivery.rows.length,1);
+ assert.deepEqual(publicationDelivery.rows[0],{
+  source_type:"announcement",purpose:"room",status:"sent"});
+ const publishedRoom=await updateRoomState(owner,pubRoomId,1,"start");
+ assert.equal(publishedRoom.state,"live");
+ console.log("GAYBBS_DB_ROOM_VERIFIED_TOPIC_MPB_REUSE_AND_GATE=PASS");
+ // 告知/予告 reuses the same owner/revision-checked DM draft as ROOM.
+ const announcementDraft=await beginDraft(777801,"announcement","awaiting_text",
+  {kind:"announcement",profileLinked:false});
+ const writtenDraft=await updateDraft(777801,"announcement",announcementDraft.revision,
+  "preview",{...announcementDraft.data,text:"お知らせ本文",kind:"announcement"});
+ await saveAnnouncementEditorDraft(777801,writtenDraft.revision);
+ const savedAnnouncement=await getDraft(777801,"announcement");
+ assert.equal(savedAnnouncement?.step,"saved");
+ assert.equal(savedAnnouncement?.data.text,"お知らせ本文");
+ const resumedAnnouncement=await updateDraft(777801,"announcement",
+  savedAnnouncement!.revision,"preview",savedAnnouncement!.data);
+ assert.equal(resumedAnnouncement.data.text,"お知らせ本文");
+ await assert.rejects(
+  ()=>saveAnnouncementEditorDraft(777801,writtenDraft.revision),/ANNOUNCEMENT_DRAFT_STALE/);
+ const forecast=await updateDraft(777801,"announcement",resumedAnnouncement.revision,
+  "preview",{...resumedAnnouncement.data,kind:"preview",
+   eventAt:new Date(Date.now()+86400000).toISOString()});
+ assert.equal(forecast.data.kind,"preview");
+ assert.equal((await getDraft(777801,"announcement"))?.data.text,"お知らせ本文");
+ const announcementLayout=announcementPanel(forecast);
+ const rows=announcementLayout.reply_markup.inline_keyboard;
+ assert.deepEqual(rows.map(row=>row.map(x=>x.text)),[
+  ["▫️ 📢 告知","✅ 📅 予告"],
+  ["📝 本文編集","📅 日時・受付"],
+  ["▫️ 🔗 プロフ連携","📍 投稿先"],
+  ["✅ 投稿","下書き保存"],
+  ["キャンセル"],
+ ]);
+ assert.match(announcementSummary(forecast),/📅 予告/);
+ assert.match(announcementSummary(forecast),/お知らせ本文/);
+ const withoutDate={...forecast,data:{...forecast.data,eventAt:null}};
+ assert.match(announcementSummary(withoutDate),/開催日時：未指定/);
+ console.log("GAYBBS_DB_ANNOUNCEMENT_APPROVED_LAYOUT=PASS");
+ console.log("GAYBBS_DB_ANNOUNCEMENT_ONE_SCREEN_DRAFT_RESUME=PASS");
+ // Posting menu release is a single gated existing-topic operation. Before
+ // network I/O, missing verified navigation must be retryable, not reconcile.
+ const menuChat=-1002373696859, menuThread=970010;
+ const panelRow=await pool.query(
+  `INSERT INTO board_menu_panels
+   (chat_id,message_thread_id,panel_type,state,verified_by,verified_at)
+   VALUES($1,$2,'posting','verified',880001,NOW()) RETURNING panel_id`,
+  [menuChat,menuThread]);
+ const postingPanelId=Number(panelRow.rows[0].panel_id);
+ const previousMenuRelease=process.env.GAYBBS_PUBLIC_MENU_RELEASE;
+ process.env.GAYBBS_PUBLIC_MENU_RELEASE="enabled";
+ const menuCalls:Array<{chatId:number;opts:any}>=[];
+ const fakeMenuTelegram={
+  getChatMember:async()=>({status:"administrator"}),
+  getMe:async()=>({id:880002}),
+  sendMessage:async(chatId:number,_text:string,opts:any)=>{
+   menuCalls.push({chatId,opts});return {message_id:970011};
+  },
+  editMessageText:async(chatId:number,messageId:number,_inlineId:unknown,_text:string,opts:any)=>{
+   assert.equal(messageId,970011);
+   menuCalls.push({chatId,opts});return true;
+  },
+  pinChatMessage:async()=>true,
+ } as unknown as Telegram;
+ try{
+  await assert.rejects(
+   ()=>publishExistingMenuPanel(fakeMenuTelegram,menuChat,menuThread,880001),
+   /POSTING_NAV_LINKS_NOT_VERIFIED/);
+  assert.equal(menuCalls.length,0);
+  const before=await pool.query("SELECT state FROM board_menu_panels WHERE panel_id=$1",[postingPanelId]);
+  assert.equal(before.rows[0].state,"verified");
+  const names=["クリエーター有料ビデオ投稿","雑談","紹介/招待"];
+  for(let i=0;i<names.length;i++)await pool.query(
+   `INSERT INTO board_posting_menu_links
+      (chat_id,label,destination_url,source,verified_by,verified_at,enabled)
+    VALUES($1,$2,$3,'isolated-ci-fixture',880001,NOW(),TRUE)`,
+   [menuChat,names[i],"https://t.me/c/2373696859/"+(970020+i)]);
+  for(const feature of ["announcement","room","link","search","help"])await pool.query(
+   `INSERT INTO gaybbs_feature_release_gates
+     (feature,source_commit,ci_evidence,gserver_runtime_evidence,
+      telegram_e2e_evidence,approved_by,enabled)
+    VALUES($1,repeat('f',40),'ci-test','runtime-test','telegram-mock-only',880001,TRUE)
+    ON CONFLICT(feature) DO UPDATE SET enabled=TRUE`,[feature]);
+  const posted=await publishExistingMenuPanel(fakeMenuTelegram,menuChat,menuThread,880001);
+  assert.deepEqual(posted,{messageId:970011,updatedExisting:false});
+  assert.equal(menuCalls.length,1);
+  const keys=menuCalls[0].opts.reply_markup.inline_keyboard;
+  assert.deepEqual(keys.map((row:any[])=>row.map(x=>x.text)),[
+   ["相手募集","募集+Room","告知/予告"],
+   ["クリエーター有料ビデオ投稿"],
+   ["🔗ボタン作成","検索/フィルター"],
+   ["雑談","紹介/招待","操作説明"]]);
+  assert.match(keys[0][0].url,/start=r_/);
+  assert.match(keys[2][0].url,/start=m_/);
+  const count=await pool.query(
+   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1",[postingPanelId]);
+  assert.equal(count.rows[0].n,6);
+  const revisedMenu=await publishExistingMenuPanel(fakeMenuTelegram,menuChat,menuThread,880001);
+  assert.deepEqual(revisedMenu,{messageId:970011,updatedExisting:true});
+  assert.equal(menuCalls.length,2,"update must edit the existing menu, not duplicate it");
+  const activeTokens=await pool.query(
+   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1 AND enabled=TRUE",
+   [postingPanelId]);
+  assert.equal(activeTokens.rows[0].n,6,"only latest six DM entries remain valid");
+  const staleTokens=await pool.query(
+   "SELECT COUNT(*)::int AS n FROM board_menu_entry_tokens WHERE panel_id=$1 AND enabled=FALSE",
+   [postingPanelId]);
+  assert.equal(staleTokens.rows[0].n,6,"old deep links must be retired on verified update");
+  const state=await pool.query("SELECT state,message_id,pinned FROM board_menu_panels WHERE panel_id=$1",[postingPanelId]);
+  assert.deepEqual(state.rows[0],{state:"published",message_id:"970011",pinned:true});
+  console.log("GAYBBS_DB_POSTING_MENU_VERIFIED_LINKS_AND_DM_ENTRIES=PASS");
+ }finally{
+  if(previousMenuRelease===undefined)delete process.env.GAYBBS_PUBLIC_MENU_RELEASE;
+  else process.env.GAYBBS_PUBLIC_MENU_RELEASE=previousMenuRelease;
+ }
+ // Existing ROOM/Announcement draft reopening must not reset the user's
+ // unfinished fields, selected mode, or current text-entry phase.
+ const resumeUser=881798;
+ const roomToResume=await beginDraft(resumeUser,"room","awaiting_text",
+  {title:"以前のROOM",visibility:"public",description:"保持する説明"});
+ const resumeEvents:Array<{text:string;messageId:number|null}>=[];
+ const transport={
+  sendMessage:async(_id:number,text:string)=>{
+   resumeEvents.push({text,messageId:null});return {message_id:881799};
+  },
+  editMessageText:async(_id:number,id:number,_inline:unknown,text:string)=>{
+   resumeEvents.push({text,messageId:id});return true;
+  },
+ } as unknown as Telegram;
+ await startRoomEditor(transport,resumeUser);
+ const roomResumed=await getDraft(resumeUser,"room");
+ assert.equal(roomResumed?.revision,roomToResume.revision);
+ assert.equal(roomResumed?.data.title,"以前のROOM");
+ assert.equal(roomResumed?.data.visibility,"public");
+ assert.ok(resumeEvents.at(-1)?.text.includes("ROOM作成"));
+ const annToResume=await beginDraft(resumeUser,"announcement","awaiting_datetime",
+  {kind:"preview",text:"保持する予告",profileLinked:true});
+ await startAnnouncementEditor(transport,resumeUser);
+ const annResumed=await getDraft(resumeUser,"announcement");
+ assert.equal(annResumed?.revision,annToResume.revision);
+ assert.equal(annResumed?.step,"awaiting_datetime");
+ assert.equal(annResumed?.data.text,"保持する予告");
+ assert.match(resumeEvents.at(-1)!.text,/日時を日本時間/);
+ console.log("GAYBBS_DB_ROOM_ANNOUNCEMENT_DRAFT_RESUME=PASS");
+ // Operation help must have a durable private DM screen and reject stale
+ // callbacks without ever opening a posting editor.
+ const helpOwner=881790;
+ const helpEvents:Array<{kind:string;text?:string;keyboard?:any}>=[];
+ const helpTelegram={
+  sendMessage:async(_id:number,text:string,opts:any)=>{
+   helpEvents.push({kind:"send",text,keyboard:opts.reply_markup});
+   return {message_id:881791};
+  },
+  editMessageText:async(_id:number,_messageId:number,_inline:unknown,text:string,opts:any)=>{
+   helpEvents.push({kind:"edit",text,keyboard:opts?.reply_markup});
+   return true;
+  }
+ } as unknown as Telegram;
+ await startOperationHelp(helpTelegram,helpOwner);
+ const helpSaved=await pool.query(
+  "SELECT revision,section,screen_message_id FROM gaybbs_help_sessions WHERE owner_user_id=$1",
+  [helpOwner]);
+ assert.equal(helpSaved.rows[0].section,"home");
+ assert.equal(Number(helpSaved.rows[0].screen_message_id),881791);
+ const helpKeyboard=helpEvents.at(-1)!.keyboard.inline_keyboard;
+ assert.deepEqual(helpKeyboard.map((row:any[])=>row.map(b=>b.text)),[
+  ["プロフ","Room+募集","告知/予告"],
+  ["🔗ボタン作成","検索/フィルター","戻る"]]);
+ const helpCallbacks:Array<{pattern:RegExp;handle:(ctx:any)=>Promise<void>}>=[];
+ registerOperationHelpHandlers({command:()=>{},action:(pattern:RegExp,handle:any)=>{
+  helpCallbacks.push({pattern,handle});
+ }} as any);
+ let helpAnswers:string[]=[];
+ const tap=async(value:string)=>{
+  const match=helpCallbacks.map(x=>({x,match:value.match(x.pattern)}))
+   .find(x=>x.match);
+  assert.ok(match,"help handler for "+value);
+  await match.x.handle({
+   chat:{type:"private"},from:{id:helpOwner},match:match.match,
+   telegram:helpTelegram,answerCbQuery:async(text?:string)=>{helpAnswers.push(text??"");}
+  });
+ };
+ await tap("help:topic:1:profile");
+ assert.match(helpEvents.at(-1)!.text!,/プロフィール/);
+ assert.equal(helpEvents.at(-1)!.kind,"edit");
+ await tap("help:topic:1:room");
+ assert.ok(helpAnswers.at(-1)?.includes("古い操作"));
+ await tap("help:home:2");
+ const helpState=await pool.query(
+  "SELECT revision,section FROM gaybbs_help_sessions WHERE owner_user_id=$1",[helpOwner]);
+ assert.equal(helpState.rows[0].section,"home");
+ assert.equal(Number(helpState.rows[0].revision),3);
+ await tap("help:topic:3:room");
+ const roomHelp=helpEvents.at(-1)!.keyboard.inline_keyboard;
+ assert.deepEqual(roomHelp[0].map((button:any)=>button.text),
+  ["▶ この機能を開く"]);
+ assert.equal(roomHelp[0][0].callback_data,"help:open:4:room");
+ assert.equal(roomHelp.length,2,"Room+募集 stays a single entry in operation help");
+ await tap("help:open:4:room");
+ assert.equal(helpEvents.filter(x=>x.kind==="send").length,1,
+  "help-to-ROOM must edit the same Bot DM message instead of posting a new one");
+ assert.equal(helpEvents.at(-1)!.kind,"edit");
+ assert.match(helpEvents.at(-1)!.text!,/ROOM作成/);
+ const openedRoom=await getDraft(helpOwner,"room");
+ assert.equal(openedRoom?.data.screenMessageId,881791);
+ await tap("help:open:4:room");
+ assert.ok(helpAnswers.at(-1)?.includes("古い操作"),
+  "help button becomes stale after entering existing ROOM wizard");
+ // Every help section must hand off the same Bot DM screen to its
+ // existing editor, with no extra sendMessage. Old help buttons go stale.
+ for(const [index,section] of (["profile","announcement","link","search"] as const).entries()){
+  const id=882100+index;
+  const calls:Array<{action:string;mid?:number}>=[];
+  const mockTelegram={
+   sendMessage:async(_id:number,_text:string,_opts:any)=>{
+    calls.push({action:"send"});return {message_id:882200+index};
+   },
+   editMessageText:async(_id:number,mid:number,_inline:unknown,_text:string,_opts?:any)=>{
+    calls.push({action:"edit",mid});return true;
+   },
+  } as unknown as Telegram;
+  await startOperationHelp(mockTelegram,id);
+  const callbacks=helpCallbacks;
+  const invoke=async(value:string)=>{
+   const candidate=callbacks.map(x=>({x,match:value.match(x.pattern)})).find(x=>x.match);
+   assert.ok(candidate,"help must register "+value);
+   await candidate.x.handle({
+    chat:{id,type:"private"},
+    from:{id,username:"help_test_user"},
+    match:candidate.match,
+    telegram:mockTelegram,
+    answerCbQuery:async()=>{},
+    reply:async()=>{throw Error("HELP_UNEXPECTED_NEW_REPLY");},
+   });
+  };
+  await invoke("help:topic:1:"+section);
+  await invoke("help:open:2:"+section);
+  assert.equal(calls.filter(x=>x.action==="send").length,1,
+   section+" added an unwanted second Bot message");
+  assert.equal(calls.at(-1)?.action,"edit");
+  assert.equal(calls.at(-1)?.mid,882200+index);
+ }
+ console.log("GAYBBS_DB_OPERATION_HELP_3X2_REVISION_AND_RETURN=PASS");
+ // A cancelled final confirmation is tied to the original private revision.
+ // Replayed Telegram callbacks cannot publish after explicit cancellation.
+ const postActions:Array<{pattern:RegExp;handle:(ctx:any)=>Promise<void>}>=[];
+ const fakeBot={
+  command:()=>{},on:()=>{},
+  action:(pattern:string|RegExp,handle:(ctx:any)=>Promise<void>)=>{
+   if(pattern instanceof RegExp)postActions.push({pattern,handle});
+  },
+ };
+ registerPostingHandlers(fakeBot as any);
+ const cancelledDraft=await beginDraft(881789,"link","preview",{
+  text:"検証用リンク",columns:1,buttons:[{label:"サイト",url:"https://example.org"}]
+ });
+ const cancelPattern="post:cancel:link:"+cancelledDraft.revision;
+ const cancelHandler=postActions.find(h=>h.pattern.test(cancelPattern))?.handle;
+ assert.ok(cancelHandler,"revision-bound cancel callback must exist");
+ const editEvents:string[]=[];
+ await cancelHandler!({
+  chat:{type:"private"},from:{id:881789},
+  match:cancelPattern.match(postActions.find(h=>h.pattern.test(cancelPattern))!.pattern),
+  answerCbQuery:async()=>{},editMessageText:async(text:string)=>{editEvents.push(text);}
+ });
+ const preserved=await getDraft(881789,"link");
+ assert.equal(preserved?.step,"preview");
+ assert.equal(preserved?.data.text,"検証用リンク");
+ assert.ok(preserved!.revision>cancelledDraft.revision);
+ const publishPattern="post:publish:link:"+cancelledDraft.revision+":777";
+ const publishHandler=postActions.find(h=>h.pattern.test(publishPattern))?.handle;
+ assert.ok(publishHandler);
+ let telegramCalled=false;
+ await publishHandler!({
+  chat:{type:"private"},from:{id:881789},
+  match:publishPattern.match(postActions.find(h=>h.pattern.test(publishPattern))!.pattern),
+  answerCbQuery:async()=>{},editMessageText:async(text:string)=>{editEvents.push(text);},
+  reply:async(text:string)=>{editEvents.push(text);},
+  telegram:{sendMessage:async()=>{telegramCalled=true;}}
+ });
+ assert.equal(telegramCalled,false,"stale final-confirmation must not send");
+ assert.ok(editEvents.at(-1)?.includes("❌")||
+  editEvents.at(-1)?.includes("確認"),"user receives a stale-confirmation response");
+ console.log("GAYBBS_DB_COMMON_CONFIRMATION_CANCEL_REJECTS_REPLAY=PASS");
+ // Shared DM arbitration must ignore preview-only editor rows. A hidden
+ // old form must never steal text from Video/ROOM/Announcement/search.
+ const arbitrationUser=881785;
+ await pool.query(
+  `INSERT INTO profile_drafts(owner_user_id,step,data)
+   VALUES($1,'preview','{}'::jsonb)`,[arbitrationUser]);
+ await pool.query(
+  `INSERT INTO public_post_drafts(owner_user_id,module,step,data)
+   VALUES($1,'announcement','preview','{}'::jsonb)`,[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),null);
+ await pool.query(
+  "UPDATE profile_drafts SET step='media' WHERE owner_user_id=$1",[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),"profile");
+ await pool.query(
+  `UPDATE public_post_drafts SET step='awaiting_recruitment_edit',
+   updated_at=NOW()+INTERVAL '1 second'
+   WHERE owner_user_id=$1 AND module='announcement'`,[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),"announcement");
+ await pool.query(
+  "UPDATE public_post_drafts SET step='preview' WHERE owner_user_id=$1",[arbitrationUser]);
+ assert.equal(await currentDmTextOwner(arbitrationUser),"profile");
+ console.log("GAYBBS_DB_SHARED_DM_TEXT_OWNER_ACTIVE_STEPS=PASS");
+ // Search shares the DM text owner, and never exposes private drafts or
+ // merely saved, not actually Telegram-published profiles.
+ const seeker=881771;
+ const s0=await beginSearch(seeker);
+ assert.equal(s0.step,"home");
+ assert.equal(await currentDmTextOwner(seeker),null);
+ const s1=await updateSearch(seeker,s0.revision,"keyword",s0.filters);
+ assert.equal(await currentDmTextOwner(seeker),"search");
+ await assert.rejects(
+  ()=>updateSearch(seeker,s0.revision,"results",s0.filters),/SEARCH_SESSION_STALE/);
+ const s2=await updateSearch(seeker,s1.revision,"home",
+  {...s1.filters,keyword:"公開者"});
+ assert.equal(await currentDmTextOwner(seeker),null);
+ assert.equal((await getSearchSession(seeker))?.filters.keyword,"公開者");
+ await pool.query(
+  `INSERT INTO profiles
+  (owner_user_id,nickname,height_cm,weight_kg,age,position,region,area,status)
+  VALUES (881772,'公開者',170,70,34,'リバ','東京','新宿','published'),
+         (881773,'公開者 非公開',170,70,34,'リバ','東京','池袋','private')`);
+ await pool.query(
+  `INSERT INTO profile_publications
+   (owner_user_id,chat_id,thread_id,message_id,status)
+   VALUES (881772,-1003847210571,881774,881775,'published'),
+          (881773,-1003847210571,881774,881776,'published')`);
+ await pool.query(
+  "UPDATE profiles SET hair='坊主',body='筋肉質' WHERE owner_user_id=881772");
+ await pool.query(
+  `INSERT INTO profile_tag_catalog(category,tag,ordinal)
+   VALUES ('エロワード','変態',1),('パーツ','乳首',1)
+   ON CONFLICT(category,tag) DO NOTHING`);
+ await pool.query(
+  `INSERT INTO profile_tags(owner_user_id,purpose,category,tag)
+   VALUES (881772,'like','エロワード','変態'),
+          (881772,'love','パーツ','乳首')`);
+ const sr=await findPublicSearchHits({...s2.filters,region:"東京",position:"リバ",
+  ageMin:30,ageMax:40,hair:"坊主",body:"筋肉質",
+  like:{category:"エロワード",tag:"変態"},
+  love:{category:"パーツ",tag:"乳首"}},0,5,[-1003847210571]);
+ assert.equal(sr.hits.length,1,"private profile must never be returned");
+ assert.equal((await findPublicSearchHits({...s2.filters,region:"東京"},0)).hits.length,0,
+  "missing group membership scope must not expose profiles");
+ assert.equal((await findPublicSearchHits({...s2.filters,region:"東京"},0,5,[-1002373696859])).hits.length,0,
+  "membership in another group must not expose this group's profile");
+ assert.equal(sr.hits[0].title,"公開者");
+ assert.equal((await findPublicSearchHits({...s2.filters,ageMin:18,ageMax:25},
+  0,5,[-1003847210571])).hits.length,0);
+ assert.equal((await findPublicSearchHits({...s2.filters,hair:"ロング"},
+  0,5,[-1003847210571])).hits.length,0);
+ assert.equal((await findPublicSearchHits({...s2.filters,
+  love:{category:"パーツ",tag:"ペニス"}},0,5,[-1003847210571])).hits.length,0);
+ assert.equal(sr.hits[0].url,"https://t.me/c/3847210571/881775");
+ assert.equal((await findPublicSearchHits({...s2.filters,region:"北海道"},0,5,[-1003847210571])).hits.length,0);
+ const searchRecruitment=await pool.query(
+  `INSERT INTO announcement_posts
+     (request_key,owner_user_id,kind,text,status,purpose_codes,area_code)
+   VALUES('search-recruit-1',881774,'recruitment','今夜の公開募集','published',
+     ARRAY['飲み/飯'],'東京') RETURNING announcement_id`);
+ const searchRecruitmentId=String(searchRecruitment.rows[0].announcement_id);
+ const searchTopic=await pool.query(
+  `INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,
+    verified_by,verified_at,enabled)
+   VALUES('area_bbs','announcement',-1003847210571,881776,'募集検索用',
+    881774,NOW(),TRUE) RETURNING topic_id`);
+ await pool.query(
+  `INSERT INTO posting_deliveries
+    (source_type,source_id,owner_user_id,source_revision,
+     posting_topic_id,operation_key,status,telegram_message_id)
+   VALUES('announcement',$1,881774,1,$2,'search-recruit-1','sent',881777)`,
+  [searchRecruitmentId,searchTopic.rows[0].topic_id]);
+ const rr=await findPublicSearchHits({...initialSearchFilters(),
+  kind:"recruitment",keyword:"公開募集",region:"東京",purpose:"飲み/飯"},0,5,[-1003847210571]);
+ assert.equal(rr.hits.length,1);
+ assert.equal(rr.hits[0].url,"https://t.me/c/3847210571/881777");
+ assert.equal((await findPublicSearchHits({...initialSearchFilters(),
+  kind:"recruitment",purpose:"サシ"},0,5,[-1003847210571])).hits.length,0);
+ await pool.query(
+  `UPDATE posting_deliveries SET status='needs_reconcile' WHERE operation_key='search-recruit-1'`);
+ assert.equal((await findPublicSearchHits({...initialSearchFilters(),
+  kind:"recruitment",keyword:"今夜の公開募集"},0,5,[-1003847210571])).hits.length,0,
+  "ambiguous Telegram send must never appear in search");
+ console.log("GAYBBS_DB_SHARED_SEARCH_PUBLIC_VISIBILITY_AND_FILTERS=PASS");
+ console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
+}finally{await closePool();}
