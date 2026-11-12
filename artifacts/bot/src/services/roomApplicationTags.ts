@@ -66,9 +66,10 @@ export function applicationTagRows(
  const controls=other.filter(row=>!row.some(b=>b.callback_data.includes(":page:"))).flat();
  // Keep the long "この分類を解除" legible; Save is a permitted single
  // confirmation action, never a stranded candidate.
- return [...roomChoiceRows(candidates),...navigation,
-  controls.length===3?[controls.slice(0,2),controls.slice(2)]:controls.length?[controls]:[]
- ].flatMap(row=>Array.isArray(row[0])?row as (typeof controls)[]:[row as typeof controls]);
+ const controlsRows=controls.length===3?
+  [controls.slice(0,2),controls.slice(2)]:
+  controls.length?[controls]:[];
+ return [...roomChoiceRows(candidates),...navigation,...controlsRows];
 }
 export function renderRoomApplicationPreview(
  draft:RecruitmentInput & RoomApplicationTags,
