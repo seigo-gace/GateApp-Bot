@@ -30,6 +30,7 @@ import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLine
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {roomCrossPostTargets} from "../services/roomCrossPost.js";
+import {adaptiveChoiceRows} from "../services/inlineSelection.js";
 import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 
 async function showPostScreen(
@@ -1403,19 +1404,23 @@ export function registerPostingHandlers(bot:Telegraf):void{
      if(draft.data.recruitmentMode==="linked"&&!profile)
       throw Error("ROOM_PROFILE_MISSING");
      text=roomPublishedText(draft,profile);
-     const rows:{text:string;url:string}[][]=[
-      [{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]
+     // Published URL buttons share the same responsive 4/3/2 layout as
+     // ROOM applicant selections. Keep the original actions and their order.
+     // Telegram decides actual pixel widths; paired rows avoid tall,
+     // inconsistently sized single-button rows for 2–4 actions.
+     const publicActions:{text:string;url:string}[]=[
+      {text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}
      ];
      if(visibility==="approved_only"){
-      rows.push([{text:"📝 応募する",url:await makeApplicationLink(ctx.from.id,Number(sourceId))}]);
+      publicActions.push({text:"📝 応募する",url:await makeApplicationLink(ctx.from.id,Number(sourceId))});
      }
-     rows.push([{text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)}]);
+     publicActions.push({text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)});
      if(draft.data.profileLinked){
       const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
       if(!profileUrl)throw new Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
-      rows.push([{text:"🪪 プロフを見る",url:profileUrl}]);
+      publicActions.push({text:"🪪 プロフを見る",url:profileUrl});
      }
-     buttons=rows;
+     buttons=adaptiveChoiceRows(publicActions);
     }else{
      const kind=draft.data.kind as AnnouncementKind;
      isRecruitment=kind==="recruitment";
