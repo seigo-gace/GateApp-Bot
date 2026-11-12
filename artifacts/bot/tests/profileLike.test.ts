@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,validLikeTags,toggleLike,likeCategoryRows,likeItemRows,tagPurposeDescription} from "../src/services/profileLike.js";
+import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,validLikeTags,toggleLike,likeCategoryRows,likeItemRows,likePageBounds,tagPurposeDescription} from "../src/services/profileLike.js";
 test("shared 140 literal candidates in six stable categories",()=>{
  assert.deepEqual(LIKE_CATEGORIES.map(c=>[c.name,c.items.length]),[
   ["エロワード",11],["パーツ",22],["プレイ",54],["雰囲気/外見",25],["着衣/装備",16],["性感帯",12]]);
@@ -28,7 +28,10 @@ test("both purposes use the same 3/3/2-category rows and every screen has Save",
    for(let p=0;p<pages;p++){
     const rows=likeItemRows(1,i,p,[],purpose);
     const options=rows.flat().filter(b=>b.callback_data.includes(":tag:"));
-    assert.equal(options.length,Math.min(LIKE_PAGE_SIZE,category.items.length-p*LIKE_PAGE_SIZE));
+    const bounds=likePageBounds(i,p);
+    assert.equal(options.length,bounds.end-bounds.start);
+    assert(options.length>=2||category.items.length===1,
+     "No avoidable one-item final page");
     assert.ok(rows.at(-1)!.some(b=>b.text==="保存"&&b.callback_data.endsWith(":save")));
     assert.ok(rows.at(-1)!.some(b=>b.text==="↩ 戻る"));
     assert.ok(rows.at(-1)!.some(b=>b.text==="この分類を解除"));
