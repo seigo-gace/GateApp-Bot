@@ -21,7 +21,9 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "room_public_readback"})
+# Project-approved groups only; never turn this into an arbitrary chat reader.
+ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
     ["相手募集", "募集+Room", "告知/予告"],
     ["プロフ作成", "クリエーター有料ビデオ投稿"],
@@ -31,10 +33,14 @@ EXPECTED_MENU = [
 
 
 async def process_request(client: Any, request: Any) -> dict[str, Any]:
-    if not isinstance(request, dict) or set(request) != {"request_id", "action"}:
+    if not isinstance(request, dict):
+        raise ValueError("REQUEST_SHAPE_INVALID")
+    action = request.get("action")
+    expected = ({"request_id", "action", "chat_id", "message_id"}
+                if action == "room_public_readback" else {"request_id", "action"})
+    if set(request) != expected:
         raise ValueError("REQUEST_SHAPE_INVALID")
     request_id = request["request_id"]
-    action = request["action"]
     if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):
         raise ValueError("REQUEST_ID_INVALID")
     if action not in ACTIONS:
@@ -47,6 +53,39 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}
+    if action == "room_public_readback":
+        chat_id, message_id = request["chat_id"], request["message_id"]
+        if type(chat_id) is not int or chat_id not in ROOM_READ_CHATS:
+            raise ValueError("ROOM_READ_CHAT_NOT_ALLOWLISTED")
+        if type(message_id) is not int or not 1 <= message_id <= 2147483647:
+            raise ValueError("ROOM_READ_MESSAGE_ID_INVALID")
+        bot = await client.get_entity("GayBBS_bot")
+        if not bot.bot:
+            raise RuntimeError("TARGET_NOT_BOT")
+        message = await client.get_messages(chat_id, ids=message_id)
+        if message is None or message.id != message_id:
+            raise RuntimeError("ROOM_PUBLIC_MESSAGE_NOT_VISIBLE")
+        if message.sender_id != bot.id:
+            raise RuntimeError("ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH")
+        # Return classification only, never text/URL/identifiers or Telegram user data.
+        status_lines = [line for line in (message.raw_text or "").splitlines()
+                        if line.startswith("状態：")]
+        marker = "unknown"
+        if len(status_lines) == 1:
+            last = status_lines[0]
+            if "✅ 終了" in last:
+                marker = "finished"
+            elif "🔴 LIVE中" in last:
+                marker = "live"
+            elif "📅 予告中" in last:
+                marker = "scheduled"
+            elif "🚫 中止" in last:
+                marker = "cancelled"
+        has_join = any("参加" in getattr(button, "text", "")
+                       for row in (message.buttons or []) for button in row)
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "marker": marker, "has_join_button": bool(has_join),
+                "is_owned_bot_message": True}
     bot = await client.get_entity("GayBBS_bot")
     if not bot.bot:
         raise RuntimeError("TARGET_NOT_BOT")
