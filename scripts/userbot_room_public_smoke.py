@@ -91,7 +91,14 @@ async def _run(client: Any, progress: dict[str, str]) -> dict[str, Any]:
             client, bot, preview.id, baseline,
             lambda m: "ポジションを選んで" in (m.raw_text or ""),
             "ROOM_PUBLIC_TEST_POSITION_PICKER_MISSING")
-        await find_callback(picker, "room:positionchoice:").click()
+        position_choices = [b for row in picker.buttons for b in row
+                            if (getattr(b, "data", None) or b"").decode("utf-8").startswith("room:positionchoice:")]
+        if len(position_choices) != 7:
+            raise RuntimeError("ROOM_PUBLIC_TEST_POSITION_CHOICE_COUNT_INVALID")
+        position_choice = next((b for b in position_choices if b.text == "リバ"), None)
+        if position_choice is None:
+            raise RuntimeError("ROOM_PUBLIC_TEST_POSITION_CHOICE_MISSING")
+        await position_choice.click()
         preview = await wait_for_screen(
             client, bot, picker.id, baseline,
             lambda m: TEST_TITLE in (m.raw_text or "") and "▶ 即開始" in labels(m),
