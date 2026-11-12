@@ -34,6 +34,32 @@ async function inspectReadOnly():Promise<void>{
  console.log("STICKER_PIN_DB_TOPIC_TABLE="+(topics?"PRESENT":"MISSING"));
  console.log("STICKER_PIN_DB_RECEIPT_TABLE="+(pins?"PRESENT":"MISSING"));
  if(!topics)return;
+ // Read-only inventory of topic identities already registered by the owner.
+ // No Telegram API side effects and no inferred message_thread_id.
+ const summary=await pool.query(
+  "SELECT COUNT(*)::integer AS total,"+
+  " COUNT(*) FILTER (WHERE verified_at IS NOT NULL AND verified_by IS NOT NULL)::integer AS verified,"+
+  " COUNT(*) FILTER (WHERE title ILIKE '%ステッカー%' OR title ILIKE '%sticker%')::integer AS sticker_titles"+
+  " FROM posting_topics WHERE chat_id=$1",
+  [-1002373696859]
+ );
+ console.log("STICKER_PIN_REGISTERED_GROUP_TOPICS="+Number(summary.rows[0]?.total??0));
+ console.log("STICKER_PIN_REGISTERED_VERIFIED_TOPICS="+Number(summary.rows[0]?.verified??0));
+ console.log("STICKER_PIN_REGISTERED_STICKER_TITLES="+Number(summary.rows[0]?.sticker_titles??0));
+ const candidates=await pool.query(
+  "SELECT title,purpose,message_thread_id,enabled,"+
+  " (verified_at IS NOT NULL AND verified_by IS NOT NULL) AS verified"+
+  " FROM posting_topics WHERE chat_id=$1"+
+  " AND (title ILIKE '%ステッカー%' OR title ILIKE '%sticker%')"+
+  " ORDER BY topic_id LIMIT 10",[-1002373696859]
+ );
+ for(const row of candidates.rows){
+  const title=String(row.title??"").slice(0,80).replace(/[\\r\\n]/g," ");
+  console.log("STICKER_PIN_CANDIDATE="+JSON.stringify({
+   title,purpose:row.purpose,thread_id:Number(row.message_thread_id),
+   enabled:row.enabled===true,verified:row.verified===true
+  }));
+ }
  const t=await pool.query(
   "SELECT COUNT(*)::integer AS total,"+
   " COUNT(*) FILTER (WHERE purpose='sticker')::integer AS sticker_purpose,"+
