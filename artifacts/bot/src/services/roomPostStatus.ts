@@ -66,6 +66,18 @@ function verifyButtons(value:unknown):Button[][]{
  });
 }
 
+/** Resolve a verified Bot API no-op without replaying a message or guessing. */
+export function roomTelegramMessageAlreadyMatches(error:unknown):boolean{
+ if(!error||typeof error!=="object"||!("response" in error))return false;
+ const r=(error as {response?:{error_code?:number;description?:string}}).response;
+ return r?.error_code===400&&typeof r.description==="string"&&
+  r.description.toLowerCase().includes("message is not modified");
+}
+export function roomTerminalMatchesSource(roomStatus:string,kind:string):boolean{
+ return (roomStatus==="finished"&&kind==="finished")||
+        (roomStatus==="cancelled"&&kind==="cancelled");
+}
+
 export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  editId:number;state:"confirmed"|"needs_reconcile";
 }|null>{
@@ -81,12 +93,12 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     GROUP BY approved_by HAVING count(DISTINCT feature)=2`);
  if(gate.rows.length!==1)throw new Error("ROOM_STATUS_FEATURES_NOT_VERIFIED");
  const c=await pool.connect();
- let item:null|{editId:number;deliveryId:number;chatId:number;messageId:number;
+ let item:null|{editId:number;eventId:number;deliveryId:number;chatId:number;messageId:number;
   original:string;kind:PublicRoomStatus;buttons:Button[][];details?:{title:string;description:string}}=null;
  try{
   await c.query("BEGIN");
   const result=await c.query(
-   `SELECT q.edit_id,d.delivery_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,r.title AS room_title,r.description AS room_description
+   `SELECT q.edit_id,q.room_event_id,d.delivery_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,r.title AS room_title,r.description AS room_description
     FROM room_status_message_edits q
     JOIN room_source_events e ON e.event_id=q.room_event_id
     JOIN posting_deliveries d ON d.delivery_id=q.delivery_id
@@ -96,11 +108,22 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     WHERE q.state='pending' AND e.state='applied'
       AND d.status='sent' AND d.telegram_message_id IS NOT NULL
       AND t.enabled=TRUE AND t.purpose IN ('room','announcement')
-      AND NOT EXISTS (
-        SELECT 1 FROM room_status_message_edits prev
-        JOIN room_source_events prev_event ON prev_event.event_id=prev.room_event_id
-        WHERE prev.delivery_id=q.delivery_id
-          AND prev_event.event_id<e.event_id AND prev.state<>'confirmed'
+      AND (
+        -- A source-confirmed terminal ROOM overrides its stale intermediate
+        -- LIVE attempts, but never overtakes a Telegram send in flight.
+        (r.status IN ('finished','cancelled') AND e.kind=r.status
+          AND NOT EXISTS (
+            SELECT 1 FROM room_status_message_edits inflight
+            WHERE inflight.delivery_id=q.delivery_id
+              AND inflight.edit_id<>q.edit_id AND inflight.state='sending'
+          ))
+        OR NOT EXISTS (
+          SELECT 1 FROM room_status_message_edits prev
+          JOIN room_source_events prev_event ON prev_event.event_id=prev.room_event_id
+          WHERE prev.delivery_id=q.delivery_id
+            AND prev_event.event_id<e.event_id
+            AND prev.state NOT IN ('confirmed','skipped')
+        )
       )
       AND NOT EXISTS (
         SELECT 1 FROM room_status_message_edits later
@@ -108,17 +131,22 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
         WHERE later.delivery_id=q.delivery_id
           AND later_event.event_id>e.event_id AND later.state='confirmed'
       )
-    ORDER BY q.room_event_id,q.edit_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED`);
+    ORDER BY CASE WHEN r.status IN ('finished','cancelled') AND e.kind=r.status
+              THEN 0 ELSE 1 END,q.room_event_id,q.edit_id
+    LIMIT 1 FOR UPDATE OF q SKIP LOCKED`);
   if(!result.rows.length){await c.query("COMMIT");return null;}
   const r=result.rows[0];
-  const editId=Number(r.edit_id),deliveryId=Number(r.delivery_id),chatId=Number(r.chat_id),
+  const editId=Number(r.edit_id),eventId=Number(r.room_event_id),
+   deliveryId=Number(r.delivery_id),chatId=Number(r.chat_id),
    messageId=Number(r.telegram_message_id);
   if(!Number.isSafeInteger(editId)||editId<=0||
+     !Number.isSafeInteger(eventId)||eventId<=0||
      !Number.isSafeInteger(deliveryId)||deliveryId<=0||
      !Number.isSafeInteger(chatId)||chatId>=0||
      !Number.isSafeInteger(messageId)||messageId<=0)
    throw new Error("ROOM_STATUS_DELIVERY_INVALID");
-  if(r.rendered_text===null||r.inline_buttons===null){
+  const terminal=r.kind==="finished"||r.kind==="cancelled";
+  if(r.rendered_text===null||(!terminal&&r.inline_buttons===null)){
    // A pre-migration post may have a live recruitment/menu keyboard. Never
    // silently erase it, nor spin forever on the same pending item.
    await c.query(
@@ -127,9 +155,9 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
    await c.query("COMMIT");
    return {editId,state:"needs_reconcile"};
   }
-  item={editId,deliveryId,chatId,messageId,original:String(r.rendered_text),
+  item={editId,eventId,deliveryId,chatId,messageId,original:String(r.rendered_text),
    kind:r.kind as PublicRoomStatus,
-   buttons:verifyButtons(r.inline_buttons),
+   buttons:terminal?[]:verifyButtons(r.inline_buttons),
    details:r.kind==="details_changed"?{title:String(r.room_title),description:String(r.room_description)}:undefined};
   await c.query(
    `UPDATE room_status_message_edits SET state='sending',updated_at=NOW()
@@ -144,10 +172,14 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
   const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>
    Markup.button.url(b.text,b.url))));
   const rendered=roomStatusMessage(item.original,item.kind,item.details);
-  await telegram.editMessageText(item.chatId,item.messageId,undefined,
-   rendered,{
-    parse_mode:"HTML",...keyboard,
-  });
+  try{
+   await telegram.editMessageText(item.chatId,item.messageId,undefined,
+    rendered,{parse_mode:"HTML",...keyboard});
+  }catch(error){
+   // A 400 exact no-op proves Telegram already has the requested payload.
+   // Other or ambiguous errors remain needs_reconcile, never blind retries.
+   if(!roomTelegramMessageAlreadyMatches(error))throw error;
+  }
   const cx=await pool.connect();
   try{
    await cx.query("BEGIN");
@@ -159,6 +191,17 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
     "UPDATE room_status_message_edits SET state='confirmed',updated_at=NOW() WHERE edit_id=$1 AND state='sending' RETURNING edit_id",
     [item.editId]);
    if(ack.rows.length!==1)throw Error("ROOM_EDIT_ACK_UNCERTAIN");
+   if(terminal){
+    // Only AFTER the final Telegram edit is acknowledged may older
+    // unresolved revisions be superseded. Never mark them sent/confirmed.
+    await cx.query(
+     `UPDATE room_status_message_edits old SET state='skipped',updated_at=NOW()
+       FROM room_source_events prior
+       WHERE old.room_event_id=prior.event_id
+         AND old.delivery_id=$1 AND prior.event_id<$2
+         AND old.state IN ('pending','needs_reconcile')`,
+     [item.deliveryId,item.eventId]);
+   }
    await cx.query("COMMIT");
   }catch(error){await cx.query("ROLLBACK");throw error;}finally{cx.release();}
   return {editId:item.editId,state:"confirmed"};
