@@ -191,7 +191,7 @@ export async function runMigrations(): Promise<void> {
         CHECK (purpose IN ('profile','room','announcement','link','sticker'));
       CREATE TABLE IF NOT EXISTS posting_sticker_entry_pins (
         topic_id BIGINT PRIMARY KEY REFERENCES posting_topics(topic_id) ON DELETE RESTRICT,
-        creator_bot_id BIGINT NOT NULL CHECK (creator_bot_id > 0),
+        creator_bot_id BIGINT NULL CHECK (creator_bot_id > 0),
         creator_bot_username TEXT NOT NULL
           CHECK (creator_bot_username ~ '^[A-Za-z][A-Za-z0-9_]{4,31}$'),
         status TEXT NOT NULL CHECK (status IN
@@ -201,6 +201,12 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CHECK (status = 'sending' OR telegram_message_id IS NOT NULL)
       );
+      -- Legacy installations had a mandatory numeric CreatorBot ID.
+      -- Public fixed DM deep links need only the approved username; null
+      -- means no Token/getMe attestation, never a fabricated bot identity.
+      ALTER TABLE posting_sticker_entry_pins
+        ALTER COLUMN creator_bot_id DROP NOT NULL;
+
       CREATE TABLE IF NOT EXISTS posting_deliveries (
         delivery_id BIGSERIAL PRIMARY KEY,
         source_type TEXT NOT NULL CHECK (source_type IN ('profile','room','announcement','link')),
