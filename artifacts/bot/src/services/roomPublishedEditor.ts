@@ -188,7 +188,7 @@ export function roomPublicationEditor(p:RoomPublication){
  const state:Record<string,string>={
   draft:"🟡 開始待ち",scheduled:"📅 予告中",ready:"🟡 開始待ち",
   live:"🔴 LIVE中",postponed:"⏸ 延期",cancelled:"🚫 中止",
-  finished:"⚫ 終了",
+  finished:"✅ 終了",
  };
  const text=[
   p.groupTitle,
@@ -202,19 +202,19 @@ export function roomPublicationEditor(p:RoomPublication){
  const rows:Array<Array<ReturnType<typeof Markup.button.callback>|ReturnType<typeof Markup.button.url>>>=[];
  if(["draft","scheduled","ready","postponed"].includes(p.status)){
   rows.push([
-   colored("▶ 開始する",`room:published:start:${p.announcementId}:${p.roomRevision}`,"success"),
+   colored("▶ 開始して入室へ",`room:published:start:${p.announcementId}:${p.roomRevision}`,"success"),
    colored("✏️ 編集",`room:published:edit:${p.announcementId}`,"primary"),
    colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger")
   ]);
  }else if(p.status==="live"){
   rows.push([
-   colored("⚫ 終了",`room:published:finish:${p.announcementId}:${p.roomRevision}`,"danger"),
+   colored("✅ 終了する",`room:published:finish:${p.announcementId}:${p.roomRevision}`,"danger"),
    colored("✏️ 編集",`room:published:edit:${p.announcementId}`,"primary"),
    colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger")
   ]);
  }
  if(p.status==="live"&&p.ownerJoinUrl)rows.push([
-  Markup.button.url("🎥 ROOMに入る",p.ownerJoinUrl)]);
+  Markup.button.url("🎥 開始済みROOMに入る",p.ownerJoinUrl)]);
  for(const [i,destination] of (p.destinations??[
   {chatId:p.chatId,messageId:p.messageId,topicTitle:p.topicTitle}]).entries()){
   rows.push([Markup.button.url((i===0?"📍 元の投稿先":"🎬 ビデオチャット投稿先")+"を開く",
