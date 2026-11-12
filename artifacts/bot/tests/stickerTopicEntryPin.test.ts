@@ -45,7 +45,7 @@ function example({timeout=false,noAdmin=false}={}){
   unknown:async()=>{if(state)state.status="needs_reconcile";}
  } as unknown as ReturnType<typeof createStickerEntryPinStore>;
  const ensure=createStickerEntryPinService({
-   getVerifiedStickerTopic:async()=>({...topic}),creatorBotApi:bot,store
+   getVerifiedStickerTopic:async()=>({...topic}),creatorBotApi:bot,postingBotApi:bot,store
  });
  return {ensure,get state(){return state;},get sends(){return sends;},get pins(){return pins;}};
 }
@@ -79,6 +79,7 @@ test("wrong thread, group or speculative message URL cannot pass verified Topic 
  const flow=createStickerEntryPinService({
    getVerifiedStickerTopic:async()=>t,
    creatorBotApi:async()=>{throw Error("should never call Telegram");},
+   postingBotApi:async()=>{throw Error("should never call Telegram");},
    store:{claim:async()=>{throw Error("unexpected DB");}} as unknown as ReturnType<typeof createStickerEntryPinStore>
  });
  await assert.rejects(flow(),/TOPIC_NOT_VERIFIED/);
@@ -128,4 +129,59 @@ test("existing GayBBS administrator pins the verified CreateVdoBot DM link; Crea
    "creator_identity","getMe","getChatMember","sendMessage","pinChatMessage"
  ]);
  assert.equal(saved?.status,"pinned_ack");
+});
+
+test("fixed Master-approved CreateVdobot URL needs only the existing GroupBot credential",async()=>{
+ const methods:string[]=[];
+ let receipt:null|{status:string;messageId:number|null}=null;
+ const group=async(method:string,params:Record<string,unknown>):Promise<unknown>=>{
+  methods.push(method);
+  if(method==="getMe")return {id:1000,username:"GayBBS_bot",is_bot:true};
+  if(method==="getChatMember"){
+   assert.equal(params.user_id,1000);
+   return {status:"administrator",can_pin_messages:true};
+  }
+  if(method==="sendMessage"){
+   assert.equal(params.chat_id,topic.chatId);
+   assert.equal(params.message_thread_id,topic.threadId);
+   assert.match(JSON.stringify(params.reply_markup),/t.me\\/CreateVdobot\\?start=sticker/);
+   return {message_id:1007};
+  }
+  if(method==="pinChatMessage"){
+   assert.equal(params.message_id,1007);return true;
+  }
+  throw Error("STICKER_PIN_UNEXPECTED_API");
+ };
+ const store={
+  claim:async (_t:VerifiedTopic,bot:{id:number|null;username:string})=>{
+   assert.equal(bot.id,null);
+   assert.equal(bot.username,"CreateVdobot");
+   return {claimed:true};
+  },
+  sent:async(_id:number,m:number)=>{receipt={status:"sent",messageId:m};},
+  beginPin:async()=>1007,
+  pinnedAck:async()=>{receipt={status:"pinned_ack",messageId:1007};},
+  unknown:async()=>{throw Error("MUST_NOT_RECONCILE");}
+ } as unknown as ReturnType<typeof createStickerEntryPinStore>;
+ const run=createStickerEntryPinService({
+  getVerifiedStickerTopic:async()=>({...topic}),
+  creatorBotUsername:"CreateVdobot",postingBotApi:group,store
+ });
+ const value=await run();
+ assert.equal(value.acknowledged,true);
+ assert.equal(value.readbackVerified,false);
+ assert.deepEqual(methods,["getMe","getChatMember","sendMessage","pinChatMessage"]);
+ assert.equal(receipt?.status,"pinned_ack");
+});
+test("wrong public bot username is rejected before any GroupBot or DB mutation",async()=>{
+ let calls=0;
+ const run=createStickerEntryPinService({
+  getVerifiedStickerTopic:async()=>({...topic}),
+  creatorBotUsername:"fake_creator_bot",
+  postingBotApi:async()=>{calls++;throw Error("UNEXPECTED_MUTATION");},
+  store:{claim:async()=>{calls++;throw Error("UNEXPECTED_DB");}}
+    as unknown as ReturnType<typeof createStickerEntryPinStore>
+ });
+ await assert.rejects(run(),/STICKER_PIN_TARGET_USERNAME_UNAPPROVED/);
+ assert.equal(calls,0);
 });
