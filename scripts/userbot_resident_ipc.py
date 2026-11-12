@@ -62,7 +62,16 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         bot = await client.get_entity("GayBBS_bot")
         if not bot.bot:
             raise RuntimeError("TARGET_NOT_BOT")
-        message = await client.get_messages(chat_id, ids=message_id)
+        try:
+            message = await client.get_messages(chat_id, ids=message_id)
+        except ValueError:
+            # The resident may be a joined member with a cold entity cache.
+            # Resolve only from existing dialogs; NEVER join/invite/authenticate.
+            dialogs = await client.get_dialogs(limit=500)
+            existing = next((d.entity for d in dialogs if d.id == chat_id), None)
+            if existing is None:
+                raise RuntimeError("ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS") from None
+            message = await client.get_messages(existing, ids=message_id)
         if message is None or message.id != message_id:
             raise RuntimeError("ROOM_PUBLIC_MESSAGE_NOT_VISIBLE")
         if message.sender_id != bot.id:
@@ -133,8 +142,17 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(process_request(client, request), timeout=30)
         except Exception as exc:
-            response = {"status": "FAIL", "error": type(exc).__name__ + ":" +
-                        (str(exc) if isinstance(exc, (ValueError, RuntimeError, PermissionError)) else "INTERNAL")}
+            # Never surface raw Telethon errors: they can include group/user IDs.
+            safe_codes = {
+                "REQUEST_SHAPE_INVALID", "REQUEST_ID_INVALID", "ACTION_NOT_ALLOWLISTED",
+                "ROOM_READ_CHAT_NOT_ALLOWLISTED", "ROOM_READ_MESSAGE_ID_INVALID",
+                "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE", "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH",
+                "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
+                "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
+                "REQUEST_SIZE_INVALID",
+            }
+            code = str(exc) if str(exc) in safe_codes else "INTERNAL"
+            response = {"status": "FAIL", "error": code}
         try:
             encoded = (json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8")
             if len(encoded) > MAX_RESPONSE_BYTES:
