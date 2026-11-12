@@ -60,8 +60,9 @@ export function applicationTagRows(
   const categoryButtons=mapped.slice(0,2).flat();
   return [...roomChoiceRows(categoryButtons),mapped[2]!];
  }
- const candidates=mapped.filter(row=>row.some(b=>b.callback_data.includes(":tag:"))).flat();
- const other=mapped.filter(row=>!row.some(b=>b.callback_data.includes(":tag:")));
+ const isCandidate=(key:string)=>/^application:tag:(?:like|love):\\d+:tag:\\d+:\\d+$/.test(key);
+ const candidates=mapped.filter(row=>row.some(b=>isCandidate(b.callback_data))).flat();
+ const other=mapped.filter(row=>!row.some(b=>isCandidate(b.callback_data)));
  const navigation=other.filter(row=>row.some(b=>b.callback_data.includes(":page:")));
  const controls=other.filter(row=>!row.some(b=>b.callback_data.includes(":page:"))).flat();
  // Keep the long "この分類を解除" legible; Save is a permitted single
