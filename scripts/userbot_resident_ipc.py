@@ -143,7 +143,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 raise ValueError("REQUEST_SIZE_INVALID")
             request = json.loads(data.decode("utf-8"))
             async with lock:
-                response = await asyncio.wait_for(process_request(client, request),\n                                                  timeout=90 if request.get("action") == "room_public_post_smoke" else 30)
+                response = await asyncio.wait_for(\n                    process_request(client, request),\n                    timeout=90 if request.get("action") == "room_public_post_smoke" else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
