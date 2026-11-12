@@ -47,9 +47,16 @@ export function applicationTagRows(
  const controls=other.filter(row=>!row.some(b=>b.callback_data.includes(":page:"))).flat();
  // Keep the long "この分類を解除" legible; Save is a permitted single
  // confirmation action, never a stranded candidate.
+ const navigationButtons=navigation.flat();
  const controlsRows=controls.length===3?
   [controls.slice(0,2),controls.slice(2)]:
   controls.length?[controls]:[];
+ // A lone page-navigation control must not become an isolated row.
+ // Pair it with an ordinary Back control, leaving Clear + Save together.
+ if(navigationButtons.length===1&&controls.length===3)
+  return [...adaptiveChoiceRows(candidates),
+   [navigationButtons[0]!,controls[0]!],
+   [controls[1]!,controls[2]!]];
  return [...adaptiveChoiceRows(candidates),...navigation,...controlsRows];
 }
 export function renderRoomApplicationPreview(
