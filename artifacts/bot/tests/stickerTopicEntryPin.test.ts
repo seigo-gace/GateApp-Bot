@@ -83,3 +83,49 @@ test("wrong thread, group or speculative message URL cannot pass verified Topic 
  });
  await assert.rejects(flow(),/TOPIC_NOT_VERIFIED/);
 });
+
+test("existing GayBBS administrator pins the verified CreateVdoBot DM link; Creator needs no group role",async()=>{
+ let operations:string[]=[],saved:null|{status:string;messageId:number}=null;
+ const creator=async(method:string):Promise<unknown>=>{
+   assert.equal(method,"getMe");
+   operations.push("creator_identity");
+   return {id:55,username:"CreateVdobot",is_bot:true};
+ };
+ const group=async(method:string,params:Record<string,unknown>):Promise<unknown>=>{
+   operations.push(method);
+   if(method==="getMe")return {id:8086000001,username:"GayBBS_bot",is_bot:true};
+   if(method==="getChatMember"){
+     assert.equal(params.user_id,8086000001);
+     return {status:"administrator",can_pin_messages:true};
+   }
+   if(method==="sendMessage"){
+     const markup=JSON.stringify(params.reply_markup);
+     assert.match(markup,/t.me\/CreateVdobot\?start=sticker/);
+     assert.equal(params.chat_id,topic.chatId);
+     assert.equal(params.message_thread_id,topic.threadId);
+     return {message_id:612};
+   }
+   if(method==="pinChatMessage"){
+     assert.equal(params.message_id,612);
+     return true;
+   }
+   throw Error("UNEXPECTED_API");
+ };
+ const store={
+   claim:async()=>({claimed:true}),
+   sent:async(_topic:number,id:number)=>{saved={status:"sent",messageId:id};},
+   beginPin:async()=>612,
+   pinnedAck:async()=>{saved={status:"pinned_ack",messageId:612};},
+   unknown:async()=>{throw Error("must not be unknown");}
+ } as unknown as ReturnType<typeof createStickerEntryPinStore>;
+ const ensure=createStickerEntryPinService({
+   getVerifiedStickerTopic:async()=>({...topic}),
+   creatorBotApi:creator,postingBotApi:group,store
+ });
+ const r=await ensure();
+ assert.equal(r.acknowledged,true);
+ assert.deepEqual(operations,[
+   "creator_identity","getMe","getChatMember","sendMessage","pinChatMessage"
+ ]);
+ assert.equal(saved?.status,"pinned_ack");
+});
