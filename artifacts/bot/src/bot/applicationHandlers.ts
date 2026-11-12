@@ -15,7 +15,7 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {applicantDmLink} from "../services/telegramUsernameLink.js";
 import {applicationTagRows,applicationTagValues,renderRoomApplicationPreview} from "../services/roomApplicationTags.js";
-import {LIKE_CATEGORIES,toggleLike,validLikeTags,type ProfileTagPurpose} from "../services/profileLike.js";
+import {LIKE_CATEGORIES,likePageIndex,toggleLike,validLikeTags,type ProfileTagPurpose} from "../services/profileLike.js";
 
 /** Existing plain-recruitment links keep direct owner contact.
  * Only a linked ROOM post uses the application/approval flow.
@@ -155,7 +155,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    }
    tags=action==="tag"?toggleLike(tags,category,index!):
     tags.filter(t=>t.category!==LIKE_CATEGORIES[category]!.name);
-   page=action==="tag"?Math.floor(index!/12):0;
+   page=action==="tag"?likePageIndex(category,index!):0;
    const field=purpose==="like"?"likeTags":"loveTags";
    const updated=await pool.query(
     `UPDATE announcement_application_sessions
