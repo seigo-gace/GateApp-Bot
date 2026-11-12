@@ -175,12 +175,14 @@ test("fixed Master-approved CreateVdobot URL needs only the existing GroupBot cr
 });
 test("wrong public bot username is rejected before any GroupBot or DB mutation",async()=>{
  let calls=0;
+ const fakeStore={
+  claim:async()=>{calls++;throw Error("UNEXPECTED_DB");}
+ } as unknown as ReturnType<typeof createStickerEntryPinStore>;
  const run=createStickerEntryPinService({
   getVerifiedStickerTopic:async()=>({...topic}),
   creatorBotUsername:"fake_creator_bot",
   postingBotApi:async()=>{calls++;throw Error("UNEXPECTED_MUTATION");},
-  store:({claim:async()=>{calls++;throw Error("UNEXPECTED_DB");}}
-    as unknown as ReturnType<typeof createStickerEntryPinStore>)
+  store:fakeStore
  });
  await assert.rejects(run(),/STICKER_PIN_TARGET_USERNAME_UNAPPROVED/);
  assert.equal(calls,0);
