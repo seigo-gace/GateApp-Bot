@@ -59,7 +59,7 @@ def main() -> int:
             print("USERBOT_TEST_MENU_ROWS=" + ",".join(map(str, result["row_sizes"])))
         if "steps" in result:
             print("USERBOT_TEST_STEPS=" + ",".join(str(step) for step in result["steps"]))
-        if action == "room_public_post_smoke":
+        if args.action == "room_public_post_smoke":
             print("USERBOT_ROOM_PUBLIC_POST=" + ("PASS" if result.get("published") else "FAIL"))
             print("USERBOT_ROOM_PUBLIC_FINISH_DM=" + ("PASS" if result.get("finished_dm") else "FAIL"))
         if "marker" in result:
