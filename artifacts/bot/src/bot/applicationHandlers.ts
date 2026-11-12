@@ -159,11 +159,11 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    page=action==="tag"?Math.floor(index!/12):0;
    const field=purpose==="like"?"likeTags":"loveTags";
    const updated=await pool.query(
-    \`UPDATE announcement_application_sessions
+    `UPDATE announcement_application_sessions
        SET draft=jsonb_set(draft,$2::text[], $3::jsonb, true)
        WHERE applicant_user_id=$1 AND draft_step='preview'
          AND screen_message_id=$4 AND expires_at>NOW()
-       RETURNING draft\`,
+       RETURNING draft`,
     [ctx.from.id,[field],JSON.stringify(tags),screenId]);
    if(updated.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
    draft=updated.rows[0].draft as Record<string,unknown>;
@@ -190,8 +190,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await ctx.editMessageText("ポジションを選択してください。",
    Markup.inlineKeyboard([
-    ...recruitmentSelectionRows(PROFILE_POSITIONS.map((value,i)=>
-     Markup.button.callback(value,`application:pos:${i}`)),true),
+    PROFILE_POSITIONS.slice(0,3).map((value,i)=>Markup.button.callback(value,`application:pos:${i}`)),
+    PROFILE_POSITIONS.slice(3).map((value,i)=>Markup.button.callback(value,`application:pos:${i+3}`)),
     [Markup.button.callback("↩ 戻る","application:preview")]
    ]));
  });
