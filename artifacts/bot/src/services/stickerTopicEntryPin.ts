@@ -83,19 +83,25 @@ export function createStickerEntryPinStore(db:Database){
  };
 }
 export function createStickerEntryPinService({
- getVerifiedStickerTopic,creatorBotApi,store
+ getVerifiedStickerTopic,creatorBotApi,postingBotApi=creatorBotApi,store
 }:{
  getVerifiedStickerTopic:()=>Promise<VerifiedTopic & {groupTitle?:string;verified?:boolean}>;
+ // Target bot's authenticated getMe supplies the destination username only.
  creatorBotApi:CreatorBotApi;
+ // GateApp-Bot is the existing group administrator and owns the pin.
+ postingBotApi?:CreatorBotApi;
  store:ReturnType<typeof createStickerEntryPinStore>;
 }){
  if(typeof getVerifiedStickerTopic!=="function"||
-   typeof creatorBotApi!=="function"||typeof store?.claim!=="function")
+   typeof creatorBotApi!=="function"||typeof postingBotApi!=="function"||
+   typeof store?.claim!=="function")
   throw new Error("STICKER_PIN_OWNER_DEPS_MISSING");
  return async function ensureStickerEntryPin(){
   const t=stickerTopic(await getVerifiedStickerTopic());
   const bot=requireIdentity(await creatorBotApi("getMe",{}));
-  const rights=await creatorBotApi("getChatMember",{chat_id:t.chatId,user_id:bot.id});
+  const writer=requireIdentity(await postingBotApi("getMe",{}));
+  const rights=await postingBotApi("getChatMember",{
+    chat_id:t.chatId,user_id:writer.id});
   const membership=rights as {status?:string;can_pin_messages?:boolean}|null;
   if(!membership||!["administrator","creator"].includes(String(membership.status))||
     (membership.status==="administrator"&&membership.can_pin_messages!==true))
@@ -110,7 +116,7 @@ export function createStickerEntryPinService({
   }
   let msgId:number;
   try{
-   const sent=await creatorBotApi("sendMessage",{
+   const sent=await postingBotApi("sendMessage",{
     chat_id:t.chatId,message_thread_id:t.threadId,
     text:"📌 投稿はこちら\nステッカー・カスタム絵文字の作成、パック管理、販売はBotのDMで操作してください。",
     reply_markup:{inline_keyboard:[[{text:"🎨 投稿はこちら",
@@ -124,7 +130,7 @@ export function createStickerEntryPinService({
   try{
    const pinned=await store.beginPin(t.id);
    if(pinned!==msgId)throw new Error("STICKER_PIN_RECEIPT_MISMATCH");
-   if(await creatorBotApi("pinChatMessage",{
+   if(await postingBotApi("pinChatMessage",{
      chat_id:t.chatId,message_id:msgId,disable_notification:true
    })!==true)throw new Error("STICKER_PIN_API_NOT_CONFIRMED");
    await store.pinnedAck(t.id);
