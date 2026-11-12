@@ -15,6 +15,8 @@ import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {applicantDmLink} from "../services/telegramUsernameLink.js";
+import {applicationTagRows,applicationTagValues,renderRoomApplicationPreview} from "../services/roomApplicationTags.js";
+import {LIKE_CATEGORIES,toggleLike,validLikeTags,type ProfileTagPurpose} from "../services/profileLike.js";
 
 /** Existing plain-recruitment links keep direct owner contact.
  * Only a linked ROOM post uses the application/approval flow.
@@ -60,9 +62,12 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
  screenId:number|undefined){
  const profile=data.mode==="linked"?await getProfile(id):null;
  const draft=applicationData(data);
- const text="📝 ROOM応募内容の確認\n"+renderRecruitmentPreview(draft,profile)+
+ const text="📝 ROOM応募内容の確認\n"+renderRoomApplicationPreview({...draft,likeTags:validLikeTags(data.likeTags as []??[]),loveTags:validLikeTags(data.loveTags as []??[])},profile)+
   "\n\n内容を確認して［応募する］を押してください。";
- const rows:any[][]=[];
+ const rows:any[][]=[[
+  Markup.button.callback("💖 #Like","application:tag:like:open"),
+  Markup.button.callback("💘 #Love","application:tag:love:open")
+ ]];
  if(data.mode!=="linked"&&!isProfilePosition(String(data.position||"")))
   rows.push([Markup.button.callback("ポジション選択","application:position")]);
  else rows.push([Markup.button.callback("✅ 応募する","application:confirm")]);
@@ -91,7 +96,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    const profile=await getProfile(ctx.from.id);
    const linked=!!profile&&isProfilePosition(profile.position??"");
    const data=parseRecruitmentMessage(ctx.message.text,linked);
-   const draft={...data,
+   const draft={...data,likeTags:linked?validLikeTags(profile!.likeTags??[]):[],
+    loveTags:linked?validLikeTags(profile!.loveTags??[]):[],
     ...(linked?{profileRevision:profile!.revision,position:profile!.position}:{} )};
    await pool.query(
     `UPDATE announcement_application_sessions
@@ -164,8 +170,9 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   }
   const snapshot={...draft,
    ...(profile?{nickname:profile.nickname,heightCm:profile.heightCm,
-    weightKg:profile.weightKg,age:profile.age,position:profile.position,
-    likeTags:profile.likeTags??[],loveTags:profile.loveTags??[]}:{} )};
+    weightKg:profile.weightKg,age:profile.age,position:profile.position}:{} ),
+   likeTags:validLikeTags((record.rows[0].draft as Record<string,unknown>).likeTags as []??[]),
+   loveTags:validLikeTags((record.rows[0].draft as Record<string,unknown>).loveTags as []??[])};
   let submitted:Awaited<ReturnType<typeof submitApplication>>;
   try{
    submitted=await submitApplication(session.announcementId,ctx.from.id,snapshot);
