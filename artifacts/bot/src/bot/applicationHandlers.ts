@@ -113,6 +113,73 @@ export function registerApplicationHandlers(bot:Telegraf):void{
     Markup.inlineKeyboard([[Markup.button.callback("キャンセル","application:cancel")]]));
   }
  });
+ bot.action(/^application:tag:(like|love):open$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const purpose=ctx.match[1] as ProfileTagPurpose;
+  const r=await pool.query(
+   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   [ctx.from.id]);
+  if(r.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
+  const screenId=Number(r.rows[0].screen_message_id);
+  if(!Number.isSafeInteger(screenId)||screenId<1||
+     ctx.callbackQuery.message?.message_id!==screenId){
+   await ctx.answerCbQuery("古い操作です");return;
+  }
+  await ctx.answerCbQuery();
+  await ctx.editMessageText("🏷️ #"+(purpose==="like"?"Like":"Love")+
+   "\n"+(purpose==="like"?"自分の特徴・好み・趣味・スタイルを選択":"相手に求める特徴・好み・趣味・スタイルを選択"),
+   Markup.inlineKeyboard(applicationTagRows(purpose,screenId,r.rows[0].draft)));
+ });
+ bot.action(/^application:tag:(like|love):(\d+):(open|back|save|tag|page|clear)(?::(\d+))?(?::(\d+))?$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const purpose=ctx.match[1] as ProfileTagPurpose;
+  const screenId=Number(ctx.match[2]),action=ctx.match[3];
+  const category=ctx.match[4]===undefined?undefined:Number(ctx.match[4]);
+  const index=ctx.match[5]===undefined?undefined:Number(ctx.match[5]);
+  const r=await pool.query(
+   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   [ctx.from.id]);
+  if(r.rows.length!==1 || Number(r.rows[0].screen_message_id)!==screenId ||
+     ctx.callbackQuery.message?.message_id!==screenId){
+   await ctx.answerCbQuery("古い操作です");return;
+  }
+  if(category!==undefined && (!Number.isInteger(category)||category<0||category>=LIKE_CATEGORIES.length)){
+   await ctx.answerCbQuery("選択を確認してください");return;
+  }
+  let draft=r.rows[0].draft as Record<string,unknown>;
+  let tags=applicationTagValues(draft,purpose);
+  let selectedCategory=category;
+  let page=0;
+  if(action==="tag" || action==="clear"){
+   if(category===undefined || (action==="tag" && (index===undefined||!Number.isInteger(index)))){
+    await ctx.answerCbQuery("選択を確認してください");return;
+   }
+   tags=action==="tag"?toggleLike(tags,category,index!):
+    tags.filter(t=>t.category!==LIKE_CATEGORIES[category]!.name);
+   page=action==="tag"?Math.floor(index!/12):0;
+   const field=purpose==="like"?"likeTags":"loveTags";
+   const updated=await pool.query(
+    \`UPDATE announcement_application_sessions
+       SET draft=jsonb_set(draft,$2::text[], $3::jsonb, true)
+       WHERE applicant_user_id=$1 AND draft_step='preview'
+         AND screen_message_id=$4 AND expires_at>NOW()
+       RETURNING draft\`,
+    [ctx.from.id,[field],JSON.stringify(tags),screenId]);
+   if(updated.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
+   draft=updated.rows[0].draft as Record<string,unknown>;
+  }else if(action==="page"){
+   if(category===undefined||index===undefined){await ctx.answerCbQuery("選択を確認してください");return;}
+   page=index;
+  }else if(action==="back"||action==="save"){
+   selectedCategory=undefined;
+  }
+  await ctx.answerCbQuery();
+  const heading="🏷️ #"+(purpose==="like"?"Like":"Love")+
+   (selectedCategory===undefined?"":"｜"+LIKE_CATEGORIES[selectedCategory]!.name)+
+   "\n選択中："+applicationTagValues(draft,purpose).length+"件";
+  await ctx.editMessageText(heading,Markup.inlineKeyboard(
+   applicationTagRows(purpose,screenId,draft,selectedCategory,page)));
+ });
  bot.action("application:position",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const row=await pool.query(
