@@ -1471,7 +1471,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
       if(room.rows.length!==1)throw new Error("ROOM_SOURCE_NOT_OWNED");
       // Explicit "即開始" selection starts the existing ROOM only after
       // both Telegram destinations acknowledge sends.
-      if(!isScheduledRoom)await ensureImmediatePublishedRoomLive(ctx.from.id,Number(sourceId));
+      if(!isScheduledRoom){
+       const eventId=await ensureImmediatePublishedRoomLive(ctx.from.id,Number(sourceId));
+       if(eventId){
+        try{
+         const state=await reconcileRoomPublicCard(ctx.telegram,eventId);
+         if(state!=="confirmed")console.warn("[ROOM_IMMEDIATE_PUBLIC_CARD_PENDING]");
+        }catch{
+         console.warn("[ROOM_IMMEDIATE_PUBLIC_CARD_NEEDS_RECONCILE]");
+        }
+       }
+      }
       // Close this temporary editor: the published ROOM has its own durable
       // source and delivery receipts; a new ROOM must get a fresh request key.
       await markDraftPublished(ctx.from.id,"room",revision);
@@ -1506,7 +1516,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
      if(completed){
       const draft=await getDraft(ctx.from.id,"room");
       if(draft?.data.stage==="immediate_ready")
-       await ensureImmediatePublishedRoomLive(ctx.from.id,completed);
+       {
+        const eventId=await ensureImmediatePublishedRoomLive(ctx.from.id,completed);
+        if(eventId){
+         try{
+          const status=await reconcileRoomPublicCard(ctx.telegram,eventId);
+          if(status!=="confirmed")console.warn("[ROOM_RECOVERY_PUBLIC_CARD_PENDING]");
+         }catch{
+          console.warn("[ROOM_RECOVERY_PUBLIC_CARD_NEEDS_RECONCILE]");
+         }
+        }
+       }
       if(draft?.revision===revision&&draft.step==="preview")
        await markDraftPublished(ctx.from.id,"room",revision).catch(err=>
         console.error("[ROOM_DRAFT_CLEANUP_FAILED]",
