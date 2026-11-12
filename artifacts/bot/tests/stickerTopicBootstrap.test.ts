@@ -54,7 +54,7 @@ test("bootstrap writes receipt before Telegram and pins ONLY verified original T
  assert.equal(f.receipt,"pinned_ack");
  const call=f.apiCalls.find(x=>x.method==="sendMessage");
  assert.equal(call?.params.message_thread_id,4640);
- assert.match(JSON.stringify(call?.params.reply_markup),/CreateVdobot\\?start=sticker/);
+ assert.ok(JSON.stringify(call?.params.reply_markup).includes("t.me/CreateVdobot?start=sticker"));
  assert.ok(f.queries.findIndex(x=>x.startsWith("INSERT INTO posting_sticker_entry_pins"))<
   f.queries.findIndex(x=>x.startsWith("UPDATE posting_sticker_entry_pins")));
  assert.deepEqual(f.apiCalls.filter(x=>x.method==="pinChatMessage")
