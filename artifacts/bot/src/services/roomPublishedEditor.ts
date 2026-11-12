@@ -117,7 +117,7 @@ export async function recoverFullySentRoom(owner:number,revision:number,
  */
 export async function ensureImmediatePublishedRoomLive(
  owner:number,announcementId:number,
-):Promise<void>{
+):Promise<number|null>{
  if(![owner,announcementId].every(n=>Number.isSafeInteger(n)&&n>0))
   throw Error("ROOM_IMMEDIATE_START_OWNER_INVALID");
  const rows=await pool.query(
@@ -130,10 +130,11 @@ export async function ensureImmediatePublishedRoomLive(
   [owner,announcementId]);
  if(rows.rows.length!==1)throw Error("ROOM_IMMEDIATE_START_SOURCE_UNVERIFIED");
  const room=rows.rows[0];
- if(room.status==="live")return;
+ if(room.status==="live")return null;
  if(room.status!=="draft")throw Error("ROOM_IMMEDIATE_START_STATE_INVALID");
  try{
-  await updateRoomState(owner,Number(room.room_id),Number(room.revision),"start");
+  const changed=await updateRoomState(owner,Number(room.room_id),Number(room.revision),"start");
+  return changed.eventId;
  }catch(error){
   // Two legitimate recovery callbacks may race. An already committed LIVE
   // result is success; all other concurrent changes remain fail-closed.
@@ -141,7 +142,7 @@ export async function ensureImmediatePublishedRoomLive(
    const current=await pool.query(
     "SELECT status FROM room_posts WHERE room_id=$1 AND owner_user_id=$2",
     [Number(room.room_id),owner]);
-   if(current.rows.length===1&&current.rows[0].status==="live")return;
+   if(current.rows.length===1&&current.rows[0].status==="live")return null;
   }
   throw error;
  }
