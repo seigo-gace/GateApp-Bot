@@ -29,28 +29,49 @@ def find_callback(message: Any, prefix: str, suffix: str = "") -> Any:
     return candidates[0]
 
 
-async def run(client: Any) -> dict[str, Any]:
+async def _run(client: Any, progress: dict[str, str]) -> dict[str, Any]:
+    progress['phase'] = 'BOT_LOOKUP'
     bot = await client.get_entity(BOT)
     if not bot.bot:
         raise RuntimeError("ROOM_PUBLIC_TEST_BOT_NOT_VERIFIED")
     prev = await client.get_messages(bot, limit=1)
     baseline = prev[0].id if prev else 0
+    progress["phase"] = "START_MENU"
     await client.send_message(bot, "/start")
     menu = await wait_for_screen(
         client, bot, None, baseline,
         lambda m: bool(m.buttons) and rows(m) == EXPECTED_MENU,
         "ROOM_PUBLIC_TEST_START_MENU_MISSING")
+    progress["phase"] = "ROOM_MENU"
     await menu.click(text="募集+Room")
     method = await wait_for_screen(
         client, bot, menu.id, baseline,
-        lambda m: "Room作成" in labels(m),
+        lambda m: "Room作成" in labels(m) or
+                  (TEST_TITLE in (m.raw_text or "") and "キャンセル" in labels(m)),
         "ROOM_PUBLIC_TEST_METHOD_MISSING")
+    # An earlier failed pre-publication attempt can leave this dedicated
+    # test owner's *private draft*. Cancel that exact test draft first.
+    # Never retry a potentially published Room: the DB preflight gates that.
+    if "Room作成" not in labels(method):
+        progress["phase"] = "CANCEL_OLD_TEST_DRAFT"
+        await method.click(text="キャンセル")
+        menu = await wait_for_screen(
+            client, bot, method.id, baseline,
+            lambda m: bool(m.buttons) and rows(m) == EXPECTED_MENU,
+            "ROOM_PUBLIC_TEST_DRAFT_CANCEL_FAILED")
+        await menu.click(text="募集+Room")
+        method = await wait_for_screen(
+            client, bot, menu.id, baseline,
+            lambda m: "Room作成" in labels(m),
+            "ROOM_PUBLIC_TEST_METHOD_REOPEN_FAILED")
+    progress["phase"] = "ROOM_METHOD"
     await method.click(text="Room作成")
     guide = await wait_for_screen(
         client, bot, method.id, baseline,
         lambda m: "1行目" in (m.raw_text or "") and "募集+Room" in (m.raw_text or ""),
         "ROOM_PUBLIC_TEST_INPUT_MISSING")
     linked = "2行目以降" in (guide.raw_text or "") and "3行目" not in (guide.raw_text or "")
+    progress["phase"] = "INPUT_PREVIEW"
     sent = await client.send_message(bot, TEST_LINKED if linked else TEST_MANUAL)
     preview = await wait_for_screen(
         client, bot, guide.id, baseline,
@@ -60,6 +81,7 @@ async def run(client: Any) -> dict[str, Any]:
         raise RuntimeError("ROOM_PUBLIC_TEST_INPUT_NOT_DELETED")
 
     if not linked:
+        progress["phase"] = "POSITION"
         position = next((b for row in preview.buttons for b in row
                          if "ポジション" in b.text), None)
         if position is None:
@@ -77,6 +99,7 @@ async def run(client: Any) -> dict[str, Any]:
 
     # This callback is the one and only public publishing attempt.
     # A missing destination opens the existing verified destination picker.
+    progress["phase"] = "FIRST_PUBLISH"
     await preview.click(text="▶ 即開始")
     outcome = await wait_for_screen(
         client, bot, preview.id, baseline,
@@ -88,12 +111,14 @@ async def run(client: Any) -> dict[str, Any]:
         "ROOM_PUBLIC_TEST_PUBLISH_OUTCOME_UNVERIFIED")
     # If the source origin is unavailable, choose a *registered* video group,
     # then a verified VideoChat topic from the actual bot-presented options.
+    progress["phase"] = "DESTINATION_GROUP"
     if "投稿先グループを選択" in (outcome.raw_text or ""):
         await find_callback(outcome, "room:destgroup:", ":video_chat").click()
         outcome = await wait_for_screen(
             client, bot, outcome.id, baseline,
             lambda m: "投稿するトピックを選択" in (m.raw_text or ""),
             "ROOM_PUBLIC_TEST_VIDEO_TOPICS_MISSING")
+    progress["phase"] = "DESTINATION_TOPIC"
     if "投稿するトピックを選択" in (outcome.raw_text or ""):
         topics = [b for row in outcome.buttons for b in row
                   if (getattr(b, "data", None) or b"").decode("utf-8").startswith("room:destchoose:")
@@ -111,6 +136,7 @@ async def run(client: Any) -> dict[str, Any]:
             lambda m: "投稿ID：" in (m.raw_text or "") or "投稿状態を確認" in (m.raw_text or ""),
             "ROOM_PUBLIC_TEST_PUBLISH_AFTER_TOPIC_UNVERIFIED")
 
+    progress["phase"] = "PUBLISH_RECEIPT"
     if "投稿ID：" not in (outcome.raw_text or ""):
         raise RuntimeError("ROOM_PUBLIC_TEST_PUBLISH_NOT_CONFIRMED")
     if "🔴 LIVE中" not in (outcome.raw_text or ""):
@@ -118,6 +144,7 @@ async def run(client: Any) -> dict[str, Any]:
     if "✅ 終了する" not in labels(outcome):
         raise RuntimeError("ROOM_PUBLIC_TEST_FINISH_BUTTON_MISSING")
     # Keep the same original published DM editor; never re-post.
+    progress["phase"] = "FINISH"
     await outcome.click(text="✅ 終了する")
     closed = await wait_for_screen(
         client, bot, outcome.id, baseline,
@@ -127,3 +154,16 @@ async def run(client: Any) -> dict[str, Any]:
             "published": True, "finished_dm": True,
             "has_public_destination_buttons": any(
                 "投稿先" in label for label in labels(closed))}
+
+
+async def run(client: Any) -> dict[str, Any]:
+    """Return a fixed diagnostic phase; never reveal Telegram IDs or text."""
+    progress = {"phase": "INIT"}
+    try:
+        return await _run(client, progress)
+    except Exception as exc:
+        code = str(exc)
+        if not code.startswith("ROOM_PUBLIC_TEST_"):
+            code = "ROOM_PUBLIC_TEST_FAILED_" + progress["phase"]
+        return {"action": "room_public_post_smoke", "status": "FAIL",
+                "error": code}
