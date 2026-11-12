@@ -15,6 +15,7 @@ import random
 import signal
 
 from userbot_session import SECRETS, SESSION_BASE, load_credentials
+from userbot_resident_ipc import serve_resident
 
 LOCK = SECRETS / "userbot_verify.lock"
 SESSION = SESSION_BASE.with_suffix(".session")
@@ -65,14 +66,15 @@ async def run() -> None:
                 attempt = 0
                 connection = asyncio.create_task(client.run_until_disconnected())
                 stopping = asyncio.create_task(stop.wait())
+                ipc = asyncio.create_task(serve_resident(client, stop))
                 done, pending = await asyncio.wait(
-                    {connection, stopping}, return_when=asyncio.FIRST_COMPLETED
+                    {connection, stopping, ipc}, return_when=asyncio.FIRST_COMPLETED
                 )
                 for task in pending:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
                 for task in done:
-                    if task is connection:
+                    if task is connection or task is ipc:
                         task.result()
                 if stop.is_set():
                     break
