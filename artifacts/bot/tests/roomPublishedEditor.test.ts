@@ -30,7 +30,7 @@ test("scheduled Room+募集 has cancellation but no direct join URL or live-end 
 });
 test("finished Room+募集 stays listed but cannot be edited through meeting actions",()=>{
  const ui=roomPublicationEditor(room("finished"));
- assert.match(ui.text,/⚫ 終了/);
+ assert.match(ui.text,/✅ 終了/);
  assert.ok(!ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("終了する")||b.text.includes("中止する")));
 });
 
