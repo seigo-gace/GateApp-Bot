@@ -1,0 +1,6 @@
+.env
+canonical.jpg
+state/
+*.session
+__pycache__/
+*.pyc
