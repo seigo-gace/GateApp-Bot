@@ -4,6 +4,7 @@
 import { Markup,type Telegraf } from "telegraf";
 import {pool} from "../db/index.js";
 import {updateRoomState,changeRoomVisibility,reportRoomParticipation,type RoomAction} from "../services/roomLifecycle.js";
+import {reconcileRoomPublicCard} from "../services/roomPublicSync.js";
 import {parseJstDateTime} from "../services/postingDomain.js";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../services/roomAccess.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
@@ -139,9 +140,16 @@ export function registerRoomHandlers(bot:Telegraf):void{
   }
   try{
    const res=await updateRoomState(ctx.from.id,roomId,rev,action);
-   await ctx.answerCbQuery("操作を保存しました");
+   let display:"confirmed"|"pending"|"not_enabled"="pending";
+   try{
+    if(res.eventId)display=await reconcileRoomPublicCard(ctx.telegram,res.eventId);
+   }catch{
+    console.warn("[ROOM_MANAGE_PUBLIC_SYNC_NEEDS_RECONCILE]");
+   }
+   await ctx.answerCbQuery(display==="confirmed"?"ROOM・掲示板表示を更新しました":
+    "ROOM状態を保存しました。掲示板反映は未確認").catch(()=>undefined);
    await ctx.editMessageText("🎬 ROOM #"+roomId+" / 状態："+res.state+
-    "\n関連する告知への通知は永続イベントに登録しました。",
+    "\n掲示板："+(display==="confirmed"?"更新確認済み":"更新確認中。元の投稿は再送しません。"),
     Markup.inlineKeyboard([
      ...actions(roomId,res.revision,res.state).reply_markup.inline_keyboard,
      [Markup.button.callback("↩ ROOM管理へ戻る","room:manage")]
