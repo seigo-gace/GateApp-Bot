@@ -421,10 +421,28 @@ export async function runMigrations(): Promise<void> {
         room_event_id BIGINT NOT NULL REFERENCES room_source_events(event_id),
         delivery_id BIGINT NOT NULL REFERENCES posting_deliveries(delivery_id),
         state TEXT NOT NULL DEFAULT 'pending'
-          CHECK(state IN ('pending','sending','confirmed','needs_reconcile')),
+          CHECK(state IN ('pending','sending','confirmed','needs_reconcile','skipped')),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(room_event_id,delivery_id)
       );
+      -- Existing databases were created without 'skipped'. A final ROOM
+      -- Telegram edit must be confirmed before earlier stale revisions can
+      -- be safely marked skipped. Add the missing non-destructive state.
+      DO $room_terminal_supersede$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+           WHERE conrelid='room_status_message_edits'::regclass
+             AND conname='room_status_message_edits_state_check'
+             AND pg_get_constraintdef(oid) LIKE '%skipped%'
+        ) THEN
+          ALTER TABLE room_status_message_edits
+            DROP CONSTRAINT IF EXISTS room_status_message_edits_state_check;
+          ALTER TABLE room_status_message_edits
+            ADD CONSTRAINT room_status_message_edits_state_check
+            CHECK(state IN ('pending','sending','confirmed','needs_reconcile','skipped'));
+        END IF;
+      END $room_terminal_supersede$;
       CREATE TABLE IF NOT EXISTS announcement_application_entries (
         token_hash TEXT PRIMARY KEY,
         announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
