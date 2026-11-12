@@ -36,6 +36,8 @@ jobs:
         run: pnpm --dir artifacts/bot exec esbuild scripts/gaybbsRuntimePreflight.ts --bundle --platform=node --format=esm --outfile=/tmp/gaybbs-runtime-preflight.mjs
       - name: Typecheck existing Bot plus profile
         run: pnpm --dir artifacts/bot run typecheck
+      - name: Verify Room common 4-3-2 UI, application, lifecycle, and published edit regressions
+        run: pnpm --dir artifacts/bot exec tsx --test tests/roomApplicationTags.test.ts tests/roomCrossPost.test.ts tests/roomLifecycle.test.ts tests/roomPostStatus.test.ts tests/roomPublishedEditor.test.ts tests/roomStagedEntry.test.ts
       - name: Verify isolated PostgreSQL migration and application concurrency
         run: pnpm --dir artifacts/bot exec tsx tests/gaybbsMigrationIntegration.ts
       - name: Validate legacy PR migration in dry-run mode

@@ -181,18 +181,24 @@ try{
  const recruitmentId=Number(recruitment.rows[0].announcement_id);
  const accepted=await submitApplication(recruitmentId,333001,null);
  await submitApplication(recruitmentId,333002,null);
- assert.ok(await getAuthorizedRoom(111001,privateRoomId),
-  "ROOM host must retain private access");
+ assert.equal(await getAuthorizedRoom(111001,privateRoomId),null,
+  "Owner must not expose ROOM URL before LIVE");
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Pending applicant must not receive the URL");
  await decideApplication(111001,recruitmentId,accepted.applicationId,"accepted");
+ assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
+  "Accepted applicant must not get ROOM URL while ready");
+ const startedPrivate=await updateRoomState(111001,privateRoomId,1,"start");
+ assert.equal(startedPrivate.state,"live");
+ assert.ok(await getAuthorizedRoom(111001,privateRoomId),
+  "Host receives ROOM URL once LIVE");
  assert.ok((await getAuthorizedRoom(333001,privateRoomId))?.joinUrl.includes("PRIVATE_ACCEPTED_ONLY"));
  assert.equal(await getAuthorizedRoom(333002,privateRoomId),null,
   "Another pending applicant must not gain URL access");
  assert.equal(await getAuthorizedRoom(444001,privateRoomId),null,
   "Unrelated user must never obtain ROOM URL");
  assert.equal((await listAuthorizedRooms(333001)).some(r=>r.id===privateRoomId),true);
- const cancelled=await updateRoomState(111001,privateRoomId,1,"cancel");
+ const cancelled=await updateRoomState(111001,privateRoomId,startedPrivate.revision,"cancel");
  assert.equal(cancelled.state,"cancelled");
  assert.equal(await getAuthorizedRoom(333001,privateRoomId),null,
   "Cancelled ROOM must remove join URL and user records");
@@ -255,16 +261,26 @@ try{
     VALUES('announcement',$1,555001,1,$2,$3,'sent',10001)`,
   [linkedDraft.sourceId,topic.rows[0].topic_id,
    "db-test-published-room:"+linkedDraft.sourceId]);
- const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
- assert.equal(guest?.id,Number(privateSaved.sourceId));
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Published but not LIVE ROOM must not leak join URL");
  const reverted=await changeRoomVisibility(
   555001,Number(privateSaved.sourceId),prepared.revision,"approved_only");
  assert.equal(reverted.visibility,"approved_only");
- assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
-  "Switch back to approval-only must revoke public URL access");
  await assert.rejects(
   ()=>changeRoomVisibility(999999,Number(privateSaved.sourceId),
     reverted.revision,"public"),/ROOM_NOT_OWNED/);
+ const reopened=await changeRoomVisibility(
+  555001,Number(privateSaved.sourceId),reverted.revision,"public");
+ const startedPublic=await updateRoomState(
+  555001,Number(privateSaved.sourceId),reopened.revision,"start");
+ const guest=await getAuthorizedRoom(666001,Number(privateSaved.sourceId));
+ assert.equal(guest?.id,Number(privateSaved.sourceId),
+  "Public applicant can get URL only after explicitly starting LIVE");
+ const stoppedPublic=await updateRoomState(
+  555001,Number(privateSaved.sourceId),startedPublic.revision,"cancel");
+ assert.equal(stoppedPublic.state,"cancelled");
+ assert.equal(await getAuthorizedRoom(666001,Number(privateSaved.sourceId)),null,
+  "Cancelled ROOM must revoke URL even when previously public");
  console.log("GAYBBS_DB_ROOM_EXPLICIT_PUBLIC_MODE_AND_REVOCATION=PASS");
 
 
@@ -420,7 +436,7 @@ try{
  // until the *same* existing Telegram message displays the end badge.
  const endEdit=await updateNextRoomStatusMessage(historicalBot);
  assert.equal(endEdit?.state,"confirmed");
- assert.match(edits[1]!.text,/⚫ 終了しました/);
+ assert.match(edits[1]!.text,/✅ 終了/);
  assert.equal(edits[1]!.messageId,87654);
  assert.equal(edits.length,2);
  delete process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED;

@@ -4,7 +4,7 @@ import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {nextSelection,selectionRows} from "../services/inlineSelection.js";
-import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,toggleLike,validLikeTags,tagPurposeDescription,type ProfileTagPurpose} from "../services/profileLike.js";
+import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,likePageIndex,toggleLike,validLikeTags,tagPurposeDescription,type ProfileTagPurpose} from "../services/profileLike.js";
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
@@ -527,7 +527,7 @@ export function registerProfileHandlers(
       if(!canUseProfile(ctx))return;
       const draft=await repo.getDraft(ctx.from.id),rev=Number(ctx.match[1]),category=Number(ctx.match[2]),tag=Number(ctx.match[3]);
       if(!draft||draft.step!=="like-items"||draft.revision!==rev||profileTagPurpose(draft.data)!==purpose||
-         draft.data.likeCategory!==category||Math.floor(tag/12)!==(draft.data.likePage??0)||
+         draft.data.likeCategory!==category||likePageIndex(category,tag)!==(draft.data.likePage??0)||
          tag>=LIKE_CATEGORIES[category].items.length){
         await ctx.answerCbQuery("古い画面または無効な項目です");return;
       }

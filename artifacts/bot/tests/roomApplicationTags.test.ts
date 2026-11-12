@@ -23,8 +23,9 @@ test("ROOM applicant shares profile Like/Love categories and keeps separate togg
 
 test("tag keyboards reuse original category, pagination, clear and back layout",()=>{
  const cat=applicationTagRows("like",123,{},undefined);
- assert.equal(cat[0]!.length,4);
- assert.equal(cat[1]!.length,2);
+ assert(cat.every(row=>row.length>=2&&row.length<=4));
+ assert.equal(cat.slice(0,-1).flat().length,6);
+ assert.equal(cat.at(-1)!.length,2);
  assert.equal(cat[0]![0]!.text,LIKE_CATEGORIES[0]!.name);
  assert.equal(cat[0]![0]!.callback_data,"application:tag:like:123:open:0");
  const item=applicationTagRows("love",123,{},2);
@@ -62,4 +63,18 @@ test("ROOM position must use exact 3+4 order, tag controls permit lone save only
  assert(rows.every(row=>row.length<=4));
  const singles=rows.filter(row=>row.length===1);
  assert(singles.every(row=>row[0]!.text==="保存"||row[0]!.text==="◀ 前へ"||row[0]!.text==="次へ ▶"));
+});
+
+test("all paged Like/Love candidate screens avoid single-button navigation",()=>{
+ for(const purpose of ["like","love"] as const){
+  for(let category=0;category<LIKE_CATEGORIES.length;category++){
+   const pages=Math.ceil(LIKE_CATEGORIES[category]!.items.length/12);
+   for(let page=0;page<pages;page++){
+    const rows=applicationTagRows(purpose,234,{},category,page);
+    assert(rows.every(row=>row.length<=4),"more than four buttons");
+    assert(rows.every(row=>row.length!==1||row[0]!.text==="保存"),
+      "unwanted singleton category="+category+" page="+page);
+   }
+  }
+ }
 });
