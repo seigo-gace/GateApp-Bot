@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {roomStatusMessage,roomBadge,roomTelegramMessageAlreadyMatches,roomTerminalMatchesSource} from "../src/services/roomPostStatus.js";
+import {roomStatusMessage,roomBadge,roomTelegramMessageAlreadyMatches,roomTerminalMatchesSource,classifyRoomTelegramEditFailure} from "../src/services/roomPostStatus.js";
 
 test("Existing ROOM post switches badges without new Telegram messages",()=>{
  const text="🎬 ROOM：夜の交流会\n方式：Jitsi\n状態：準備完了";
@@ -52,4 +52,21 @@ test("Only Telegram's exact 400 no-change acknowledgement proves idempotence",()
   response:{error_code:400,description:"Bad Request: message to edit not found"},
  }),false);
  assert.equal(roomTelegramMessageAlreadyMatches(new Error("network timeout")),false);
+});
+
+test("Telegram rejected edits report only fixed non-sensitive failure classes",()=>{
+ assert.equal(classifyRoomTelegramEditFailure({
+  response:{error_code:400,description:"Bad Request: message to edit not found"}
+ }),"MESSAGE_TO_EDIT_NOT_FOUND");
+ assert.equal(classifyRoomTelegramEditFailure({
+  response:{error_code:400,description:"Bad Request: message can't be edited"}
+ }),"MESSAGE_EDIT_NOT_PERMITTED");
+ assert.equal(classifyRoomTelegramEditFailure({
+  response:{error_code:400,description:"Bad Request: can't parse entities"}
+ }),"MESSAGE_PARSE_REJECTED");
+ assert.equal(classifyRoomTelegramEditFailure({
+  response:{error_code:403,description:"private ID 123"}
+ }),"TELEGRAM_FORBIDDEN");
+ assert.equal(classifyRoomTelegramEditFailure(new Error("user phone and group id")),
+  "NO_TELEGRAM_RESPONSE");
 });
