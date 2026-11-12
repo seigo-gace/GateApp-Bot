@@ -27,7 +27,7 @@ jobs:
       - name: Verify sticker Topic type ownership and pin contracts
         run: |
           pnpm --dir artifacts/bot run typecheck
-          pnpm --dir artifacts/bot exec tsx --test tests/topicRouting.test.ts tests/stickerTopicEntryPin.test.ts tests/stickerPinTelegrafAdapter.test.ts
+          pnpm --dir artifacts/bot exec tsx --test tests/topicRouting.test.ts tests/stickerTopicEntryPin.test.ts tests/stickerPinTelegrafAdapter.test.ts tests/stickerTopicBootstrap.test.ts
       - name: Build isolated GayBBS image (no credentials)
         run: docker build --file artifacts/bot/deploy/Dockerfile.gaybbs --tag gaybbs:ci --pull=false .
       - name: Check bundled program without Telegram, DB, or network
