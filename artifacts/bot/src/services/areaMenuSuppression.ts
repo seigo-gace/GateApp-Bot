@@ -33,9 +33,9 @@ export async function suppressAreaCommandMenu(
     const member = await telegram.getChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID);
     legacyBotStatus = member.status;
     if (member.status === "member" || member.status === "restricted") {
-      await telegram.banChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID, {
-        revoke_messages: false,
-      });
+      // Telegraf's positional method accepts until_date then revoke_messages.
+      await telegram.banChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID,
+        undefined, false);
       await telegram.unbanChatMember(AREA_BBS_CHAT_ID, SHOWTIME_LEGACY_BOT_ID, {
         only_if_banned: true,
       });
