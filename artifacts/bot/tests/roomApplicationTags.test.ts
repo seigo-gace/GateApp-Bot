@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {parseRecruitmentMessage} from "../src/services/recruitmentCompose.js";
 import {LIKE_CATEGORIES,toggleLike} from "../src/services/profileLike.js";
-import {applicationTagRows,renderRoomApplicationPreview} from "../src/services/roomApplicationTags.js";
+import {applicationTagRows,roomChoiceRows,renderRoomApplicationPreview} from "../src/services/roomApplicationTags.js";
 import {renderRoomApplicantSummary} from "../src/services/announcementApplications.js";
 
 test("ROOM applicant shares profile Like/Love categories and keeps separate toggles",()=>{
@@ -41,4 +41,22 @@ test("applicant Like/Love text always escapes user data and validates tags",()=>
  assert.match(s,/#Like：/);
  assert.match(s,/#Love：/);
  assert.throws(()=>renderRoomApplicantSummary({...base,likeTags:[{category:"不正",tag:"不正"}]}));
+});
+
+test("4/3/2 adaptive choice rows, no arbitrary singleton and labels are preserved",()=>{
+ for(const size of [2,3,4,5,6,7,8,9,10,11,12]){
+  const items=Array.from({length:size},(_,i)=>({text:"短"+i,callback_data:"callback:"+i}));
+  const rows=roomChoiceRows(items);
+  assert(rows.every(row=>row.length>=2&&row.length<=4),"size="+size);
+  assert.deepEqual(rows.flat(),items);
+ }
+ const long=Array.from({length:6},(_,i)=>({text:"長めの候補テキスト"+i}));
+ const rows=roomChoiceRows(long);
+ assert.deepEqual(rows.map(r=>r.length),[2,2,2]);
+});
+test("ROOM position must use exact 3+4 order, tag controls permit lone save only",()=>{
+ const rows=applicationTagRows("like",123,{likeTags:[]},2,0);
+ assert(rows.every(row=>row.length<=4));
+ const singles=rows.filter(row=>row.length===1);
+ assert(singles.every(row=>row[0]!.text==="保存"||row[0]!.text==="◀ 前へ"||row[0]!.text==="次へ ▶"));
 });
