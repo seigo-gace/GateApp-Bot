@@ -46,8 +46,24 @@ async def _run(client: Any, progress: dict[str, str]) -> dict[str, Any]:
     await menu.click(text="募集+Room")
     method = await wait_for_screen(
         client, bot, menu.id, baseline,
-        lambda m: "Room作成" in labels(m),
+        lambda m: "Room作成" in labels(m) or
+                  (TEST_TITLE in (m.raw_text or "") and "キャンセル" in labels(m)),
         "ROOM_PUBLIC_TEST_METHOD_MISSING")
+    # An earlier failed pre-publication attempt can leave this dedicated
+    # test owner's *private draft*. Cancel that exact test draft first.
+    # Never retry a potentially published Room: the DB preflight gates that.
+    if "Room作成" not in labels(method):
+        progress["phase"] = "CANCEL_OLD_TEST_DRAFT"
+        await method.click(text="キャンセル")
+        menu = await wait_for_screen(
+            client, bot, method.id, baseline,
+            lambda m: bool(m.buttons) and rows(m) == EXPECTED_MENU,
+            "ROOM_PUBLIC_TEST_DRAFT_CANCEL_FAILED")
+        await menu.click(text="募集+Room")
+        method = await wait_for_screen(
+            client, bot, menu.id, baseline,
+            lambda m: "Room作成" in labels(m),
+            "ROOM_PUBLIC_TEST_METHOD_REOPEN_FAILED")
     progress["phase"] = "ROOM_METHOD"
     await method.click(text="Room作成")
     guide = await wait_for_screen(
