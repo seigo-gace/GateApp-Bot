@@ -8,15 +8,18 @@ import {createStickerEntryPinService,createStickerEntryPinStore} from "./sticker
  * CreateVdobot Telegram transport without exposing tokens across modules.
  */
 export function createStickerTopicOwnerPort({
- creatorBotApi,postingBotApi,
+ creatorBotApi,creatorBotUsername,postingBotApi,
 }:{
- creatorBotApi:(method:string,params:Record<string,unknown>)=>Promise<unknown>;
- postingBotApi?:(method:string,params:Record<string,unknown>)=>Promise<unknown>;
+ creatorBotApi?:(method:string,params:Record<string,unknown>)=>Promise<unknown>;
+ creatorBotUsername?:string;
+ postingBotApi:(method:string,params:Record<string,unknown>)=>Promise<unknown>;
 }){
- if(typeof creatorBotApi!=="function")
-   throw new Error("STICKER_OWNER_CREATOR_BOT_REQUIRED");
+ if((typeof creatorBotApi!=="function"&&creatorBotUsername===undefined)||
+    (creatorBotApi!==undefined&&creatorBotUsername!==undefined)||
+    typeof postingBotApi!=="function")
+   throw new Error("STICKER_OWNER_BOT_TARGET_REQUIRED");
  const ensureStickerEntryPin=createStickerEntryPinService({
-   getVerifiedStickerTopic,creatorBotApi,postingBotApi,
+   getVerifiedStickerTopic,creatorBotApi,creatorBotUsername,postingBotApi,
    store:createStickerEntryPinStore(pool)
  });
  return Object.freeze({getVerifiedStickerTopic,ensureStickerEntryPin});
