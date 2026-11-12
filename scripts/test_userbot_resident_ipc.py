@@ -170,5 +170,84 @@ class ResidentRoomSafetyTests(unittest.TestCase):
 
 
 
+class PublicRoomReadClient:
+    """Simulated existing Telegram message; no network or sending methods."""
+    def __init__(self, marker="finished", has_join=False, owner_id=42, visible=True):
+        self.marker = marker
+        self.has_join = has_join
+        self.owner_id = owner_id
+        self.visible = visible
+        self.requests = []
+
+    async def is_user_authorized(self):
+        return True
+
+    async def get_entity(self, name):
+        assert name == "GayBBS_bot"
+        return SimpleNamespace(bot=True, id=42)
+
+    async def get_messages(self, chat_id, ids=None):
+        assert chat_id == -1003847210571
+        assert ids == 123
+        self.requests.append((chat_id, ids))
+        if not self.visible:
+            return None
+        states = {"finished": "✅ 終了", "live": "🔴 LIVE中",
+                  "scheduled": "📅 予告中", "unknown": "状態不明"}
+        return SimpleNamespace(
+            id=123, sender_id=self.owner_id,
+            raw_text="🎬 ROOM\n状態：" + states[self.marker],
+            buttons=[[SimpleNamespace(text="参加する")]] if self.has_join else [],
+        )
+
+
+class RoomPublicReadbackTests(unittest.TestCase):
+    def test_existing_finished_public_card_reads_without_sending(self):
+        client = PublicRoomReadClient()
+        result = asyncio.run(process_request(client, {
+            "request_id": "public-read-1", "action": "room_public_readback",
+            "chat_id": -1003847210571, "message_id": 123}))
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["marker"], "finished")
+        self.assertEqual(result["has_join_button"], False)
+        self.assertNotIn("chat_id", result)
+        self.assertNotIn("message_id", result)
+        self.assertEqual(client.requests, [(-1003847210571, 123)])
+
+    def test_live_card_with_join_button_is_detected(self):
+        result = asyncio.run(process_request(PublicRoomReadClient("live", True), {
+            "request_id": "public-read-2", "action": "room_public_readback",
+            "chat_id": -1003847210571, "message_id": 123}))
+        self.assertEqual((result["marker"], result["has_join_button"]), ("live", True))
+
+    def test_target_validation_precedes_any_telegram_group_read(self):
+        client = PublicRoomReadClient()
+        for invalid in (
+            {"chat_id": -1001, "message_id": 123},
+            {"chat_id": -1003847210571, "message_id": 0},
+            {"chat_id": -1003847210571, "message_id": True},
+            {"chat_id": -1003847210571, "message_id": "123"},
+        ):
+            with self.assertRaises(ValueError):
+                asyncio.run(process_request(client, {
+                    "request_id": "public-negative", "action": "room_public_readback",
+                    **invalid,
+                }))
+        self.assertEqual(client.requests, [])
+
+    def test_message_owner_must_be_real_target_bot(self):
+        with self.assertRaisesRegex(RuntimeError, "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH"):
+            asyncio.run(process_request(PublicRoomReadClient(owner_id=99), {
+                "request_id": "owner-check", "action": "room_public_readback",
+                "chat_id": -1003847210571, "message_id": 123}))
+
+    def test_missing_message_is_explicit_failure(self):
+        with self.assertRaisesRegex(RuntimeError, "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE"):
+            asyncio.run(process_request(PublicRoomReadClient(visible=False), {
+                "request_id": "visible-check", "action": "room_public_readback",
+                "chat_id": -1003847210571, "message_id": 123}))
+
+
+
 if __name__ == "__main__":
     unittest.main()
