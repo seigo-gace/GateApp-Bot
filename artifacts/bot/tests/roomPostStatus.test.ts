@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {roomStatusMessage,roomBadge} from "../src/services/roomPostStatus.js";
+import {roomStatusMessage,roomBadge,roomTelegramMessageAlreadyMatches,roomTerminalMatchesSource} from "../src/services/roomPostStatus.js";
 
 test("Existing ROOM post switches badges without new Telegram messages",()=>{
  const text="🎬 ROOM：夜の交流会\n方式：Jitsi\n状態：準備完了";
@@ -30,4 +30,26 @@ test("Room+募集 title and description edit updates original card and preserves
  assert.doesNotMatch(done,/旧タイトル|旧説明/);
  assert.throws(()=>roomStatusMessage("旧式カード","details_changed",
   {title:"A",description:"B"}),/ROOM_PUBLIC_CARD_LAYOUT_NOT_VERIFIED/);
+});
+
+test("Final Room status can supersede stale LIVE only when source is terminal",()=>{
+ assert.equal(roomTerminalMatchesSource("finished","finished"),true);
+ assert.equal(roomTerminalMatchesSource("cancelled","cancelled"),true);
+ assert.equal(roomTerminalMatchesSource("finished","started"),false);
+ assert.equal(roomTerminalMatchesSource("live","finished"),false);
+ const oldLive="🎬 ROOM：募集\n方式：Jitsi\n状態：🔴 LIVE中";
+ assert.equal(roomStatusMessage(oldLive,"finished"),
+  "🎬 ROOM：募集\n方式：Jitsi\n状態：✅ 終了");
+});
+test("Only Telegram's exact 400 no-change acknowledgement proves idempotence",()=>{
+ assert.equal(roomTelegramMessageAlreadyMatches({
+  response:{error_code:400,description:"Bad Request: message is not modified"},
+ }),true);
+ assert.equal(roomTelegramMessageAlreadyMatches({
+  response:{error_code:403,description:"Bad Request: message is not modified"},
+ }),false);
+ assert.equal(roomTelegramMessageAlreadyMatches({
+  response:{error_code:400,description:"Bad Request: message to edit not found"},
+ }),false);
+ assert.equal(roomTelegramMessageAlreadyMatches(new Error("network timeout")),false);
 });
