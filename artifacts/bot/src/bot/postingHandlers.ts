@@ -20,6 +20,7 @@ import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
+import {reconcileRoomPublicCard} from "../services/roomPublicSync.js";
 import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom,recoverFullySentRoom,mayResumeRoomPublication,ensureImmediatePublishedRoomLive} from "../services/roomPublishedEditor.js";
 import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
@@ -917,8 +918,18 @@ export function registerPostingHandlers(bot:Telegraf):void{
      (action==="cancel"&&["draft","scheduled","ready","postponed"].includes(pub.status)))){
     await ctx.answerCbQuery("ROOMの状態が変更されています");return;
    }
-   await updateRoomState(ctx.from.id,pub.roomId,rev,action as "start"|"finish"|"cancel");
-   await ctx.answerCbQuery(action==="start"?"ROOMを開始しました":"終了状態を記録しました");
+   const changed=await updateRoomState(ctx.from.id,pub.roomId,rev,action as "start"|"finish"|"cancel");
+   // The ROOM DB state is authoritative. Telegram cards are confirmed
+   // separately and must not be claimed updated until read back.
+   let display:"confirmed"|"pending"|"not_enabled"="pending";
+   try{
+    if(changed.eventId)display=await reconcileRoomPublicCard(ctx.telegram,changed.eventId);
+   }catch{
+    console.warn("[ROOM_PUBLIC_SYNC_NEEDS_RECONCILE]");
+   }
+   await ctx.answerCbQuery(display==="confirmed"?
+    (action==="start"?"開始・掲示板LIVE反映済み":"終了・掲示板反映済み"):
+    "ROOM状態を保存しました。掲示板表示は更新確認中").catch(()=>undefined);
    await showRoomPublished(ctx.telegram,ctx.from.id,sourceId,
     "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
   }catch{
