@@ -73,6 +73,29 @@ export function roomTelegramMessageAlreadyMatches(error:unknown):boolean{
  return r?.error_code===400&&typeof r.description==="string"&&
   r.description.toLowerCase().includes("message is not modified");
 }
+/** Fixed code only: never write Telegram's raw error, chat/message ID, or text. */
+export function classifyRoomTelegramEditFailure(error:unknown):string{
+ if(!error||typeof error!=="object"||!("response" in error))
+  return "NO_TELEGRAM_RESPONSE";
+ const response=(error as {response?:{error_code?:number;description?:string}}).response;
+ const code=response?.error_code;
+ const desc=typeof response?.description==="string"?
+   response.description.toLowerCase():"";
+ if(code===400){
+  if(desc.includes("message is not modified"))return "MESSAGE_ALREADY_MATCHES";
+  if(desc.includes("message can't be edited")||
+     desc.includes("message cannot be edited"))return "MESSAGE_EDIT_NOT_PERMITTED";
+  if(desc.includes("message to edit not found"))return "MESSAGE_TO_EDIT_NOT_FOUND";
+  if(desc.includes("can't parse entities"))return "MESSAGE_PARSE_REJECTED";
+  if(desc.includes("message thread not found"))return "MESSAGE_THREAD_NOT_FOUND";
+  if(desc.includes("chat not found"))return "CHAT_NOT_FOUND";
+  return "TELEGRAM_BAD_REQUEST";
+ }
+ if(code===403)return "TELEGRAM_FORBIDDEN";
+ if(code===429)return "TELEGRAM_RATE_LIMIT";
+ if(typeof code==="number")return "TELEGRAM_HTTP_OTHER";
+ return "NO_TELEGRAM_RESPONSE";
+}
 export function roomTerminalMatchesSource(roomStatus:string,kind:string):boolean{
  return (roomStatus==="finished"&&kind==="finished")||
         (roomStatus==="cancelled"&&kind==="cancelled");
@@ -178,7 +201,11 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
   }catch(error){
    // A 400 exact no-op proves Telegram already has the requested payload.
    // Other or ambiguous errors remain needs_reconcile, never blind retries.
-   if(!roomTelegramMessageAlreadyMatches(error))throw error;
+   if(!roomTelegramMessageAlreadyMatches(error)){
+    console.warn("ROOM_PUBLIC_TELEGRAM_EDIT_REJECTED",
+      classifyRoomTelegramEditFailure(error));
+    throw error;
+   }
   }
   const cx=await pool.connect();
   try{
