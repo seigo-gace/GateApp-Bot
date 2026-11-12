@@ -144,7 +144,7 @@ test("fixed Master-approved CreateVdobot URL needs only the existing GroupBot cr
   if(method==="sendMessage"){
    assert.equal(params.chat_id,topic.chatId);
    assert.equal(params.message_thread_id,topic.threadId);
-   assert.match(JSON.stringify(params.reply_markup),/t.me\\/CreateVdobot\\?start=sticker/);
+   assert.ok(JSON.stringify(params.reply_markup).includes("t.me/CreateVdobot?start=sticker"));
    return {message_id:1007};
   }
   if(method==="pinChatMessage"){
