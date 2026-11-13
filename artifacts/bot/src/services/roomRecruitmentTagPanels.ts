@@ -13,9 +13,25 @@ export type RoomTagPanelCallbacks={
  save:string;back:string;cancel:string;
 };
 
-export function roomRecruitmentCategoryRows(c:RoomTagPanelCallbacks){
+/** The same explanatory text is used in both existing Room+募集 and ROOM応募. */
+export function roomRecruitmentTagHeading(
+ purpose:"like"|"love",category?:number
+):string{
+ const kind=purpose==="like"?"#Like":"#Love";
+ const description=purpose==="like"
+  ?"自分の特徴・好み・趣味・スタイルを選びます。"
+  :"相手に求める特徴・好み・趣味・スタイルを選びます。";
+ const title=category===undefined?"":LIKE_CATEGORIES[category]?.name;
+ if(category!==undefined&&!title)throw new Error("ROOM_TAG_CATEGORY_INVALID");
+ return "🏷️ "+kind+(title?"｜"+title:"")+" を選択してください。\\n"+description;
+}
+export function roomRecruitmentCategoryRows(
+ c:RoomTagPanelCallbacks,purpose:"like"|"love"
+){
+ // Like remains green and Love remains red from the first category screen.
+ const categoryStyle=purpose==="like"?"success":"danger";
  const categories=LIKE_CATEGORIES.map((category,index)=>
-  styledInlineButton(category.name,c.openCategory(index),"primary"));
+  styledInlineButton(category.name,c.openCategory(index),categoryStyle));
  return [categories.slice(0,3),categories.slice(3),[
   styledInlineButton("↩ 戻る",c.back),
   styledInlineButton("キャンセル",c.cancel,"danger"),
