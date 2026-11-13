@@ -81,6 +81,7 @@ export function applicationChoiceKeyboard(
    like:"application:tag:like:open",
    love:"application:tag:love:open"},
    {like:likeSelected,love:loveSelected}),
+  [b("🪪 プロフィール登録","pc:from:application","primary")],
   [b("応募する","application:confirm","success"),
    b("キャンセル","application:cancel","danger")]
  ]);
