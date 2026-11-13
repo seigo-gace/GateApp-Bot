@@ -55,6 +55,18 @@ def main() -> int:
             return 1
         print("USERBOT_TEST_RESULT=PASS")
         print("USERBOT_TEST_ACTION=" + args.action)
+        if args.action == "profile_topics_readback":
+            topics = result.get("topics")
+            if (not isinstance(topics, list) or len(topics) != 3
+                    or any(not isinstance(t, dict) or t.get("board") not in
+                           {"area_bbs", "video_chat", "gay_board"}
+                           or type(t.get("found")) is not bool
+                           or (t["found"] and (type(t.get("thread_id")) is not int
+                                                or t["thread_id"] <= 0))
+                           for t in topics)):
+                raise RuntimeError("PROFILE_TOPICS_CONTRACT_INVALID")
+            print("USERBOT_PROFILE_TOPICS=" + json.dumps(
+                topics, ensure_ascii=False, separators=(",", ":")))
         if "row_sizes" in result:
             print("USERBOT_TEST_MENU_ROWS=" + ",".join(map(str, result["row_sizes"])))
         if "steps" in result:
