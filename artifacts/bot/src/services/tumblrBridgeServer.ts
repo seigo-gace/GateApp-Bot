@@ -3,7 +3,7 @@
  * ledger, and Telegram dispatcher. No second Bot or queue.
  */
 import { createServer, type Server } from "node:http";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import type { Telegram } from "telegraf";
 import * as targetRepo from "../repositories/targetRepo.js";
@@ -87,8 +87,8 @@ export async function handleTumblrBridge(
 }
 
 export function startTumblrBridge(telegram: Telegram): Server|null {
- const file=process.env.TUMBLR_BRIDGE_KEY_FILE;
- if(!file)return null; // Existing Bot remains unchanged until configured.
+ const file=process.env.TUMBLR_BRIDGE_KEY_FILE || "/run/secrets/tumblr_bridge_key";
+ if(!existsSync(file))return null; // Existing Bot remains unchanged until configured.
  const key=readFileSync(file,"utf8").trim();
  if(key.length<32)throw new Error("BRIDGE_KEY_INVALID");
  const port=Number(process.env.TUMBLR_BRIDGE_PORT || "8876");
