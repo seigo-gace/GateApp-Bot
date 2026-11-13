@@ -11,8 +11,8 @@ test("ROOM applicant shares profile Like/Love categories and keeps separate togg
  const love=toggleLike([],1,0);
  const draft={...base,position:"タチ",likeTags:like,loveTags:love};
  const card=renderRoomApplicationPreview(draft);
- assert.match(card,/💖 #Like：#変態/);
- assert.match(card,/💘 #Love：#乳首/);
+ assert.match(card,/#Like：#変態/);
+ assert.match(card,/#Love：#乳首/);
  assert.match(card,/一緒に話したい/);
  const owner=renderRoomApplicantSummary(draft);
  assert.match(owner,/💖 #Like：#変態/);
@@ -21,16 +21,17 @@ test("ROOM applicant shares profile Like/Love categories and keeps separate togg
  assert.deepEqual(draft.placeCodes,[]);
 });
 
-test("tag keyboards reuse original category, pagination, clear and back layout",()=>{
+test("応募 tag panels reuse the actual Room+募集 category, buttons and footer",()=>{
  const cat=applicationTagRows("like",123,{},undefined);
- assert(cat.every(row=>row.length>=2&&row.length<=4));
+ assert.deepEqual(cat.map(row=>row.length),[3,3,2]);
  assert.equal(cat.slice(0,-1).flat().length,6);
  assert.equal(cat.at(-1)!.length,2);
  assert.equal(cat[0]![0]!.text,LIKE_CATEGORIES[0]!.name);
  assert.equal(cat[0]![0]!.callback_data,"application:tag:like:123:open:0");
  const item=applicationTagRows("love",123,{},2);
  assert(item.some(row=>row.some(b=>b.callback_data.startsWith("application:tag:love:123:tag:2:"))));
- assert(item.some(row=>row.some(b=>b.callback_data==="application:tag:love:123:clear:2")));
+ assert(item.some(row=>row.some(b=>b.callback_data==="application:preview")));
+ assert.deepEqual(item.slice(-2).map(row=>row.map(b=>b.text)),[["✅ 保存","↩ 戻る"],["キャンセル"]]);
  assert(item.some(row=>row.some(b=>b.callback_data==="application:preview")));
 });
 
@@ -58,11 +59,11 @@ test("4/3/2 adaptive choice rows, no arbitrary singleton and labels are preserve
   assert(rows.every(r=>r.length>=2&&r.length<=3));
  }
 });
-test("ROOM position must use exact 3+4 order, tag controls permit lone save only",()=>{
+test("ROOM tag controls preserve 募集+Room footer without singleton candidate rows",()=>{
  const rows=applicationTagRows("like",123,{likeTags:[]},2,0);
  assert(rows.every(row=>row.length<=4));
  const singles=rows.filter(row=>row.length===1);
- assert(singles.every(row=>row[0]!.text==="保存"||row[0]!.text==="◀ 前へ"||row[0]!.text==="次へ ▶"));
+ assert.deepEqual(singles.map(row=>row[0]!.text),["キャンセル"]);
 });
 
 test("all paged Like/Love candidate screens avoid single-button navigation",()=>{
@@ -72,7 +73,7 @@ test("all paged Like/Love candidate screens avoid single-button navigation",()=>
    for(let page=0;page<pages;page++){
     const rows=applicationTagRows(purpose,234,{},category,page);
     assert(rows.every(row=>row.length<=4),"more than four buttons");
-    assert(rows.every(row=>row.length!==1||row[0]!.text==="保存"),
+    assert(rows.every(row=>row.length!==1||row[0]!.text==="キャンセル"),
       "unwanted singleton category="+category+" page="+page);
    }
   }
