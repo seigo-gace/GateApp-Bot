@@ -13,6 +13,7 @@ export type PublicProfileSnapshot = {
  region?:SavedProfile["region"];area?:SavedProfile["area"];
  prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;
  likeTags?:LikeTag[];loveTags?:LikeTag[];
+ title?:string;purposeCodes?:string[];placeCodes?:string[];
 };
 export function captureProfileSnapshot(profile:SavedProfile):PublicProfileSnapshot{
  if(!profile.nickname?.trim()||!profile.position||!Number.isSafeInteger(profile.age))
@@ -26,6 +27,7 @@ export function captureProfileSnapshot(profile:SavedProfile):PublicProfileSnapsh
   region:profile.region??null,area:profile.area??null,
   prRef:profile.prRef??null,media:profile.media??[],mediaNextId:profile.mediaNextId??1,
   likeTags:profile.likeTags??[],loveTags:profile.loveTags??[],
+  title:profile.title??"",purposeCodes:profile.purposeCodes??[],placeCodes:profile.placeCodes??[],
  };
 }
 export async function restorePublishedSnapshot(
