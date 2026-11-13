@@ -18,6 +18,7 @@ import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../
 import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
+import {roomPublicButtons} from "../services/roomPublicButtons.js";
 import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {reconcileRoomPublicCard} from "../services/roomPublicSync.js";
@@ -1450,18 +1451,18 @@ export function registerPostingHandlers(bot:Telegraf):void{
      // ROOM applicant selections. Keep the original actions and their order.
      // Telegram decides actual pixel widths; paired rows avoid tall,
      // inconsistently sized single-button rows for 2–4 actions.
-     const publicActions:{text:string;url:string}[]=[
-      {text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}
-     ];
-     if(visibility==="approved_only"){
-      publicActions.push({text:"📝 応募する",url:await makeApplicationLink(ctx.from.id,Number(sourceId))});
-     }
-     publicActions.push({text:"🎥 参加する",url:await makeRoomJoinLink(ctx.from.id,roomId)});
-     if(draft.data.profileLinked){
-      const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
-      if(!profileUrl)throw new Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
-      publicActions.push({text:"🪪 プロフを見る",url:profileUrl});
-     }
+     const profileUrl=draft.data.profileLinked?
+       await existingPublishedProfileUrl(ctx.from.id):undefined;
+     if(draft.data.profileLinked&&!profileUrl)
+      throw new Error("ROOM_PUBLIC_PROFILE_NOT_AVAILABLE");
+     const publicActions=roomPublicButtons({
+      visibility:visibility==="approved_only"?"approved_only":"public",
+      state:isScheduledRoom?"scheduled":"live",
+      applicationUrl:visibility==="approved_only"?
+       await makeApplicationLink(ctx.from.id,Number(sourceId)):undefined,
+      joinUrl:await makeRoomJoinLink(ctx.from.id,roomId),
+      profileUrl:profileUrl??undefined,
+     });
      buttons=adaptiveChoiceRows(publicActions);
     }else{
      const kind=draft.data.kind as AnnouncementKind;
