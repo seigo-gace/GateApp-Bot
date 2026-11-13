@@ -111,6 +111,72 @@ export async function assertTopicDmEntryDestination(
   throw Error("TOPIC_ENTRY_DESTINATION_MISMATCH");
 }
 
+/** Replace an EXISTING published topic doorway in place. It must always open
+ * the posting menu (p_), never a direct Room editor (m_).
+ * No new topic messages, no repost, and no guessed message IDs.
+ */
+export async function refreshPublishedTopicDmEntry(
+ telegram:Telegram,chatId:number,threadId:number,
+):Promise<{messageId:number;updatedExisting:true}>{
+ if(process.env.GAYBBS_PUBLIC_MENU_RELEASE!=="enabled")
+  throw Error("PUBLIC_MENUS_NOT_RELEASED");
+ if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
+  throw Error("TOPIC_ENTRY_TARGET_INVALID");
+ const old=await pool.query(
+  `SELECT message_id,token_hash,state,pinned FROM topic_dm_entry_pins
+   WHERE chat_id=$1 AND message_thread_id=$2`,[chatId,threadId]);
+ if(old.rows.length!==1||old.rows[0].state!=="published"||
+    old.rows[0].pinned!==true||!Number.isSafeInteger(Number(old.rows[0].message_id))||
+    Number(old.rows[0].message_id)<=0)
+  throw Error("TOPIC_ENTRY_EXISTING_PIN_NOT_VERIFIED");
+ const messageId=Number(old.rows[0].message_id);
+ const oldHash=String(old.rows[0].token_hash);
+ const token=newMenuToken(),hash=tokenHash(token);
+ const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ // Only update the existing message. Telegram's edit may fail or be ambiguous:
+ // keep the prior pin and avoid a duplicate send in either case.
+ try{
+  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
+   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
+  });
+ }catch(e){
+  // A definitive Bot API rejection did not change the old message: preserve
+  // the existing valid pin and token. Only ambiguous network outcomes may
+  // require manual reconciliation.
+  const status=(e as {response?:{error_code?:number}})?.response?.error_code;
+  if(status===400||status===403||status===429)throw e;
+  await pool.query(
+   `UPDATE topic_dm_entry_pins SET state='needs_reconcile',updated_at=NOW()
+    WHERE chat_id=$1 AND message_thread_id=$2 AND message_id=$3
+      AND token_hash=$4 AND state='published'`,
+   [chatId,threadId,messageId,oldHash]);
+  throw e;
+ }
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  // Old opaque links can no longer be used after successful Telegram edit.
+  // Expire only this doorway's transient sessions to honor the existing FK.
+  await c.query(
+   "DELETE FROM topic_dm_entry_sessions WHERE token_hash=$1",[oldHash]);
+  const updated=await c.query(
+   `UPDATE topic_dm_entry_pins SET token_hash=$5,updated_at=NOW()
+    WHERE chat_id=$1 AND message_thread_id=$2 AND message_id=$3
+      AND token_hash=$4 AND state='published' AND pinned=TRUE
+    RETURNING message_id`,[chatId,threadId,messageId,oldHash,hash]);
+  if(updated.rows.length!==1)throw Error("TOPIC_ENTRY_REFRESH_RACE");
+  await c.query("COMMIT");
+ }catch(e){
+  await c.query("ROLLBACK");
+  await pool.query(
+   `UPDATE topic_dm_entry_pins SET state='needs_reconcile',updated_at=NOW()
+    WHERE chat_id=$1 AND message_thread_id=$2 AND message_id=$3`,
+   [chatId,threadId,messageId]);
+  throw e;
+ }finally{c.release();}
+ return {messageId,updatedExisting:true};
+}
+
 /** Uses the existing pinned message ID on reruns. Any ambiguous Telegram result
  * is recorded needs_reconcile: never automatically send a duplicate.
  */
@@ -156,7 +222,7 @@ export async function publishTopicDmEntry(
   const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
   const message=await telegram.sendMessage(chatId,TOPIC_ENTRY_TEXT,{
    message_thread_id:threadId,
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl}]]},
+   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
   });
   sent=true;
   await pool.query(
