@@ -18,5 +18,5 @@ test("unverified or arbitrary destinations never call existing Telegram",async()
  await assert.rejects(()=>handleTumblrBridge(telegram,
   {action:"authorize",destination:"-1001"}),/BRIDGE_TARGET_INVALID/);
  await assert.rejects(()=>handleTumblrBridge(telegram,
-  {action:"publish",destination:"1",operation_key:"x",text:"test"}),/BRIDGE_TARGET_INVALID/);
+  {action:"publish",destination:"0",operation_key:"x",text:"test"}),/BRIDGE_TARGET_INVALID/);
 });
