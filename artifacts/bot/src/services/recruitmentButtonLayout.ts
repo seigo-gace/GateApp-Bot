@@ -34,3 +34,18 @@ export function roomRecruitmentSelectorRow(
   b(selectedTags.love?"✅ #Love":"#Love",callbacks.love,"danger"),
  ];
 }
+
+/** The Room selector is the authoritative first row for compact recruitment.
+ * Purpose and Place belong on their own two-button second row.
+ */
+export function recruitmentCompactSelectorRows(
+ mode:"manual"|"linked",positionSelected:boolean,
+ selected:{like:boolean;love:boolean;purpose:boolean;place:boolean},
+ callbacks:{position:string;like:string;love:string;purpose:string;place:string}
+){
+ const top=roomRecruitmentSelectorRow(mode,positionSelected,callbacks,selected);
+ return [top,[
+  styledInlineButton(selected.purpose?"✅ 目的":"目的",callbacks.purpose,"primary"),
+  styledInlineButton(selected.place?"✅ 場所":"場所",callbacks.place,"primary"),
+ ]];
+}
