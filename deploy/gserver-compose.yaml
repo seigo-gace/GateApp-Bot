@@ -46,6 +46,7 @@ services:
       # Host networking: reach Telegram API reliably; Postgres on published localhost port.
       DATABASE_URL: postgresql://gace:devlocalpass123@127.0.0.1:55432/gaybbs
       BOT_TOKEN_FILE: /run/secrets/bot_token
+      PROFILE_PR_STORAGE_DIR: /app/profile-pr
       TUMBLR_BRIDGE_KEY_FILE: /run/secrets/tumblr_bridge_key
       GAYBBS_PUBLIC_MENU_RELEASE: enabled
       GAYBBS_TOPIC_BOARD_RELEASE: enabled
@@ -58,6 +59,8 @@ services:
     secrets:
       - bot_token
       - tumblr_bridge_key
+    volumes:
+      - ${HOME}/.local/share/tgtumbler/profile-pr:/app/profile-pr
     restart: unless-stopped
     read_only: true
     tmpfs:
