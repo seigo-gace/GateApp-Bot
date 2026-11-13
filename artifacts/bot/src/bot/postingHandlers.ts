@@ -28,6 +28,7 @@ import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
 import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
+import {jstCurrentMonth,validPickerMonth,validPickerDay,pickerDateRows,pickerHourRows,pickerMinuteRows,pickerDateLabel,selectedPickerTime} from "../services/dateTimeInlinePicker.js";
 import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
@@ -200,6 +201,24 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
    b("承認制",`room:joinmode:${r}:approved_only`,"primary")],
   ...nav
  ]);
+ if(["date_calendar","time_hour","time_minute"].includes(stage)){
+  const actions={
+   month:(month:string)=>`room:dt:month:__REV__:__MONTH__`,
+   day:(day:string)=>`room:dt:day:__REV__:__DAY__`,
+   hour:(hour:string)=>`room:dt:hour:__REV__:__HOUR__`,
+   minute:(minute:string)=>`room:dt:minute:__REV__:__MIN__`,
+   manual:`room:dt:manual:__REV__`,
+   back:`room:back:__REV__`,
+   cancel:`room:cancel:__REV__`,
+  };
+  if(stage==="date_calendar"){
+   const requested=String(d.data.pickerMonth||"");
+   return Markup.inlineKeyboard(pickerDateRows(
+    validPickerMonth(requested)?requested:jstCurrentMonth(),actions));
+  }
+  return Markup.inlineKeyboard(stage==="time_hour"?
+   pickerHourRows(actions):pickerMinuteRows(actions));
+ }
  if(stage==="scheduled_ready")return Markup.inlineKeyboard([
   [b("✅ 投稿する",`room:publish:${r}`,"success")],
   ...nav
@@ -241,6 +260,20 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
   await showPostScreen(telegram,userId,d,
    "📅 予告する\n参加方法を選択してください。\n自由参加 または 承認制",roomStageKeyboard(d));return;
  }
+ if(["date_calendar","time_hour","time_minute"].includes(stage)){
+  const requested=String(d.data.pickerMonth||"");
+  const month=validPickerMonth(requested)?requested:jstCurrentMonth();
+  const day=String(d.data.pickerDay||"");
+  const hour=Number(d.data.pickerHour);
+  const text=stage==="date_calendar"?
+   "📅 予告する｜日付を選択\n"+month.slice(0,4)+"年"+Number(month.slice(4))+"月"+
+    "\n日付を選ぶか、⌨️から日時を直接入力してください。":
+   stage==="time_hour"?
+    "🕒 予告する｜時を選択\n"+pickerDateLabel(day)+"（日本時間）":
+    "🕒 予告する｜分を選択\n"+pickerDateLabel(day)+" "+
+      String(hour).padStart(2,"0")+"時（日本時間）";
+  await showPostScreen(telegram,userId,d,text,roomStageKeyboard(d));return;
+ }
  if(stage==="scheduled_ready"){
   // The scheduled path must use the same complete Recruitment preview as
   // immediate ROOM, not the obsolete short ROOM-only confirmation card.
@@ -269,7 +302,9 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
    roomStageKeyboard(d));return;
  }
  if(d.step==="awaiting_datetime"){
+  const day=String(d.data.pickerDay||"");
   await showPostScreen(telegram,userId,d,
+   validPickerDay(day)?"🕒 "+pickerDateLabel(day)+"（日本時間）\n時刻を HH:mm で送信してください。例：20:00\n日付込みの YYYY/MM/DD HH:mm も入力できます。":
    "📅 予告日時を日本時間で送信してください。\n例：2026/11/20 20:00",
    roomStageKeyboard(d));return;
  }
@@ -584,8 +619,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else if(op==="joinmode"){
     if(d.data.stage!=="join_choice"||!["public","approved_only"].includes(choice))
      throw Error("ROOM_VISIBILITY_INVALID");
-    const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
-     {...d.data,visibility:choice,stage:"date_input",startAt:null});
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,visibility:choice,stage:"date_calendar",startAt:null,
+      pickerMonth:jstCurrentMonth(),pickerDay:null,pickerHour:null});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="plan"){
     if(d.step!=="preview")throw Error("ROOM_DETAILS_REQUIRED");
@@ -615,8 +651,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
     let data={...d.data};
     const stage=String(data.stage||"");
     if(stage==="join_choice")data={...data,stage:"details"};
-    else if(stage==="scheduled_ready")data={...data,stage:"join_choice"};
-    else if(stage==="date_input")data={...data,stage:"join_choice"};
+    else if(stage==="scheduled_ready")data={...data,stage:"date_calendar"};
+    else if(stage==="time_minute")data={...data,stage:"time_hour"};
+    else if(stage==="time_hour")data={...data,stage:"date_calendar"};
+    else if(stage==="date_calendar")data={...data,stage:"join_choice"};
+    else if(stage==="date_input")data={...data,
+     stage:validPickerDay(String(data.pickerDay||""))?"time_hour":"date_calendar"};
     else if(stage==="tag_items")data={...data,stage:"tag_categories"};
     else if(["tag_categories","position"].includes(stage))
      data={...data,stage:"details",tagPurpose:null};
@@ -1154,7 +1194,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    let data:Record<string,unknown>;
    if(current.step==="awaiting_datetime"){
-    const date=parseJstDateTime(input);
+    const day=String(current.data.pickerDay||"");
+    const value=current.module==="room"&&validPickerDay(day)&&/^\d{1,2}:\d{2}$/.test(input)?
+     pickerDateLabel(day)+" "+input:input;
+    const date=parseJstDateTime(value);
     if(current.module==="room"){
      const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
       {...current.data,startAt:date.toISOString(),stage:"scheduled_ready"});
