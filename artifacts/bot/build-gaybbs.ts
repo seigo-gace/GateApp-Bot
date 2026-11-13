@@ -9,4 +9,5 @@ await esbuild.build({...opts,entryPoints:["src/gaybbsBot.ts"],outfile:"dist/gayb
 await esbuild.build({...opts,entryPoints:["scripts/publishMenuPanels.ts"],outfile:"dist/publishMenuPanels.mjs"});
 await esbuild.build({...opts,entryPoints:["scripts/recordPhaseADmEvidence.ts"],outfile:"dist/recordPhaseADmEvidence.mjs"});
 await esbuild.build({...opts,entryPoints:["scripts/publishTopicBoards.ts"],outfile:"dist/publishTopicBoards.mjs"});
+await esbuild.build({...opts,entryPoints:["scripts/recolorPublishedPostingMenus.ts"],outfile:"dist/recolorPublishedPostingMenus.mjs"});
 console.log("GayBBS standalone Bot build complete.");
