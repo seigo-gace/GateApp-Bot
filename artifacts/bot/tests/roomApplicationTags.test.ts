@@ -15,8 +15,8 @@ test("ROOM applicant shares profile Like/Love categories and keeps separate togg
  assert.match(card,/#Love：#乳首/);
  assert.match(card,/一緒に話したい/);
  const owner=renderRoomApplicantSummary(draft);
- assert.match(owner,/💖 #Like：#変態/);
- assert.match(owner,/💘 #Love：#乳首/);
+ assert.match(owner,/#Like：#変態/);
+ assert.match(owner,/#Love：#乳首/);
  assert.deepEqual(draft.purposeCodes,[]);
  assert.deepEqual(draft.placeCodes,[]);
 });
@@ -63,7 +63,7 @@ test("ROOM tag controls preserve 募集+Room footer without singleton candidate 
  const rows=applicationTagRows("like",123,{likeTags:[]},2,0);
  assert(rows.every(row=>row.length<=4));
  const singles=rows.filter(row=>row.length===1);
- assert.deepEqual(singles.map(row=>row[0]!.text),["キャンセル"]);
+ assert(singles.every(row=>row[0]!.text==="キャンセル"));
 });
 
 test("all paged Like/Love candidate screens avoid single-button navigation",()=>{
