@@ -17,6 +17,33 @@ const ALLOWED_CHATS = new Set<number>([
   BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
 const tokenPattern=/^p_([A-Za-z0-9_-]{32})$/;
+/** Do not revive Master-deleted community/link entrances or post a menu in a general guide. */
+export async function assertPostingDoorwayAllowed(
+ chatId:number,threadId:number,title?:string,
+):Promise<void>{
+ if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
+  throw Error("TOPIC_ENTRY_TARGET_INVALID");
+ const q=await pool.query<{blocked:boolean}>(
+  `SELECT (
+     EXISTS(SELECT 1 FROM posting_topics t
+      WHERE t.chat_id=$1 AND t.message_thread_id=$2 AND t.purpose='link')
+     OR EXISTS(SELECT 1 FROM board_menu_panels b
+      WHERE b.chat_id=$1 AND b.message_thread_id=$2
+        AND b.panel_type='general_guide')
+     OR EXISTS(SELECT 1 FROM topic_dm_entry_pins p
+      WHERE p.chat_id=$1 AND p.message_thread_id=$2
+        AND (p.title ILIKE '%総合案内%' OR
+             p.title ILIKE '%コミュニテーリング%' OR
+             p.title ILIKE '%相互リング%' OR
+             p.title ILIKE '%ﾘﾝｸ%' OR
+             p.title ILIKE '%コミュニティリンク%'))
+   ) AS blocked`,[chatId,threadId]);
+ const titleBlocked=/総合案内|コミュニティ.?リンク|コミュニテーリング|相互リング|ﾘﾝｸ|🔗/u.test(title??"");
+ if(q.rows[0]?.blocked||titleBlocked)
+  throw Error("TOPIC_ENTRY_EXCLUDED_BY_MASTER");
+}
+
+
 export function parseTopicEntryPayload(payload:string):string{
  const match=tokenPattern.exec(payload);
  if(!match)throw Error("TOPIC_ENTRY_PAYLOAD_INVALID");
@@ -140,6 +167,7 @@ export async function recoverExistingTopicDmEntry(
   throw Error("PUBLIC_MENUS_NOT_RELEASED");
  if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
   throw Error("TOPIC_ENTRY_TARGET_INVALID");
+ await assertPostingDoorwayAllowed(chatId,threadId);
  const operator=await telegram.getChatMember(chatId,adminId);
  if(operator.status!=="administrator"&&operator.status!=="creator")
   throw Error("TOPIC_ENTRY_ADMIN_REQUIRED");
@@ -185,6 +213,7 @@ export async function refreshPublishedTopicDmEntry(
   throw Error("PUBLIC_MENUS_NOT_RELEASED");
  if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
   throw Error("TOPIC_ENTRY_TARGET_INVALID");
+ await assertPostingDoorwayAllowed(chatId,threadId);
  const old=await pool.query(
   `SELECT message_id,token_hash,state,pinned FROM topic_dm_entry_pins
    WHERE chat_id=$1 AND message_thread_id=$2`,[chatId,threadId]);
@@ -250,6 +279,7 @@ export async function publishTopicDmEntry(
   throw Error("PUBLIC_MENUS_NOT_RELEASED");
  if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0||
     !title.trim()||title.length>100)throw Error("TOPIC_ENTRY_TARGET_INVALID");
+ await assertPostingDoorwayAllowed(chatId,threadId,title);
  const member=await telegram.getChatMember(chatId,adminId);
  if(member.status!=="creator"&&member.status!=="administrator")
   throw Error("TOPIC_ENTRY_ADMIN_REQUIRED");
