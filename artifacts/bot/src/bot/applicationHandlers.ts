@@ -249,9 +249,12 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await ctx.editMessageText("ポジションを選択してください。",
    Markup.inlineKeyboard([
-    ...positionChoiceRows(PROFILE_POSITIONS,undefined,
-     (_value,index)=>`application:pos:${index}`)
-     .map(row=>row.map(button=>Markup.button.callback(button.text,button.callback_data))),
+    ...positionChoiceRows(PROFILE_POSITIONS,
+     isProfilePosition(String(row.rows[0].draft?.position??""))
+      ?row.rows[0].draft.position:undefined,
+     (_value,index)=>`application:pos:${index}`,true)
+     .map(group=>group.map(button=>styledInlineButton(
+      button.text,button.callback_data,"primary"))),
     [Markup.button.callback("↩ 戻る","application:preview"),
      Markup.button.callback("キャンセル","application:cancel")]
    ]));
