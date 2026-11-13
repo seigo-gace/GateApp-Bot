@@ -96,12 +96,14 @@ function keyboard(d:EditorDraft){
   position:!!data.position,like:!!data.likeTags?.length,love:!!data.loveTags?.length,
   purpose:data.purposeCodes.length>0,place:data.placeCodes.length>0,
  });
+ rows.push([b("🪪 プロフィール登録","pc:from:recruit","primary")]);
  rows.push(d.data.publishedSourceId?
   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
  return Markup.inlineKeyboard(rows);
 }
 function initialKeyboard(d:EditorDraft){
- return Markup.inlineKeyboard([...recruitmentSelectorRows(d),decisionRow(d.revision)]);
+ return Markup.inlineKeyboard([...recruitmentSelectorRows(d),
+  [b("🪪 プロフィール登録","pc:from:recruit","primary")],decisionRow(d.revision)]);
 }
 export function inputInstructions(linked:boolean){
  return linked?
