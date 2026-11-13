@@ -382,7 +382,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const id=Number(ctx.match[1]);
   const r=await pool.query(
-   `SELECT ap.status,ap.consented_profile,p.room_id
+   `SELECT ap.status,ap.consented_profile,p.room_id,p.announcement_id
       FROM announcement_applications ap
       JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
       WHERE ap.application_id=$1 AND p.owner_user_id=$2
@@ -398,7 +398,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
     Markup.button.callback("✅ 承認",`application:decide:${id}:accepted`),
     Markup.button.callback("❌ 拒否",`application:decide:${id}:declined`)
    ]);
-  buttons.push([Markup.button.callback("↩ 応募管理へ戻る","application:manage")]);
+  buttons.push([Markup.button.callback("↩ 応募管理へ戻る",
+   x.room_id!==null?`room:published:applicants:${Number(x.announcement_id)}`:"application:manage")]);
   await ctx.answerCbQuery();
   await ctx.editMessageText(card+"\n状態："+String(x.status),
    {parse_mode:x.room_id!==null?"HTML":undefined,...Markup.inlineKeyboard(buttons)});
@@ -463,9 +464,11 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   const receipt=(finalStatus==="accepted"?"✅ 応募を承諾しました。":
    finalStatus==="held"?"⏸ 応募を保留しました。":"❌ 応募を拒否しました。")+
    (filled?" 受付状態が更新されました。":"");
-  const keyboard=Markup.inlineKeyboard([[
-   Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))
-  ]]);
+  const keyboard=Markup.inlineKeyboard([
+   [Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))],
+   [Markup.button.callback("↩ 応募者一覧へ戻る",
+    `room:published:applicants:${Number(row.rows[0].announcement_id)}`)]
+  ]);
   try{
    await ctx.editMessageText(receipt,keyboard);
   }catch{
