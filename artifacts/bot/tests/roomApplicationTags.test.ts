@@ -125,7 +125,7 @@ test("Like green and Love red begin at category screens, and explanations remain
   assert(choices.slice(0,-1).flat().every(b=>b.style===style));
   assert.match(roomRecruitmentTagHeading(purpose),new RegExp(description));
   assert.match(roomRecruitmentTagHeading(purpose,0),new RegExp(description));
-  assert(roomRecruitmentTagHeading(purpose,0).includes("\\n"));
+  assert(roomRecruitmentTagHeading(purpose,0).includes("\n"));
   assert(roomRecruitmentTagHeading(purpose,0).includes(LIKE_CATEGORIES[0]!.name));
  }
  assert.notEqual(roomRecruitmentTagHeading("like"),roomRecruitmentTagHeading("love"));
