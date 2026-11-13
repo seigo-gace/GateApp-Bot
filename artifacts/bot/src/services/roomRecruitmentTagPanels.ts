@@ -38,9 +38,9 @@ export function roomRecruitmentTagRows(
  if(page+1<bounds.total)navigation.push(styledInlineButton("次へ ▶",c.changePage(category,page+1)));
  const save=styledInlineButton("✅ 保存",c.save,"success");
  const back=styledInlineButton("↩ 戻る",c.back);
- const cancel=styledInlineButton("キャンセル",c.cancel,"danger");
- // Never strand a single footer/navigation control on its own row.
- // Preserve the actual 募集+Room footer: 保存/戻る, then キャンセル.
- // Only candidate choices adapt 4/3/2 without creating single candidate rows.
+ const cancel=styledInlineButton("キャンセル",c.cancel);
+ // Use the original 募集+Room footer. When only one page arrow exists,
+ // pair it with Back; never strand a single page-navigation button.
+ if(navigation.length===1)return [...rows,[navigation[0]!,back],[save,cancel]];
  return [...rows,...(navigation.length?[navigation]:[]),[save,back],[cancel]];
 }
