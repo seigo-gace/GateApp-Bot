@@ -10,7 +10,8 @@ export type PanelSpec={
  links:readonly NavLink[];
  entryLinks:readonly EntryLink[];
 };
-export type ButtonSpec={text:string;url:string};
+export type ButtonStyle="primary"|"success"|"danger";
+export type ButtonSpec={text:string;url:string;style?:ButtonStyle};
 export type RenderedPanel={text:string;rows:ButtonSpec[][]};
 
 /** No empty Telegram inline-keyboard cells. A final single button occupies
@@ -110,6 +111,14 @@ export const APPROVED_HELP_ROWS = [
  ["🔗ボタン作成","検索/フィルター","戻る"],
 ] as const;
 
+/** Telegram Bot API styles. Colors identify navigation versus entry actions;
+ * labels and destinations remain exactly the adopted 10-button contract.
+ */
+export function postingMenuButtonStyle(label:string):ButtonStyle{
+ if(label==="募集+Room"||label==="相手募集"||label==="告知/予告")return "success";
+ if(label==="操作説明"||label==="検索/フィルター")return "primary";
+ return "primary";
+}
 export type ApprovedPanel="posting"|"general_guide"|"operation_help";
 export function approvedLayoutRows(kind:ApprovedPanel):readonly (readonly string[])[]{
  return kind==="posting"?APPROVED_POSTING_ROWS:
@@ -131,6 +140,7 @@ export function renderApprovedLinks(kind:ApprovedPanel,
   throw new Error("APPROVED_MENU_MISSING_VERIFIED_LINKS");
  return expected.map(row=>row.map(label=>({
   text:label,url:seen.get(label)!.url,
+  ...(kind==="posting"?{style:postingMenuButtonStyle(label)}:{}),
  })));
 }
 export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
