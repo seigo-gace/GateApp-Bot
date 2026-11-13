@@ -760,6 +760,54 @@ export function registerPostingHandlers(bot:Telegraf):void{
    ).catch(()=>undefined);
   }
  });
+ bot.action(/^room:dt:(month|day|hour|minute|manual):(\d+)(?::(\d{2,8}))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]),value=ctx.match[3]||"";
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==rev||d.step!=="preview"){
+   await ctx.answerCbQuery("日時選択が更新されています。最新の画面から選んでください。");return;
+  }
+  const stage=String(d.data.stage||"");
+  if(!["date_calendar","time_hour","time_minute"].includes(stage)){
+   await ctx.answerCbQuery("日時選択画面を開き直してください。");return;
+  }
+  try{
+   let next:EditorDraft;
+   if(op==="month"){
+    if(stage!=="date_calendar"||!validPickerMonth(value))throw Error("日時の月を確認してください。");
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,pickerMonth:value});
+   }else if(op==="day"){
+    if(stage!=="date_calendar"||!validPickerDay(value)||
+       value.slice(0,6)!==String(d.data.pickerMonth))
+     throw Error("日付を選び直してください。");
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,pickerDay:value,pickerHour:null,stage:"time_hour"});
+   }else if(op==="hour"){
+    if(stage!=="time_hour"||!/^(0\d|1\d|2[0-3])$/.test(value)||
+       !validPickerDay(String(d.data.pickerDay||"")))
+     throw Error("時刻を選び直してください。");
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,pickerHour:Number(value),stage:"time_minute"});
+   }else if(op==="minute"){
+    if(stage!=="time_minute"||!/^[0-5]\d$/.test(value)||Number(value)%5!==0)
+     throw Error("分を選び直してください。");
+    const when=selectedPickerTime(String(d.data.pickerDay||""),
+     Number(d.data.pickerHour),Number(value));
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,startAt:when.toISOString(),stage:"scheduled_ready"});
+   }else if(op==="manual"){
+    next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
+     {...d.data,stage:"date_input"});
+   }else throw Error("ROOM_DATETIME_ACTION_INVALID");
+   await ctx.answerCbQuery();
+   await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+  }catch(err){
+   const reason=err instanceof Error?err.message:"日時を選び直してください。";
+   await ctx.answerCbQuery(reason.startsWith("過去")||reason.includes("過去")?
+    reason:"日時を確認してください。最新の画面から再選択できます。").catch(()=>undefined);
+  }
+ });
  bot.action(/^room:destback:(\d+):(groups|blocks)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const d=await getDraft(ctx.from.id,"room");
