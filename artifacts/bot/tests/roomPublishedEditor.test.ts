@@ -34,6 +34,27 @@ test("finished Room+募集 stays listed but cannot be edited through meeting act
  assert.ok(!ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("終了する")||b.text.includes("中止する")));
 });
 
+test("published Room+募集 groups navigation links into balanced rows without changing URLs",()=>{
+ const pub={...room("live"),destinations:[
+  {chatId:-1003847210571,messageId:839,topicTitle:"新宿"},
+  {chatId:-1003847210571,messageId:840,topicTitle:"ビデオチャット"},
+ ]};
+ const ui=roomPublicationEditor(pub);
+ const rows=ui.keyboard.reply_markup.inline_keyboard;
+ assert.equal(rows[0]?.length,3); // owner: finish/edit/delete
+ assert.equal(rows[1]?.length,3); // join + original + video topic
+ assert.deepEqual(rows[1]?.map(b=>b.text),[
+  "🎥 開始済みROOMに入る","📍 元の投稿先を開く","🎬 ビデオチャット投稿先を開く"
+ ]);
+ assert.deepEqual(rows[1]?.map(b=>"url" in b?b.url:null),[
+  "https://meet.jit.si/GACE-TEST-ROOM",
+  "https://t.me/c/3847210571/839",
+  "https://t.me/c/3847210571/840"
+ ]);
+ const finished=roomPublicationEditor({...pub,status:"finished"});
+ assert.equal(finished.keyboard.reply_markup.inline_keyboard.length,1);
+ assert.equal(finished.keyboard.reply_markup.inline_keyboard[0]?.length,2);
+});
 test("deletion still accepts immutable sent receipts after destination is disabled",()=>{
  assert.doesNotThrow(()=>assertRoomDeletionReceipt({
   board_key:"area_bbs",purpose:"announcement",
