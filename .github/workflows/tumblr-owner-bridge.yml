@@ -23,3 +23,5 @@ jobs:
       - run: pnpm --filter @workspace/bot typecheck
       - run: pnpm --filter @workspace/bot build:gaybbs
       - run: pnpm --filter @workspace/bot exec tsx --test tests/tumblrBridgeServer.test.ts
+        env:
+          DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
