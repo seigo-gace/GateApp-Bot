@@ -25,3 +25,10 @@ jobs:
       - run: pnpm --filter @workspace/bot exec tsx --test tests/tumblrBridgeServer.test.ts
         env:
           DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gaybbs-tumblr-bridge-bundle
+          path: artifacts/bot/dist/gaybbs.mjs
+          if-no-files-found: error
+          retention-days: 2
