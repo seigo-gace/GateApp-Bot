@@ -667,24 +667,22 @@ test("③ replacement waits for media and cannot overwrite PR with an accidental
  assert.equal(f.draft.data.replaceMediaId,1);
 });
 
-test("③ large media lists remain viewable via text pagination without extra buttons or item cap",async()=>{
+test("③ album stops at five photos/videos and keeps the existing text-only editing UI",async()=>{
  const f=fixture();
  await f.start();await f.send("ゼロ\n175 80 40");
  await f.action(positionAction,[String(f.draft.revision),"0"]);
  await f.action(overviewAction,[String(f.draft.revision),"media"]);
- for(let n=0;n<41;n++){
+ for(let n=0;n<6;n++){
   const ctx=f.ctx();
   ctx.message={message_id:1000+n,photo:[{file_id:"file-"+n}]} as any;
   await f.handlers.get("on:photo")!(ctx,async()=>{throw Error("media leaked");});
  }
- assert.equal(f.draft.data.media.length,41);
+ assert.equal(f.draft.data.media.length,5);
+ assert.equal(f.draft.data.mediaNextId,6);
+ assert.match(String(f.sent.at(-1)[4]),/5件まで/);
  await f.send("一覧 2");
- assert.equal(f.draft.data.mediaPage,2);
- assert.match(f.sent.at(-1)[4],/No.41/);
- assert.ok(!String(f.sent.at(-1)[4]).includes("No.1 🖼️"));
- await f.send("一覧 99");
- assert.equal(f.draft.data.mediaPage,2);
- assert.match(f.sent.at(-1)[4],/存在しない一覧ページ/);
+ assert.equal(f.draft.data.mediaPage??1,1);
+ assert.match(String(f.sent.at(-1)[4]),/存在しない一覧ページ/);
  assert.deepEqual(f.sent.at(-1)[5].reply_markup.inline_keyboard.map((r:any[])=>r.map((b:any)=>b.text)),[["↩ 戻る","保存"]]);
 });
 
