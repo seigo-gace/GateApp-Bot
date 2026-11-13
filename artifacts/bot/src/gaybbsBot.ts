@@ -20,6 +20,7 @@ import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gay
 import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
+import {startTumblrBridge} from "./services/tumblrBridgeServer.js";
 
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_REQUIRED");
@@ -124,9 +125,11 @@ async function main():Promise<void>{
   allowedUpdates:["message","callback_query","chat_join_request"],
  });
  console.log("GAYBBS_BOT_READY bot_id="+me.id);
+ const bridge=startTumblrBridge(bot.telegram);
  const stopWorkers=startGayBbsWorkers(bot.telegram);
  const stop=async(signal:string)=>{
   stopWorkers();
+  if(bridge)await new Promise<void>(resolve=>bridge.close(()=>resolve()));
   bot.stop(signal);
   await closePool();
  };
