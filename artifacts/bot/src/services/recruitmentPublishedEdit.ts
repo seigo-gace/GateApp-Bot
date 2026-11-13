@@ -5,6 +5,7 @@ import {renderRecruitmentPreview,validateRecruitmentReady,type RecruitmentInput}
 import {getVerifiedTopic} from "./postingDelivery.js";
 import {assertFeatureReleased} from "./publishService.js";
 import {createTelegramDispatcher} from "./telegramDispatcher.js";
+import {validLikeTags} from "./profileLike.js";
 
 export type PublishedRecruitment={
  sourceId:number;sourceRevision:number;
@@ -33,6 +34,8 @@ export async function loadPublishedRecruitment(owner:number,sourceId:number):Pro
    weightKg:Number(c.weightKg),age:Number(c.age),position:String(c.position??"")}),
   purposeCodes:Array.isArray(x.purpose_codes)?x.purpose_codes:[],
   placeCodes:Array.isArray(x.place_codes)?x.place_codes:[],
+  likeTags:validLikeTags(Array.isArray(c.likeTags)?c.likeTags:[]),
+  loveTags:validLikeTags(Array.isArray(c.loveTags)?c.loveTags:[]),
  };
  const result={sourceId,sourceRevision:Number(x.revision),
   topicId:Number(x.posting_topic_id),chatId:Number(x.chat_id),
@@ -77,6 +80,7 @@ export async function applyPublishedRecruitmentEdit(
   }
   const conditions={
    inputMode:input.mode,title:input.title,
+   likeTags:validLikeTags(input.likeTags??[]),loveTags:validLikeTags(input.loveTags??[]),
    ...(input.mode==="manual"?{nickname:input.nickname,heightCm:input.heightCm,
     weightKg:input.weightKg,age:input.age,position:input.position}:{})
   };
