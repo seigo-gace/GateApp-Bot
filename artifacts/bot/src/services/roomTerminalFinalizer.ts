@@ -20,7 +20,7 @@ export async function finalizeNextRoom():Promise<number|null>{
    AND NOT EXISTS (
      SELECT 1 FROM room_status_message_edits q
       JOIN room_source_events e ON e.event_id=q.room_event_id
-      WHERE e.room_id=r.room_id AND q.state<>'confirmed')
+      WHERE e.room_id=r.room_id AND q.state NOT IN ('confirmed','skipped'))
    AND NOT EXISTS (
      SELECT 1 FROM posting_deliveries d
        JOIN announcement_posts a ON a.announcement_id::text=d.source_id
