@@ -5,6 +5,7 @@ import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
 import {roomRecruitmentSelectorRow} from "../src/services/recruitmentButtonLayout.js";
 import {applicationChoiceKeyboard} from "../src/bot/applicationHandlers.js";
 import {applicationTagRows} from "../src/services/roomApplicationTags.js";
+import {toggleLike} from "../src/services/profileLike.js";
 import type {EditorDraft} from "../src/services/publicPostRepository.js";
 
 function draft(step:EditorDraft["step"],data:Record<string,unknown>={}):EditorDraft{
@@ -167,4 +168,26 @@ test("募集+Room is the only source of application #Like/#Love category and tag
   const applicantTags=applicationTagRows(purpose,215,{},0,0);
   assert.deepEqual(rows(applicantTags),rows(roomTags));
  }
+});
+
+test("Room+募集 and ROOM応募 show ✅ on selected #Like/#Love without losing colors",()=>{
+ const like=toggleLike([],0,0),love=toggleLike([],1,0);
+ const data={modeSelected:true,stage:"details",recruitmentMode:"manual",
+  title:"テスト",description:"",position:"タチ",likeTags:like,loveTags:love};
+ const room=roomStageKeyboard(draft("preview",data)).reply_markup.inline_keyboard;
+ assert.deepEqual(room[0]!.map(button=>button.text),
+  ["✅ ポジション","✅ #Like","✅ #Love"]);
+ assert.deepEqual(room[0]!.map(button=>button.style),["primary","success","danger"]);
+ const none=roomStageKeyboard(draft("preview",{...data,likeTags:[],loveTags:[]})).reply_markup.inline_keyboard;
+ assert.deepEqual(none[0]!.map(button=>button.text),
+  ["✅ ポジション","#Like","#Love"]);
+ const submitted=applicationChoiceKeyboard(false,"タチ",true,true).reply_markup.inline_keyboard;
+ assert.deepEqual(submitted[0]!.map(button=>button.text),
+  ["✅ ポジション","✅ #Like","✅ #Love"]);
+ assert.deepEqual(submitted[0]!.map(button=>button.style),["primary","success","danger"]);
+ const onlyLove=applicationChoiceKeyboard(false,undefined,false,true).reply_markup.inline_keyboard;
+ assert.deepEqual(onlyLove[0]!.map(button=>button.text),
+  ["ポジション選択","#Like","✅ #Love"]);
+ const linked=applicationChoiceKeyboard(true,"タチ",true,false).reply_markup.inline_keyboard;
+ assert.deepEqual(linked[0]!.map(button=>button.text),["✅ #Like","#Love"]);
 });
