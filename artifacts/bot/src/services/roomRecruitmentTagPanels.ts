@@ -16,7 +16,7 @@ export type RoomTagPanelCallbacks={
 export function roomRecruitmentCategoryRows(c:RoomTagPanelCallbacks){
  const categories=LIKE_CATEGORIES.map((category,index)=>
   styledInlineButton(category.name,c.openCategory(index),"primary"));
- return [...adaptiveChoiceRows(categories),[
+ return [categories.slice(0,3),categories.slice(3),[
   styledInlineButton("↩ 戻る",c.back),
   styledInlineButton("キャンセル",c.cancel,"danger"),
  ]];
@@ -40,6 +40,7 @@ export function roomRecruitmentTagRows(
  const back=styledInlineButton("↩ 戻る",c.back);
  const cancel=styledInlineButton("キャンセル",c.cancel,"danger");
  // Never strand a single footer/navigation control on its own row.
- if(navigation.length===1)return [...rows,[navigation[0]!,back],[save,cancel]];
- return [...rows,...(navigation.length?[navigation]:[]),[save,back,cancel]];
+ // Preserve the actual 募集+Room footer: 保存/戻る, then キャンセル.
+ // Only candidate choices adapt 4/3/2 without creating single candidate rows.
+ return [...rows,...(navigation.length?[navigation]:[]),[save,back],[cancel]];
 }
