@@ -174,7 +174,8 @@ function roomOptions(d:EditorDraft){
  const selectors=roomRecruitmentSelectorRow(
   d.data.recruitmentMode==="linked"?"linked":"manual",
   !!d.data.position,
-  {position:`room:position:${r}`,like:`room:tag:${r}:like`,love:`room:tag:${r}:love`});
+  {position:`room:position:${r}`,like:`room:tag:${r}:like`,love:`room:tag:${r}:love`},
+  {like:roomTags(d,"likeTags").length>0,love:roomTags(d,"loveTags").length>0});
  return Markup.inlineKeyboard([
   selectors,
   [b("▶ 即開始",`room:plan:${r}:now`,"success"),
