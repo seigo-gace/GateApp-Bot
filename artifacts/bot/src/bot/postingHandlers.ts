@@ -921,8 +921,18 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("応募一覧のページが不正です");return;
   }
   try{
-   const published=await loadRoomPublication(ctx.from.id,announcementId);
-   if(published.visibility!=="approved_only"){
+   // Applicant management depends on the owned Room record, not the
+   // Telegram delivery-receipt join needed by the public posting editor.
+   const source=await pool.query(
+    `SELECT r.title,r.join_visibility FROM announcement_posts a
+      JOIN room_posts r ON r.room_id=a.room_id AND r.owner_user_id=a.owner_user_id
+      WHERE a.announcement_id=$1 AND a.owner_user_id=$2
+        AND a.kind='recruitment' AND a.room_id IS NOT NULL`,
+    [announcementId,ctx.from.id]);
+   if(source.rows.length!==1){
+    await ctx.answerCbQuery("応募の募集元を確認できません");return;
+   }
+   if(source.rows[0].join_visibility!=="approved_only"){
     await ctx.answerCbQuery("このROOMは自由参加です");return;
    }
    const count=await pool.query(
@@ -966,13 +976,22 @@ export function registerPostingHandlers(bot:Telegraf):void{
    if(paging.length)buttons.push(paging);
    buttons.push([Markup.button.callback("↩ 投稿管理へ戻る",
     `room:published:manage:${announcementId}`)]);
-   await ctx.answerCbQuery();
-   await ctx.editMessageText(
-    "👥 応募者一覧\n"+escapeProfileHtml(published.title)+"\n応募件数："+total+
-    (blocks.length?"\n\n"+blocks.join("\n\n"):"\nまだ応募はありません。"),
-    {parse_mode:"HTML",...Markup.inlineKeyboard(buttons)});
-  }catch{
-   await ctx.answerCbQuery("応募一覧を確認できません");
+   const text="👥 応募者一覧\n"+escapeProfileHtml(String(source.rows[0].title))+
+    "\n応募件数："+total+
+    (blocks.length?"\n\n"+blocks.join("\n\n"):"\nまだ応募はありません。");
+   const keyboard={parse_mode:"HTML" as const,...Markup.inlineKeyboard(buttons)};
+   await ctx.answerCbQuery().catch(()=>undefined);
+   try{
+    await ctx.editMessageText(text,keyboard);
+   }catch{
+    // Old Telegram DM message may no longer be editable. Keep the list usable.
+    await ctx.telegram.sendMessage(ctx.from.id,text,keyboard);
+   }
+  }catch(err){
+   const category=err instanceof Error?err.name:"unknown";
+   console.warn("[ROOM_APPLICANTS_OWNER_VIEW_FAILED]",category);
+   await ctx.answerCbQuery("応募一覧を表示できません。DMを開き直してください。")
+    .catch(()=>undefined);
   }
  });
  bot.action(/^room:published:edit:(\d+)$/,async ctx=>{
