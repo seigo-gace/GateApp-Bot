@@ -209,7 +209,7 @@ function assertSourceScreen(d:any,ctx:Context):void{
  if(Number.isSafeInteger(bound)&&bound>0&&clicked!==bound)
   throw Error("PROFILE_SOURCE_SCREEN_STALE");
 }
-function sourceData(d:Record<string,unknown>):ProfileDraft["data"]{
+export function sourceData(d:Record<string,unknown>):ProfileDraft["data"]{
  const nickname=typeof d.nickname==="string"?d.nickname:undefined;
  const title=typeof d.title==="string"?d.title:undefined;
  const h=Number(d.heightCm),w=Number(d.weightKg),a=Number(d.age);
@@ -217,7 +217,7 @@ function sourceData(d:Record<string,unknown>):ProfileDraft["data"]{
   {nickname,heightCm:h,weightKg:w,age:a}:{};
  return {
   ...identity,title,position:isProfilePosition(String(d.position??""))?String(d.position) as typeof PROFILE_POSITIONS[number]:undefined,
-  pr:typeof d.body==="string"?d.body:undefined,
+  pr:typeof d.body==="string"?d.body:typeof d.description==="string"?d.description:undefined,
   purposeCodes:Array.isArray(d.purposeCodes)?d.purposeCodes as string[]:[],
   placeCodes:Array.isArray(d.placeCodes)?d.placeCodes as string[]:[],
   likeTags:validLikeTags(Array.isArray(d.likeTags)?d.likeTags as LikeTag[]:[]),
