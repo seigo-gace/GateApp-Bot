@@ -3,6 +3,7 @@ import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
+import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/profileCompactHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
@@ -98,7 +99,7 @@ async function main():Promise<void>{
    try{
     const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
     if(origin.feature==="profile"){
-     await startProfileEditor(ctx);
+     await startCompactProfileEditor(ctx);
     }else if(origin.feature==="room"){
      await startRoomEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="announcement"){
@@ -149,6 +150,7 @@ async function main():Promise<void>{
   else await startOperationHelp(ctx.telegram,ctx.from.id);
  });
  registerCompactRecruitmentHandlers(bot);
+ registerCompactProfileHandlers(bot);
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
