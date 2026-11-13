@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {roomStageKeyboard,hasExplicitRoomTopicChoice} from "../src/bot/postingHandlers.js";
 import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
+import {roomRecruitmentSelectorRow} from "../src/services/recruitmentButtonLayout.js";
 import type {EditorDraft} from "../src/services/publicPostRepository.js";
 
 function draft(step:EditorDraft["step"],data:Record<string,unknown>={}):EditorDraft{
@@ -114,4 +115,16 @@ test("ROOM legacy explicit choice without a saved Topic ID must revalidate the a
  assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true,selectedTopicId:"120"}),false);
  assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:true,selectedTopicId:120}),true);
  assert.equal(hasExplicitRoomTopicChoice({destinationExplicit:false,selectedTopicId:120}),false);
+});
+
+test("ROOM応募 reuses Room+募集 selectors with its own callbacks",()=>{
+ const buttons=roomRecruitmentSelectorRow("manual",false,{
+  position:"application:position",
+  like:"application:tag:like:open",
+  love:"application:tag:love:open"
+ });
+ assert.deepEqual(buttons.map(b=>b.text),["ポジション選択","#Like","#Love"]);
+ assert.deepEqual(buttons.map(b=>b.style),["primary","success","danger"]);
+ assert.deepEqual(buttons.map(b=>b.callback_data),
+  ["application:position","application:tag:like:open","application:tag:love:open"]);
 });
