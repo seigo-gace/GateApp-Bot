@@ -205,7 +205,9 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
  ]);
  if(stage==="position")return Markup.inlineKeyboard([
   ...positionChoiceRows(PROFILE_POSITIONS,undefined,
-   (_value,index)=>`room:positionchoice:${r}:${index}`),
+   (_value,index)=>`room:positionchoice:${r}:${index}`)
+   .map(row=>row.map(button=>styledRecruitmentButton(
+    button.text,button.callback_data,"primary"))),
   ...nav
  ]);
  const tagCallbacks={
