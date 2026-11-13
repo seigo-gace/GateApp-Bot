@@ -11,7 +11,7 @@ import asyncio
 from typing import Any
 from userbot_room_smoke import BOT, EXPECTED_MENU, rows, wait_for_screen
 
-TEST_TITLE = "【検証】ROOM公開同期テスト"
+TEST_TITLE = "【検証】ROOMボタン配置実機テスト"
 TEST_MANUAL = TEST_TITLE + "\n検証用ユーザー\n170 70 30\nBot投稿と終了同期の確認用です。参加募集ではありません。"
 TEST_LINKED = TEST_TITLE + "\nBot投稿と終了同期の確認用です。参加募集ではありません。"
 
@@ -148,6 +148,15 @@ async def _run(client: Any, progress: dict[str, str]) -> dict[str, Any]:
         raise RuntimeError("ROOM_PUBLIC_TEST_PUBLISH_NOT_CONFIRMED")
     if "🔴 LIVE中" not in (outcome.raw_text or ""):
         raise RuntimeError("ROOM_PUBLIC_TEST_NOT_LIVE")
+    # Verify actual Telegram-rendered inline keyboard row grouping on live editor.
+    live_rows = [[button.text for button in row] for row in (outcome.buttons or [])]
+    live_links = [row for row in live_rows if any(
+        "投稿先を開く" in label or "ROOMに入る" in label
+        for label in row)]
+    if not live_links or sum(len(row) for row in live_links) < 2:
+        raise RuntimeError("ROOM_PUBLIC_TEST_LIVE_NAV_LINKS_MISSING")
+    if any(len(row) == 1 for row in live_links):
+        raise RuntimeError("ROOM_PUBLIC_TEST_LIVE_NAV_ORPHAN")
     if "✅ 終了する" not in labels(outcome):
         raise RuntimeError("ROOM_PUBLIC_TEST_FINISH_BUTTON_MISSING")
     # Keep the same original published DM editor; never re-post.
@@ -157,8 +166,20 @@ async def _run(client: Any, progress: dict[str, str]) -> dict[str, Any]:
         client, bot, outcome.id, baseline,
         lambda m: TEST_TITLE in (m.raw_text or "") and "✅ 終了" in (m.raw_text or ""),
         "ROOM_PUBLIC_TEST_FINISH_NOT_CONFIRMED")
+    finished_rows = [[button.text for button in row] for row in (closed.buttons or [])]
+    finished_links = [row for row in finished_rows if any("投稿先を開く" in label
+                      for label in row)]
+    if not finished_links:
+        raise RuntimeError("ROOM_PUBLIC_TEST_FINISHED_NAV_MISSING")
+    if any(len(row) == 1 for row in finished_links) and sum(
+            len(row) for row in finished_links) > 1:
+        raise RuntimeError("ROOM_PUBLIC_TEST_FINISHED_NAV_ORPHAN")
     return {"action": "room_public_post_smoke", "status": "PASS",
             "published": True, "finished_dm": True,
+            "live_navigation_layout_verified": True,
+            "finished_navigation_layout_verified": True,
+            "live_nav_row_sizes": [len(row) for row in live_links],
+            "finished_nav_row_sizes": [len(row) for row in finished_links],
             "has_public_destination_buttons": any(
                 "投稿先" in label for label in labels(closed))}
 
