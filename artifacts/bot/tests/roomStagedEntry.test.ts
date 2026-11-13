@@ -5,7 +5,7 @@ import {jstToday,jstCurrentMonth} from "../src/services/dateTimeInlinePicker.js"
 import {roomPublicationEditor,type RoomPublication} from "../src/services/roomPublishedEditor.js";
 import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
 import {roomRecruitmentSelectorRow} from "../src/services/recruitmentButtonLayout.js";
-import {applicationChoiceKeyboard} from "../src/bot/applicationHandlers.js";
+import {applicationChoiceKeyboard,roomApplicantOwnerNotification} from "../src/bot/applicationHandlers.js";
 import {applicationTagRows} from "../src/services/roomApplicationTags.js";
 import {toggleLike} from "../src/services/profileLike.js";
 import type {EditorDraft} from "../src/services/publicPostRepository.js";
@@ -217,4 +217,19 @@ test("published ROOM owner applicant action matches the registered callback with
  assert.deepEqual(roomApplicantsCallbackPattern.exec(button.callback_data)?.slice(1),["57",undefined]);
  assert.deepEqual(roomApplicantsCallbackPattern.exec("room:published:applicants:57:1")?.slice(1),["57","1"]);
  assert.equal(roomApplicantsCallbackPattern.test("room:published:applicants:not-a-number"),false);
+});
+
+test("new applicant sends owner the submitted profile snapshot with usable approval and list controls",()=>{
+ const n=roomApplicantOwnerNotification(58,57,{mode:"manual",title:"応募のタイトル",body:"応募内容",
+ nickname:"応募者A",heightCm:175,weightKg:80,age:40,position:"リバ",
+ likeTags:[],loveTags:[]});
+ assert.match(n.text,/応募のタイトル/);
+ assert.match(n.text,/応募者A/);
+ assert.match(n.text,/175cm/);
+ assert.match(n.text,/40歳/);
+ const actions=n.keyboard.reply_markup.inline_keyboard;
+ assert.deepEqual(actions[0]?.map(b=>b.text),["✅ 承認","❌ 拒否"]);
+ assert.deepEqual(actions[0]?.map(b=>b.callback_data),["application:decide:58:accepted","application:decide:58:declined"]);
+ assert.deepEqual(actions[1]?.map(b=>b.callback_data),["room:published:applicants:57"]);
+ assert(roomApplicantsCallbackPattern.test(actions[1]![0]!.callback_data));
 });
