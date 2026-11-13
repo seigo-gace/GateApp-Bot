@@ -58,7 +58,7 @@ async function main(){
    console.error("TOPIC_MENU_EDIT_FAILED "+chat+":"+thread+" "+
     (error instanceof Error?error.message:"UNKNOWN"));
   }
-  await new Promise(resolve=>setTimeout(resolve,160));
+  await new Promise(resolve=>setTimeout(resolve,520));
  }
  for(const panel of panels.rows){
   const chat=Number(panel.chat_id),thread=Number(panel.message_thread_id);
@@ -73,7 +73,7 @@ async function main(){
    console.error("POSTING_PANEL_EDIT_FAILED "+chat+":"+thread+" "+
     (error instanceof Error?error.message:"UNKNOWN"));
   }
-  await new Promise(resolve=>setTimeout(resolve,160));
+  await new Promise(resolve=>setTimeout(resolve,520));
  }
  console.log("POSTING_MENU_EDIT_SUMMARY "+
   JSON.stringify({existing:pins.rows.length+panels.rows.length,changed,failed,newMessages:0}));
