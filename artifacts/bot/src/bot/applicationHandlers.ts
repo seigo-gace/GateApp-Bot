@@ -138,19 +138,6 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
    validLikeTags(data.likeTags as []??[]).length>0,
    validLikeTags(data.loveTags as []??[]).length>0),true);
 }
-/** Owner receives the same saved applicant snapshot as the list/detail screen. */
-export function roomApplicantOwnerNotification(applicationId:number,announcementId:number,snapshot:Record<string,unknown>){
- if(!Number.isSafeInteger(applicationId)||applicationId<=0||
-    !Number.isSafeInteger(announcementId)||announcementId<=0)throw Error("ROOM_APPLICATION_ID_INVALID");
- return {
-  text:"📨 ROOM応募が届きました。\n"+renderRoomApplicantSummary(snapshot),
-  keyboard:Markup.inlineKeyboard([
-   [Markup.button.callback("✅ 承認",`application:decide:${applicationId}:accepted`),
-    Markup.button.callback("❌ 拒否",`application:decide:${applicationId}:declined`)],
-   [Markup.button.callback("👥 応募者を見る",`room:published:applicants:${announcementId}`)]
-  ])
- };
-}
 export function registerApplicationHandlers(bot:Telegraf):void{
 
  bot.on("text",async(ctx,next)=>{
@@ -314,7 +301,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const session=await resolveApplicationSession(ctx.from.id);
   const record=await pool.query(
-   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,created_at FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
    [ctx.from.id]);
   if(!session||record.rows.length!==1){
    await ctx.answerCbQuery("受付終了または入力が未完了です");return;
@@ -333,28 +320,11 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    loveTags:validLikeTags((record.rows[0].draft as Record<string,unknown>).loveTags as []??[])};
   let submitted:Awaited<ReturnType<typeof submitApplication>>;
   try{
-   submitted=await submitApplication(session.announcementId,ctx.from.id,snapshot);
+   submitted=await submitApplication(session.announcementId,ctx.from.id,snapshot,
+    new Date(record.rows[0].created_at).getTime());
   }catch{
    await ctx.answerCbQuery("応募に失敗しました。募集状況をご確認ください。");
    return;
-  }
-  // Deliver to the existing Room owner after the application DB transaction.
-  // Never block the applicant or resend on duplicate application callbacks.
-  if(!submitted.duplicate){
-   try{
-    const owner=await pool.query(
-     `SELECT owner_user_id FROM announcement_posts
-       WHERE announcement_id=$1 AND kind='recruitment' AND room_id IS NOT NULL`,
-     [session.announcementId]);
-    if(owner.rows.length===1){
-     const notice=roomApplicantOwnerNotification(submitted.applicationId,session.announcementId,snapshot);
-     await ctx.telegram.sendMessage(Number(owner.rows[0].owner_user_id),notice.text,
-      {parse_mode:"HTML",...notice.keyboard});
-    }
-   }catch(err){
-    console.warn("[ROOM_OWNER_APPLICATION_NOTICE_NOT_DELIVERED]",
-     err instanceof Error?err.message:"unknown");
-   }
   }
   // The DB commit is the business result. Failing to update the wizard
   // screen/session must not falsely report the submitted application as FAIL.
@@ -364,8 +334,9 @@ export function registerApplicationHandlers(bot:Telegraf):void{
       console.warn("[ROOM_APPLICATION_SESSION_STEP_NEEDS_RECONCILE]");
      });
   await ctx.answerCbQuery("応募を受け付けました").catch(()=>undefined);
-  const receipt=submitted.duplicate?
-   "応募状況を確認しました："+submitted.status:
+  const receipt=submitted.resubmitted?
+   "✅ 応募内容を更新しました。主催者への通知を受け付けました。":
+   submitted.duplicate?"応募状況を確認しました："+submitted.status:
    "✅ 応募を送りました。主催者の承認・拒否をお待ちください。";
   const keyboard=["submitted","held"].includes(submitted.status)?
    Markup.inlineKeyboard([[Markup.button.callback("応募を取り下げる",
