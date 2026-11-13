@@ -98,7 +98,7 @@ function panelKeyboard(d:ProfileDraft){
   openCategory:(i:number)=>"pc:"+r+":cat:"+i,
   selectItem:(_c:number,i:number)=>"pc:"+r+":pick:"+i,
   changePage:(_c:number,i:number)=>"pc:"+r+":page:"+i,
-  save:"pc:"+r+":back",back:"pc:"+r+":back",cancel:"pc:"+r+":cancel"
+  save:"pc:"+r+":savepanel",back:"pc:"+r+":back",cancel:"pc:"+r+":cancel"
  };
  if(p==="like"||p==="love"){
   const cat=x.compactCategory;
@@ -213,7 +213,7 @@ function sourceData(d:Record<string,unknown>):ProfileDraft["data"]{
  const nickname=typeof d.nickname==="string"?d.nickname:undefined;
  const title=typeof d.title==="string"?d.title:undefined;
  const h=Number(d.heightCm),w=Number(d.weightKg),a=Number(d.age);
- const identity=nickname&&Number.isFinite(h)&&Number.isFinite(w)&&Number.isFinite(a)?
+ const identity=nickname&&[h,w,a].every(x=>Number.isSafeInteger(x)&&x>0)?
   {nickname,heightCm:h,weightKg:w,age:a}:{};
  return {
   ...identity,title,position:isProfilePosition(String(d.position??""))?String(d.position) as typeof PROFILE_POSITIONS[number]:undefined,
@@ -284,6 +284,17 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
   const next=await profiles.putDraft(ctx.from.id,"compact_panel",{...d.data,compactPage:page},r);
   await ctx.answerCbQuery();await render(ctx.telegram,ctx.from.id,next);
  });
+ bot.action(/^pc:(\d+):savepanel$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),d=await profiles.getDraft(ctx.from.id);
+  if(!active(d,rev)||d.step!=="compact_panel"||
+     !["like","love"].includes(String(d.data.compactPanel))){
+   await ctx.answerCbQuery("古い操作です");return;
+  }
+  const next=await profiles.putDraft(ctx.from.id,"compact",{
+   ...d.data,compactPanel:undefined,compactCategory:null,compactPage:0},rev);
+  await ctx.answerCbQuery();await render(ctx.telegram,ctx.from.id,next);
+ });
  bot.action(/^pc:(\d+):pick:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const r=Number(ctx.match[1]),index=Number(ctx.match[2]),d=await profiles.getDraft(ctx.from.id);
@@ -340,7 +351,8 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery();await resumeOrigin(ctx,origin);return;
   }
   if(action==="save"){
-   if(!d.data.nickname||!d.data.position||!d.data.heightCm||
+   if(!ctx.from.username){await ctx.answerCbQuery("usernameを登録してください。",{show_alert:true});return;}
+   if(!d.data.title?.trim()||!d.data.nickname||!d.data.position||!d.data.heightCm||
       !d.data.weightKg||!d.data.age||!isProfilePosition(d.data.position)){
     await ctx.answerCbQuery("タイトル・基本情報・ポジションを入力してください。",{show_alert:true});
     return;
@@ -348,7 +360,7 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
    const profile=await profiles.savePrivateDraft(ctx.from.id,r,ctx.from.username??null);
    await ctx.answerCbQuery("プロフィールを非公開保存しました");
    const origin=origins.has(d.data.compactOrigin as Origin)?d.data.compactOrigin as Origin:"profile";
-   await ctx.editMessageText("✅ プロフィールを非公開保存しました。\n"+
+   await ctx.editMessageText((profile.status==="published"?"✅ 変更を保存しました。公開済み投稿は自動更新されません。\n":"✅ プロフィールを非公開保存しました。\n")+
     renderProfileBasicPreview(profile,ctx.from.username??""),{
     parse_mode:"HTML",
     ...Markup.inlineKeyboard([[button("↩ 元の操作へ戻る","pc:return:"+origin)]])
