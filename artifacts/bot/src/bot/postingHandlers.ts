@@ -28,7 +28,7 @@ import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
 import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
-import {roomRecruitmentCategoryRows,roomRecruitmentTagRows} from "../services/roomRecruitmentTagPanels.js";
+import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
@@ -218,7 +218,7 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
   cancel:`room:cancel:${r}`,
  };
  if(stage==="tag_categories")return Markup.inlineKeyboard(
-  roomRecruitmentCategoryRows({...tagCallbacks,back:`room:back:${r}`}));
+  roomRecruitmentCategoryRows({...tagCallbacks,back:`room:back:${r}`},d.data.tagPurpose==="love"?"love":"like"));
  if(stage==="tag_items"){
   const category=Number(d.data.tagCategory),page=Number(d.data.tagPage)||0;
   const selected=roomTags(d,d.data.tagPurpose==="love"?"loveTags":"likeTags");
@@ -257,8 +257,10 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
    roomStageKeyboard(d),true);return;
  }
  if(stage==="position"||stage==="tag_categories"||stage==="tag_items"){
+  const purpose=d.data.tagPurpose==="love"?"love":"like";
+  const category=stage==="tag_items"?Number(d.data.tagCategory):undefined;
   await showPostScreen(telegram,userId,d,stage==="position"?"ポジションを選んでください。":
-   "🏷️ #"+(d.data.tagPurpose==="love"?"Love":"Like")+" を選択してください。",roomStageKeyboard(d));return;
+   roomRecruitmentTagHeading(purpose,category),roomStageKeyboard(d));return;
  }
  if(d.step==="awaiting_room_url"){
   await showPostScreen(telegram,userId,d,
