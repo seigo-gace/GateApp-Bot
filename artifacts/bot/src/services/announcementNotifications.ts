@@ -6,6 +6,7 @@ import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
 import {renderRoomApplicantSummary} from "./announcementApplications.js";
 import {applicantDmLink} from "./telegramUsernameLink.js";
+import {adaptiveChoiceRows} from "./inlineSelection.js";
 
 type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number};
 export function renderAnnouncementNotification(payload:EventPayload):string{
@@ -27,6 +28,19 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
  const value=label[action];
  if(!value)throw new Error("NOTIFICATION_ACTION_NOT_SUPPORTED");
  return value; // no room URL, full profile, Telegram ID or untrusted user text
+}
+/** Owner's direct applicant DM + accept / reject share the adopted layout. */
+export function roomApplicantNotificationKeyboard(
+ applicantId:number,applicationId:number,username?:unknown,
+){
+ if(!Number.isSafeInteger(applicationId)||applicationId<=0)
+  throw Error("ROOM_APPLICATION_NOTIFICATION_ID_INVALID");
+ const actions=[
+  Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username)),
+  Markup.button.callback("✅ 承諾",`application:decide:${applicationId}:accepted`),
+  Markup.button.callback("❌ 拒否",`application:decide:${applicationId}:declined`),
+ ];
+ return Markup.inlineKeyboard(adaptiveChoiceRows(actions));
 }
 export async function deliverNextAnnouncementNotification(telegram:Telegram):Promise<{
  id:number;state:"sent"|"needs_reconcile";
@@ -79,14 +93,8 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
      // Applicant already contacted the bot to submit. Keep the ID link
      // available even when getChat fails or no public username is set.
     }
-    const rows:any[][]=[[
-     Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))
-    ]];
-    rows.push([
-     Markup.button.callback("✅ 承諾",`application:decide:${payload.applicationId}:accepted`),
-     Markup.button.callback("❌ 拒否",`application:decide:${payload.applicationId}:declined`)
-    ]);
-    extra=Markup.inlineKeyboard(rows);
+    extra=roomApplicantNotificationKeyboard(
+     applicantId,Number(payload.applicationId),username);
     useHtml=true;
    }
   }
