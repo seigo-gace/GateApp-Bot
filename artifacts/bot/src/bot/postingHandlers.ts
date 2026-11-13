@@ -27,6 +27,7 @@ import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../ser
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
+import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
@@ -169,12 +170,10 @@ function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
  */
 function roomOptions(d:EditorDraft){
  const r=d.revision,b=styledRecruitmentButton;
- const selectors:any[]=[];
- if(d.data.recruitmentMode!=="linked")
-  selectors.push(b(d.data.position?"✅ ポジション":"ポジション選択",
-   `room:position:${r}`,"primary"));
- selectors.push(b("#Like",`room:tag:${r}:like`,"success"),
-  b("#Love",`room:tag:${r}:love`,"danger"));
+ const selectors=roomRecruitmentSelectorRow(
+  d.data.recruitmentMode==="linked"?"linked":"manual",
+  !!d.data.position,
+  {position:`room:position:${r}`,like:`room:tag:${r}:like`,love:`room:tag:${r}:love`});
  return Markup.inlineKeyboard([
   selectors,
   [b("▶ 即開始",`room:plan:${r}:now`,"success"),
