@@ -152,6 +152,7 @@ export async function savePrivateDraft(id: number, revision: number,
     validateProfileMedia(p.media);
     validateAnnouncementTags({purposeCodes:p.purposeCodes??[],placeCodes:p.placeCodes??[]});
     if((p.title??"").length>100)throw Error("PROFILE_TITLE_TOO_LONG");
+    const contextProvided=p.title!==undefined||p.purposeCodes!==undefined||p.placeCodes!==undefined;
     const context=JSON.stringify({title:p.title??"",purposeCodes:p.purposeCodes??[],placeCodes:p.placeCodes??[]});
     const numberedMedia=numberProfileMedia(p.media);
     const nextMediaId=Math.max(p.mediaNextId??1,...numberedMedia.map(item=>(item.itemId??0)+1),1);
@@ -164,11 +165,11 @@ export async function savePrivateDraft(id: number, revision: number,
          height_cm=EXCLUDED.height_cm,weight_kg=EXCLUDED.weight_kg,
          age=EXCLUDED.age,position=EXCLUDED.position,
          hair=EXCLUDED.hair,body=EXCLUDED.body,
-         region=EXCLUDED.region,area=EXCLUDED.area,pr=EXCLUDED.pr,pr_ref=EXCLUDED.pr_ref,media_next_id=EXCLUDED.media_next_id,profile_context=EXCLUDED.profile_context,
+         region=EXCLUDED.region,area=EXCLUDED.area,pr=EXCLUDED.pr,pr_ref=EXCLUDED.pr_ref,media_next_id=EXCLUDED.media_next_id,profile_context=CASE WHEN $15::boolean THEN EXCLUDED.profile_context ELSE profiles.profile_context END,
          revision=profiles.revision+1,updated_at=NOW()
        WHERE profiles.status IN ('private','published')
        RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,profile_context,status,revision`,
-      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId,context]
+      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId,context,contextProvided]
     );
     if (!saved.rows.length) throw new Error("PROFILE_SAVE_NOT_ALLOWED");
     if(p.likeTags!==undefined||p.loveTags!==undefined){
@@ -215,7 +216,7 @@ export async function savePrivateDraft(id: number, revision: number,
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
       weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,loveTags:p.loveTags,
-      title:p.title??"",purposeCodes:p.purposeCodes??[],placeCodes:p.placeCodes??[],status:x.status,revision:x.revision};
+      title:x.profile_context?.title??"",purposeCodes:x.profile_context?.purposeCodes??[],placeCodes:x.profile_context?.placeCodes??[],status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");
     throw e;
