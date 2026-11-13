@@ -5,6 +5,7 @@
 import {pool} from "../db/index.js";
 import {Markup} from "telegraf";
 import {styledInlineButton as colored} from "./inlineButtonStyle.js";
+import {adaptiveChoiceRows} from "./inlineSelection.js";
 import {BOARD_TITLES,BOARD_GROUP_CHAT_IDS,type BoardKey} from "./topicRouting.js";
 import {telegramPublishedMessageUrl} from "./searchDomain.js";
 import type {Telegram} from "telegraf";
@@ -214,13 +215,18 @@ export function roomPublicationEditor(p:RoomPublication){
    colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger")
   ]);
  }
- if(p.status==="live"&&p.ownerJoinUrl)rows.push([
-  Markup.button.url("🎥 開始済みROOMに入る",p.ownerJoinUrl)]);
+ const navigation:Array<ReturnType<typeof Markup.button.url>>=[];
+ if(p.status==="live"&&p.ownerJoinUrl)
+  navigation.push(Markup.button.url("🎥 開始済みROOMに入る",p.ownerJoinUrl));
  for(const [i,destination] of (p.destinations??[
   {chatId:p.chatId,messageId:p.messageId,topicTitle:p.topicTitle}]).entries()){
-  rows.push([Markup.button.url((i===0?"📍 元の投稿先":"🎬 ビデオチャット投稿先")+"を開く",
-   telegramPublishedMessageUrl(destination.chatId,destination.messageId))]);
+  navigation.push(Markup.button.url(
+   (i===0?"📍 元の投稿先":"🎬 ビデオチャット投稿先")+"を開く",
+   telegramPublishedMessageUrl(destination.chatId,destination.messageId)));
  }
+ // Use the adopted 4/3/2 layout for navigation without changing actions.
+ // A sole remaining link keeps its own row; Telegram owns pixel sizing.
+ rows.push(...adaptiveChoiceRows(navigation));
  return {text:text.join("\n"),keyboard:Markup.inlineKeyboard(rows)};
 }
 
