@@ -22,6 +22,9 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
 import {recruitmentGroups,recruitmentAreaBlockOptions,recruitmentTopicsForAreaBlock,recruitmentTopicsForGroup} from "../services/recruitmentDestinationHierarchy.js";
 import {recruitmentDecisionRow,recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
+import {recruitmentCompactSelectorRows} from "../services/recruitmentButtonLayout.js";
+import {LIKE_CATEGORIES,likePageBounds,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
+import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
  renderRecruitmentPreview,validateRecruitmentReady,recruitmentTextPhase,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
@@ -30,6 +33,8 @@ const asInput=(d:EditorDraft)=>({
   ...d.data,
   purposeCodes:Array.isArray(d.data.purposeCodes)?d.data.purposeCodes:[],
   placeCodes:Array.isArray(d.data.placeCodes)?d.data.placeCodes:[],
+  likeTags:validLikeTags(Array.isArray(d.data.likeTags)?d.data.likeTags as LikeTag[]:[]),
+  loveTags:validLikeTags(Array.isArray(d.data.loveTags)?d.data.loveTags as LikeTag[]:[]),
   mode:d.data.mode==="linked"||d.data.recruitmentMode==="linked"?"linked":"manual",
 }) as RecruitmentInput;
 const active=(d:EditorDraft|null,rev:number,step?:string):d is EditorDraft=>
@@ -50,23 +55,32 @@ function decisionRow(revision:number){
 export function recruitmentEditorFieldRows(
  mode:"manual"|"linked",revision:number,
  callbacks:{edit:(field:"title"|"nickname"|"stats"|"body")=>string;
-  position:()=>string;firstTag:()=>string;secondTag:()=>string},
- labels:{firstTag:string;secondTag:string;position?:string},
+  position:()=>string;like:()=>string;love:()=>string;purpose:()=>string;place:()=>string},
+ selected:{position:boolean;like:boolean;love:boolean;purpose:boolean;place:boolean}
 ):ReturnType<typeof Markup.button.callback>[][]{
  const edit=(label:string,field:"title"|"nickname"|"stats"|"body")=>
   b(label,callbacks.edit(field),"primary");
- if(mode==="manual")return [
+ const fields=mode==="manual"?[
   [edit("📝 タイトル","title"),edit("📝 ニックネーム","nickname")],
   [edit("📝 身長/体重/年齢","stats"),edit("📝 募集内容","body")],
-  [b(labels.position??"ポジション選択",callbacks.position(),"primary"),
-   b(labels.firstTag,callbacks.firstTag(),"success"),
-   b(labels.secondTag,callbacks.secondTag(),"danger")],
- ];
- return [
-  [edit("📝 タイトル","title"),edit("📝 募集内容","body")],
-  [b(labels.firstTag,callbacks.firstTag(),"success"),
-   b(labels.secondTag,callbacks.secondTag(),"primary")],
- ];
+ ]:[[edit("📝 タイトル","title"),edit("📝 募集内容","body")]];
+ return [...fields,...recruitmentCompactSelectorRows(mode,selected.position,selected,{
+  position:callbacks.position(),like:callbacks.like(),love:callbacks.love(),
+  purpose:callbacks.purpose(),place:callbacks.place(),
+ })];
+}
+function recruitmentSelectorRows(d:EditorDraft){
+ const r=d.revision,input=asInput(d);
+ return recruitmentCompactSelectorRows(input.mode,!!input.position,{
+  like:input.likeTags!.length>0,love:input.loveTags!.length>0,
+  purpose:input.purposeCodes.length>0,place:input.placeCodes.length>0,
+ },{
+  position:`recruit:panel:${r}:position`,
+  like:`recruit:panel:${r}:like`,
+  love:`recruit:panel:${r}:love`,
+  purpose:`recruit:panel:${r}:purpose`,
+  place:`recruit:panel:${r}:place`,
+ });
 }
 function keyboard(d:EditorDraft){
  const rev=d.revision;
@@ -74,33 +88,20 @@ function keyboard(d:EditorDraft){
  const rows:any[][]=recruitmentEditorFieldRows(data.mode,rev,{
   edit:field=>`recruit:edit:${rev}:${field}`,
   position:()=>`recruit:panel:${rev}:position`,
-  firstTag:()=>`recruit:panel:${rev}:purpose`,
-  secondTag:()=>`recruit:panel:${rev}:place`,
+  like:()=>`recruit:panel:${rev}:like`,
+  love:()=>`recruit:panel:${rev}:love`,
+  purpose:()=>`recruit:panel:${rev}:purpose`,
+  place:()=>`recruit:panel:${rev}:place`,
  },{
-  position:data.position?"✅ ポジション":"ポジション選択",
-  firstTag:data.mode==="manual"?"目的選択":"目的タグ",
-  secondTag:data.mode==="manual"?"場所選択":"場所タグ",
+  position:!!data.position,like:!!data.likeTags?.length,love:!!data.loveTags?.length,
+  purpose:data.purposeCodes.length>0,place:data.placeCodes.length>0,
  });
  rows.push(d.data.publishedSourceId?
   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
  return Markup.inlineKeyboard(rows);
 }
 function initialKeyboard(d:EditorDraft){
- const rev=d.revision;
- return Markup.inlineKeyboard([
-  [b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
-   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`,"danger")],
-  decisionRow(rev)
- ]);
-}
-export function inputInstructions(linked:boolean){
- return linked?
-  "📢 相手募集を作成\n保存済みプロフィールと連動します。タイトルを入力し、必要なら募集内容も同じメッセージで送信してください。\n\n"+
-   "1行目：タイトル\n2行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
-  "📢 相手募集を作成\nプロフィール未登録のため、この募集だけに使う情報を1通で入力してください。"+
-  "\n\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢"+
-  "\n4行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
+ return Markup.inlineKeyboard([...recruitmentSelectorRows(d),decisionRow(d.revision)]);
 }
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
