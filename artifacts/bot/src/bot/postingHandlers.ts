@@ -831,6 +831,48 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("投稿記録を確認できませんでした").catch(()=>undefined);
   }
  });
+ bot.action(/^room:published:applicants:(\\d+)(?::(\\d+))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const announcementId=Number(ctx.match[1]),page=Number(ctx.match[2]??"0");
+  if(!Number.isSafeInteger(page)||page<0||page>100){
+   await ctx.answerCbQuery("応募一覧のページが不正です");return;
+  }
+  try{
+   const published=await loadRoomPublication(ctx.from.id,announcementId);
+   if(published.visibility!=="approved_only"){
+    await ctx.answerCbQuery("このROOMは自由参加です");return;
+   }
+   const count=await pool.query(
+    `SELECT count(*)::int AS total
+      FROM announcement_applications
+      WHERE announcement_id=$1`,[announcementId]);
+   const total=Number(count.rows[0]?.total??0);
+   const applications=await pool.query(
+    `SELECT application_id,status FROM announcement_applications
+      WHERE announcement_id=$1 ORDER BY updated_at DESC,application_id DESC
+      LIMIT 10 OFFSET $2`,[announcementId,page*10]);
+   const buttons=applications.rows.map(row=>[
+    Markup.button.callback(
+     "👤 応募 #"+Number(row.application_id)+" / "+String(row.status),
+     `application:manage:view:${Number(row.application_id)}`),
+   ]);
+   const paging=[];
+   if(page>0)paging.push(Markup.button.callback("◀ 前へ",
+    `room:published:applicants:${announcementId}:${page-1}`));
+   if((page+1)*10<total)paging.push(Markup.button.callback("次へ ▶",
+    `room:published:applicants:${announcementId}:${page+1}`));
+   if(paging.length)buttons.push(paging);
+   buttons.push([Markup.button.callback("↩ 投稿管理へ戻る",
+    `room:published:manage:${announcementId}`)]);
+   await ctx.answerCbQuery();
+   await ctx.editMessageText(
+    "👥 応募者を見る\\n"+published.title+"\\n応募件数："+total+
+    (total?"\\n応募者を選択すると承認・拒否できます。":"\\nまだ応募はありません。"),
+    Markup.inlineKeyboard(buttons));
+  }catch{
+   await ctx.answerCbQuery("応募一覧を確認できません");
+  }
+ });
  bot.action(/^room:published:edit:(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const sourceId=Number(ctx.match[1]);
