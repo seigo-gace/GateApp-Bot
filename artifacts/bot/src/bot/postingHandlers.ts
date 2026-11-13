@@ -222,7 +222,7 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
  if(stage==="tag_items"){
   const category=Number(d.data.tagCategory),page=Number(d.data.tagPage)||0;
   const selected=roomTags(d,d.data.tagPurpose==="love"?"loveTags":"likeTags");
-  return Markup.inlineKeyboard(roomRecruitmentTagRows(category,page,selected,tagCallbacks));
+  return Markup.inlineKeyboard(roomRecruitmentTagRows(category,page,selected,tagCallbacks,d.data.tagPurpose==="love"?"love":"like"));
  }
  if(d.step==="awaiting_room_url"||d.step==="awaiting_datetime")
   return Markup.inlineKeyboard(nav);
