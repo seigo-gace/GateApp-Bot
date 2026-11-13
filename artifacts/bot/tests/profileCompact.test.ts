@@ -23,7 +23,7 @@ test("compact profile uses the exact recruitment 3+2 controls and distinct Like/
  assert.deepEqual(rows[0]?.map(b=>"style" in b?b.style:undefined),["primary","success","danger"]);
  assert.deepEqual(rows[1]?.map(b=>b.text),["✅ 目的","✅ 場所"]);
  assert.equal(rows[2]?.[0]?.text,"🖼️🎬 アルバム 0/5");
- assert.equal(rows[3]?.[0]?.text,"✅ プロフィール保存");
+ assert.equal(rows[3]?.[0]?.text,"✅ 保存・3掲示板へ投稿");
  assert.equal(rows[3]?.[1]?.text,"キャンセル");
  assert.equal("style" in rows[3]![1]!?rows[3]![1]!.style:undefined,"danger");
  const fresh=compactProfileRows(draft());
