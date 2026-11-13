@@ -1,4 +1,4 @@
-/** Recolor and correct ALL already-published posting entrances in place.
+/** Recolor only allowed existing posting entrances; exclude links and general guides.
  * No new Telegram messages, no new topics, and no replacement of working Room UI.
  * Existing posted message IDs must be present and verified before editing.
  */
@@ -26,6 +26,17 @@ async function main(){
   SELECT chat_id,message_thread_id,message_id,verified_by
   FROM topic_dm_entry_pins
   WHERE state='published' AND pinned=TRUE AND message_id IS NOT NULL
+    AND NOT EXISTS(
+      SELECT 1 FROM posting_topics t WHERE
+      t.chat_id=topic_dm_entry_pins.chat_id AND
+      t.message_thread_id=topic_dm_entry_pins.message_thread_id
+      AND t.purpose='link')
+    AND NOT EXISTS(
+      SELECT 1 FROM board_menu_panels g WHERE
+      g.chat_id=topic_dm_entry_pins.chat_id AND
+      g.message_thread_id=topic_dm_entry_pins.message_thread_id
+      AND g.panel_type='general_guide')
+    AND title !~ '(総合案内|コミュニテーリング|相互リング|ﾘﾝｸ|コミュニティリンク|🔗)'
     AND ($1::boolean=FALSE OR updated_at<'2026-11-13T15:23:00Z'::timestamptz)
   ORDER BY chat_id,message_thread_id
   LIMIT CASE WHEN $1::boolean THEN 12 ELSE 10000 END`,[resume]);
