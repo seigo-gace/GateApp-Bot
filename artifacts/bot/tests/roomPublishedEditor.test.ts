@@ -34,26 +34,22 @@ test("finished Room+募集 stays listed but cannot be edited through meeting act
  assert.ok(!ui.keyboard.reply_markup.inline_keyboard.flat().some(b=>b.text.includes("終了する")||b.text.includes("中止する")));
 });
 
-test("published Room+募集 groups navigation links into balanced rows without changing URLs",()=>{
- const pub={...room("live"),destinations:[
-  {chatId:-1003847210571,messageId:839,topicTitle:"新宿"},
-  {chatId:-1003847210571,messageId:840,topicTitle:"ビデオチャット"},
+test("scheduled approved owner sees applicant management and exact same-group Topic navigation",()=>{
+ const pub={...room("scheduled"),scheduledAt:"2026-11-20T11:00:00.000Z",destinations:[
+  {chatId:-1003847210571,threadId:69,messageId:839,topicTitle:"新宿"},
+  {chatId:-1003847210571,threadId:116,messageId:840,topicTitle:"ビデオチャット"}
  ]};
  const ui=roomPublicationEditor(pub);
  const rows=ui.keyboard.reply_markup.inline_keyboard;
- assert.equal(rows[0]?.length,3); // owner: finish/edit/delete
- assert.equal(rows[1]?.length,3); // join + original + video topic
- assert.deepEqual(rows[1]?.map(b=>b.text),[
-  "🎥 開始済みROOMに入る","📍 元の投稿先を開く","🎬 ビデオチャット投稿先を開く"
+ assert.deepEqual(rows.map(row=>row.length),[1,3,2]);
+ assert.deepEqual(rows[1]!.map(b=>b.text),["▶ 開始して入室","👥 応募者を見る","🗑 削除"]);
+ assert.deepEqual(rows[2]!.map(b=>b.text),["🔗 投稿先へ戻る","🎬 専用トピックを開く"]);
+ assert.deepEqual(rows[2]!.map(b=>"url" in b?b.url:null),[
+  "https://t.me/c/3847210571/69","https://t.me/c/3847210571/116"
  ]);
- assert.deepEqual(rows[1]?.map(b=>"url" in b?b.url:null),[
-  "https://meet.jit.si/GACE-TEST-ROOM",
-  "https://t.me/c/3847210571/839",
-  "https://t.me/c/3847210571/840"
- ]);
- const finished=roomPublicationEditor({...pub,status:"finished"});
- assert.equal(finished.keyboard.reply_markup.inline_keyboard.length,1);
- assert.equal(finished.keyboard.reply_markup.inline_keyboard[0]?.length,2);
+ assert.equal(rows[0]![0]!.text,"✏️ 編集");
+ const free=roomPublicationEditor({...pub,visibility:"public"});
+ assert.ok(!free.keyboard.reply_markup.inline_keyboard.flat().some(x=>x.text.includes("応募者を見る")));
 });
 test("deletion still accepts immutable sent receipts after destination is disabled",()=>{
  assert.doesNotThrow(()=>assertRoomDeletionReceipt({
