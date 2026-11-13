@@ -7,6 +7,7 @@ import {
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
 import {recruitmentDecisionRow,recruitmentCompactSelectorRows} from "../src/services/recruitmentButtonLayout.js";
 import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../src/services/roomRecruitmentTagPanels.js";
+import {toggleLike} from "../src/services/profileLike.js";
 
 test("manual recruitment preserves body lines and does not write a profile",()=>{
  const d=parseRecruitmentMessage("今夜の募集\nゼロ\n175 80 40\n集合場所は相談\n時間は夜",false);
@@ -192,4 +193,20 @@ test("相手募集 uses Room Like/Love palette, reusable chooser, and independen
  assert.match(rich,/#Like：#変態/);
  assert.match(rich,/#Love：#乳首/);
  assert.equal(d.likeTags,undefined);
+});
+
+test("recruitment Like/Love use the exact profile toggle and never clear unrelated purpose/place values",()=>{
+ const base=parseRecruitmentMessage("募集\nゼロ\n170 80 40",false);
+ const draft={...base,likeTags:[],loveTags:[],purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const one={...draft,likeTags:toggleLike(draft.likeTags,0,0)};
+ assert.equal(one.likeTags.length,1);
+ assert.equal(one.loveTags.length,0);
+ const two={...one,loveTags:toggleLike(one.loveTags,1,0)};
+ assert.equal(two.likeTags.length,1);
+ assert.equal(two.loveTags.length,1);
+ const three={...two,likeTags:toggleLike(two.likeTags,0,0)};
+ assert.deepEqual(three.likeTags,[]);
+ assert.equal(three.loveTags.length,1);
+ assert.deepEqual(three.purposeCodes,["サシ"]);
+ assert.deepEqual(three.placeCodes,["場所あり"]);
 });
