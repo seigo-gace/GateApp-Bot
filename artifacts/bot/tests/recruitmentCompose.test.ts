@@ -5,7 +5,8 @@ import {
  validateRecruitmentReady,validateRecruitmentIdentityReady,recruitmentTextPhase,
 } from "../src/services/recruitmentCompose.js";
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
-import {recruitmentDecisionRow} from "../src/services/recruitmentButtonLayout.js";
+import {recruitmentDecisionRow,recruitmentCompactSelectorRows} from "../src/services/recruitmentButtonLayout.js";
+import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../src/services/roomRecruitmentTagPanels.js";
 
 test("manual recruitment preserves body lines and does not write a profile",()=>{
  const d=parseRecruitmentMessage("今夜の募集\nゼロ\n175 80 40\n集合場所は相談\n時間は夜",false);
@@ -142,4 +143,53 @@ test("optional fourth line: manual 3 lines and linked title-only are valid",()=>
  assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム",false));
  assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム\n170 80 17",false));
  assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム\n175 80 40\n"+("長".repeat(3001)),false));
+});
+
+test("相手募集 shares Room first-row selectors, with 目的/場所 only in the second two-column row",()=>{
+ const callbacks={position:"recruit:panel:7:position",like:"recruit:panel:7:like",
+  love:"recruit:panel:7:love",purpose:"recruit:panel:7:purpose",place:"recruit:panel:7:place"};
+ const selected={like:true,love:true,purpose:true,place:false};
+ const rows=recruitmentCompactSelectorRows("manual",true,selected,callbacks);
+ assert.deepEqual(rows.map(r=>r.length),[3,2]);
+ assert.deepEqual(rows[0].map(b=>b.text),["✅ ポジション","✅ #Like","✅ #Love"]);
+ assert.deepEqual(rows[0].map(b=>b.style),["primary","success","danger"]);
+ assert.deepEqual(rows[1].map(b=>b.text),["✅ 目的","場所"]);
+ assert.deepEqual(rows[1].map(b=>b.callback_data),
+  ["recruit:panel:7:purpose","recruit:panel:7:place"]);
+ assert.deepEqual(rows[1].map(b=>b.style),["primary","primary"]);
+ const linked=recruitmentCompactSelectorRows("linked",false,
+  {like:false,love:false,purpose:false,place:true},callbacks);
+ assert.deepEqual(linked.map(r=>r.length),[2,2]);
+ assert.deepEqual(linked[0].map(b=>b.text),["#Like","#Love"]);
+ assert.deepEqual(linked[1].map(b=>b.text),["目的","✅ 場所"]);
+});
+test("相手募集 uses Room Like/Love palette, reusable chooser, and independent tag snapshot",()=>{
+ const cb={
+  openCategory:(n:number)=>"cat:"+n,
+  selectItem:(c:number,n:number)=>"tag:"+c+":"+n,
+  changePage:(c:number,n:number)=>"page:"+c+":"+n,
+  save:"save",back:"back",cancel:"cancel"
+ };
+ for(const purpose of ["like","love"] as const){
+  const categories=roomRecruitmentCategoryRows(cb,purpose);
+  assert.deepEqual(categories.map(row=>row.length),[3,3,2]);
+  assert.equal(categories[0][0]?.style,purpose==="like"?"success":"danger");
+  assert.match(roomRecruitmentTagHeading(purpose),purpose==="like"?/自分の特徴/:/相手に求める特徴/);
+  const choices=roomRecruitmentTagRows(0,0,[],cb,purpose);
+  assert(choices.flat().some(b=>b.callback_data==="tag:0:0"));
+ }
+ const d=parseRecruitmentMessage("募集タイトル\nゼロ\n175 80 40",false);
+ const marked={...d,position:"タチ",
+  likeTags:[{category:"エロワード",tag:"変態"}],
+  loveTags:[{category:"パーツ",tag:"乳首"}],
+  purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const text=renderRecruitmentPreview(marked);
+ assert.match(text,/#Like：#変態/);
+ assert.match(text,/#Love：#乳首/);
+ assert.match(text,/目的：#サシ/);
+ assert.match(text,/場所：#場所あり/);
+ const rich=JSON.stringify(buildRecruitmentRichPreview(marked,7,"エリア's BBS"));
+ assert.match(rich,/#Like：#変態/);
+ assert.match(rich,/#Love：#乳首/);
+ assert.equal(d.likeTags,undefined);
 });
