@@ -125,7 +125,7 @@ export async function bareStartPostingExtra(chatId: number) {
   return Markup.inlineKeyboard(rows.map((row,rowIndex)=>row.map((button,columnIndex)=>({
     ...button,
     style:postingMenuButtonStyle(APPROVED_POSTING_ROWS[rowIndex]![columnIndex]!),
-  } as typeof button))));
+  } as unknown as typeof button))));
 }
 
 /** @internal row layout check for tests */
