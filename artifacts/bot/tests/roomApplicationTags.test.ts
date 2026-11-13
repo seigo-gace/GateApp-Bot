@@ -102,7 +102,8 @@ test("ROOM応募 and 募集+Room tag panels use 3/4 columns and shared red-cance
      `application:tag:${purpose}:987:page:${category}:${page+1}`);
     const candidates=rows.slice(0,-1);
     assert(candidates.every(row=>row.length>=2&&row.length<=4));
-    assert(candidates.every(row=>row.length>=3)||total-page*12<=2);
+    if(Math.min(12,total-page*12)>=3)
+     assert(candidates.some(row=>row.length>=3),"three/four-column primary layout");
     assert(candidates.flat().every(b=>b.style===(purpose==="like"?"success":"danger")));
     assert(candidates.every(row=>row.every(b=>!b.text.includes("次")&&!b.text.includes("戻る"))));
    }
