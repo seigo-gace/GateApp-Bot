@@ -210,3 +210,21 @@ test("recruitment Like/Love use the exact profile toggle and never clear unrelat
  assert.deepEqual(three.purposeCodes,["サシ"]);
  assert.deepEqual(three.placeCodes,["場所あり"]);
 });
+
+test("four-line re-entry preserves separately selected Like/Love and original purpose/place",()=>{
+ const old={...parseRecruitmentMessage("最初\nゼロ\n175 80 40",false),
+  position:"タチ",
+  likeTags:[{category:"エロワード",tag:"変態"}],
+  loveTags:[{category:"パーツ",tag:"乳首"}],
+  purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const next=parseRecruitmentMessage("新タイトル\nゼロ\n175 80 40\n追加入力",false);
+ const retained={...old,...next,position:old.position,
+  purposeCodes:old.purposeCodes,placeCodes:old.placeCodes,
+  likeTags:old.likeTags,loveTags:old.loveTags};
+ assert.equal(retained.title,"新タイトル");
+ assert.equal(retained.body,"追加入力");
+ assert.match(renderRecruitmentPreview(retained),/#Like：#変態/);
+ assert.match(renderRecruitmentPreview(retained),/#Love：#乳首/);
+ assert.match(renderRecruitmentPreview(retained),/目的：#サシ/);
+ assert.match(renderRecruitmentPreview(retained),/場所：#場所あり/);
+});
