@@ -161,7 +161,7 @@ export async function recoverExistingTopicDmEntry(
  // Telegram's successful edit proves this exact message exists and is
  // writable by the Bot. Retain it rather than posting a duplicate.
  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
-  reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"}]]},
+  reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
  });
  await telegram.pinChatMessage(chatId,messageId,{disable_notification:true});
  const saved=await pool.query(
@@ -200,7 +200,7 @@ export async function refreshPublishedTopicDmEntry(
  // keep the prior pin and avoid a duplicate send in either case.
  try{
   await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"}]]},
+   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
   });
  }catch(e){
   await pool.query(
@@ -280,7 +280,7 @@ export async function publishTopicDmEntry(
   const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
   const message=await telegram.sendMessage(chatId,TOPIC_ENTRY_TEXT,{
    message_thread_id:threadId,
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"}]]},
+   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
   });
   sent=true;
   await pool.query(
