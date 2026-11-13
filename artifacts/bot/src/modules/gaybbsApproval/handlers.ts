@@ -105,7 +105,7 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
    return;
   }
   const out=await showWizardScreen(telegram,Number(a.tg_user_id),a.last_message_id??undefined,
-   "✅ 3グループ共通の承認が完了しました。各グループへの参加申請ボタンから進んでください。審査質問の再回答は不要です。",
+   "✅ 3グループ共通の審査が完了しました。各ボタンから参加申請してください。Telegramに「管理者の承認が必要」と表示されても、Botが自動承認します。管理者の手動承認や審査質問の再回答は不要です。",
    Markup.inlineKeyboard([remaining.slice(0,2),...(remaining.length>2?[remaining.slice(2)]:[])]));
   await rememberScreen(a,out.messageId);
   return;
