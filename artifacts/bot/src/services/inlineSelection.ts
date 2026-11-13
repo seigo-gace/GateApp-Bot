@@ -72,3 +72,21 @@ export function adaptiveChoiceRows<T extends {text:string}>(items:readonly T[]):
   throw new Error("ADAPTIVE_LAYOUT_INVALID");
  return out;
 }
+
+/** Shared 3/4 position choice layout for Profile, Room+募集 and ROOM応募.
+ * Each owner supplies its own callback; Profile may show toggle markers.
+ */
+export function positionChoiceRows<T extends string>(
+ choices:readonly T[],selected:T|undefined,callback:(value:T,index:number)=>string,
+ showSelectionState=false,
+):{text:string;callback_data:string}[][]{
+ if(choices.length!==7)throw new Error("POSITION_CHOICES_INVALID");
+ const rows=[choices.slice(0,3),choices.slice(3)];
+ return rows.map(row=>row.map(value=>{
+  const index=choices.indexOf(value);
+  const callback_data=callback(value,index);
+  if(!callback_data||Buffer.byteLength(callback_data,"utf8")>64)
+   throw new Error("POSITION_CALLBACK_INVALID");
+  return {text:showSelectionState?selectionLabel(value,selected===value):value,callback_data};
+ }));
+}
