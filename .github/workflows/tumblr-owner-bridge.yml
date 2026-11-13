@@ -1,7 +1,7 @@
 name: Tumblr owner bridge build and contracts
 on:
   push:
-    branches: ['feat/tumblr-owner-bridge-20261114']
+    branches: ['feat/tumblr-owner-bridge-live-20261114']
   pull_request:
     paths:
       - 'artifacts/bot/src/services/tumblrBridgeServer.ts'
