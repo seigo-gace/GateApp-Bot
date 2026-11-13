@@ -64,9 +64,9 @@ function applicationEntryText(linked:boolean,source:string):string{
 }
 function applicationEntryKeyboard(linked:boolean){
  return Markup.inlineKeyboard([
-  ...(!linked?[[Markup.button.callback("🎯 ポジション","application:position")]]:[]),
-  [Markup.button.callback("💖 #Like","application:tag:like:open"),
-   Markup.button.callback("💘 #Love","application:tag:love:open")],
+  [...(!linked?[Markup.button.callback("ポジション","application:position")]:[]),
+   Markup.button.callback("#Like","application:tag:like:open"),
+   Markup.button.callback("#Love","application:tag:love:open")],
   [Markup.button.callback("キャンセル","application:cancel")]
  ]);
 }
