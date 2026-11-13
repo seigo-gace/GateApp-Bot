@@ -141,7 +141,7 @@ async function main():Promise<void>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery();
   const kind=ctx.match[1];
-  if(kind==="profile")await startProfileEditor(ctx);
+  if(kind==="profile")await startCompactProfileEditor(ctx);
   else if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
