@@ -16,7 +16,6 @@ import {PURPOSE_TAGS,PLACE_TAGS,normalizePlaceCodes} from "../services/announcem
 import {LIKE_CATEGORIES,likePageBounds,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {PROFILE_ALBUM_LIMIT,appendProfileMedia,replaceProfileMedia,deleteProfileMedia,numberProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {sendProfileAlbum} from "./profileViewerHandlers.js";
-import {startProfileEditor} from "./profileHandlers.js";
 import {startCompactRecruitmentEditor} from "./recruitmentHandlers.js";
 import {startRoomEditor} from "./postingHandlers.js";
 import {resumeApplicationEditor} from "./applicationHandlers.js";
@@ -179,11 +178,13 @@ export async function startCompactProfileEditor(
  }
  if(!origins.has(origin))throw Error("PROFILE_COMPACT_ORIGIN_INVALID");
  const existingDraft=await profiles.getDraft(ctx.from.id);
- if(existingDraft && !active(existingDraft,existingDraft.revision)){
-  await startProfileEditor(ctx);return;
- }
  if(existingDraft){
-  await render(ctx.telegram,ctx.from.id,existingDraft);return;
+  // Always enter the same compact editor, including users with older
+  // in-progress profile drafts. Preserve their input and linked media.
+  const next=await profiles.putDraft(ctx.from.id,"compact",{
+   ...existingDraft.data,compactOrigin:origin
+  },existingDraft.revision);
+  await render(ctx.telegram,ctx.from.id,next);return;
  }
  const existing=await profiles.getProfile(ctx.from.id);
  // Never allow a recruitment draft to silently overwrite an existing original.
