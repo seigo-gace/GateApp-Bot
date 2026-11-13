@@ -53,3 +53,14 @@ test("postgres BIGSERIAL IDs preserved in JSON strings are accepted for existing
  for(const invalid of [null,undefined,"0",0,-1,"n/a","1; DROP TABLE",{},1.2,"9007199254740994"])
   assert.equal(normalizedApplicationId(invalid),null);
 });
+
+test("submitted owner notice includes the Room applicant-list action as well as approval controls",()=>{
+ const rows=roomApplicantNotificationKeyboard(123456,456,undefined,15)
+  .reply_markup.inline_keyboard;
+ assert.equal(rows.length,2);
+ assert.deepEqual(rows[0]?.map(x=>x.text),
+  ["💬 応募者へDM","✅ 承諾","❌ 拒否"]);
+ assert.equal(rows[1]?.[0]?.text,"👥 応募者を見る");
+ assert.equal("callback_data" in rows[1]![0]!&&rows[1]![0]!.callback_data,
+  "room:published:applicants:15");
+});
