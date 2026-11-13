@@ -39,6 +39,7 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
 /** Owner's direct applicant DM + accept / reject share the adopted layout. */
 export function roomApplicantNotificationKeyboard(
  applicantId:number,applicationId:number,username?:unknown,
+ announcementId?:number
 ){
  if(!Number.isSafeInteger(applicationId)||applicationId<=0)
   throw Error("ROOM_APPLICATION_NOTIFICATION_ID_INVALID");
@@ -47,7 +48,11 @@ export function roomApplicantNotificationKeyboard(
   Markup.button.callback("✅ 承諾",`application:decide:${applicationId}:accepted`),
   Markup.button.callback("❌ 拒否",`application:decide:${applicationId}:declined`),
  ];
- return Markup.inlineKeyboard(adaptiveChoiceRows(actions));
+ const rows=adaptiveChoiceRows(actions);
+ if(Number.isSafeInteger(announcementId)&&Number(announcementId)>0)
+  rows.push([Markup.button.callback("👥 応募者を見る",
+   `room:published:applicants:${announcementId}`)]);
+ return Markup.inlineKeyboard(rows);
 }
 export async function deliverNextAnnouncementNotification(telegram:Telegram):Promise<{
  id:number;state:"sent"|"needs_reconcile";
@@ -82,7 +87,7 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
   const applicationId=normalizedApplicationId(payload.applicationId);
   if(payload.action==="submitted"&&applicationId!==null){
    const entry=await pool.query(
-    `SELECT ap.consented_profile,ap.applicant_user_id,p.room_id
+    `SELECT ap.consented_profile,ap.applicant_user_id,p.room_id,ap.announcement_id
        FROM announcement_applications ap
        JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
        WHERE ap.application_id=$1 AND p.owner_user_id=$2`,
@@ -102,7 +107,7 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
      // available even when getChat fails or no public username is set.
     }
     extra=roomApplicantNotificationKeyboard(
-     applicantId,applicationId,username);
+     applicantId,applicationId,username,Number(entry.rows[0].announcement_id));
     useHtml=true;
    }
   }
