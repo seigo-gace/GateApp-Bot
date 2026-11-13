@@ -64,6 +64,7 @@ export type ProfileDisplayExtras = {
  pr?:string|null;likeTags?:readonly {category:string;tag:string}[];
  loveTags?:readonly {category:string;tag:string}[];
  media?:readonly {type:string;fileId:string}[];
+ title?:string;purposeCodes?:readonly string[];placeCodes?:readonly string[];
 };
 /** Fixed-profile card body. Show headings with blank values, never "未登録".
  * Only the first three tags of each purpose appear on the card; detailed
@@ -76,11 +77,14 @@ function displayProfileLines(p:ProfileBasicDraft & ProfileDisplayExtras,displayN
  const pr=p.pr?.trim().replace(/\s+/g," ").slice(0,180)??"";
  return [
   "🪪 "+displayName,
+  ...(p.title?.trim()?["📢 "+compact(p.title)]:[]),
   p.heightCm+"cm | "+p.weightKg+"kg | "+p.age+"歳 | "+compact(p.position||"未選択"),
   "髪型："+compact(p.hair)+" | 体型："+compact(p.body),
   "✈️ エリア："+(p.region&&p.area?compact(p.region)+" ＞ "+compact(p.area):""),
   "💖 #Like | "+tags(p.likeTags),
   "💘 #Love | "+tags(p.loveTags),
+  ...(p.purposeCodes?.length?["🎯 目的："+p.purposeCodes.map(t=>"#"+compact(t)).join(" ")]:[]),
+  ...(p.placeCodes?.length?["📍 場所："+p.placeCodes.map(t=>"#"+compact(t)).join(" ")]:[]),
   "PR："+compact(pr),
  ];
 }
