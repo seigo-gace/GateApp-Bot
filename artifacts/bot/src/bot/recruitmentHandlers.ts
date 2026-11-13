@@ -528,7 +528,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    {...d.data,editField:null});
   await ctx.answerCbQuery();await showPreview(ctx.telegram,ctx.from.id,next);
  });
- bot.action(/^recruit:panel:(\d+):(position|purpose|place)$/,async ctx=>{
+ bot.action(/^recruit:panel:(\d+):(position|purpose|place|like|love)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
   const rev=Number(ctx.match[1]),panel=ctx.match[2];
@@ -537,55 +537,119 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await ctx.answerCbQuery("古い操作です");return;
   }
   const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
-   ...d.data,recruitPanel:panel,recruitPanelReturnStep:d.step==="awaiting_tags"?d.data.recruitPanelReturnStep:d.step});
+   ...d.data,recruitPanel:panel,recruitTagCategory:null,recruitTagPage:0,
+   recruitPanelReturnStep:d.step==="awaiting_tags"?d.data.recruitPanelReturnStep:d.step});
   await ctx.answerCbQuery();
   await renderPanel(ctx.telegram,ctx.from.id,next);
  });
+ async function leaveRecruitPanel(telegram:Telegram,id:number,d:EditorDraft){
+  const step=d.data.recruitPanelReturnStep==="awaiting_text"?"awaiting_text":"preview";
+  const updated=await updateDraft(id,"announcement",d.revision,step,{
+   ...d.data,recruitPanel:null,recruitTagCategory:null,recruitTagPage:0,recruitPanelReturnStep:null});
+  if(step==="awaiting_text")await show(telegram,id,updated,inputInstructions(asInput(updated).mode==="linked"),initialKeyboard(updated));
+  else await showPreview(telegram,id,updated);
+ }
  async function renderPanel(telegram:Telegram,id:number,d:EditorDraft){
-  const panel=d.data.recruitPanel as string;
-  const data=asInput(d);
+  const panel=String(d.data.recruitPanel||"");
+  const data=asInput(d),rev=d.revision;
+  if(panel==="like"||panel==="love"){
+   const purpose=panel;
+   const index=typeof d.data.recruitTagCategory==="number"?d.data.recruitTagCategory:-1;
+   const page=Number(d.data.recruitTagPage)||0;
+   const callbacks={
+    openCategory:(n:number)=>`recruit:tagcat:${rev}:${n}`,
+    selectItem:(_category:number,n:number)=>`recruit:tagitem:${rev}:${n}`,
+    changePage:(_category:number,n:number)=>`recruit:tagpage:${rev}:${n}`,
+    save:`recruit:tagsave:${rev}`,back:`recruit:tagback:${rev}`,
+    cancel:`recruit:cancel:${rev}`,
+   };
+   const tags=purpose==="like"?data.likeTags??[]:data.loveTags??[];
+   const rows=index<0?roomRecruitmentCategoryRows(callbacks,purpose):
+    roomRecruitmentTagRows(index,page,tags,callbacks,purpose);
+   await show(telegram,id,d,roomRecruitmentTagHeading(purpose,index<0?undefined:index)+
+    "\n選択中："+tags.length+"件",Markup.inlineKeyboard(rows));
+   return;
+  }
   let rows:any[][]=[];
   if(panel==="position"){
    rows=recruitmentSelectionRows(PROFILE_POSITIONS,true).map(group=>group.map(p=>
     b((data.position===p?"✅ ":"▫️ ")+p,
-      `recruit:select:${d.revision}:position:${PROFILE_POSITIONS.indexOf(p)}`,"primary")));
-  }
-  if(panel==="purpose"){
-   rows=recruitmentSelectionRows(PURPOSE_TAGS).map(group=>group.map(t=>
-    b((data.purposeCodes?.includes(t)?"✅ ":"▫️ ")+t,
-      `recruit:select:${d.revision}:purpose:${PURPOSE_TAGS.indexOf(t)}`,"success")));
-  }
-  if(panel==="place"){
+     `recruit:select:${rev}:position:${PROFILE_POSITIONS.indexOf(p)}`,"primary")));
+  }else if(panel==="purpose"){
+   rows=recruitmentSelectionRows(PURPOSE_TAGS,true).map(group=>group.map(t=>
+    b((data.purposeCodes.includes(t)?"✅ ":"▫️ ")+t,
+     `recruit:select:${rev}:purpose:${PURPOSE_TAGS.indexOf(t)}`,"primary")));
+  }else if(panel==="place"){
    const items=["場所あり","場所なし","足あり"];
-   rows=recruitmentSelectionRows(items).map(group=>group.map(p=>
-    b((data.placeCodes?.includes(p)?"✅ ":"▫️ ")+p,
-      `recruit:select:${d.revision}:place:${items.indexOf(p)}`)));
-  }
-  const rev=d.revision;
-  rows.push(data.mode==="manual"?[
-   b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
-   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`,"danger")]:[
-   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
-  rows.push(d.data.publishedSourceId?
-   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
+   rows=recruitmentSelectionRows(items,true).map(group=>group.map(t=>
+    b((data.placeCodes.includes(t)?"✅ ":"▫️ ")+t,
+     `recruit:select:${rev}:place:${items.indexOf(t)}`,"primary")));
+  }else throw Error("RECRUITMENT_PANEL_INVALID");
+  rows.push([b("↩ 戻る",`recruit:tagback:${rev}`),
+   b("✅ 保存",`recruit:tagsave:${rev}`,"success"),
+   b("キャンセル",`recruit:cancel:${rev}`,"danger")]);
   const ready=!!data.title?.trim();
   const profile=ready&&data.mode==="linked"?await getProfile(id):null;
   const preview=ready?renderRecruitmentPreview(data,profile):
    escapeProfileHtml(inputInstructions(data.mode==="linked"));
-  const selected="選択済み：\n"+
-   "ポジション："+escapeProfileHtml(data.mode==="linked"?
-    (profile&&"position" in profile&&typeof profile.position==="string"?profile.position:"プロフィール参照"):(data.position??"未選択"))+"\n"+
-   "目的："+escapeProfileHtml(data.purposeCodes?.join("、")||"未選択")+"\n"+
-   "場所："+escapeProfileHtml(data.placeCodes?.join("、")||"未選択");
   const heading=panel==="position"?"ポジションを選択してください（1つ必須）。":
    panel==="purpose"?"目的タグを選択してください（複数選択可能）。":
    "場所あり／なしは択一、足ありは独立して選択できます。";
-  await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+preview+
-   "\n\n"+selected+"\n\n"+escapeProfileHtml(heading),
-   Markup.inlineKeyboard(rows),true);
+  await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+
+   preview+"\n\n"+escapeProfileHtml(heading),Markup.inlineKeyboard(rows),true);
  }
+ bot.action(/^recruit:tagcat:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),cat=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")||!["like","love"].includes(String(d.data.recruitPanel))||
+   d.data.recruitTagCategory!==null||!LIKE_CATEGORIES[cat]){
+   await ctx.answerCbQuery("古い選択です");return;
+  }
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
+   ...d.data,recruitTagCategory:cat,recruitTagPage:0});
+  await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^recruit:tagitem:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),idx=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")||!["like","love"].includes(String(d.data.recruitPanel))){
+   await ctx.answerCbQuery("古い選択です");return;
+  }
+  const cat=Number(d.data.recruitTagCategory),page=Number(d.data.recruitTagPage)||0;
+  if(d.data.recruitTagCategory===null||!LIKE_CATEGORIES[cat]){await ctx.answerCbQuery("分類を選択してください");return;}
+  let bounds;
+  try{bounds=likePageBounds(cat,page);}catch{await ctx.answerCbQuery("ページを選択し直してください");return;}
+  if(idx<bounds.start||idx>=bounds.end){await ctx.answerCbQuery("古い選択です");return;}
+  const field=d.data.recruitPanel==="love"?"loveTags":"likeTags";
+  const changed=toggleLike(asInput(d)[field]??[],cat,idx);
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{...d.data,[field]:changed});
+  await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^recruit:tagpage:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),page=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")||!["like","love"].includes(String(d.data.recruitPanel))||
+   d.data.recruitTagCategory===null){await ctx.answerCbQuery("古いページです");return;}
+  try{likePageBounds(Number(d.data.recruitTagCategory),page);}catch{await ctx.answerCbQuery("ページがありません");return;}
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{...d.data,recruitTagPage:page});
+  await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^recruit:(tagsave|tagback):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")){await ctx.answerCbQuery("古い選択です");return;}
+  if(op==="tagback"&&["like","love"].includes(String(d.data.recruitPanel))&&
+    typeof d.data.recruitTagCategory==="number"){
+   const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
+    ...d.data,recruitTagCategory:null,recruitTagPage:0});
+   await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);return;
+  }
+  await ctx.answerCbQuery();await leaveRecruitPanel(ctx.telegram,ctx.from.id,d);
+ });
  bot.action(/^recruit:select:(\d+):(position|purpose|place):(\d{1,2})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
