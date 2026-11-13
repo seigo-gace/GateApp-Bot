@@ -27,14 +27,18 @@ export type TumblrBridgeOutput = {
 };
 
 export async function handleTumblrBridge(
- telegram: Telegram, ownerId: number, input: TumblrBridgeInput
+ telegram: Telegram, input: TumblrBridgeInput
 ): Promise<TumblrBridgeOutput> {
- if (!Number.isSafeInteger(ownerId)||ownerId<=0||
-     typeof input?.destination!=="string"||
+ if (typeof input?.destination!=="string"||
      !/^[1-9][0-9]{0,12}$/.test(input.destination))
    throw new Error("BRIDGE_TARGET_INVALID");
  const topicId=Number(input.destination);
  const topic=await getVerifiedTopic(topicId,"announcement");
+ const group=await targetRepo.getTargetByChatId(topic.chatId);
+ const ownerId=Number(group?.owner_user_id);
+ if(!group||group.target_type!=="entry_group"||
+    !Number.isSafeInteger(ownerId)||ownerId<=0)
+   throw new Error("BRIDGE_GROUP_UNVERIFIED");
  if(input.action==="authorize"){
    await assertFeatureReleased("announcement");
    return {authorized:true};
@@ -42,8 +46,6 @@ export async function handleTumblrBridge(
  if(input.action==="member"){
    const user=Number(input.user_id);
    if(!Number.isSafeInteger(user)||user<=0)throw new Error("BRIDGE_MEMBER_INVALID");
-   const group=await targetRepo.getTargetByChatId(topic.chatId);
-   if(!group||group.target_type!=="entry_group")throw new Error("BRIDGE_GROUP_UNVERIFIED");
    const member=await onlineMembership(telegram,topic.chatId,user);
    if(member!=="member")return {verified:false};
    const approved=await commonGayBbsApproval(telegram,user,group.target_id);
@@ -86,10 +88,7 @@ export async function handleTumblrBridge(
 
 export function startTumblrBridge(telegram: Telegram): Server|null {
  const file=process.env.TUMBLR_BRIDGE_KEY_FILE;
- const rawOwner=process.env.TUMBLR_BRIDGE_OWNER_ID;
- if(!file || !rawOwner)return null; // Existing Bot remains unchanged until configured.
- const ownerId=Number(rawOwner);
- if(!Number.isSafeInteger(ownerId)||ownerId<=0)throw new Error("BRIDGE_OWNER_INVALID");
+ if(!file)return null; // Existing Bot remains unchanged until configured.
  const key=readFileSync(file,"utf8").trim();
  if(key.length<32)throw new Error("BRIDGE_KEY_INVALID");
  const port=Number(process.env.TUMBLR_BRIDGE_PORT || "8876");
@@ -117,7 +116,7 @@ export function startTumblrBridge(telegram: Telegram): Server|null {
        body+=String(chunk);
      }
      const input=JSON.parse(body) as TumblrBridgeInput;
-     const value=await handleTumblrBridge(telegram,ownerId,input);
+     const value=await handleTumblrBridge(telegram,input);
      respond(200,{ok:true,...value});
    }catch(error){
      const message=error instanceof Error?error.message:"BRIDGE_ERROR";
