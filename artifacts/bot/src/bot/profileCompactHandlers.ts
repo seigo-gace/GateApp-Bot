@@ -107,7 +107,7 @@ function panelKeyboard(d:ProfileDraft){
   return Markup.inlineKeyboard(roomRecruitmentCategoryRows(cb,p));
  }
  const values=p==="position"?PROFILE_POSITIONS:p==="purpose"?PURPOSE_TAGS:PLACE_TAGS;
- const selected=p==="position"?(x.position?[x.position]:[]):
+ const selected:readonly string[]=p==="position"?(x.position?[x.position]:[]):
   p==="purpose"?(x.purposeCodes??[]):(x.placeCodes??[]);
  const rows=recruitmentSelectionRows(values,true).map(group=>
   group.map(value=>button((selected.includes(value)?"✅ ":"▫️ ")+value,
@@ -349,7 +349,7 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("プロフィールを非公開保存しました");
    const origin=origins.has(d.data.compactOrigin as Origin)?d.data.compactOrigin as Origin:"profile";
    await ctx.editMessageText("✅ プロフィールを非公開保存しました。\n"+
-    escapeProfileHtml(renderProfileBasicPreview(profile,ctx.from.username??"")),{
+    renderProfileBasicPreview(profile,ctx.from.username??""),{
     parse_mode:"HTML",
     ...Markup.inlineKeyboard([[button("↩ 元の操作へ戻る","pc:return:"+origin)]])
    });
@@ -461,6 +461,7 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
      "アルバムは5件までです。差し替えるか、既存の項目を削除してください。":
      "アルバムへの登録に失敗しました。")+(notice?"\n"+notice:""));
   }
+  return;
  };
  bot.on("photo",async(ctx,next)=>mediaInput(ctx,next,"photo"));
  bot.on("video",async(ctx,next)=>mediaInput(ctx,next,"video"));
