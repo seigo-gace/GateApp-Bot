@@ -4,10 +4,12 @@
 import {parseProfileBasic,escapeProfileHtml,isProfilePosition} from "./profileCore.js";
 import type {ProfileBasicDraft} from "./profileCore.js";
 import {validateAnnouncementTags} from "./announcementTags.js";
+import {validLikeTags,type LikeTag} from "./profileLike.js";
 export type RecruitmentInput={
  title:string;body:string;mode:"linked"|"manual";
  nickname?:string;heightCm?:number;weightKg?:number;age?:number;position?:string;
  purposeCodes:string[];placeCodes:string[];
+ likeTags?:LikeTag[];loveTags?:LikeTag[];
 };
 /** The selector panel opened before first input still belongs to the text-entry phase.
  * A selector opened from preview must not re-consume arbitrary new text.
@@ -83,6 +85,10 @@ export function renderRecruitmentPreview(
  rows.push("<b>募集内容</b>");
  rows.push(e(draft.body));
  if(draft.mode==="linked")rows.push(...recruitmentIdentityLines(draft,profile));
+ for(const [label,tags] of [["💖 #Like",draft.likeTags],["💘 #Love",draft.loveTags]] as const){
+  const selected=validLikeTags(tags??[]);
+  if(selected.length)rows.push(label+"："+selected.map(t=>"#"+e(t.tag)).join(" "));
+ }
  if(draft.purposeCodes.length)rows.push("🎯 目的："+draft.purposeCodes.map(t=>"#"+e(t)).join(" "));
  if(draft.placeCodes.length)rows.push("📍 場所："+draft.placeCodes.map(t=>"#"+e(t)).join(" "));
  return rows.join("\n");
