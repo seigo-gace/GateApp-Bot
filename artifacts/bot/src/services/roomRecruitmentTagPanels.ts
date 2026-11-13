@@ -23,7 +23,7 @@ export function roomRecruitmentTagHeading(
   :"相手に求める特徴・好み・趣味・スタイルを選びます。";
  const title=category===undefined?"":LIKE_CATEGORIES[category]?.name;
  if(category!==undefined&&!title)throw new Error("ROOM_TAG_CATEGORY_INVALID");
- return "🏷️ "+kind+(title?"｜"+title:"")+" を選択してください。\\n"+description;
+ return "🏷️ "+kind+(title?"｜"+title:"")+" を選択してください。\n"+description;
 }
 export function roomRecruitmentCategoryRows(
  c:RoomTagPanelCallbacks,purpose:"like"|"love"
