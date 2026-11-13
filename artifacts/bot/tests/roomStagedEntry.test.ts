@@ -25,7 +25,7 @@ test("chosen room method keeps the four-line form and minimal selectable control
  assert.deepEqual(editing,[
   ["ポジション選択","#Like","#Love"],
   ["▶ 即開始","📅 予告する"],
-  ["↩ 戻る","キャンセル"]
+  ["↩ 戻る","🪪 プロフ登録","キャンセル"]
  ]);
  assert.deepEqual(labels(draft("awaiting_room_url",{modeSelected:true})),
   [["↩ 戻る","キャンセル"]]);
@@ -56,14 +56,14 @@ test("adopted ROOM editor has exact row layout and excludes every removed legacy
  assert.deepEqual(manual,[
   ["ポジション選択","#Like","#Love"],
   ["▶ 即開始","📅 予告する"],
-  ["↩ 戻る","キャンセル"]
+  ["↩ 戻る","🪪 プロフ登録","キャンセル"]
  ]);
  const linked=labels(draft("preview",{modeSelected:true,stage:"details",recruitmentMode:"linked",
   title:"テスト",description:"募集内容"}));
  assert.deepEqual(linked,[
   ["#Like","#Love"],
   ["▶ 即開始","📅 予告する"],
-  ["↩ 戻る","キャンセル"]
+  ["↩ 戻る","🪪 プロフ登録","キャンセル"]
  ]);
  for(const row of [...manual,...linked]){
   for(const text of row){
@@ -138,16 +138,16 @@ test("応募 starts and previews with the very same Room+募集 selector row and
  const manual=applicationChoiceKeyboard(false,"タチ").reply_markup.inline_keyboard;
  assert.deepEqual(manual.map(row=>row.map(button=>button.text)),[
   ["✅ ポジション","#Like","#Love"],
-  ["応募する","キャンセル"]
+  ["応募する","🪪 プロフ登録","キャンセル"]
  ]);
  assert.deepEqual(manual.map(row=>row.map(button=>button.style)),[
-  ["primary","success","danger"],["success","danger"]
+  ["primary","success","danger"],["success","primary","danger"]
  ]);
  assert.deepEqual(manual[1]!.map(button=>button.callback_data),
-  ["application:confirm","application:cancel"]);
+  ["application:confirm","pc:from:application","application:cancel"]);
  const linked=applicationChoiceKeyboard(true,"リバ").reply_markup.inline_keyboard;
  assert.deepEqual(linked.map(row=>row.map(button=>button.text)),[
-  ["#Like","#Love"],["応募する","キャンセル"]
+  ["#Like","#Love"],["応募する","🪪 プロフ登録","キャンセル"]
  ]);
  for(const rows of [manual,linked]){
   assert.ok(rows.flat().every(button=>!button.text.includes("即開始")&&!button.text.includes("予告する")));
