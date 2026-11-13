@@ -203,13 +203,13 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
  ]);
  if(["date_calendar","time_hour","time_minute"].includes(stage)){
   const actions={
-   month:(month:string)=>`room:dt:month:__REV__:__MONTH__`,
-   day:(day:string)=>`room:dt:day:__REV__:__DAY__`,
-   hour:(hour:string)=>`room:dt:hour:__REV__:__HOUR__`,
-   minute:(minute:string)=>`room:dt:minute:__REV__:__MIN__`,
-   manual:`room:dt:manual:__REV__`,
-   back:`room:back:__REV__`,
-   cancel:`room:cancel:__REV__`,
+   month:(month:string)=>`room:dt:month:${r}:${month}`,
+   day:(day:string)=>`room:dt:day:${r}:${day}`,
+   hour:(hour:string)=>`room:dt:hour:${r}:${hour}`,
+   minute:(minute:string)=>`room:dt:minute:${r}:${minute}`,
+   manual:`room:dt:manual:${r}`,
+   back:`room:back:${r}`,
+   cancel:`room:cancel:${r}`,
   };
   if(stage==="date_calendar"){
    const requested=String(d.data.pickerMonth||"");
