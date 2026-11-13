@@ -103,6 +103,14 @@ function keyboard(d:EditorDraft){
 function initialKeyboard(d:EditorDraft){
  return Markup.inlineKeyboard([...recruitmentSelectorRows(d),decisionRow(d.revision)]);
 }
+export function inputInstructions(linked:boolean){
+ return linked?
+  "📢 相手募集を作成\n保存済みプロフィールと連動します。タイトルを入力し、必要なら募集内容も同じメッセージで送信してください。\n\n"+
+   "1行目：タイトル\n2行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
+  "📢 相手募集を作成\nプロフィール未登録のため、この募集だけに使う情報を1通で入力してください。"+
+  "\n\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢"+
+  "\n4行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
+}
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
  const profile=input.mode==="linked"?await getProfile(id):null;
