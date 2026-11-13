@@ -28,6 +28,7 @@ import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
 import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
+import {roomRecruitmentCategoryRows,roomRecruitmentTagRows} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
@@ -207,30 +208,19 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
    (_value,index)=>`room:positionchoice:${r}:${index}`),
   ...nav
  ]);
- if(stage==="tag_categories")return Markup.inlineKeyboard([
-  ...LIKE_CATEGORIES.map((c,i)=>b(c.name,`room:tagcat:${r}:${i}`,"primary"))
-   .reduce<any[][]>((rows,item,i)=>{if(i%3===0)rows.push([]);rows.at(-1)!.push(item);return rows;},[]),
-  ...nav
- ]);
+ const tagCallbacks={
+  openCategory:(index:number)=>`room:tagcat:${r}:${index}`,
+  selectItem:(category:number,index:number)=>`room:tagitem:${r}:${category*100+index}`,
+  changePage:(_category:number,page:number)=>`room:tagpage:${r}:${page}`,
+  save:`room:tagsave:${r}`,back:`room:tagback:${r}`,
+  cancel:`room:cancel:${r}`,
+ };
+ if(stage==="tag_categories")return Markup.inlineKeyboard(
+  roomRecruitmentCategoryRows({...tagCallbacks,back:`room:back:${r}`}));
  if(stage==="tag_items"){
-  const cat=Number(d.data.tagCategory),page=Number(d.data.tagPage)||0;
-  const category=LIKE_CATEGORIES[cat];
-  if(!category)throw Error("ROOM_TAG_CATEGORY_INVALID");
+  const category=Number(d.data.tagCategory),page=Number(d.data.tagPage)||0;
   const selected=roomTags(d,d.data.tagPurpose==="love"?"loveTags":"likeTags");
-  const items=category.items.slice(page*LIKE_PAGE_SIZE,(page+1)*LIKE_PAGE_SIZE);
-  const rows=items.map((item,i)=>b(
-   (selected.some(t=>t.category===category.name&&t.tag===item)?"✅ ":"▫️ ")+item,
-   `room:tagitem:${r}:${cat*100+page*LIKE_PAGE_SIZE+i}`,"success"))
-   .reduce<any[][]>((out,item,i)=>{if(i%3===0)out.push([]);out.at(-1)!.push(item);return out;},[]);
-  const pagination:any[]=[];
-  if(page>0)pagination.push(Markup.button.callback("◀ 前へ",`room:tagpage:${r}:${page-1}`));
-  if((page+1)*LIKE_PAGE_SIZE<category.items.length)
-   pagination.push(Markup.button.callback("次へ ▶",`room:tagpage:${r}:${page+1}`));
-  if(pagination.length)rows.push(pagination);
-  rows.push([b("✅ 保存",`room:tagsave:${r}`,"success"),
-   b("↩ 戻る",`room:tagback:${r}`)]);
-  rows.push([Markup.button.callback("キャンセル",`room:cancel:${r}`)]);
-  return Markup.inlineKeyboard(rows);
+  return Markup.inlineKeyboard(roomRecruitmentTagRows(category,page,selected,tagCallbacks));
  }
  if(d.step==="awaiting_room_url"||d.step==="awaiting_datetime")
   return Markup.inlineKeyboard(nav);
