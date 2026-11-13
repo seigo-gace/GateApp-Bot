@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Unit-test resident Userbot topic audit (no Telegram connection)
+        run: python3 -m unittest discover -s scripts -p 'test_userbot_topic_entry_audit.py' -v
       - name: Build isolated GayBBS image (no credentials)
         run: docker build --file artifacts/bot/deploy/Dockerfile.gaybbs --tag gaybbs:ci --pull=false .
       - name: Check bundled program without Telegram, DB, or network

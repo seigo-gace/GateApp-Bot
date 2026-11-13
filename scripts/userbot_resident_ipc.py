@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "room_public_readback", "room_public_post_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "topic_entry_audit"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -37,7 +37,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         raise ValueError("REQUEST_SHAPE_INVALID")
     action = request.get("action")
     expected = ({"request_id", "action", "chat_id", "message_id"}
-                if action == "room_public_readback" else {"request_id", "action"})
+                if action == "room_public_readback" else
+                {"request_id", "action", "chat_id", "page"}
+                if action == "topic_entry_audit" else {"request_id", "action"})
     if set(request) != expected:
         raise ValueError("REQUEST_SHAPE_INVALID")
     request_id = request["request_id"]
@@ -50,6 +52,10 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "topic_entry_audit":
+        from userbot_topic_entry_audit import audit
+        return {"request_id": request_id,
+                **await audit(client, request["chat_id"], request["page"])}
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}
@@ -145,7 +151,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=90 if request.get("action") == "room_public_post_smoke" else 30)
+                    timeout=90 if request.get("action") in {"room_public_post_smoke", "topic_entry_audit"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
@@ -154,7 +160,10 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE", "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH",
                 "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
-                "REQUEST_SIZE_INVALID",
+                "REQUEST_SIZE_INVALID", "TOPIC_AUDIT_CHAT_NOT_ALLOWED",
+                "TOPIC_AUDIT_PAGE_INVALID", "TOPIC_AUDIT_GROUP_NOT_JOINED",
+                "TOPIC_AUDIT_TOPIC_LIMIT", "TOPIC_AUDIT_PAGINATION_LIMIT",
+                "TOPIC_AUDIT_PAGINATION_STALLED", "TOPIC_AUDIT_TARGET_BOT_INVALID",
             }
             code = str(exc) if str(exc) in safe_codes else "INTERNAL"
             response = {"status": "FAIL", "error": code}
