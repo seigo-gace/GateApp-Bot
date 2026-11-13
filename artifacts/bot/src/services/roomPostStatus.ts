@@ -5,6 +5,8 @@
 import type {Telegram} from "telegraf";
 import {Markup} from "telegraf";
 import {pool} from "../db/index.js";
+import {transitionRoomPublicButtons} from "./roomPublicButtons.js";
+import {roomJoinUrl} from "./roomJoinLinks.js";
 
 export type PublicRoomStatus="scheduled"|"prepared"|"started"|"postponed"|
  "cancelled"|"finished"|"visibility_changed"|"details_changed";
@@ -121,13 +123,14 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  try{
   await c.query("BEGIN");
   const result=await c.query(
-   `SELECT q.edit_id,q.room_event_id,d.delivery_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,r.title AS room_title,r.description AS room_description
+   `SELECT q.edit_id,q.room_event_id,d.delivery_id,t.chat_id,d.telegram_message_id,d.rendered_text,e.kind,d.inline_buttons,r.title AS room_title,r.description AS room_description,r.join_visibility,r.status AS current_room_status,l.token AS join_token
     FROM room_status_message_edits q
     JOIN room_source_events e ON e.event_id=q.room_event_id
     JOIN posting_deliveries d ON d.delivery_id=q.delivery_id
     JOIN posting_topics t ON t.topic_id=d.posting_topic_id
     JOIN announcement_posts a ON a.announcement_id::text=d.source_id
     JOIN room_posts r ON r.room_id=a.room_id
+    LEFT JOIN room_join_links l ON l.room_id=r.room_id AND l.enabled=TRUE
     WHERE q.state='pending' AND e.state='applied'
       AND d.status='sent' AND d.telegram_message_id IS NOT NULL
       AND t.enabled=TRUE AND t.purpose IN ('room','announcement')
@@ -180,7 +183,18 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
   }
   item={editId,eventId,deliveryId,chatId,messageId,original:String(r.rendered_text),
    kind:r.kind as PublicRoomStatus,
-   buttons:terminal?[]:verifyButtons(r.inline_buttons),
+   buttons:terminal?[]:(()=>{
+     const current=verifyButtons(r.inline_buttons);
+     // A scheduled card must acquire its join link only upon confirmed LIVE.
+     if(r.kind==="started"&&r.current_room_status==="live"){
+      if(!r.join_token)throw Error("ROOM_LIVE_JOIN_LINK_MISSING");
+      const url=roomJoinUrl(String(r.join_token));
+      const withoutJoin=current.flat().filter((button:Button)=>
+       !button.text.includes("参加する")&&!button.text.includes("募集者へ連絡"));
+      return transitionRoomPublicButtons([[...withoutJoin,{text:"🎥 参加する",url}]],"live");
+     }
+     return transitionRoomPublicButtons(current,"scheduled");
+    })(),
    details:r.kind==="details_changed"?{title:String(r.room_title),description:String(r.room_description)}:undefined};
   await c.query(
    `UPDATE room_status_message_edits SET state='sending',updated_at=NOW()
