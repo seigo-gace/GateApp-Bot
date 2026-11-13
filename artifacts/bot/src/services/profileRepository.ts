@@ -6,13 +6,14 @@ import {validateProfileMedia,numberProfileMedia,type ProfileMediaItem} from "./p
 import {storeProfilePr,readProfilePr} from "./profilePrStorage.js";
 import {validLikeTags,LIKE_CATEGORIES,type LikeTag} from "./profileLike.js";
 import {captureProfileSnapshot} from "./profilePublicSnapshot.js";
+import {validateAnnouncementTags} from "./announcementTags.js";
 
 export type ProfileDraft = {
-  step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "like-categories" | "like-items" | "cancelled";
-  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number;mediaNextId?:number;mediaPage?:number;likeTags?:LikeTag[];likeCategory?:number;likePage?:number;loveTags?:LikeTag[];tagPurpose?:"like"|"love" };
+  step: "awaiting_basic" | "awaiting_position" | "preview" | "appearance" | "hair" | "body" | "area-blocks" | "area-children" | "media" | "like-categories" | "like-items" | "compact" | "compact_media" | "compact_panel" | "cancelled";
+  data: Partial<ProfileBasicDraft> & AppearanceValues & ProfileAreaValues & { screenMessageId?: number;pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];replaceMediaId?:number;mediaNextId?:number;mediaPage?:number;likeTags?:LikeTag[];likeCategory?:number;likePage?:number;loveTags?:LikeTag[];tagPurpose?:"like"|"love";title?:string;purposeCodes?:string[];placeCodes?:string[];compactPanel?:"position"|"like"|"love"|"purpose"|"place";compactCategory?:number|null;compactPage?:number;compactOrigin?:string };
   revision: number;
 };
-export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[];loveTags?:LikeTag[]} & {
+export type SavedProfile = ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[];loveTags?:LikeTag[];title?:string;purposeCodes?:string[];placeCodes?:string[]} & {
   position: ProfilePosition;
   username: string | null;
   status: string;
@@ -97,7 +98,7 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
 }
 export async function getProfile(id: number): Promise<SavedProfile | null> {
   const r = await pool.query(
-    "SELECT nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,status,revision FROM profiles WHERE owner_user_id=$1",
+    "SELECT nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,profile_context,status,revision FROM profiles WHERE owner_user_id=$1",
     [ownerId(id)]
   );
   if (!r.rows.length) return null;
@@ -126,7 +127,11 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
     throw Error("PROFILE_MEDIA_COUNTER_INVALID");
   return {nickname:p.nickname, username:p.username,heightCm:p.height_cm,
     weightKg:p.weight_kg,age:p.age,position:p.position,hair:p.hair,body:p.body,region:p.region,area:p.area,
-    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId,likeTags,loveTags,status:p.status,revision:p.revision};
+    pr:p.pr_ref?await readProfilePr(id,p.pr_ref):p.pr,prRef:p.pr_ref,media,mediaNextId,likeTags,loveTags,
+    title:typeof p.profile_context?.title==="string"?p.profile_context.title:"",
+    purposeCodes:Array.isArray(p.profile_context?.purposeCodes)?p.profile_context.purposeCodes:[],
+    placeCodes:Array.isArray(p.profile_context?.placeCodes)?p.profile_context.placeCodes:[],
+    status:p.status,revision:p.revision};
 }
 export async function savePrivateDraft(id: number, revision: number,
     username: string | null): Promise<SavedProfile> {
@@ -138,29 +143,32 @@ export async function savePrivateDraft(id: number, revision: number,
     const draft = await client.query(
       "SELECT step,data,revision FROM profile_drafts WHERE owner_user_id=$1 FOR UPDATE",[id]);
     if (!draft.rows.length || draft.rows[0].revision !== revision ||
-        !["preview","like-categories","like-items",
+        !["preview","like-categories","like-items","compact","compact_media","compact_panel",
           "appearance","hair","body","area-blocks","area-children","media"].includes(draft.rows[0].step)) throw new Error("PROFILE_DRAFT_STALE");
-    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[];loveTags?:LikeTag[]};
+    const p = draft.rows[0].data as ProfileBasicDraft & AppearanceValues & ProfileAreaValues & {pr?:string|null;prRef?:string|null;media?:ProfileMediaItem[];mediaNextId?:number;likeTags?:LikeTag[];loveTags?:LikeTag[];title?:string;purposeCodes?:string[];placeCodes?:string[]};
     if (!p || !p.position) throw new Error("PROFILE_INCOMPLETE");
     validateAppearance(p);
     validateProfileArea(p);
     validateProfileMedia(p.media);
+    validateAnnouncementTags({purposeCodes:p.purposeCodes??[],placeCodes:p.placeCodes??[]});
+    if((p.title??"").length>100)throw Error("PROFILE_TITLE_TOO_LONG");
+    const context=JSON.stringify({title:p.title??"",purposeCodes:p.purposeCodes??[],placeCodes:p.placeCodes??[]});
     const numberedMedia=numberProfileMedia(p.media);
     const nextMediaId=Math.max(p.mediaNextId??1,...numberedMedia.map(item=>(item.itemId??0)+1),1);
     if(!Number.isSafeInteger(nextMediaId))throw Error("PROFILE_MEDIA_ID_INVALID");
     const saved = await client.query(
-      `INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,$12,$13,'private')
+      `INSERT INTO profiles (owner_user_id,nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,profile_context,status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,$12,$13,$14::jsonb,'private')
        ON CONFLICT (owner_user_id) DO UPDATE SET
          nickname=EXCLUDED.nickname,username=EXCLUDED.username,
          height_cm=EXCLUDED.height_cm,weight_kg=EXCLUDED.weight_kg,
          age=EXCLUDED.age,position=EXCLUDED.position,
          hair=EXCLUDED.hair,body=EXCLUDED.body,
-         region=EXCLUDED.region,area=EXCLUDED.area,pr=EXCLUDED.pr,pr_ref=EXCLUDED.pr_ref,media_next_id=EXCLUDED.media_next_id,
+         region=EXCLUDED.region,area=EXCLUDED.area,pr=EXCLUDED.pr,pr_ref=EXCLUDED.pr_ref,media_next_id=EXCLUDED.media_next_id,profile_context=EXCLUDED.profile_context,
          revision=profiles.revision+1,updated_at=NOW()
        WHERE profiles.status IN ('private','published')
-       RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,status,revision`,
-      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId]
+       RETURNING nickname,username,height_cm,weight_kg,age,position,hair,body,region,area,pr,pr_ref,media_next_id,profile_context,status,revision`,
+      [id,p.nickname,username,p.heightCm,p.weightKg,p.age,p.position,p.hair??null,p.body??null,p.region??null,p.area??null,p.prRef??null,nextMediaId,context]
     );
     if (!saved.rows.length) throw new Error("PROFILE_SAVE_NOT_ALLOWED");
     if(p.likeTags!==undefined||p.loveTags!==undefined){
@@ -206,7 +214,8 @@ export async function savePrivateDraft(id: number, revision: number,
     await client.query("COMMIT");
     const x=saved.rows[0];
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
-      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,loveTags:p.loveTags,status:x.status,revision:x.revision};
+      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,loveTags:p.loveTags,
+      title:p.title??"",purposeCodes:p.purposeCodes??[],placeCodes:p.placeCodes??[],status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");
     throw e;
