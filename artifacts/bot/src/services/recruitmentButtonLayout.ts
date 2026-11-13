@@ -25,11 +25,12 @@ export function roomRecruitmentSelectorRow(
  mode:"manual"|"linked",
  selectedPosition:boolean,
  callbacks:{position:string;like:string;love:string},
+ selectedTags:{like:boolean;love:boolean}={like:false,love:false},
 ){
  const b=styledInlineButton;
  return [
   ...(mode==="manual"?[b(selectedPosition?"✅ ポジション":"ポジション選択",callbacks.position,"primary")]:[]),
-  b("#Like",callbacks.like,"success"),
-  b("#Love",callbacks.love,"danger"),
+  b(selectedTags.like?"✅ #Like":"#Like",callbacks.like,"success"),
+  b(selectedTags.love?"✅ #Love":"#Love",callbacks.love,"danger"),
  ];
 }
