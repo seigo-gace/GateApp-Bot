@@ -106,7 +106,7 @@ function panelKeyboard(d:ProfileDraft){
    roomRecruitmentTagRows(cat,x.compactPage??0,tags(x,p),cb,p));
   return Markup.inlineKeyboard(roomRecruitmentCategoryRows(cb,p));
  }
- const values=p==="position"?PROFILE_POSITIONS:p==="purpose"?PURPOSE_TAGS:PLACE_TAGS;
+ const values:readonly string[]=p==="position"?PROFILE_POSITIONS:p==="purpose"?PURPOSE_TAGS:PLACE_TAGS;
  const selected:readonly string[]=p==="position"?(x.position?[x.position]:[]):
   p==="purpose"?(x.purposeCodes??[]):(x.placeCodes??[]);
  const rows=recruitmentSelectionRows(values,true).map(group=>
