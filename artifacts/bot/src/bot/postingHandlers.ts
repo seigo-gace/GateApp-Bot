@@ -32,7 +32,7 @@ import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLine
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {roomCrossPostTargets} from "../services/roomCrossPost.js";
-import {adaptiveChoiceRows} from "../services/inlineSelection.js";
+import {adaptiveChoiceRows,positionChoiceRows} from "../services/inlineSelection.js";
 import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 
 async function showPostScreen(
@@ -203,10 +203,8 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
   ...nav
  ]);
  if(stage==="position")return Markup.inlineKeyboard([
-  ...[PROFILE_POSITIONS.slice(0,3),PROFILE_POSITIONS.slice(3)].map((group,row)=>group.map((value,i)=>({
-   text:String(value),
-   callback_data:`room:positionchoice:${r}:${row===0?i:i+3}`,
-  }))),
+  ...positionChoiceRows(PROFILE_POSITIONS,undefined,
+   (_value,index)=>`room:positionchoice:${r}:${index}`),
   ...nav
  ]);
  if(stage==="tag_categories")return Markup.inlineKeyboard([
