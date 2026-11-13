@@ -152,7 +152,7 @@ export function renderRoomApplicantSummary(value:Record<string,unknown>|null):st
   position:typeof value.position==="string"?value.position:undefined,
   purposeCodes:[],placeCodes:[],
  };
- if(!input.title.trim()||!input.body.trim())throw Error("ROOM_APPLICATION_CONTENT_INCOMPLETE");
+ if(!input.title.trim())throw Error("ROOM_APPLICATION_CONTENT_INCOMPLETE");
  const profile=mode==="linked"?value as unknown as ProfileBasicDraft:null;
  return "📝 ROOMへの応募\n"+renderRoomApplicationPreview({
   ...input,
