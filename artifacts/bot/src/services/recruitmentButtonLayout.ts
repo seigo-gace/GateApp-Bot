@@ -1,3 +1,4 @@
+import {styledInlineButton} from "./inlineButtonStyle.js";
 /** Group recruitment choices: default three columns; a short group may use four. */
 export function recruitmentDecisionRow(revision:number){
  if(!Number.isSafeInteger(revision)||revision<=0)throw Error("RECRUITMENT_REVISION_INVALID");
@@ -15,4 +16,36 @@ export function recruitmentSelectionRows<T>(items:readonly T[],allowFour=false):
   i+=take;
  }
  return out;
+}
+
+/** One canonical selector row shared by Room+募集 and ROOM応募.
+ * The caller owns callback namespace and persistence; layout/styles are shared.
+ */
+export function roomRecruitmentSelectorRow(
+ mode:"manual"|"linked",
+ selectedPosition:boolean,
+ callbacks:{position:string;like:string;love:string},
+ selectedTags:{like:boolean;love:boolean}={like:false,love:false},
+){
+ const b=styledInlineButton;
+ return [
+  ...(mode==="manual"?[b(selectedPosition?"✅ ポジション":"ポジション選択",callbacks.position,"primary")]:[]),
+  b(selectedTags.like?"✅ #Like":"#Like",callbacks.like,"success"),
+  b(selectedTags.love?"✅ #Love":"#Love",callbacks.love,"danger"),
+ ];
+}
+
+/** The Room selector is the authoritative first row for compact recruitment.
+ * Purpose and Place belong on their own two-button second row.
+ */
+export function recruitmentCompactSelectorRows(
+ mode:"manual"|"linked",positionSelected:boolean,
+ selected:{like:boolean;love:boolean;purpose:boolean;place:boolean},
+ callbacks:{position:string;like:string;love:string;purpose:string;place:string}
+){
+ const top=roomRecruitmentSelectorRow(mode,positionSelected,callbacks,selected);
+ return [top,[
+  styledInlineButton(selected.purpose?"✅ 目的":"目的",callbacks.purpose,"primary"),
+  styledInlineButton(selected.place?"✅ 場所":"場所",callbacks.place,"primary"),
+ ]];
 }

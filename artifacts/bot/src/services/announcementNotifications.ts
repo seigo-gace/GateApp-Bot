@@ -9,6 +9,13 @@ import {applicantDmLink} from "./telegramUsernameLink.js";
 import {adaptiveChoiceRows} from "./inlineSelection.js";
 
 type EventPayload={source?:string;applicationId?:number;action?:string;kind?:string;roomId?:number};
+/** PostgreSQL BIGSERIAL values can be serialized as decimal strings. */
+export function normalizedApplicationId(value:unknown):number|null{
+ if(typeof value!=="number"&&typeof value!=="string")return null;
+ if(typeof value==="string"&&!/^[1-9][0-9]*$/.test(value))return null;
+ const id=Number(value);
+ return Number.isSafeInteger(id)&&id>0?id:null;
+}
 export function renderAnnouncementNotification(payload:EventPayload):string{
  // Source type is informational. Only an allowlisted action is rendered.
  const action=String(payload.action||payload.kind||"");
@@ -32,6 +39,7 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
 /** Owner's direct applicant DM + accept / reject share the adopted layout. */
 export function roomApplicantNotificationKeyboard(
  applicantId:number,applicationId:number,username?:unknown,
+ announcementId?:number
 ){
  if(!Number.isSafeInteger(applicationId)||applicationId<=0)
   throw Error("ROOM_APPLICATION_NOTIFICATION_ID_INVALID");
@@ -40,7 +48,11 @@ export function roomApplicantNotificationKeyboard(
   Markup.button.callback("✅ 承諾",`application:decide:${applicationId}:accepted`),
   Markup.button.callback("❌ 拒否",`application:decide:${applicationId}:declined`),
  ];
- return Markup.inlineKeyboard(adaptiveChoiceRows(actions));
+ const rows=adaptiveChoiceRows(actions);
+ if(Number.isSafeInteger(announcementId)&&Number(announcementId)>0)
+  rows.push([Markup.button.callback("👥 応募者を見る",
+   `room:published:applicants:${announcementId}`)]);
+ return Markup.inlineKeyboard(rows);
 }
 export async function deliverNextAnnouncementNotification(telegram:Telegram):Promise<{
  id:number;state:"sent"|"needs_reconcile";
@@ -72,13 +84,14 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
   let message=renderAnnouncementNotification(payload);
   let extra:ReturnType<typeof Markup.inlineKeyboard>|undefined;
   let useHtml=false;
-  if(payload.action==="submitted"&&Number.isSafeInteger(payload.applicationId)&&Number(payload.applicationId)>0){
+  const applicationId=normalizedApplicationId(payload.applicationId);
+  if(payload.action==="submitted"&&applicationId!==null){
    const entry=await pool.query(
-    `SELECT ap.consented_profile,ap.applicant_user_id,p.room_id
+    `SELECT ap.consented_profile,ap.applicant_user_id,p.room_id,ap.announcement_id
        FROM announcement_applications ap
        JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
        WHERE ap.application_id=$1 AND p.owner_user_id=$2`,
-    [payload.applicationId,userId]);
+    [applicationId,userId]);
    if(entry.rows.length!==1)throw Error("ROOM_APPLICATION_NOTIFICATION_NOT_OWNED");
    if(entry.rows[0].room_id!==null){
     message=renderRoomApplicantSummary(entry.rows[0].consented_profile as Record<string,unknown>|null);
@@ -94,17 +107,17 @@ export async function deliverNextAnnouncementNotification(telegram:Telegram):Pro
      // available even when getChat fails or no public username is set.
     }
     extra=roomApplicantNotificationKeyboard(
-     applicantId,Number(payload.applicationId),username);
+     applicantId,applicationId,username,Number(entry.rows[0].announcement_id));
     useHtml=true;
    }
   }
-  if(payload.action==="accepted"&&Number.isSafeInteger(payload.applicationId)&&Number(payload.applicationId)>0){
+  if(payload.action==="accepted"&&applicationId!==null){
    const linked=await pool.query(
     `SELECT p.room_id FROM announcement_applications ap
        JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
        WHERE ap.application_id=$1 AND ap.applicant_user_id=$2
          AND ap.status='accepted' AND p.room_id IS NOT NULL`,
-    [payload.applicationId,userId]);
+    [applicationId,userId]);
    if(linked.rows.length===1){
     extra=Markup.inlineKeyboard([[
      Markup.button.callback("🔗 ROOMへ参加",`room:join:${Number(linked.rows[0].room_id)}`)

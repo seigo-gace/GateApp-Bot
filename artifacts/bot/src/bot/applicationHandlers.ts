@@ -2,6 +2,9 @@
  * DM consent precedes profile snapshot transfer to the announcement owner.
  */
 import {Markup,type Telegraf,type Context} from "telegraf";
+import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
+import {inputInstructions} from "./recruitmentHandlers.js";
+import {styledInlineButton} from "../services/inlineButtonStyle.js";
 import {pool} from "../db/index.js";
 import {getProfile} from "../services/profileRepository.js";
 import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js";
@@ -11,10 +14,12 @@ import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {submitApplication,decideApplication,withdrawApplication,renderRoomApplicantSummary} from "../services/announcementApplications.js";
 import {parseRecruitmentMessage,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
+import {positionChoiceRows} from "../services/inlineSelection.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {applicantDmLink} from "../services/telegramUsernameLink.js";
 import {applicationTagRows,applicationTagValues,renderRoomApplicationPreview} from "../services/roomApplicationTags.js";
+import {roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {LIKE_CATEGORIES,likePageIndex,toggleLike,validLikeTags,type ProfileTagPurpose} from "../services/profileLike.js";
 
 /** Existing plain-recruitment links keep direct owner contact.
@@ -38,19 +43,84 @@ export async function startApplicationEditor(ctx:Context,payload:string):Promise
   const source=await activateApplicationSession(ctx.from.id,payload);
   const profile=await getProfile(ctx.from.id);
   const linked=!!profile&&isProfilePosition(profile.position??"");
-  const sent=await ctx.reply("📝 ROOMへの応募\n"+
-   (linked?"保存済みプロフィールを使用します。\n1行目：応募タイトル\n2行目以降：応募内容":
-    "1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：応募内容")+
-   "\n\n入力したメッセージは回収し、プレビューで確認できます。\n"+
-   "募集："+source.body.slice(0,500),
-   Markup.inlineKeyboard([[Markup.button.callback("キャンセル","application:cancel")]]));
+  const sent=await ctx.reply(applicationEntryText(linked,source.body),
+   applicationChoiceKeyboard(linked,linked?profile!.position:undefined,
+    validLikeTags(profile?.likeTags??[]).length>0,
+    validLikeTags(profile?.loveTags??[]).length>0));
   await pool.query(
-   "UPDATE announcement_application_sessions SET screen_message_id=$2 WHERE applicant_user_id=$1",
-   [ctx.from.id,sent.message_id]);
+   "UPDATE announcement_application_sessions SET screen_message_id=$2,draft=$3::jsonb WHERE applicant_user_id=$1 AND draft_step='awaiting_text'",
+   [ctx.from.id,sent.message_id,JSON.stringify({
+    mode:linked?"linked":"manual",
+    ...(linked?{profileRevision:profile!.revision,position:profile!.position,
+      likeTags:validLikeTags(profile!.likeTags??[]),
+      loveTags:validLikeTags(profile!.loveTags??[])}:{likeTags:[],loveTags:[]})
+   })]);
  }catch{
   await ctx.reply("このROOMは現在応募できません。開始状況や受付状態をご確認ください。");
  }
 }
+/** Initial ROOM applicant panel: all selectors are accessible BEFORE text entry.
+ * They use the same draft and callbacks as the later preview. */
+function applicationEntryText(linked:boolean,source:string):string{
+ // Same exact four-line input contract and example as 募集+Room.
+ return inputInstructions(linked)
+  .replace("📢 相手募集を作成","📝 ROOMへの応募")
+  .replaceAll("募集内容","応募内容")
+  .replace("この募集だけ","この応募だけ")+
+  "\n\n募集："+source.slice(0,500);
+}
+/** Identical selectable controls to 募集+Room; only final action differs. */
+export function applicationChoiceKeyboard(
+ linked:boolean,position?:unknown,likeSelected=false,loveSelected=false
+){
+ const b=styledInlineButton;
+ return Markup.inlineKeyboard([
+  roomRecruitmentSelectorRow(linked?"linked":"manual",
+   isProfilePosition(String(position??"")),{
+   position:"application:position",
+   like:"application:tag:like:open",
+   love:"application:tag:love:open"},
+   {like:likeSelected,love:loveSelected}),
+  [b("応募する","application:confirm","success"),
+   b("キャンセル","application:cancel","danger")]
+ ]);
+}
+async function showApplicationScreen(
+ telegram:Context["telegram"],id:number,oldId:number|undefined,
+ text:string,keyboard:ReturnType<typeof Markup.inlineKeyboard>,
+ html=false
+){
+ const shown=await showWizardScreen(telegram,id,oldId,text,keyboard,html?"HTML":undefined);
+ if(shown.messageId!==oldId){
+  await pool.query(
+   `UPDATE announcement_application_sessions SET screen_message_id=$2
+      WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview')
+        AND expires_at>NOW()`,[id,shown.messageId]);
+ }
+}
+function retainApplicationChoices(data:RecruitmentInput,prior:Record<string,unknown>){
+ return {...data,
+  ...(!data.position&&typeof prior.position==="string"?{position:prior.position}:{}),
+  likeTags:validLikeTags(prior.likeTags as []??[]),
+  loveTags:validLikeTags(prior.loveTags as []??[])
+ };
+}
+async function applicationEntry(telegram:Context["telegram"],id:number,screenId:number|undefined,linked:boolean){
+ const r=await pool.query(
+  `SELECT p.text AS body,s.draft FROM announcement_application_sessions s
+   JOIN announcement_application_entries e ON e.token_hash=s.token_hash
+   JOIN announcement_posts p ON p.announcement_id=e.announcement_id
+   WHERE s.applicant_user_id=$1 AND s.draft_step='awaiting_text'
+     AND s.expires_at>NOW() AND e.enabled=TRUE AND e.expires_at>NOW()`,
+  [id]);
+ if(r.rows.length!==1)throw Error("ROOM_APPLICATION_ENTRY_EXPIRED");
+ await showApplicationScreen(telegram,id,screenId,
+  applicationEntryText(linked,String(r.rows[0].body)),
+  applicationChoiceKeyboard(linked,r.rows[0].draft?.position,
+   validLikeTags(r.rows[0].draft?.likeTags??[]).length>0,
+   validLikeTags(r.rows[0].draft?.loveTags??[]).length>0));
+}
+
 function applicationData(d:Record<string,unknown>):RecruitmentInput{
  return {...d,mode:d.mode==="linked"?"linked":"manual",
   title:String(d.title||""),body:String(d.body||""),
@@ -63,20 +133,10 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
  const draft=applicationData(data);
  const text="📝 ROOM応募内容の確認\n"+renderRoomApplicationPreview({...draft,likeTags:validLikeTags(data.likeTags as []??[]),loveTags:validLikeTags(data.loveTags as []??[])},profile)+
   "\n\n内容を確認して［応募する］を押してください。";
- const rows:any[][]=[[
-  Markup.button.callback("💖 #Like","application:tag:like:open"),
-  Markup.button.callback("💘 #Love","application:tag:love:open")
- ]];
- if(data.mode!=="linked"&&!isProfilePosition(String(data.position||"")))
-  rows.push([
-   Markup.button.callback("ポジション選択","application:position"),
-   Markup.button.callback("キャンセル","application:cancel")
-  ]);
- else rows.push([
-  Markup.button.callback("✅ 応募する","application:confirm"),
-  Markup.button.callback("キャンセル","application:cancel")
- ]);
- await showWizardScreen(telegram,id,screenId,text,Markup.inlineKeyboard(rows),"HTML");
+ await showApplicationScreen(telegram,id,screenId,text,
+  applicationChoiceKeyboard(data.mode==="linked",data.position,
+   validLikeTags(data.likeTags as []??[]).length>0,
+   validLikeTags(data.loveTags as []??[]).length>0),true);
 }
 export function registerApplicationHandlers(bot:Telegraf):void{
 
@@ -100,9 +160,15 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    const profile=await getProfile(ctx.from.id);
    const linked=!!profile&&isProfilePosition(profile.position??"");
    const data=parseRecruitmentMessage(ctx.message.text,linked);
-   const draft={...data,likeTags:linked?validLikeTags(profile!.likeTags??[]):[],
-    loveTags:linked?validLikeTags(profile!.loveTags??[]):[],
-    ...(linked?{profileRevision:profile!.revision,position:profile!.position}:{} )};
+   const previous=await pool.query(
+    "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='awaiting_text' AND expires_at>NOW()",
+    [ctx.from.id]);
+   if(previous.rows.length!==1)throw Error("ROOM_APPLICATION_ENTRY_EXPIRED");
+   const choices=retainApplicationChoices(data,previous.rows[0].draft as Record<string,unknown>);
+   // The session draft is authoritative, including an intentionally empty
+   // selection. Falling back to profile tags would undo "clear all".
+   const draft={...choices,
+    ...(linked?{profileRevision:profile!.revision,position:profile!.position}:{})};
    await pool.query(
     `UPDATE announcement_application_sessions
        SET draft=$2::jsonb,draft_step='preview'
@@ -121,7 +187,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const purpose=ctx.match[1] as ProfileTagPurpose;
   const r=await pool.query(
-   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,screen_message_id,draft_step FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
    [ctx.from.id]);
   if(r.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
   const screenId=Number(r.rows[0].screen_message_id);
@@ -130,8 +196,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("古い操作です");return;
   }
   await ctx.answerCbQuery();
-  await ctx.editMessageText("🏷️ #"+(purpose==="like"?"Like":"Love")+
-   "\n"+(purpose==="like"?"自分の特徴・好み・趣味・スタイルを選択":"相手に求める特徴・好み・趣味・スタイルを選択"),
+  await ctx.editMessageText(roomRecruitmentTagHeading(purpose),
    Markup.inlineKeyboard(applicationTagRows(purpose,screenId,r.rows[0].draft)));
  });
  bot.action(/^application:tag:(like|love):(\d+):(open|back|save|tag|page|clear)(?::(\d+))?(?::(\d+))?$/,async ctx=>{
@@ -141,7 +206,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   const category=ctx.match[4]===undefined?undefined:Number(ctx.match[4]);
   const index=ctx.match[5]===undefined?undefined:Number(ctx.match[5]);
   const r=await pool.query(
-   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,screen_message_id,draft_step FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
    [ctx.from.id]);
   if(r.rows.length!==1 || Number(r.rows[0].screen_message_id)!==screenId ||
      ctx.callbackQuery.message?.message_id!==screenId){
@@ -165,7 +230,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    const updated=await pool.query(
     `UPDATE announcement_application_sessions
        SET draft=jsonb_set(draft,$2::text[], $3::jsonb, true)
-       WHERE applicant_user_id=$1 AND draft_step='preview'
+       WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview')
          AND screen_message_id=$4 AND expires_at>NOW()
        RETURNING draft`,
     [ctx.from.id,[field],JSON.stringify(tags),screenId]);
@@ -178,8 +243,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    selectedCategory=undefined;
   }
   await ctx.answerCbQuery();
-  const heading="🏷️ #"+(purpose==="like"?"Like":"Love")+
-   (selectedCategory===undefined?"":"｜"+LIKE_CATEGORIES[selectedCategory]!.name)+
+  const heading=roomRecruitmentTagHeading(purpose,selectedCategory)+
    "\n選択中："+applicationTagValues(draft,purpose).length+"件";
   await ctx.editMessageText(heading,Markup.inlineKeyboard(
    applicationTagRows(purpose,screenId,draft,selectedCategory,page)));
@@ -187,15 +251,19 @@ export function registerApplicationHandlers(bot:Telegraf):void{
  bot.action("application:position",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const row=await pool.query(
-   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",[ctx.from.id]);
+   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",[ctx.from.id]);
   if(row.rows.length!==1||row.rows[0].draft?.mode==="linked"){
    await ctx.answerCbQuery("この操作は利用できません");return;
   }
   await ctx.answerCbQuery();
   await ctx.editMessageText("ポジションを選択してください。",
    Markup.inlineKeyboard([
-    PROFILE_POSITIONS.slice(0,3).map((value,i)=>Markup.button.callback(value,`application:pos:${i}`)),
-    PROFILE_POSITIONS.slice(3).map((value,i)=>Markup.button.callback(value,`application:pos:${i+3}`)),
+    ...positionChoiceRows(PROFILE_POSITIONS,
+     isProfilePosition(String(row.rows[0].draft?.position??""))
+      ?row.rows[0].draft.position:undefined,
+     (_value,index)=>`application:pos:${index}`,true)
+     .map(group=>group.map(button=>styledInlineButton(
+      button.text,button.callback_data,"primary"))),
     [Markup.button.callback("↩ 戻る","application:preview"),
      Markup.button.callback("キャンセル","application:cancel")]
    ]));
@@ -207,28 +275,33 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   const r=await pool.query(
    `UPDATE announcement_application_sessions
      SET draft=jsonb_set(draft,'{position}',to_jsonb($2::text),true)
-     WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()
-       RETURNING draft,screen_message_id`,[ctx.from.id,position]);
+     WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()
+       RETURNING draft,screen_message_id,draft_step`,[ctx.from.id,position]);
   if(r.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
   await ctx.answerCbQuery();
-  await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
+  if(r.rows[0].draft_step==="awaiting_text")
+   await applicationEntry(ctx.telegram,ctx.from.id,Number(r.rows[0].screen_message_id)||undefined,false);
+  else await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
    Number(r.rows[0].screen_message_id)||undefined);
  });
  bot.action("application:preview",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const r=await pool.query(
-   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,screen_message_id,draft_step FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
    [ctx.from.id]);
   if(r.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
   await ctx.answerCbQuery();
-  await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
+  if(r.rows[0].draft_step==="awaiting_text")
+   await applicationEntry(ctx.telegram,ctx.from.id,Number(r.rows[0].screen_message_id)||undefined,
+    r.rows[0].draft?.mode==="linked");
+  else await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
    Number(r.rows[0].screen_message_id)||undefined);
  });
  bot.action("application:confirm",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const session=await resolveApplicationSession(ctx.from.id);
   const record=await pool.query(
-   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,created_at FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
    [ctx.from.id]);
   if(!session||record.rows.length!==1){
    await ctx.answerCbQuery("受付終了または入力が未完了です");return;
@@ -247,7 +320,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    loveTags:validLikeTags((record.rows[0].draft as Record<string,unknown>).loveTags as []??[])};
   let submitted:Awaited<ReturnType<typeof submitApplication>>;
   try{
-   submitted=await submitApplication(session.announcementId,ctx.from.id,snapshot);
+   submitted=await submitApplication(session.announcementId,ctx.from.id,snapshot,
+    new Date(record.rows[0].created_at).getTime());
   }catch{
    await ctx.answerCbQuery("応募に失敗しました。募集状況をご確認ください。");
    return;
@@ -260,8 +334,9 @@ export function registerApplicationHandlers(bot:Telegraf):void{
       console.warn("[ROOM_APPLICATION_SESSION_STEP_NEEDS_RECONCILE]");
      });
   await ctx.answerCbQuery("応募を受け付けました").catch(()=>undefined);
-  const receipt=submitted.duplicate?
-   "応募状況を確認しました："+submitted.status:
+  const receipt=submitted.resubmitted?
+   "✅ 応募内容を更新しました。主催者への通知を受け付けました。":
+   submitted.duplicate?"応募状況を確認しました："+submitted.status:
    "✅ 応募を送りました。主催者の承認・拒否をお待ちください。";
   const keyboard=["submitted","held"].includes(submitted.status)?
    Markup.inlineKeyboard([[Markup.button.callback("応募を取り下げる",
@@ -309,7 +384,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const id=Number(ctx.match[1]);
   const r=await pool.query(
-   `SELECT ap.status,ap.consented_profile,p.room_id
+   `SELECT ap.status,ap.consented_profile,p.room_id,p.announcement_id
       FROM announcement_applications ap
       JOIN announcement_posts p ON p.announcement_id=ap.announcement_id
       WHERE ap.application_id=$1 AND p.owner_user_id=$2
@@ -325,7 +400,8 @@ export function registerApplicationHandlers(bot:Telegraf):void{
     Markup.button.callback("✅ 承認",`application:decide:${id}:accepted`),
     Markup.button.callback("❌ 拒否",`application:decide:${id}:declined`)
    ]);
-  buttons.push([Markup.button.callback("↩ 応募管理へ戻る","application:manage")]);
+  buttons.push([Markup.button.callback("↩ 応募管理へ戻る",
+   x.room_id!==null?`room:published:applicants:${Number(x.announcement_id)}`:"application:manage")]);
   await ctx.answerCbQuery();
   await ctx.editMessageText(card+"\n状態："+String(x.status),
    {parse_mode:x.room_id!==null?"HTML":undefined,...Markup.inlineKeyboard(buttons)});
@@ -390,9 +466,11 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   const receipt=(finalStatus==="accepted"?"✅ 応募を承諾しました。":
    finalStatus==="held"?"⏸ 応募を保留しました。":"❌ 応募を拒否しました。")+
    (filled?" 受付状態が更新されました。":"");
-  const keyboard=Markup.inlineKeyboard([[
-   Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))
-  ]]);
+  const keyboard=Markup.inlineKeyboard([
+   [Markup.button.url("💬 応募者へDM",applicantDmLink(applicantId,username))],
+   [Markup.button.callback("↩ 応募者一覧へ戻る",
+    `room:published:applicants:${Number(row.rows[0].announcement_id)}`)]
+  ]);
   try{
    await ctx.editMessageText(receipt,keyboard);
   }catch{

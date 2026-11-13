@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
  parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,
- validateRecruitmentReady,recruitmentTextPhase,
+ validateRecruitmentReady,validateRecruitmentIdentityReady,recruitmentTextPhase,
 } from "../src/services/recruitmentCompose.js";
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
-import {recruitmentDecisionRow} from "../src/services/recruitmentButtonLayout.js";
+import {recruitmentDecisionRow,recruitmentCompactSelectorRows} from "../src/services/recruitmentButtonLayout.js";
+import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../src/services/roomRecruitmentTagPanels.js";
+import {toggleLike} from "../src/services/profileLike.js";
 
 test("manual recruitment preserves body lines and does not write a profile",()=>{
  const d=parseRecruitmentMessage("今夜の募集\nゼロ\n175 80 40\n集合場所は相談\n時間は夜",false);
@@ -41,8 +43,8 @@ test("field editing preserves unrelated recruitment fields",()=>{
 });
 
 test("recruitment input rejects incomplete and unsafe text",()=>{
- assert.throws(()=>parseRecruitmentMessage("タイトルだけ",true));
- assert.throws(()=>parseRecruitmentMessage("タイトル\n名前\n175 80 40",false));
+ assert.throws(()=>parseRecruitmentMessage("",true));
+ assert.throws(()=>parseRecruitmentMessage("タイトル\n名前",false));
  assert.throws(()=>parseRecruitmentMessage("タイトル\n"+("長".repeat(3001)),true));
  const d=parseRecruitmentMessage("<script>\n本文 & <危険>",true);
  const preview=renderRecruitmentPreview(d,{nickname:"利用者",heightCm:175,weightKg:80,age:40});
@@ -121,4 +123,108 @@ test("rich owner editor begins with actual group title, topic/post ID, then titl
  assert.match(JSON.stringify(blocks[2]),/テスト/);
  assert.match(JSON.stringify(blocks[3]),/ニックネーム：テスト/);
  assert.doesNotMatch(JSON.stringify(rich),/area_bbs/);
+});
+
+test("optional fourth line: manual 3 lines and linked title-only are valid",()=>{
+ const manual=parseRecruitmentMessage("題名\nニックネーム\n175 80 40",false);
+ assert.equal(manual.body,"");
+ assert.equal(manual.nickname,"ニックネーム");
+ manual.position="リバ";
+ assert.doesNotThrow(()=>validateRecruitmentIdentityReady(manual));
+ assert.match(renderRecruitmentPreview(manual),/題名/);
+ const blankFourth=parseRecruitmentMessage("題名\nニックネーム\n175 80 40\n",false);
+ assert.equal(blankFourth.body,"");
+ const linked=parseRecruitmentMessage("題名",true);
+ assert.equal(linked.body,"");
+ assert.equal(linked.mode,"linked");
+ const edited=changeRecruitmentField(manual,"body","");
+ assert.equal(edited.body,"");
+ assert.equal(edited.title,manual.title);
+ // Required identity fields and length checks must remain enforced.
+ assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム",false));
+ assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム\n170 80 17",false));
+ assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム\n175 80 40\n"+("長".repeat(3001)),false));
+});
+
+test("相手募集 shares Room first-row selectors, with 目的/場所 only in the second two-column row",()=>{
+ const callbacks={position:"recruit:panel:7:position",like:"recruit:panel:7:like",
+  love:"recruit:panel:7:love",purpose:"recruit:panel:7:purpose",place:"recruit:panel:7:place"};
+ const selected={like:true,love:true,purpose:true,place:false};
+ const rows=recruitmentCompactSelectorRows("manual",true,selected,callbacks);
+ assert.deepEqual(rows.map(r=>r.length),[3,2]);
+ assert.deepEqual(rows[0].map(b=>b.text),["✅ ポジション","✅ #Like","✅ #Love"]);
+ assert.deepEqual(rows[0].map(b=>b.style),["primary","success","danger"]);
+ assert.deepEqual(rows[1].map(b=>b.text),["✅ 目的","場所"]);
+ assert.deepEqual(rows[1].map(b=>b.callback_data),
+  ["recruit:panel:7:purpose","recruit:panel:7:place"]);
+ assert.deepEqual(rows[1].map(b=>b.style),["primary","primary"]);
+ const linked=recruitmentCompactSelectorRows("linked",false,
+  {like:false,love:false,purpose:false,place:true},callbacks);
+ assert.deepEqual(linked.map(r=>r.length),[2,2]);
+ assert.deepEqual(linked[0].map(b=>b.text),["#Like","#Love"]);
+ assert.deepEqual(linked[1].map(b=>b.text),["目的","✅ 場所"]);
+});
+test("相手募集 uses Room Like/Love palette, reusable chooser, and independent tag snapshot",()=>{
+ const cb={
+  openCategory:(n:number)=>"cat:"+n,
+  selectItem:(c:number,n:number)=>"tag:"+c+":"+n,
+  changePage:(c:number,n:number)=>"page:"+c+":"+n,
+  save:"save",back:"back",cancel:"cancel"
+ };
+ for(const purpose of ["like","love"] as const){
+  const categories=roomRecruitmentCategoryRows(cb,purpose);
+  assert.deepEqual(categories.map(row=>row.length),[3,3,2]);
+  assert.equal(categories[0][0]?.style,purpose==="like"?"success":"danger");
+  assert.match(roomRecruitmentTagHeading(purpose),purpose==="like"?/自分の特徴/:/相手に求める特徴/);
+  const choices=roomRecruitmentTagRows(0,0,[],cb,purpose);
+  assert(choices.flat().some(b=>b.callback_data==="tag:0:0"));
+ }
+ const d=parseRecruitmentMessage("募集タイトル\nゼロ\n175 80 40",false);
+ const marked={...d,position:"タチ",
+  likeTags:[{category:"エロワード",tag:"変態"}],
+  loveTags:[{category:"パーツ",tag:"乳首"}],
+  purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const text=renderRecruitmentPreview(marked);
+ assert.match(text,/#Like：#変態/);
+ assert.match(text,/#Love：#乳首/);
+ assert.match(text,/目的：#サシ/);
+ assert.match(text,/場所：#場所あり/);
+ const rich=JSON.stringify(buildRecruitmentRichPreview(marked,7,"エリア's BBS"));
+ assert.match(rich,/#Like：#変態/);
+ assert.match(rich,/#Love：#乳首/);
+ assert.equal(d.likeTags,undefined);
+});
+
+test("recruitment Like/Love use the exact profile toggle and never clear unrelated purpose/place values",()=>{
+ const base=parseRecruitmentMessage("募集\nゼロ\n170 80 40",false);
+ const draft={...base,likeTags:[],loveTags:[],purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const one={...draft,likeTags:toggleLike(draft.likeTags,0,0)};
+ assert.equal(one.likeTags.length,1);
+ assert.equal(one.loveTags.length,0);
+ const two={...one,loveTags:toggleLike(one.loveTags,1,0)};
+ assert.equal(two.likeTags.length,1);
+ assert.equal(two.loveTags.length,1);
+ const three={...two,likeTags:toggleLike(two.likeTags,0,0)};
+ assert.deepEqual(three.likeTags,[]);
+ assert.equal(three.loveTags.length,1);
+ assert.deepEqual(three.purposeCodes,["サシ"]);
+ assert.deepEqual(three.placeCodes,["場所あり"]);
+});
+
+test("four-line re-entry preserves separately selected Like/Love and original purpose/place",()=>{
+ const old={...parseRecruitmentMessage("最初\nゼロ\n175 80 40",false),
+  position:"タチ",
+  likeTags:[{category:"エロワード",tag:"変態"}],
+  loveTags:[{category:"パーツ",tag:"乳首"}],
+  purposeCodes:["サシ"],placeCodes:["場所あり"]};
+ const next=parseRecruitmentMessage("新タイトル\nゼロ\n175 80 40\n追加入力",false);
+ const retained={...old,...next,position:old.position,
+  purposeCodes:old.purposeCodes,placeCodes:old.placeCodes,
+  likeTags:old.likeTags,loveTags:old.loveTags};
+ assert.equal(retained.title,"新タイトル");
+ assert.equal(retained.body,"追加入力");
+ assert.match(renderRecruitmentPreview(retained),/#Like：#変態/);
+ assert.match(renderRecruitmentPreview(retained),/#Love：#乳首/);
+ assert.match(renderRecruitmentPreview(retained),/目的：#サシ/);
+ assert.match(renderRecruitmentPreview(retained),/場所：#場所あり/);
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {renderAnnouncementNotification,roomApplicantNotificationKeyboard} from "../src/services/announcementNotifications.js";
+import {renderAnnouncementNotification,roomApplicantNotificationKeyboard,normalizedApplicationId} from "../src/services/announcementNotifications.js";
 
 test("only adopted notification actions; user content and meeting URL never copied",()=>{
  const inputs=["submitted","accepted","held","declined",
@@ -44,4 +44,23 @@ test("Room owner application notification groups chat / accept / reject without 
  assert.equal("url" in roomApplicantNotificationKeyboard(123456,456).reply_markup.inline_keyboard[0]![0]!,
   true);
  assert.throws(()=>roomApplicantNotificationKeyboard(123456,0),/INVALID/);
+});
+
+test("postgres BIGSERIAL IDs preserved in JSON strings are accepted for existing owner notices",()=>{
+ assert.equal(normalizedApplicationId("15"),15);
+ assert.equal(normalizedApplicationId(15),15);
+ assert.equal(normalizedApplicationId("00015"),null);
+ for(const invalid of [null,undefined,"0",0,-1,"n/a","1; DROP TABLE",{},1.2,"9007199254740994"])
+  assert.equal(normalizedApplicationId(invalid),null);
+});
+
+test("submitted owner notice includes the Room applicant-list action as well as approval controls",()=>{
+ const rows=roomApplicantNotificationKeyboard(123456,456,undefined,15)
+  .reply_markup.inline_keyboard;
+ assert.equal(rows.length,2);
+ assert.deepEqual(rows[0]?.map(x=>x.text),
+  ["💬 応募者へDM","✅ 承諾","❌ 拒否"]);
+ assert.equal(rows[1]?.[0]?.text,"👥 応募者を見る");
+ assert.equal("callback_data" in rows[1]![0]!&&rows[1]![0]!.callback_data,
+  "room:published:applicants:15");
 });

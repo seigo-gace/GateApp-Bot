@@ -27,11 +27,15 @@ import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../ser
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
+import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
+import {renderRoomApplicantSummary} from "../services/announcementApplications.js";
+import {jstCurrentMonth,validPickerMonth,validPickerDay,pickerDateRows,pickerHourRows,pickerMinuteRows,pickerDateLabel,selectedPickerTime} from "../services/dateTimeInlinePicker.js";
+import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition,type ProfileBasicDraft} from "../services/profileCore.js";
 import {LIKE_CATEGORIES,LIKE_PAGE_SIZE,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {roomCrossPostTargets} from "../services/roomCrossPost.js";
-import {adaptiveChoiceRows} from "../services/inlineSelection.js";
+import {adaptiveChoiceRows,positionChoiceRows} from "../services/inlineSelection.js";
 import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 
 async function showPostScreen(
@@ -42,6 +46,7 @@ async function showPostScreen(
  if(shown.messageId!==old)
   await bindDraftScreen(userId,draft.module,draft.revision,shown.messageId);
 }
+export const roomApplicantsCallbackPattern=/^room:published:applicants:(\d+)(?::(\d+))?$/;
 async function showRoomPublished(telegram:Telegram,owner:number,sourceId:number,screenId?:number):Promise<void>{
  const published=await loadRoomPublication(owner,sourceId);
  const view=roomPublicationEditor(published);
@@ -169,12 +174,11 @@ function roomTags(d:EditorDraft,key:"likeTags"|"loveTags"):LikeTag[]{
  */
 function roomOptions(d:EditorDraft){
  const r=d.revision,b=styledRecruitmentButton;
- const selectors:any[]=[];
- if(d.data.recruitmentMode!=="linked")
-  selectors.push(b(d.data.position?"✅ ポジション":"ポジション選択",
-   `room:position:${r}`,"primary"));
- selectors.push(b("#Like",`room:tag:${r}:like`,"success"),
-  b("#Love",`room:tag:${r}:love`,"danger"));
+ const selectors=roomRecruitmentSelectorRow(
+  d.data.recruitmentMode==="linked"?"linked":"manual",
+  !!d.data.position,
+  {position:`room:position:${r}`,like:`room:tag:${r}:like`,love:`room:tag:${r}:love`},
+  {like:roomTags(d,"likeTags").length>0,love:roomTags(d,"loveTags").length>0});
  return Markup.inlineKeyboard([
   selectors,
   [b("▶ 即開始",`room:plan:${r}:now`,"success"),
@@ -199,41 +203,48 @@ export function roomStageKeyboard(d:EditorDraft):WizardKeyboard{
    b("承認制",`room:joinmode:${r}:approved_only`,"primary")],
   ...nav
  ]);
+ if(["date_calendar","time_hour","time_minute"].includes(stage)){
+  const actions={
+   month:(month:string)=>`room:dt:month:${r}:${month}`,
+   day:(day:string)=>`room:dt:day:${r}:${day}`,
+   hour:(hour:string)=>`room:dt:hour:${r}:${hour}`,
+   minute:(minute:string)=>`room:dt:minute:${r}:${minute}`,
+   manual:`room:dt:manual:${r}`,
+   back:`room:back:${r}`,
+   cancel:`room:cancel:${r}`,
+  };
+  if(stage==="date_calendar"){
+   const requested=String(d.data.pickerMonth||"");
+   return Markup.inlineKeyboard(pickerDateRows(
+    validPickerMonth(requested)?requested:jstCurrentMonth(),actions));
+  }
+  return Markup.inlineKeyboard(stage==="time_hour"?
+   pickerHourRows(actions):pickerMinuteRows(actions));
+ }
  if(stage==="scheduled_ready")return Markup.inlineKeyboard([
   [b("✅ 投稿する",`room:publish:${r}`,"success")],
   ...nav
  ]);
  if(stage==="position")return Markup.inlineKeyboard([
-  ...[PROFILE_POSITIONS.slice(0,3),PROFILE_POSITIONS.slice(3)].map((group,row)=>group.map((value,i)=>({
-   text:String(value),
-   callback_data:`room:positionchoice:${r}:${row===0?i:i+3}`,
-  }))),
+  ...positionChoiceRows(PROFILE_POSITIONS,undefined,
+   (_value,index)=>`room:positionchoice:${r}:${index}`)
+   .map(row=>row.map(button=>styledRecruitmentButton(
+    button.text,button.callback_data,"primary"))),
   ...nav
  ]);
- if(stage==="tag_categories")return Markup.inlineKeyboard([
-  ...LIKE_CATEGORIES.map((c,i)=>b(c.name,`room:tagcat:${r}:${i}`,"primary"))
-   .reduce<any[][]>((rows,item,i)=>{if(i%3===0)rows.push([]);rows.at(-1)!.push(item);return rows;},[]),
-  ...nav
- ]);
+ const tagCallbacks={
+  openCategory:(index:number)=>`room:tagcat:${r}:${index}`,
+  selectItem:(category:number,index:number)=>`room:tagitem:${r}:${category*100+index}`,
+  changePage:(_category:number,page:number)=>`room:tagpage:${r}:${page}`,
+  save:`room:tagsave:${r}`,back:`room:tagback:${r}`,
+  cancel:`room:cancel:${r}`,
+ };
+ if(stage==="tag_categories")return Markup.inlineKeyboard(
+  roomRecruitmentCategoryRows({...tagCallbacks,back:`room:back:${r}`},d.data.tagPurpose==="love"?"love":"like"));
  if(stage==="tag_items"){
-  const cat=Number(d.data.tagCategory),page=Number(d.data.tagPage)||0;
-  const category=LIKE_CATEGORIES[cat];
-  if(!category)throw Error("ROOM_TAG_CATEGORY_INVALID");
+  const category=Number(d.data.tagCategory),page=Number(d.data.tagPage)||0;
   const selected=roomTags(d,d.data.tagPurpose==="love"?"loveTags":"likeTags");
-  const items=category.items.slice(page*LIKE_PAGE_SIZE,(page+1)*LIKE_PAGE_SIZE);
-  const rows=items.map((item,i)=>b(
-   (selected.some(t=>t.category===category.name&&t.tag===item)?"✅ ":"▫️ ")+item,
-   `room:tagitem:${r}:${cat*100+page*LIKE_PAGE_SIZE+i}`,"success"))
-   .reduce<any[][]>((out,item,i)=>{if(i%3===0)out.push([]);out.at(-1)!.push(item);return out;},[]);
-  const pagination:any[]=[];
-  if(page>0)pagination.push(Markup.button.callback("◀ 前へ",`room:tagpage:${r}:${page-1}`));
-  if((page+1)*LIKE_PAGE_SIZE<category.items.length)
-   pagination.push(Markup.button.callback("次へ ▶",`room:tagpage:${r}:${page+1}`));
-  if(pagination.length)rows.push(pagination);
-  rows.push([b("✅ 保存",`room:tagsave:${r}`,"success"),
-   b("↩ 戻る",`room:tagback:${r}`)]);
-  rows.push([Markup.button.callback("キャンセル",`room:cancel:${r}`)]);
-  return Markup.inlineKeyboard(rows);
+  return Markup.inlineKeyboard(roomRecruitmentTagRows(category,page,selected,tagCallbacks,d.data.tagPurpose==="love"?"love":"like"));
  }
  if(d.step==="awaiting_room_url"||d.step==="awaiting_datetime")
   return Markup.inlineKeyboard(nav);
@@ -250,6 +261,20 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
  if(stage==="join_choice"){
   await showPostScreen(telegram,userId,d,
    "📅 予告する\n参加方法を選択してください。\n自由参加 または 承認制",roomStageKeyboard(d));return;
+ }
+ if(["date_calendar","time_hour","time_minute"].includes(stage)){
+  const requested=String(d.data.pickerMonth||"");
+  const month=validPickerMonth(requested)?requested:jstCurrentMonth();
+  const day=String(d.data.pickerDay||"");
+  const hour=Number(d.data.pickerHour);
+  const text=stage==="date_calendar"?
+   "📅 予告する｜日付を選択\n"+month.slice(0,4)+"年"+Number(month.slice(4))+"月"+
+    "\n日付を選ぶか、⌨️から日時を直接入力してください。":
+   stage==="time_hour"?
+    "🕒 予告する｜時を選択\n"+pickerDateLabel(day)+"（日本時間）":
+    "🕒 予告する｜分を選択\n"+pickerDateLabel(day)+" "+
+      String(hour).padStart(2,"0")+"時（日本時間）";
+  await showPostScreen(telegram,userId,d,text,roomStageKeyboard(d));return;
  }
  if(stage==="scheduled_ready"){
   // The scheduled path must use the same complete Recruitment preview as
@@ -268,8 +293,10 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
    roomStageKeyboard(d),true);return;
  }
  if(stage==="position"||stage==="tag_categories"||stage==="tag_items"){
+  const purpose=d.data.tagPurpose==="love"?"love":"like";
+  const category=stage==="tag_items"?Number(d.data.tagCategory):undefined;
   await showPostScreen(telegram,userId,d,stage==="position"?"ポジションを選んでください。":
-   "🏷️ #"+(d.data.tagPurpose==="love"?"Love":"Like")+" を選択してください。",roomStageKeyboard(d));return;
+   roomRecruitmentTagHeading(purpose,category),roomStageKeyboard(d));return;
  }
  if(d.step==="awaiting_room_url"){
   await showPostScreen(telegram,userId,d,
@@ -277,7 +304,9 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
    roomStageKeyboard(d));return;
  }
  if(d.step==="awaiting_datetime"){
+  const day=String(d.data.pickerDay||"");
   await showPostScreen(telegram,userId,d,
+   validPickerDay(day)?"🕒 "+pickerDateLabel(day)+"（日本時間）\n時刻を HH:mm で送信してください。例：20:00\n日付込みの YYYY/MM/DD HH:mm も入力できます。":
    "📅 予告日時を日本時間で送信してください。\n例：2026/11/20 20:00",
    roomStageKeyboard(d));return;
  }
@@ -295,7 +324,8 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
    guide+"\n\n送信した内容をBotが回収し、同じ画面のプレビューに反映します。",
    roomStageKeyboard(d));return;
  }
- const ready=String(d.data.title||"").trim()&&String(d.data.description||"").trim();
+ // The fourth free-text line is optional; a valid title can preview without it.
+ const ready=String(d.data.title||"").trim();
  if(!ready){
   const next=await updateDraft(userId,"room",d.revision,"awaiting_text",d.data);
   await roomPreviewScreen(telegram,userId,next);return;
@@ -553,8 +583,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   try{
    if(op==="plan"&&(d.step!=="preview"||
-      !String(d.data.title||"").trim()||
-      !String(d.data.description||"").trim())){
+      !String(d.data.title||"").trim())){
     await ctx.answerCbQuery("相手募集と同じ4行入力を先に送信してください。");
     const next=d.step==="awaiting_text"?d:
      await updateDraft(ctx.from.id,"room",rev,"awaiting_text",
@@ -563,7 +592,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(op==="mode"){
-    if(d.data.modeSelected&&d.data.title&&d.data.description){
+    if(d.data.modeSelected&&String(d.data.title||"").trim()){
      await ctx.answerCbQuery("ROOMの方式は選択済みです");return;
     }
     if(choice!=="jitsi"&&choice!=="external")throw new Error("ROOM_MODE_INVALID");
@@ -583,7 +612,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const profile=await getProfile(ctx.from.id);
     const linked=!!profile&&isProfilePosition(profile.position??"");
     const next=await updateDraft(ctx.from.id,"room",rev,
-     d.data.title&&d.data.description?"preview":"awaiting_text",
+     String(d.data.title||"").trim()?"preview":"awaiting_text",
      {...d.data,modeSelected:true,externalUrl:null,stage:"details",
       recruitmentMode:linked?"linked":"manual",...(linked?{
        profileRevision:profile!.revision,likeTags:profile!.likeTags??[],
@@ -592,8 +621,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else if(op==="joinmode"){
     if(d.data.stage!=="join_choice"||!["public","approved_only"].includes(choice))
      throw Error("ROOM_VISIBILITY_INVALID");
-    const next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
-     {...d.data,visibility:choice,stage:"date_input",startAt:null});
+    const next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,visibility:choice,stage:"date_calendar",startAt:null,
+      pickerMonth:jstCurrentMonth(),pickerDay:null,pickerHour:null});
     await ctx.answerCbQuery();await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="plan"){
     if(d.step!=="preview")throw Error("ROOM_DETAILS_REQUIRED");
@@ -623,8 +653,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
     let data={...d.data};
     const stage=String(data.stage||"");
     if(stage==="join_choice")data={...data,stage:"details"};
-    else if(stage==="scheduled_ready")data={...data,stage:"join_choice"};
-    else if(stage==="date_input")data={...data,stage:"join_choice"};
+    else if(stage==="scheduled_ready")data={...data,stage:"date_calendar"};
+    else if(stage==="time_minute")data={...data,stage:"time_hour"};
+    else if(stage==="time_hour")data={...data,stage:"date_calendar"};
+    else if(stage==="date_calendar")data={...data,stage:"join_choice"};
+    else if(stage==="date_input")data={...data,
+     stage:validPickerDay(String(data.pickerDay||""))?"time_hour":"date_calendar"};
     else if(stage==="tag_items")data={...data,stage:"tag_categories"};
     else if(["tag_categories","position"].includes(stage))
      data={...data,stage:"details",tagPurpose:null};
@@ -726,6 +760,54 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery(
     "ROOM操作に失敗しました。入力内容は保持されています。画面を再表示してお試しください。"
    ).catch(()=>undefined);
+  }
+ });
+ bot.action(/^room:dt:(month|day|hour|minute|manual):(\d+)(?::(\d{2,8}))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]),value=ctx.match[3]||"";
+  const d=await getDraft(ctx.from.id,"room");
+  if(!d||d.revision!==rev||d.step!=="preview"){
+   await ctx.answerCbQuery("日時選択が更新されています。最新の画面から選んでください。");return;
+  }
+  const stage=String(d.data.stage||"");
+  if(!["date_calendar","time_hour","time_minute"].includes(stage)){
+   await ctx.answerCbQuery("日時選択画面を開き直してください。");return;
+  }
+  try{
+   let next:EditorDraft;
+   if(op==="month"){
+    if(stage!=="date_calendar"||!validPickerMonth(value))throw Error("日時の月を確認してください。");
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,pickerMonth:value});
+   }else if(op==="day"){
+    if(stage!=="date_calendar"||!validPickerDay(value)||
+       value.slice(0,6)!==String(d.data.pickerMonth))
+     throw Error("日付を選び直してください。");
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,pickerDay:value,pickerHour:null,stage:"time_hour"});
+   }else if(op==="hour"){
+    if(stage!=="time_hour"||!/^(0\d|1\d|2[0-3])$/.test(value)||
+       !validPickerDay(String(d.data.pickerDay||"")))
+     throw Error("時刻を選び直してください。");
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,pickerHour:Number(value),stage:"time_minute"});
+   }else if(op==="minute"){
+    if(stage!=="time_minute"||!/^[0-5]\d$/.test(value)||Number(value)%5!==0)
+     throw Error("分を選び直してください。");
+    const when=selectedPickerTime(String(d.data.pickerDay||""),
+     Number(d.data.pickerHour),Number(value));
+    next=await updateDraft(ctx.from.id,"room",rev,"preview",
+     {...d.data,startAt:when.toISOString(),stage:"scheduled_ready"});
+   }else if(op==="manual"){
+    next=await updateDraft(ctx.from.id,"room",rev,"awaiting_datetime",
+     {...d.data,stage:"date_input"});
+   }else throw Error("ROOM_DATETIME_ACTION_INVALID");
+   await ctx.answerCbQuery();
+   await roomPreviewScreen(ctx.telegram,ctx.from.id,next);
+  }catch(err){
+   const reason=err instanceof Error?err.message:"日時を選び直してください。";
+   await ctx.answerCbQuery(reason.startsWith("過去")||reason.includes("過去")?
+    reason:"日時を確認してください。最新の画面から再選択できます。").catch(()=>undefined);
   }
  });
  bot.action(/^room:destback:(\d+):(groups|blocks)$/,async ctx=>{
@@ -832,15 +914,25 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("投稿記録を確認できませんでした").catch(()=>undefined);
   }
  });
- bot.action(/^room:published:applicants:(\\d+)(?::(\\d+))?$/,async ctx=>{
+ bot.action(roomApplicantsCallbackPattern,async ctx=>{
   if(!privateDM(ctx))return;
   const announcementId=Number(ctx.match[1]),page=Number(ctx.match[2]??"0");
   if(!Number.isSafeInteger(page)||page<0||page>100){
    await ctx.answerCbQuery("応募一覧のページが不正です");return;
   }
   try{
-   const published=await loadRoomPublication(ctx.from.id,announcementId);
-   if(published.visibility!=="approved_only"){
+   // Applicant management depends on the owned Room record, not the
+   // Telegram delivery-receipt join needed by the public posting editor.
+   const source=await pool.query(
+    `SELECT r.title,r.join_visibility FROM announcement_posts a
+      JOIN room_posts r ON r.room_id=a.room_id AND r.owner_user_id=a.owner_user_id
+      WHERE a.announcement_id=$1 AND a.owner_user_id=$2
+        AND a.kind='recruitment' AND a.room_id IS NOT NULL`,
+    [announcementId,ctx.from.id]);
+   if(source.rows.length!==1){
+    await ctx.answerCbQuery("応募の募集元を確認できません");return;
+   }
+   if(source.rows[0].join_visibility!=="approved_only"){
     await ctx.answerCbQuery("このROOMは自由参加です");return;
    }
    const count=await pool.query(
@@ -849,29 +941,57 @@ export function registerPostingHandlers(bot:Telegraf):void{
       WHERE announcement_id=$1`,[announcementId]);
    const total=Number(count.rows[0]?.total??0);
    const applications=await pool.query(
-    `SELECT application_id,status FROM announcement_applications
-      WHERE announcement_id=$1 ORDER BY updated_at DESC,application_id DESC
-      LIMIT 10 OFFSET $2`,[announcementId,page*10]);
-   const buttons=applications.rows.map(row=>[
-    Markup.button.callback(
-     "👤 応募 #"+Number(row.application_id)+" / "+String(row.status),
-     `application:manage:view:${Number(row.application_id)}`),
-   ]);
+    `SELECT application_id,status,consented_profile FROM announcement_applications
+     WHERE announcement_id=$1 ORDER BY updated_at DESC,application_id DESC
+     LIMIT 3 OFFSET $2`,[announcementId,page*3]);
+   const blocks:string[]=[];
+   const buttons:Array<Array<ReturnType<typeof Markup.button.callback>>>=[];
+   for(const row of applications.rows){
+    const id=Number(row.application_id),status=String(row.status);
+    const snapshot=row.consented_profile as Record<string,unknown>|null;
+    // Shorten display only; the existing detail view retains the full snapshot.
+    let card="応募内容を取得できませんでした";
+    if(snapshot){
+     try{
+      const body=String(snapshot.body||"");
+      card=renderRoomApplicantSummary({...snapshot,
+       body:body.slice(0,160)+(body.length>160?"…":""),
+       likeTags:validLikeTags(snapshot.likeTags as []??[]).slice(0,6),
+       loveTags:validLikeTags(snapshot.loveTags as []??[]).slice(0,6)});
+     }catch{card="応募内容の形式を確認してください。応募詳細を開けます。";}
+    }
+    blocks.push("【応募者 "+(page*3+blocks.length+1)+"】\n"+card+"\n状態："+status);
+    const controls=[Markup.button.callback("👤 応募詳細",
+     `application:manage:view:${id}`)];
+    if(["submitted","held"].includes(status))controls.push(
+     Markup.button.callback("✅ 承認",`application:decide:${id}:accepted`),
+     Markup.button.callback("❌ 拒否",`application:decide:${id}:declined`));
+    buttons.push(controls);
+   }
    const paging=[];
    if(page>0)paging.push(Markup.button.callback("◀ 前へ",
     `room:published:applicants:${announcementId}:${page-1}`));
-   if((page+1)*10<total)paging.push(Markup.button.callback("次へ ▶",
+   if((page+1)*3<total)paging.push(Markup.button.callback("次へ ▶",
     `room:published:applicants:${announcementId}:${page+1}`));
    if(paging.length)buttons.push(paging);
    buttons.push([Markup.button.callback("↩ 投稿管理へ戻る",
     `room:published:manage:${announcementId}`)]);
-   await ctx.answerCbQuery();
-   await ctx.editMessageText(
-    "👥 応募者を見る\\n"+published.title+"\\n応募件数："+total+
-    (total?"\\n応募者を選択すると承認・拒否できます。":"\\nまだ応募はありません。"),
-    Markup.inlineKeyboard(buttons));
-  }catch{
-   await ctx.answerCbQuery("応募一覧を確認できません");
+   const text="👥 応募者一覧\n"+escapeProfileHtml(String(source.rows[0].title))+
+    "\n応募件数："+total+
+    (blocks.length?"\n\n"+blocks.join("\n\n"):"\nまだ応募はありません。");
+   const keyboard={parse_mode:"HTML" as const,...Markup.inlineKeyboard(buttons)};
+   await ctx.answerCbQuery().catch(()=>undefined);
+   try{
+    await ctx.editMessageText(text,keyboard);
+   }catch{
+    // Old Telegram DM message may no longer be editable. Keep the list usable.
+    await ctx.telegram.sendMessage(ctx.from.id,text,keyboard);
+   }
+  }catch(err){
+   const category=err instanceof Error?err.name:"unknown";
+   console.warn("[ROOM_APPLICANTS_OWNER_VIEW_FAILED]",category);
+   await ctx.answerCbQuery("応募一覧を表示できません。DMを開き直してください。")
+    .catch(()=>undefined);
   }
  });
  bot.action(/^room:published:edit:(\d+)$/,async ctx=>{
@@ -1162,7 +1282,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    let data:Record<string,unknown>;
    if(current.step==="awaiting_datetime"){
-    const date=parseJstDateTime(input);
+    const day=String(current.data.pickerDay||"");
+    const value=current.module==="room"&&validPickerDay(day)&&/^\d{1,2}:\d{2}$/.test(input)?
+     pickerDateLabel(day)+" "+input:input;
+    const date=parseJstDateTime(value);
     if(current.module==="room"){
      const updated=await updateDraft(ctx.from.id,"room",current.revision,"preview",
       {...current.data,startAt:date.toISOString(),stage:"scheduled_ready"});
@@ -1180,8 +1303,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    if(current.module==="room"&&current.step==="awaiting_room_url"){
     const externalUrl=assertHttpsMeetingUrl(input);
-    const hasDetails=Boolean(String(current.data.title||"").trim()&&
-      String(current.data.description||"").trim());
+    const hasDetails=Boolean(String(current.data.title||"").trim());
     const updated=await updateDraft(ctx.from.id,"room",current.revision,
      hasDetails?"preview":"awaiting_text",
      {...current.data,externalUrl,stage:"details"});

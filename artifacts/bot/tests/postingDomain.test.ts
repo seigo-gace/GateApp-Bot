@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
- createJitsiJoinUrl,assertHttpsMeetingUrl,validateRoom,buildRoomCard,
+ createJitsiJoinUrl,assertHttpsMeetingUrl,validateRoom,buildRoomCard,parseRoomDetails,
  validateAnnouncement,buildAnnouncementCard,
 } from "../src/services/postingDomain.js";
 
@@ -39,4 +39,12 @@ test("announcement text escapes HTML and types remain distinct",()=>{
  assert.throws(()=>validateAnnouncement({ownerId:42,kind:"announcement",text:"知らせ",capacity:1}));
  assert.equal(validateAnnouncement({ownerId:42,kind:"recruitment",text:"参加者",capacity:3,purposeCodes:["サシ"],placeCodes:["場所あり","足あり"]}).capacity,3);
  assert.throws(()=>validateAnnouncement({ownerId:42,kind:"recruitment",text:"参加者",purposeCodes:[]}));
+});
+
+test("ROOM detail editing accepts a title with no optional description",()=>{
+ assert.deepEqual(parseRoomDetails("ROOMタイトル"),{title:"ROOMタイトル",description:""});
+ assert.deepEqual(parseRoomDetails("ROOMタイトル\n"),{title:"ROOMタイトル",description:""});
+ assert.deepEqual(parseRoomDetails("ROOMタイトル\n説明"),{title:"ROOMタイトル",description:"説明"});
+ assert.throws(()=>parseRoomDetails(""));
+ assert.throws(()=>parseRoomDetails("T".repeat(101)));
 });

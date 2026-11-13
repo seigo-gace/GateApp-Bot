@@ -26,6 +26,7 @@ import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
  suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
+import {startTumblrBridge} from "./services/tumblrBridgeServer.js";
 import {
   BARE_START_POSTING_TEXT,
   bareStartPostingExtra,
@@ -215,8 +216,10 @@ async function main():Promise<void>{
     error instanceof Error?error.name:"unknown");
  });
  let stopWorkers:(()=>void)|undefined;
+ let tumblrBridge:ReturnType<typeof startTumblrBridge>=null;
  const stop=async(signal:string)=>{
   stopWorkers?.();
+  if(tumblrBridge)await new Promise<void>(resolve=>tumblrBridge!.close(()=>resolve()));
   bot.stop(signal);
   await closePool();
  };
@@ -228,6 +231,12 @@ async function main():Promise<void>{
  },()=>{
   console.log("GAYBBS_BOT_READY bot_id="+me.id);
   stopWorkers=startGayBbsWorkers(bot.telegram);
+  try {
+   tumblrBridge=startTumblrBridge(bot.telegram);
+  } catch(error) {
+   console.error("TUMBLR_BRIDGE_START_FAILED",
+    error instanceof Error?error.message:"unknown");
+  }
  });
 }
 main().catch(error=>{

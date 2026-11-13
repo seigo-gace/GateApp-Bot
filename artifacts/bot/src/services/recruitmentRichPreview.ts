@@ -32,6 +32,9 @@ export function buildRecruitmentRichPreview(
   blocks.push(paragraph("🪪 "+profile.nickname));
   blocks.push(paragraph(profile.heightCm+"cm | "+profile.weightKg+"kg | "+profile.age+"歳 | "+(profile.position??"")));
  }
+ for(const [label,tags] of [["💖 #Like",d.likeTags],["💘 #Love",d.loveTags]] as const){
+  if(tags?.length)blocks.push(paragraph(label+"："+tags.map(v=>"#"+v.tag).join(" ")));
+ }
  if(d.purposeCodes.length)blocks.push(paragraph("🎯 目的："+d.purposeCodes.map(v=>"#"+v).join(" ")));
  if(d.placeCodes.length)blocks.push(paragraph("📍 場所："+d.placeCodes.map(v=>"#"+v).join(" ")));
  blocks.push(paragraph(published?"📢 公開済み募集を編集中":"📢 相手募集（未投稿）"));

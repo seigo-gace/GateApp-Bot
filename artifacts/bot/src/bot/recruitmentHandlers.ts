@@ -22,6 +22,9 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
 import {recruitmentGroups,recruitmentAreaBlockOptions,recruitmentTopicsForAreaBlock,recruitmentTopicsForGroup} from "../services/recruitmentDestinationHierarchy.js";
 import {recruitmentDecisionRow,recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
+import {recruitmentCompactSelectorRows} from "../services/recruitmentButtonLayout.js";
+import {LIKE_CATEGORIES,likePageBounds,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
+import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
  renderRecruitmentPreview,validateRecruitmentReady,recruitmentTextPhase,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
@@ -30,6 +33,8 @@ const asInput=(d:EditorDraft)=>({
   ...d.data,
   purposeCodes:Array.isArray(d.data.purposeCodes)?d.data.purposeCodes:[],
   placeCodes:Array.isArray(d.data.placeCodes)?d.data.placeCodes:[],
+  likeTags:validLikeTags(Array.isArray(d.data.likeTags)?d.data.likeTags as LikeTag[]:[]),
+  loveTags:validLikeTags(Array.isArray(d.data.loveTags)?d.data.loveTags as LikeTag[]:[]),
   mode:d.data.mode==="linked"||d.data.recruitmentMode==="linked"?"linked":"manual",
 }) as RecruitmentInput;
 const active=(d:EditorDraft|null,rev:number,step?:string):d is EditorDraft=>
@@ -50,23 +55,32 @@ function decisionRow(revision:number){
 export function recruitmentEditorFieldRows(
  mode:"manual"|"linked",revision:number,
  callbacks:{edit:(field:"title"|"nickname"|"stats"|"body")=>string;
-  position:()=>string;firstTag:()=>string;secondTag:()=>string},
- labels:{firstTag:string;secondTag:string;position?:string},
+  position:()=>string;like:()=>string;love:()=>string;purpose:()=>string;place:()=>string},
+ selected:{position:boolean;like:boolean;love:boolean;purpose:boolean;place:boolean}
 ):ReturnType<typeof Markup.button.callback>[][]{
  const edit=(label:string,field:"title"|"nickname"|"stats"|"body")=>
   b(label,callbacks.edit(field),"primary");
- if(mode==="manual")return [
+ const fields=mode==="manual"?[
   [edit("📝 タイトル","title"),edit("📝 ニックネーム","nickname")],
   [edit("📝 身長/体重/年齢","stats"),edit("📝 募集内容","body")],
-  [b(labels.position??"ポジション選択",callbacks.position(),"primary"),
-   b(labels.firstTag,callbacks.firstTag(),"success"),
-   b(labels.secondTag,callbacks.secondTag(),"danger")],
- ];
- return [
-  [edit("📝 タイトル","title"),edit("📝 募集内容","body")],
-  [b(labels.firstTag,callbacks.firstTag(),"success"),
-   b(labels.secondTag,callbacks.secondTag(),"primary")],
- ];
+ ]:[[edit("📝 タイトル","title"),edit("📝 募集内容","body")]];
+ return [...fields,...recruitmentCompactSelectorRows(mode,selected.position,selected,{
+  position:callbacks.position(),like:callbacks.like(),love:callbacks.love(),
+  purpose:callbacks.purpose(),place:callbacks.place(),
+ })];
+}
+function recruitmentSelectorRows(d:EditorDraft){
+ const r=d.revision,input=asInput(d);
+ return recruitmentCompactSelectorRows(input.mode,!!input.position,{
+  like:input.likeTags!.length>0,love:input.loveTags!.length>0,
+  purpose:input.purposeCodes.length>0,place:input.placeCodes.length>0,
+ },{
+  position:`recruit:panel:${r}:position`,
+  like:`recruit:panel:${r}:like`,
+  love:`recruit:panel:${r}:love`,
+  purpose:`recruit:panel:${r}:purpose`,
+  place:`recruit:panel:${r}:place`,
+ });
 }
 function keyboard(d:EditorDraft){
  const rev=d.revision;
@@ -74,33 +88,28 @@ function keyboard(d:EditorDraft){
  const rows:any[][]=recruitmentEditorFieldRows(data.mode,rev,{
   edit:field=>`recruit:edit:${rev}:${field}`,
   position:()=>`recruit:panel:${rev}:position`,
-  firstTag:()=>`recruit:panel:${rev}:purpose`,
-  secondTag:()=>`recruit:panel:${rev}:place`,
+  like:()=>`recruit:panel:${rev}:like`,
+  love:()=>`recruit:panel:${rev}:love`,
+  purpose:()=>`recruit:panel:${rev}:purpose`,
+  place:()=>`recruit:panel:${rev}:place`,
  },{
-  position:data.position?"✅ ポジション":"ポジション選択",
-  firstTag:data.mode==="manual"?"目的選択":"目的タグ",
-  secondTag:data.mode==="manual"?"場所選択":"場所タグ",
+  position:!!data.position,like:!!data.likeTags?.length,love:!!data.loveTags?.length,
+  purpose:data.purposeCodes.length>0,place:data.placeCodes.length>0,
  });
  rows.push(d.data.publishedSourceId?
   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
  return Markup.inlineKeyboard(rows);
 }
 function initialKeyboard(d:EditorDraft){
- const rev=d.revision;
- return Markup.inlineKeyboard([
-  [b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
-   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`,"danger")],
-  decisionRow(rev)
- ]);
+ return Markup.inlineKeyboard([...recruitmentSelectorRows(d),decisionRow(d.revision)]);
 }
 export function inputInstructions(linked:boolean){
  return linked?
-  "📢 相手募集を作成\n保存済みプロフィールと連動します。募集内容だけを1通で送信してください。\n\n"+
-   "1行目：タイトル\n2行目以降：募集内容（改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
+  "📢 相手募集を作成\n保存済みプロフィールと連動します。タイトルを入力し、必要なら募集内容も同じメッセージで送信してください。\n\n"+
+   "1行目：タイトル\n2行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
   "📢 相手募集を作成\nプロフィール未登録のため、この募集だけに使う情報を1通で入力してください。"+
   "\n\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢"+
-  "\n4行目以降：募集内容（改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
+  "\n4行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
 }
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
@@ -229,20 +238,25 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
     mode:previous.data.mode==="linked"||previous.data.recruitmentMode==="linked"?"linked":"manual",
     purposeCodes:Array.isArray(previous.data.purposeCodes)?previous.data.purposeCodes:[],
     placeCodes:Array.isArray(previous.data.placeCodes)?previous.data.placeCodes:[],
+    likeTags:validLikeTags(Array.isArray(previous.data.likeTags)?previous.data.likeTags as LikeTag[]:[]),
+    loveTags:validLikeTags(Array.isArray(previous.data.loveTags)?previous.data.loveTags as LikeTag[]:[]),
+    // Older drafts may omit body entirely; it is an optional field.
+    body:typeof previous.data.body==="string"?previous.data.body:"",
    };
    const missingText=["preview","awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)&&
-    (typeof recovered.title!=="string"||!recovered.title.trim()||
-     typeof recovered.body!=="string"||!recovered.body.trim());
-   const changed=missingText||recovered.mode!==previous.data.mode||
+    (typeof recovered.title!=="string"||!recovered.title.trim());
+   const changed=missingText||recovered.body!==previous.data.body||
+    recovered.mode!==previous.data.mode||
     recovered.purposeCodes!==previous.data.purposeCodes||
-    recovered.placeCodes!==previous.data.placeCodes;
+    recovered.placeCodes!==previous.data.placeCodes||
+    !Array.isArray(previous.data.likeTags)||!Array.isArray(previous.data.loveTags);
    if(changed){
     previous=await updateDraft(userId,"announcement",previous.revision,
      missingText?"awaiting_text":previous.step,recovered);
    }
    if(missingText){
     await show(telegram,userId,previous,inputInstructions(recovered.mode==="linked"),
-     recovered.mode==="linked"?Markup.inlineKeyboard([decisionRow(previous.revision)]):initialKeyboard(previous));
+     initialKeyboard(previous));
     return;
    }
   }
@@ -266,8 +280,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    // owner; otherwise an older screen can lose its next text to another flow.
    const resumed=await updateDraft(userId,"announcement",previous.revision,"awaiting_text",previous.data);
    await show(telegram,userId,resumed,inputInstructions(resumed.data.mode==="linked"),
-    resumed.data.mode==="manual"?initialKeyboard(resumed):
-    Markup.inlineKeyboard([decisionRow(resumed.revision)]));return;
+    initialKeyboard(resumed));return;
   }
  }
  const profile=await getProfile(userId);
@@ -281,6 +294,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   recruitmentMode:linked?"linked":"manual",
   mode:linked?"linked":"manual",profileRevision:linked?profile!.revision:null,
   purposeCodes:[],placeCodes:[],
+  likeTags:linked?validLikeTags(profile!.likeTags??[]):[],
+  loveTags:linked?validLikeTags(profile!.loveTags??[]):[],
   ...(entry?{entryChatId:entry.chatId,entryThreadId:entry.threadId}:{}),
   ...(defaultTopic?{selectedTopicId:defaultTopic.id,destinationExplicit:false}:{}),
  });
@@ -289,7 +304,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   d.data.screenMessageId=Number(menuMessageId);
  }
  await show(telegram,userId,d,inputInstructions(linked),
-  linked?Markup.inlineKeyboard([decisionRow(d.revision)]):initialKeyboard(d));
+  initialKeyboard(d));
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number,explicitTopicChoice=false
@@ -318,6 +333,7 @@ async function publishRecruitment(
  }:null;
  const conditions={
   inputMode:data.mode,title:data.title,
+  likeTags:validLikeTags(data.likeTags??[]),loveTags:validLikeTags(data.loveTags??[]),
   ...(data.mode==="manual"?{
    nickname:data.nickname,heightCm:data.heightCm,weightKg:data.weightKg,
    age:data.age,position:data.position,
@@ -435,7 +451,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await show(ctx.telegram,ctx.from.id,next,
     "📍 投稿先："+escapeProfileHtml(String(next.data.destinationLabel))+"\n\n"+
     escapeProfileHtml(inputInstructions(next.data.mode==="linked")),
-    next.data.mode==="linked"?Markup.inlineKeyboard([decisionRow(next.revision)]):initialKeyboard(next),true);
+    initialKeyboard(next),true);
   }else await showPreview(ctx.telegram,ctx.from.id,next);
  });
 
@@ -470,6 +486,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     const updated=await updateDraft(ctx.from.id,"announcement",d.revision,"preview",{
      ...d.data,...input,
      purposeCodes:d.data.purposeCodes??[],placeCodes:d.data.placeCodes??[],
+     likeTags:validLikeTags(Array.isArray(d.data.likeTags)?d.data.likeTags as LikeTag[]:[]),
+     loveTags:validLikeTags(Array.isArray(d.data.loveTags)?d.data.loveTags as LikeTag[]:[]),
      position:input.mode==="manual"?(d.data.position??input.position):input.position,
      editField:null,recruitPanel:null,recruitPanelReturnStep:null});
     await showPreview(ctx.telegram,ctx.from.id,updated,warning);
@@ -487,8 +505,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     "\n再入力してください。"+(warning?"\n"+escapeProfileHtml(warning):"");
    const buttons=phase==="edit"?
     Markup.inlineKeyboard([[b("↩ 編集をやめる",`recruit:editcancel:${d.revision}`)]]):
-    d.data.mode==="manual"?initialKeyboard(d):
-    Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]);
+    initialKeyboard(d);
    await show(ctx.telegram,ctx.from.id,d,message,buttons,true);
   }
  });
@@ -519,7 +536,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    {...d.data,editField:null});
   await ctx.answerCbQuery();await showPreview(ctx.telegram,ctx.from.id,next);
  });
- bot.action(/^recruit:panel:(\d+):(position|purpose|place)$/,async ctx=>{
+ bot.action(/^recruit:panel:(\d+):(position|purpose|place|like|love)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
   const rev=Number(ctx.match[1]),panel=ctx.match[2];
@@ -528,55 +545,119 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await ctx.answerCbQuery("古い操作です");return;
   }
   const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
-   ...d.data,recruitPanel:panel,recruitPanelReturnStep:d.step==="awaiting_tags"?d.data.recruitPanelReturnStep:d.step});
+   ...d.data,recruitPanel:panel,recruitTagCategory:null,recruitTagPage:0,
+   recruitPanelReturnStep:d.step==="awaiting_tags"?d.data.recruitPanelReturnStep:d.step});
   await ctx.answerCbQuery();
   await renderPanel(ctx.telegram,ctx.from.id,next);
  });
+ async function leaveRecruitPanel(telegram:Telegram,id:number,d:EditorDraft){
+  const step=d.data.recruitPanelReturnStep==="awaiting_text"?"awaiting_text":"preview";
+  const updated=await updateDraft(id,"announcement",d.revision,step,{
+   ...d.data,recruitPanel:null,recruitTagCategory:null,recruitTagPage:0,recruitPanelReturnStep:null});
+  if(step==="awaiting_text")await show(telegram,id,updated,inputInstructions(asInput(updated).mode==="linked"),initialKeyboard(updated));
+  else await showPreview(telegram,id,updated);
+ }
  async function renderPanel(telegram:Telegram,id:number,d:EditorDraft){
-  const panel=d.data.recruitPanel as string;
-  const data=asInput(d);
+  const panel=String(d.data.recruitPanel||"");
+  const data=asInput(d),rev=d.revision;
+  if(panel==="like"||panel==="love"){
+   const purpose=panel;
+   const index=typeof d.data.recruitTagCategory==="number"?d.data.recruitTagCategory:-1;
+   const page=Number(d.data.recruitTagPage)||0;
+   const callbacks={
+    openCategory:(n:number)=>`recruit:tagcat:${rev}:${n}`,
+    selectItem:(_category:number,n:number)=>`recruit:tagitem:${rev}:${n}`,
+    changePage:(_category:number,n:number)=>`recruit:tagpage:${rev}:${n}`,
+    save:`recruit:tagsave:${rev}`,back:`recruit:tagback:${rev}`,
+    cancel:`recruit:cancel:${rev}`,
+   };
+   const tags=purpose==="like"?data.likeTags??[]:data.loveTags??[];
+   const rows=index<0?roomRecruitmentCategoryRows(callbacks,purpose):
+    roomRecruitmentTagRows(index,page,tags,callbacks,purpose);
+   await show(telegram,id,d,roomRecruitmentTagHeading(purpose,index<0?undefined:index)+
+    "\n選択中："+tags.length+"件",Markup.inlineKeyboard(rows));
+   return;
+  }
   let rows:any[][]=[];
   if(panel==="position"){
    rows=recruitmentSelectionRows(PROFILE_POSITIONS,true).map(group=>group.map(p=>
     b((data.position===p?"✅ ":"▫️ ")+p,
-      `recruit:select:${d.revision}:position:${PROFILE_POSITIONS.indexOf(p)}`,"primary")));
-  }
-  if(panel==="purpose"){
-   rows=recruitmentSelectionRows(PURPOSE_TAGS).map(group=>group.map(t=>
-    b((data.purposeCodes?.includes(t)?"✅ ":"▫️ ")+t,
-      `recruit:select:${d.revision}:purpose:${PURPOSE_TAGS.indexOf(t)}`,"success")));
-  }
-  if(panel==="place"){
+     `recruit:select:${rev}:position:${PROFILE_POSITIONS.indexOf(p)}`,"primary")));
+  }else if(panel==="purpose"){
+   rows=recruitmentSelectionRows(PURPOSE_TAGS,true).map(group=>group.map(t=>
+    b((data.purposeCodes.includes(t)?"✅ ":"▫️ ")+t,
+     `recruit:select:${rev}:purpose:${PURPOSE_TAGS.indexOf(t)}`,"primary")));
+  }else if(panel==="place"){
    const items=["場所あり","場所なし","足あり"];
-   rows=recruitmentSelectionRows(items).map(group=>group.map(p=>
-    b((data.placeCodes?.includes(p)?"✅ ":"▫️ ")+p,
-      `recruit:select:${d.revision}:place:${items.indexOf(p)}`)));
-  }
-  const rev=d.revision;
-  rows.push(data.mode==="manual"?[
-   b("ポジション選択",`recruit:panel:${rev}:position`,"primary"),
-   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`,"danger")]:[
-   b("目的選択",`recruit:panel:${rev}:purpose`,"success"),
-   b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
-  rows.push(d.data.publishedSourceId?
-   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
-  const ready=!!data.title?.trim()&&!!data.body?.trim();
+   rows=recruitmentSelectionRows(items,true).map(group=>group.map(t=>
+    b((data.placeCodes.includes(t)?"✅ ":"▫️ ")+t,
+     `recruit:select:${rev}:place:${items.indexOf(t)}`,"primary")));
+  }else throw Error("RECRUITMENT_PANEL_INVALID");
+  rows.push([b("↩ 戻る",`recruit:tagback:${rev}`),
+   b("✅ 保存",`recruit:tagsave:${rev}`,"success"),
+   b("キャンセル",`recruit:cancel:${rev}`,"danger")]);
+  const ready=!!data.title?.trim();
   const profile=ready&&data.mode==="linked"?await getProfile(id):null;
   const preview=ready?renderRecruitmentPreview(data,profile):
    escapeProfileHtml(inputInstructions(data.mode==="linked"));
-  const selected="選択済み：\n"+
-   "ポジション："+escapeProfileHtml(data.mode==="linked"?
-    (profile&&"position" in profile&&typeof profile.position==="string"?profile.position:"プロフィール参照"):(data.position??"未選択"))+"\n"+
-   "目的："+escapeProfileHtml(data.purposeCodes?.join("、")||"未選択")+"\n"+
-   "場所："+escapeProfileHtml(data.placeCodes?.join("、")||"未選択");
   const heading=panel==="position"?"ポジションを選択してください（1つ必須）。":
    panel==="purpose"?"目的タグを選択してください（複数選択可能）。":
    "場所あり／なしは択一、足ありは独立して選択できます。";
-  await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+preview+
-   "\n\n"+selected+"\n\n"+escapeProfileHtml(heading),
-   Markup.inlineKeyboard(rows),true);
+  await show(telegram,id,d,(d.data.publishedSourceId?"📢 公開済み募集を編集中\n":"📢 相手募集（未投稿）\n")+
+   preview+"\n\n"+escapeProfileHtml(heading),Markup.inlineKeyboard(rows),true);
  }
+ bot.action(/^recruit:tagcat:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),cat=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")||!["like","love"].includes(String(d.data.recruitPanel))||
+   d.data.recruitTagCategory!==null||!LIKE_CATEGORIES[cat]){
+   await ctx.answerCbQuery("古い選択です");return;
+  }
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
+   ...d.data,recruitTagCategory:cat,recruitTagPage:0});
+  await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^recruit:tagitem:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),idx=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")||!["like","love"].includes(String(d.data.recruitPanel))){
+   await ctx.answerCbQuery("古い選択です");return;
+  }
+  const cat=Number(d.data.recruitTagCategory),page=Number(d.data.recruitTagPage)||0;
+  if(d.data.recruitTagCategory===null||!LIKE_CATEGORIES[cat]){await ctx.answerCbQuery("分類を選択してください");return;}
+  let bounds;
+  try{bounds=likePageBounds(cat,page);}catch{await ctx.answerCbQuery("ページを選択し直してください");return;}
+  if(idx<bounds.start||idx>=bounds.end){await ctx.answerCbQuery("古い選択です");return;}
+  const field=d.data.recruitPanel==="love"?"loveTags":"likeTags";
+  const changed=toggleLike(asInput(d)[field]??[],cat,idx);
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{...d.data,[field]:changed});
+  await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^recruit:tagpage:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),page=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")||!["like","love"].includes(String(d.data.recruitPanel))||
+   d.data.recruitTagCategory===null){await ctx.answerCbQuery("古いページです");return;}
+  try{likePageBounds(Number(d.data.recruitTagCategory),page);}catch{await ctx.answerCbQuery("ページがありません");return;}
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{...d.data,recruitTagPage:page});
+  await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^recruit:(tagsave|tagback):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")){await ctx.answerCbQuery("古い選択です");return;}
+  if(op==="tagback"&&["like","love"].includes(String(d.data.recruitPanel))&&
+    typeof d.data.recruitTagCategory==="number"){
+   const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",{
+    ...d.data,recruitTagCategory:null,recruitTagPage:0});
+   await ctx.answerCbQuery();await renderPanel(ctx.telegram,ctx.from.id,next);return;
+  }
+  await ctx.answerCbQuery();await leaveRecruitPanel(ctx.telegram,ctx.from.id,d);
+ });
  bot.action(/^recruit:select:(\d+):(position|purpose|place):(\d{1,2})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");

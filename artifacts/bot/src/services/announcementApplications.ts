@@ -13,8 +13,10 @@ function validId(id:number):number{
  return id;
 }
 export async function submitApplication(
- announcementId:number,applicantId:number,consentedProfile:Record<string,unknown>|null
-):Promise<{applicationId:number;status:string;duplicate:boolean}>{
+ announcementId:number,applicantId:number,consentedProfile:Record<string,unknown>|null,
+ // Stable per DM application entry, so repeated confirmation cannot notify twice.
+ attemptCreatedAtMs?:number
+):Promise<{applicationId:number;status:string;duplicate:boolean;resubmitted:boolean}>{
  validId(announcementId);validId(applicantId);
  const c=await pool.connect();
  try{
@@ -49,17 +51,33 @@ export async function submitApplication(
     WHERE announcement_id=$1 AND applicant_user_id=$2`,
    [announcementId,applicantId])).rows[0]:insert.rows[0];
   if(!row)throw new Error("APPLICATION_RECORD_MISSING");
-  if(!duplicate){
+  const id=validId(Number(row.application_id));
+  const freshAttempt=Number.isSafeInteger(attemptCreatedAtMs)&&
+   Number(attemptCreatedAtMs)>0;
+  const resubmitAllowed=duplicate&&freshAttempt&&
+   ["submitted","held"].includes(String(row.status));
+  if(resubmitAllowed){
+   // Preserve the original application ID and existing decision state.
    await c.query(
+    `UPDATE announcement_applications SET consented_profile=$3::jsonb,updated_at=NOW()
+     WHERE announcement_id=$1 AND applicant_user_id=$2 AND status IN ('submitted','held')`,
+    [announcementId,applicantId,JSON.stringify(consentedProfile)]);
+  }
+  let resubmitted=false;
+  if(!duplicate||resubmitAllowed){
+   const key="application:"+id+":submitted"+
+    (freshAttempt?":"+String(attemptCreatedAtMs):"");
+   const notify=await c.query(
     `INSERT INTO announcement_notifications
       (announcement_id,recipient_user_id,event_key,payload)
-     VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(event_key) DO NOTHING`,
-    [announcementId,p.owner_user_id,
-     "application:"+row.application_id+":submitted",
-     JSON.stringify({applicationId:row.application_id,action:"submitted"})]);
+     VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(event_key) DO NOTHING
+     RETURNING notification_id`,
+    [announcementId,p.owner_user_id,key,
+     JSON.stringify({applicationId:id,action:"submitted"})]);
+   resubmitted=resubmitAllowed&&notify.rows.length===1;
   }
   await c.query("COMMIT");
-  return {applicationId:Number(row.application_id),status:row.status,duplicate};
+  return {applicationId:id,status:row.status,duplicate,resubmitted};
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }
 export async function decideApplication(
@@ -152,7 +170,7 @@ export function renderRoomApplicantSummary(value:Record<string,unknown>|null):st
   position:typeof value.position==="string"?value.position:undefined,
   purposeCodes:[],placeCodes:[],
  };
- if(!input.title.trim()||!input.body.trim())throw Error("ROOM_APPLICATION_CONTENT_INCOMPLETE");
+ if(!input.title.trim())throw Error("ROOM_APPLICATION_CONTENT_INCOMPLETE");
  const profile=mode==="linked"?value as unknown as ProfileBasicDraft:null;
  return "📝 ROOMへの応募\n"+renderRoomApplicationPreview({
   ...input,

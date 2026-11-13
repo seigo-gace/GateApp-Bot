@@ -4,10 +4,12 @@
 import {parseProfileBasic,escapeProfileHtml,isProfilePosition} from "./profileCore.js";
 import type {ProfileBasicDraft} from "./profileCore.js";
 import {validateAnnouncementTags} from "./announcementTags.js";
+import {validLikeTags,type LikeTag} from "./profileLike.js";
 export type RecruitmentInput={
  title:string;body:string;mode:"linked"|"manual";
  nickname?:string;heightCm?:number;weightKg?:number;age?:number;position?:string;
  purposeCodes:string[];placeCodes:string[];
+ likeTags?:LikeTag[];loveTags?:LikeTag[];
 };
 /** The selector panel opened before first input still belongs to the text-entry phase.
  * A selector opened from preview must not re-consume arbitrary new text.
@@ -22,14 +24,15 @@ export function recruitmentTextPhase(
 }
 export function parseRecruitmentMessage(text:string,hasProfile:boolean):RecruitmentInput{
  const lines=text.replace(/\r\n/g,"\n").split("\n");
- const min=hasProfile?2:4;
+ // The last free-text field is optional: manual input needs only title/name/stats.
+ const min=hasProfile?1:3;
  if(lines.length<min)throw Error(hasProfile?
-  "1行目タイトル、2行目以降に募集内容を入力してください。":
-  "1行目タイトル、2行目ニックネーム、3行目身長 体重 年齢、4行目以降に募集内容を入力してください。");
+  "1行目タイトルを入力してください（2行目以降の募集内容は任意）。":
+  "1行目タイトル、2行目ニックネーム、3行目身長 体重 年齢を入力してください（4行目以降の募集内容は任意）。");
  const title=lines[0]!.trim();
  const body=lines.slice(hasProfile?1:3).join("\n").trim();
  if(!title||title.length>100)throw Error("タイトルは1〜100文字で入力してください。");
- if(!body||body.length>3000)throw Error("募集内容は1〜3000文字で入力してください。");
+ if(body.length>3000)throw Error("募集内容は3000文字以内で入力してください。");
  if(hasProfile)return {title,body,mode:"linked",purposeCodes:[],placeCodes:[]};
  const basic=parseProfileBasic(lines[1]+"\n"+lines[2]);
  return {title,body,mode:"manual",...basic,purposeCodes:[],placeCodes:[]};
@@ -44,7 +47,7 @@ export function changeRecruitmentField(
  }
  if(field==="body"){
   const body=value.trim();
-  if(!body||body.length>3000)throw Error("募集内容は1〜3000文字で入力してください。");
+  if(body.length>3000)throw Error("募集内容は3000文字以内で入力してください。");
   return {...current,body};
  }
  if(current.mode!=="manual")throw Error("PROFILE_LINKED_FIELD_READ_ONLY");
@@ -82,13 +85,17 @@ export function renderRecruitmentPreview(
  rows.push("<b>募集内容</b>");
  rows.push(e(draft.body));
  if(draft.mode==="linked")rows.push(...recruitmentIdentityLines(draft,profile));
+ for(const [label,tags] of [["💖 #Like",draft.likeTags],["💘 #Love",draft.loveTags]] as const){
+  const selected=validLikeTags(tags??[]);
+  if(selected.length)rows.push(label+"："+selected.map(t=>"#"+e(t.tag)).join(" "));
+ }
  if(draft.purposeCodes.length)rows.push("🎯 目的："+draft.purposeCodes.map(t=>"#"+e(t)).join(" "));
  if(draft.placeCodes.length)rows.push("📍 場所："+draft.placeCodes.map(t=>"#"+e(t)).join(" "));
  return rows.join("\n");
 }
 /** Shared personal-information validation independent of Announcement-specific tags. */
 export function validateRecruitmentIdentityReady(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
- if(!d.title?.trim()||!d.body?.trim())throw Error("RECRUITMENT_INPUT_INCOMPLETE");
+ if(!d.title?.trim())throw Error("RECRUITMENT_INPUT_INCOMPLETE");
  if(d.mode==="manual"){
   if(!d.nickname||!d.heightCm||!d.weightKg||!d.age||!isProfilePosition(d.position??""))
    throw Error("ポジションを選択してください。");

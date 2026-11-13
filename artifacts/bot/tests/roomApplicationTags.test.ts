@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {parseRecruitmentMessage} from "../src/services/recruitmentCompose.js";
 import {LIKE_CATEGORIES,toggleLike} from "../src/services/profileLike.js";
 import {applicationTagRows,roomChoiceRows,renderRoomApplicationPreview} from "../src/services/roomApplicationTags.js";
+import {roomRecruitmentTagHeading} from "../src/services/roomRecruitmentTagPanels.js";
 import {renderRoomApplicantSummary} from "../src/services/announcementApplications.js";
 
 test("ROOM applicant shares profile Like/Love categories and keeps separate toggles",()=>{
@@ -11,26 +12,29 @@ test("ROOM applicant shares profile Like/Love categories and keeps separate togg
  const love=toggleLike([],1,0);
  const draft={...base,position:"タチ",likeTags:like,loveTags:love};
  const card=renderRoomApplicationPreview(draft);
- assert.match(card,/💖 #Like：#変態/);
- assert.match(card,/💘 #Love：#乳首/);
+ assert.match(card,/#Like：#変態/);
+ assert.match(card,/#Love：#乳首/);
  assert.match(card,/一緒に話したい/);
  const owner=renderRoomApplicantSummary(draft);
- assert.match(owner,/💖 #Like：#変態/);
- assert.match(owner,/💘 #Love：#乳首/);
+ assert.match(owner,/#Like：#変態/);
+ assert.match(owner,/#Love：#乳首/);
  assert.deepEqual(draft.purposeCodes,[]);
  assert.deepEqual(draft.placeCodes,[]);
 });
 
-test("tag keyboards reuse original category, pagination, clear and back layout",()=>{
+test("応募 tag panels reuse the actual Room+募集 category, buttons and footer",()=>{
  const cat=applicationTagRows("like",123,{},undefined);
- assert(cat.every(row=>row.length>=2&&row.length<=4));
+ assert.deepEqual(cat.map(row=>row.length),[3,3,2]);
  assert.equal(cat.slice(0,-1).flat().length,6);
  assert.equal(cat.at(-1)!.length,2);
  assert.equal(cat[0]![0]!.text,LIKE_CATEGORIES[0]!.name);
  assert.equal(cat[0]![0]!.callback_data,"application:tag:like:123:open:0");
  const item=applicationTagRows("love",123,{},2);
  assert(item.some(row=>row.some(b=>b.callback_data.startsWith("application:tag:love:123:tag:2:"))));
- assert(item.some(row=>row.some(b=>b.callback_data==="application:tag:love:123:clear:2")));
+ assert(item.some(row=>row.some(b=>b.callback_data==="application:preview")));
+ assert(item.some(row=>row.some(b=>b.text==="✅ 保存")));
+ assert(item.some(row=>row.some(b=>b.text==="キャンセル")));
+ assert(item.every(row=>row.length!==1||row[0]!.text==="キャンセル"));
  assert(item.some(row=>row.some(b=>b.callback_data==="application:preview")));
 });
 
@@ -58,11 +62,11 @@ test("4/3/2 adaptive choice rows, no arbitrary singleton and labels are preserve
   assert(rows.every(r=>r.length>=2&&r.length<=3));
  }
 });
-test("ROOM position must use exact 3+4 order, tag controls permit lone save only",()=>{
+test("ROOM tag controls preserve 募集+Room footer without singleton candidate rows",()=>{
  const rows=applicationTagRows("like",123,{likeTags:[]},2,0);
  assert(rows.every(row=>row.length<=4));
  const singles=rows.filter(row=>row.length===1);
- assert(singles.every(row=>row[0]!.text==="保存"||row[0]!.text==="◀ 前へ"||row[0]!.text==="次へ ▶"));
+ assert(singles.every(row=>row[0]!.text==="キャンセル"));
 });
 
 test("all paged Like/Love candidate screens avoid single-button navigation",()=>{
@@ -72,9 +76,71 @@ test("all paged Like/Love candidate screens avoid single-button navigation",()=>
    for(let page=0;page<pages;page++){
     const rows=applicationTagRows(purpose,234,{},category,page);
     assert(rows.every(row=>row.length<=4),"more than four buttons");
-    assert(rows.every(row=>row.length!==1||row[0]!.text==="保存"),
+    assert(rows.every(row=>row.length!==1||row[0]!.text==="キャンセル"),
       "unwanted singleton category="+category+" page="+page);
    }
   }
  }
+});
+
+test("ROOM応募 and 募集+Room tag panels use 3/4 columns and shared red-cancel footer",()=>{
+ for(const purpose of ["like","love"] as const){
+  for(let category=0;category<LIKE_CATEGORIES.length;category++){
+   const total=LIKE_CATEGORIES[category]!.items.length;
+   const pages=Math.ceil(total/12);
+   for(let page=0;page<pages;page++){
+    const rows=applicationTagRows(purpose,987,{},category,page);
+    const footer=rows.at(-1)!;
+    const next=page+1<pages;
+    assert.deepEqual(footer.map(b=>b.text),
+     ["↩ 戻る","✅ 保存","キャンセル",...(next?["次 ➡️"]:[])]);
+    assert.deepEqual(footer.map(b=>b.style),
+     [undefined,"success","danger",...(next?["primary"]:[])]);
+    assert.equal(footer[0]!.callback_data,
+     page>0?`application:tag:${purpose}:987:page:${category}:${page-1}`:
+      `application:tag:${purpose}:987:back`);
+    if(next)assert.equal(footer[3]!.callback_data,
+     `application:tag:${purpose}:987:page:${category}:${page+1}`);
+    const candidates=rows.slice(0,-1);
+    assert(candidates.every(row=>row.length>=2&&row.length<=4));
+    if(Math.min(12,total-page*12)>=3)
+     assert(candidates.some(row=>row.length>=3),"three/four-column primary layout");
+    assert(candidates.flat().every(b=>b.style===(purpose==="like"?"success":"danger")));
+    assert(candidates.every(row=>row.every(b=>!b.text.includes("次")&&!b.text.includes("戻る"))));
+   }
+  }
+ }
+});
+
+test("Like green and Love red begin at category screens, and explanations remain on tag screens",()=>{
+ const pairs=[
+  {purpose:"like",style:"success",description:"自分の特徴・好み・趣味・スタイル"},
+  {purpose:"love",style:"danger",description:"相手に求める特徴・好み・趣味・スタイル"}
+ ] as const;
+ for(const {purpose,style,description} of pairs){
+  const categories=applicationTagRows(purpose,456,{},undefined);
+  assert.deepEqual(categories.slice(0,2).map(row=>row.length),[3,3]);
+  assert(categories.slice(0,2).flat().every(b=>b.style===style));
+  const choices=applicationTagRows(purpose,456,{},0,0);
+  assert(choices.slice(0,-1).flat().every(b=>b.style===style));
+  assert.match(roomRecruitmentTagHeading(purpose),new RegExp(description));
+  assert.match(roomRecruitmentTagHeading(purpose,0),new RegExp(description));
+  assert(roomRecruitmentTagHeading(purpose,0).includes("\n"));
+  assert(roomRecruitmentTagHeading(purpose,0).includes(LIKE_CATEGORIES[0]!.name));
+ }
+ assert.notEqual(roomRecruitmentTagHeading("like"),roomRecruitmentTagHeading("love"));
+});
+
+test("ROOM応募 preview and owner summary accept 3-line text with empty optional body",()=>{
+ const input=parseRecruitmentMessage("応募タイトル\n応募者\n170 80 40",false);
+ input.position="タチ";
+ assert.equal(input.body,"");
+ const summary=renderRoomApplicantSummary({...input,likeTags:[],loveTags:[]});
+ assert.match(summary,/応募タイトル/);
+ assert.match(summary,/応募者/);
+ const preview=renderRoomApplicationPreview({...input,likeTags:[],loveTags:[]});
+ assert.match(preview,/応募タイトル/);
+ assert.match(preview,/#Like：/);
+ const linked=parseRecruitmentMessage("応募タイトル",true);
+ assert.equal(linked.body,"");
 });

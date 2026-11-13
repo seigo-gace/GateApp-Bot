@@ -3,7 +3,7 @@ import type { ProfileDraft, SavedProfile } from "../services/profileRepository.j
 import * as profileRepo from "../services/profileRepository.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
-import {nextSelection,selectionRows} from "../services/inlineSelection.js";
+import {nextSelection,selectionRows,positionChoiceRows} from "../services/inlineSelection.js";
 import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,likePageIndex,toggleLike,validLikeTags,tagPurposeDescription,type ProfileTagPurpose} from "../services/profileLike.js";
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
@@ -24,11 +24,9 @@ type ProfileRepo = {
 };
 
 const selectPosition = (revision: number, selected?: ProfilePosition) => Markup.inlineKeyboard([
-  ...selectionRows(
-    [[...PROFILE_POSITIONS.slice(0,3)],[...PROFILE_POSITIONS.slice(3)]],
-    selected?[selected]:[],
-    value=>`pf:pos:${revision}:${PROFILE_POSITIONS.indexOf(value)}`,
-  ).map(row=>row.map(button=>Markup.button.callback(button.text,button.callback_data))),
+  ...positionChoiceRows(PROFILE_POSITIONS,selected,
+    (_value,index)=>`pf:pos:${revision}:${index}`,true)
+   .map(row=>row.map(button=>Markup.button.callback(button.text,button.callback_data))),
   [Markup.button.callback("キャンセルして戻る", `pf:cancel:${revision}`)],
 ]);
 
