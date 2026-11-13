@@ -44,7 +44,9 @@ export async function startApplicationEditor(ctx:Context,payload:string):Promise
   const profile=await getProfile(ctx.from.id);
   const linked=!!profile&&isProfilePosition(profile.position??"");
   const sent=await ctx.reply(applicationEntryText(linked,source.body),
-   applicationChoiceKeyboard(linked,linked?profile!.position:undefined));
+   applicationChoiceKeyboard(linked,linked?profile!.position:undefined,
+    validLikeTags(profile?.likeTags??[]).length>0,
+    validLikeTags(profile?.loveTags??[]).length>0));
   await pool.query(
    "UPDATE announcement_application_sessions SET screen_message_id=$2,draft=$3::jsonb WHERE applicant_user_id=$1 AND draft_step='awaiting_text'",
    [ctx.from.id,sent.message_id,JSON.stringify({
@@ -68,14 +70,17 @@ function applicationEntryText(linked:boolean,source:string):string{
   "\n\n募集："+source.slice(0,500);
 }
 /** Identical selectable controls to 募集+Room; only final action differs. */
-export function applicationChoiceKeyboard(linked:boolean,position?:unknown){
+export function applicationChoiceKeyboard(
+ linked:boolean,position?:unknown,likeSelected=false,loveSelected=false
+){
  const b=styledInlineButton;
  return Markup.inlineKeyboard([
   roomRecruitmentSelectorRow(linked?"linked":"manual",
    isProfilePosition(String(position??"")),{
    position:"application:position",
    like:"application:tag:like:open",
-   love:"application:tag:love:open"}),
+   love:"application:tag:love:open"},
+   {like:likeSelected,love:loveSelected}),
   [b("応募する","application:confirm","success"),
    b("キャンセル","application:cancel","danger")]
  ]);
@@ -111,7 +116,9 @@ async function applicationEntry(telegram:Context["telegram"],id:number,screenId:
  if(r.rows.length!==1)throw Error("ROOM_APPLICATION_ENTRY_EXPIRED");
  await showApplicationScreen(telegram,id,screenId,
   applicationEntryText(linked,String(r.rows[0].body)),
-  applicationChoiceKeyboard(linked,r.rows[0].draft?.position));
+  applicationChoiceKeyboard(linked,r.rows[0].draft?.position,
+   validLikeTags(r.rows[0].draft?.likeTags??[]).length>0,
+   validLikeTags(r.rows[0].draft?.loveTags??[]).length>0));
 }
 
 function applicationData(d:Record<string,unknown>):RecruitmentInput{
@@ -127,7 +134,9 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
  const text="📝 ROOM応募内容の確認\n"+renderRoomApplicationPreview({...draft,likeTags:validLikeTags(data.likeTags as []??[]),loveTags:validLikeTags(data.loveTags as []??[])},profile)+
   "\n\n内容を確認して［応募する］を押してください。";
  await showApplicationScreen(telegram,id,screenId,text,
-  applicationChoiceKeyboard(data.mode==="linked",data.position),true);
+  applicationChoiceKeyboard(data.mode==="linked",data.position,
+   validLikeTags(data.likeTags as []??[]).length>0,
+   validLikeTags(data.loveTags as []??[]).length>0),true);
 }
 export function registerApplicationHandlers(bot:Telegraf):void{
 
