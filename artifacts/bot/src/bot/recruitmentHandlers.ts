@@ -96,11 +96,11 @@ function initialKeyboard(d:EditorDraft){
 }
 export function inputInstructions(linked:boolean){
  return linked?
-  "📢 相手募集を作成\n保存済みプロフィールと連動します。募集内容だけを1通で送信してください。\n\n"+
-   "1行目：タイトル\n2行目以降：募集内容（改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
+  "📢 相手募集を作成\n保存済みプロフィールと連動します。タイトルを入力し、必要なら募集内容も同じメッセージで送信してください。\n\n"+
+   "1行目：タイトル\n2行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
   "📢 相手募集を作成\nプロフィール未登録のため、この募集だけに使う情報を1通で入力してください。"+
   "\n\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢"+
-  "\n4行目以降：募集内容（改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
+  "\n4行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
 }
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
@@ -229,11 +229,13 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
     mode:previous.data.mode==="linked"||previous.data.recruitmentMode==="linked"?"linked":"manual",
     purposeCodes:Array.isArray(previous.data.purposeCodes)?previous.data.purposeCodes:[],
     placeCodes:Array.isArray(previous.data.placeCodes)?previous.data.placeCodes:[],
+    // Older drafts may omit body entirely; it is an optional field.
+    body:typeof previous.data.body==="string"?previous.data.body:"",
    };
    const missingText=["preview","awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)&&
-    (typeof recovered.title!=="string"||!recovered.title.trim()||
-     typeof recovered.body!=="string"||!recovered.body.trim());
-   const changed=missingText||recovered.mode!==previous.data.mode||
+    (typeof recovered.title!=="string"||!recovered.title.trim());
+   const changed=missingText||recovered.body!==previous.data.body||
+    recovered.mode!==previous.data.mode||
     recovered.purposeCodes!==previous.data.purposeCodes||
     recovered.placeCodes!==previous.data.placeCodes;
    if(changed){
@@ -561,7 +563,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    b("場所選択",`recruit:panel:${rev}:place`,"danger")]);
   rows.push(d.data.publishedSourceId?
    [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
-  const ready=!!data.title?.trim()&&!!data.body?.trim();
+  const ready=!!data.title?.trim();
   const profile=ready&&data.mode==="linked"?await getProfile(id):null;
   const preview=ready?renderRecruitmentPreview(data,profile):
    escapeProfileHtml(inputInstructions(data.mode==="linked"));
