@@ -38,12 +38,8 @@ export async function startApplicationEditor(ctx:Context,payload:string):Promise
   const source=await activateApplicationSession(ctx.from.id,payload);
   const profile=await getProfile(ctx.from.id);
   const linked=!!profile&&isProfilePosition(profile.position??"");
-  const sent=await ctx.reply("📝 ROOMへの応募\n"+
-   (linked?"保存済みプロフィールを使用します。\n1行目：応募タイトル\n2行目以降：応募内容":
-    "1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：応募内容")+
-   "\n\n入力したメッセージは回収し、プレビューで確認できます。\n"+
-   "募集："+source.body.slice(0,500),
-   Markup.inlineKeyboard([[Markup.button.callback("キャンセル","application:cancel")]]));
+  const sent=await ctx.reply(applicationEntryText(linked,source.body),
+   applicationEntryKeyboard(linked));
   await pool.query(
    "UPDATE announcement_application_sessions SET screen_message_id=$2 WHERE applicant_user_id=$1",
    [ctx.from.id,sent.message_id]);
@@ -51,6 +47,44 @@ export async function startApplicationEditor(ctx:Context,payload:string):Promise
   await ctx.reply("このROOMは現在応募できません。開始状況や受付状態をご確認ください。");
  }
 }
+/** Initial ROOM applicant panel: all selectors are accessible BEFORE text entry.
+ * They use the same draft and callbacks as the later preview. */
+function applicationEntryText(linked:boolean,source:string):string{
+ return "📝 ROOMへの応募\n"+
+  (linked?"保存済みプロフィールを使用します。\n1行目：応募タイトル\n2行目以降：応募内容":
+   "1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：応募内容")+
+  "\n\n必要なボタンを選択してからテキストを送信できます。"+
+  "\n選択は保持され、プレビューに反映されます。"+
+  "\n募集："+source.slice(0,500);
+}
+function applicationEntryKeyboard(linked:boolean){
+ return Markup.inlineKeyboard([
+  ...(!linked?[[Markup.button.callback("🎯 ポジション","application:position")]]:[]),
+  [Markup.button.callback("💖 #Like","application:tag:like:open"),
+   Markup.button.callback("💘 #Love","application:tag:love:open")],
+  [Markup.button.callback("キャンセル","application:cancel")]
+ ]);
+}
+function retainApplicationChoices(data:Record<string,unknown>,prior:Record<string,unknown>){
+ return {...data,
+  ...(!data.position&&typeof prior.position==="string"?{position:prior.position}:{}),
+  likeTags:validLikeTags(prior.likeTags as []??[]),
+  loveTags:validLikeTags(prior.loveTags as []??[])
+ };
+}
+async function applicationEntry(telegram:Context["telegram"],id:number,screenId:number|undefined,linked:boolean){
+ const r=await pool.query(
+  `SELECT p.text AS body FROM announcement_application_sessions s
+   JOIN announcement_application_entries e ON e.token_hash=s.token_hash
+   JOIN announcement_posts p ON p.announcement_id=e.announcement_id
+   WHERE s.applicant_user_id=$1 AND s.draft_step='awaiting_text'
+     AND s.expires_at>NOW() AND e.enabled=TRUE AND e.expires_at>NOW()`,
+  [id]);
+ if(r.rows.length!==1)throw Error("ROOM_APPLICATION_ENTRY_EXPIRED");
+ await showWizardScreen(telegram,id,screenId,
+  applicationEntryText(linked,String(r.rows[0].body)),applicationEntryKeyboard(linked));
+}
+
 function applicationData(d:Record<string,unknown>):RecruitmentInput{
  return {...d,mode:d.mode==="linked"?"linked":"manual",
   title:String(d.title||""),body:String(d.body||""),
@@ -100,9 +134,17 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    const profile=await getProfile(ctx.from.id);
    const linked=!!profile&&isProfilePosition(profile.position??"");
    const data=parseRecruitmentMessage(ctx.message.text,linked);
-   const draft={...data,likeTags:linked?validLikeTags(profile!.likeTags??[]):[],
-    loveTags:linked?validLikeTags(profile!.loveTags??[]):[],
-    ...(linked?{profileRevision:profile!.revision,position:profile!.position}:{} )};
+   const previous=await pool.query(
+    "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='awaiting_text' AND expires_at>NOW()",
+    [ctx.from.id]);
+   if(previous.rows.length!==1)throw Error("ROOM_APPLICATION_ENTRY_EXPIRED");
+   const choices=retainApplicationChoices(data,previous.rows[0].draft as Record<string,unknown>);
+   const draft={...choices,
+    likeTags:(choices.likeTags as unknown[]).length?choices.likeTags:
+     linked?validLikeTags(profile!.likeTags??[]):[],
+    loveTags:(choices.loveTags as unknown[]).length?choices.loveTags:
+     linked?validLikeTags(profile!.loveTags??[]):[],
+    ...(linked?{profileRevision:profile!.revision,position:profile!.position}:{})};
    await pool.query(
     `UPDATE announcement_application_sessions
        SET draft=$2::jsonb,draft_step='preview'
@@ -121,7 +163,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const purpose=ctx.match[1] as ProfileTagPurpose;
   const r=await pool.query(
-   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,screen_message_id,draft_step FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
    [ctx.from.id]);
   if(r.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
   const screenId=Number(r.rows[0].screen_message_id);
@@ -141,7 +183,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   const category=ctx.match[4]===undefined?undefined:Number(ctx.match[4]);
   const index=ctx.match[5]===undefined?undefined:Number(ctx.match[5]);
   const r=await pool.query(
-   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,screen_message_id,draft_step FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
    [ctx.from.id]);
   if(r.rows.length!==1 || Number(r.rows[0].screen_message_id)!==screenId ||
      ctx.callbackQuery.message?.message_id!==screenId){
@@ -165,7 +207,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    const updated=await pool.query(
     `UPDATE announcement_application_sessions
        SET draft=jsonb_set(draft,$2::text[], $3::jsonb, true)
-       WHERE applicant_user_id=$1 AND draft_step='preview'
+       WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview')
          AND screen_message_id=$4 AND expires_at>NOW()
        RETURNING draft`,
     [ctx.from.id,[field],JSON.stringify(tags),screenId]);
@@ -187,7 +229,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
  bot.action("application:position",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const row=await pool.query(
-   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",[ctx.from.id]);
+   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",[ctx.from.id]);
   if(row.rows.length!==1||row.rows[0].draft?.mode==="linked"){
    await ctx.answerCbQuery("この操作は利用できません");return;
   }
@@ -207,28 +249,33 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   const r=await pool.query(
    `UPDATE announcement_application_sessions
      SET draft=jsonb_set(draft,'{position}',to_jsonb($2::text),true)
-     WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()
-       RETURNING draft,screen_message_id`,[ctx.from.id,position]);
+     WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()
+       RETURNING draft,screen_message_id,draft_step`,[ctx.from.id,position]);
   if(r.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
   await ctx.answerCbQuery();
-  await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
+  if(r.rows[0].draft_step==="awaiting_text")
+   await applicationEntry(ctx.telegram,ctx.from.id,Number(r.rows[0].screen_message_id)||undefined,false);
+  else await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
    Number(r.rows[0].screen_message_id)||undefined);
  });
  bot.action("application:preview",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const r=await pool.query(
-   "SELECT draft,screen_message_id FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft,screen_message_id,draft_step FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
    [ctx.from.id]);
   if(r.rows.length!==1){await ctx.answerCbQuery("古い操作です");return;}
   await ctx.answerCbQuery();
-  await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
+  if(r.rows[0].draft_step==="awaiting_text")
+   await applicationEntry(ctx.telegram,ctx.from.id,Number(r.rows[0].screen_message_id)||undefined,
+    r.rows[0].draft?.mode==="linked");
+  else await applicationPreview(ctx.telegram,ctx.from.id,r.rows[0].draft,
    Number(r.rows[0].screen_message_id)||undefined);
  });
  bot.action("application:confirm",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const session=await resolveApplicationSession(ctx.from.id);
   const record=await pool.query(
-   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
+   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
    [ctx.from.id]);
   if(!session||record.rows.length!==1){
    await ctx.answerCbQuery("受付終了または入力が未完了です");return;
