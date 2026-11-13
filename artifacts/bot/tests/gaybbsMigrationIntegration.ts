@@ -427,18 +427,17 @@ try{
   sendMessage:async()=>{throw new Error("DUPLICATE_PUBLIC_POST_FORBIDDEN")},
  } as unknown as Telegram;
  process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED="enabled";
- const liveEdit=await updateNextRoomStatusMessage(historicalBot);
- assert.equal(liveEdit?.state,"confirmed");
- assert.match(edits[0]!.text,/🔴 LIVE中/);
- assert.match(edits[0]!.text,/元の公開ROOM告知/);
- assert.equal(edits[0]!.messageId,87654);
- // The final ROOM event may have been projected later; no terminal DB purge
- // until the *same* existing Telegram message displays the end badge.
+ // The ROOM is already terminal in the source DB. The terminal edit
+ // must supersede an unconfirmed older LIVE event rather than briefly
+ // showing a stale LIVE badge and join button to real users.
  const endEdit=await updateNextRoomStatusMessage(historicalBot);
  assert.equal(endEdit?.state,"confirmed");
- assert.match(edits[1]!.text,/✅ 終了/);
- assert.equal(edits[1]!.messageId,87654);
- assert.equal(edits.length,2);
+ assert.match(edits[0]!.text,/✅ 終了/);
+ assert.match(edits[0]!.text,/元の公開ROOM告知/);
+ assert.equal(edits[0]!.messageId,87654);
+ const staleLive=await updateNextRoomStatusMessage(historicalBot);
+ assert.equal(staleLive,null,"older LIVE event must be skipped after terminal confirmation");
+ assert.equal(edits.length,1);
  delete process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED;
  // An unresolved DM is explicitly reconciled here in the isolated fixture.
  await pool.query(
