@@ -2,6 +2,7 @@
  * DM consent precedes profile snapshot transfer to the announcement owner.
  */
 import {Markup,type Telegraf,type Context} from "telegraf";
+import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
 import {pool} from "../db/index.js";
 import {getProfile} from "../services/profileRepository.js";
 import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js";
@@ -64,9 +65,10 @@ function applicationEntryText(linked:boolean,source:string):string{
 }
 function applicationEntryKeyboard(linked:boolean){
  return Markup.inlineKeyboard([
-  [...(!linked?[Markup.button.callback("ポジション","application:position")]:[]),
-   Markup.button.callback("#Like","application:tag:like:open"),
-   Markup.button.callback("#Love","application:tag:love:open")],
+  roomRecruitmentSelectorRow(linked?"linked":"manual",false,{
+   position:"application:position",
+   like:"application:tag:like:open",
+   love:"application:tag:love:open"}),
   [Markup.button.callback("キャンセル","application:cancel")]
  ]);
 }
