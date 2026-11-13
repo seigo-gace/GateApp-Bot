@@ -41,8 +41,13 @@ export async function startApplicationEditor(ctx:Context,payload:string):Promise
   const sent=await ctx.reply(applicationEntryText(linked,source.body),
    applicationEntryKeyboard(linked));
   await pool.query(
-   "UPDATE announcement_application_sessions SET screen_message_id=$2 WHERE applicant_user_id=$1",
-   [ctx.from.id,sent.message_id]);
+   "UPDATE announcement_application_sessions SET screen_message_id=$2,draft=$3::jsonb WHERE applicant_user_id=$1 AND draft_step='awaiting_text'",
+   [ctx.from.id,sent.message_id,JSON.stringify({
+    mode:linked?"linked":"manual",
+    ...(linked?{profileRevision:profile!.revision,position:profile!.position,
+      likeTags:validLikeTags(profile!.likeTags??[]),
+      loveTags:validLikeTags(profile!.loveTags??[])}:{likeTags:[],loveTags:[]})
+   })]);
  }catch{
   await ctx.reply("このROOMは現在応募できません。開始状況や受付状態をご確認ください。");
  }
@@ -65,7 +70,7 @@ function applicationEntryKeyboard(linked:boolean){
   [Markup.button.callback("キャンセル","application:cancel")]
  ]);
 }
-function retainApplicationChoices(data:Record<string,unknown>,prior:Record<string,unknown>){
+function retainApplicationChoices(data:RecruitmentInput,prior:Record<string,unknown>){
  return {...data,
   ...(!data.position&&typeof prior.position==="string"?{position:prior.position}:{}),
   likeTags:validLikeTags(prior.likeTags as []??[]),
@@ -275,7 +280,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   if(ctx.chat?.type!=="private")return;
   const session=await resolveApplicationSession(ctx.from.id);
   const record=await pool.query(
-   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') AND expires_at>NOW()",
+   "SELECT draft FROM announcement_application_sessions WHERE applicant_user_id=$1 AND draft_step='preview' AND expires_at>NOW()",
    [ctx.from.id]);
   if(!session||record.rows.length!==1){
    await ctx.answerCbQuery("受付終了または入力が未完了です");return;
