@@ -17,19 +17,25 @@ type Panel={chat_id:string;message_thread_id:string;message_id:string;verified_b
 async function main(){
  if(process.env.GAYBBS_PUBLIC_MENU_RELEASE!=="enabled")throw Error("PUBLIC_MENUS_NOT_RELEASED");
  if(!process.env.DATABASE_URL)throw Error("DATABASE_URL_REQUIRED");
- const apply=process.argv.length===3&&process.argv[2]==="--apply";
- if(process.argv.length>3||(process.argv.length===3&&!apply))throw Error("USAGE_DRY_RUN_OR_APPLY");
+ const mode=process.argv[2]??"dry-run";
+ const apply=mode==="--apply"||mode==="--resume";
+ const resume=mode==="--resume";
+ if(process.argv.length>3||!["dry-run","--apply","--resume"].includes(mode))
+  throw Error("USAGE_DRY_RUN_OR_APPLY_OR_RESUME");
  const pins=await pool.query<Pin>(`
   SELECT chat_id,message_thread_id,message_id,verified_by
   FROM topic_dm_entry_pins
   WHERE state='published' AND pinned=TRUE AND message_id IS NOT NULL
-  ORDER BY chat_id,message_thread_id`);
+    AND ($1::boolean=FALSE OR updated_at<'2026-11-13T15:23:00Z'::timestamptz)
+  ORDER BY chat_id,message_thread_id
+  LIMIT CASE WHEN $1::boolean THEN 12 ELSE 10000 END`,[resume]);
  const panels=await pool.query<Panel>(`
   SELECT chat_id,message_thread_id,message_id,verified_by
   FROM board_menu_panels
   WHERE panel_type='posting' AND state='published' AND pinned=TRUE
     AND message_id IS NOT NULL AND verified_at IS NOT NULL
-  ORDER BY chat_id,message_thread_id`);
+    AND $1::boolean=FALSE
+  ORDER BY chat_id,message_thread_id`,[resume]);
  const validate=(a:Pin|Panel)=>{
   const chat=Number(a.chat_id),thread=Number(a.message_thread_id);
   if(!CHATS.has(chat)||!Number.isSafeInteger(thread)||thread<=0||
@@ -38,7 +44,7 @@ async function main(){
  };
  for(const x of [...pins.rows,...panels.rows])validate(x);
  console.log("POSTING_MENU_INVENTORY "+JSON.stringify({
-  existingTopicPins:pins.rows.length,existingPostingPanels:panels.rows.length,apply,
+  existingTopicPins:pins.rows.length,existingPostingPanels:panels.rows.length,apply,resume,
  }));
  if(!apply)return;
  if(!pins.rows.length&&!panels.rows.length)throw Error("NO_EXISTING_POSTING_MENU_MESSAGES");
@@ -46,6 +52,7 @@ async function main(){
  const identity=await bot.telegram.getMe();
  if(identity.username?.toLowerCase()!=="gaybbs_bot")throw Error("WRONG_BOT_IDENTITY");
  let changed=0,failed=0;
+ const failureCodes:Record<string,number>={};
  for(const pin of pins.rows){
   const chat=Number(pin.chat_id),thread=Number(pin.message_thread_id);
   try{
@@ -55,10 +62,14 @@ async function main(){
    changed++;
   }catch(error){
    failed++;
-   console.error("TOPIC_MENU_EDIT_FAILED "+chat+":"+thread+" "+
-    (error instanceof Error?error.message:"UNKNOWN"));
+   const detail=(error as {response?:{error_code?:number;parameters?:{retry_after?:number}}});
+   const code=detail?.response?.error_code?String(detail.response.error_code):
+    error instanceof Error?error.name:"UNKNOWN";
+   failureCodes[code]=(failureCodes[code]??0)+1;
+   console.error("TOPIC_MENU_EDIT_FAILED "+chat+":"+thread+
+    " code="+code+" retry_after="+(detail?.response?.parameters?.retry_after??0));
   }
-  await new Promise(resolve=>setTimeout(resolve,520));
+  await new Promise(resolve=>setTimeout(resolve,resume?2300:520));
  }
  for(const panel of panels.rows){
   const chat=Number(panel.chat_id),thread=Number(panel.message_thread_id);
@@ -76,7 +87,7 @@ async function main(){
   await new Promise(resolve=>setTimeout(resolve,520));
  }
  console.log("POSTING_MENU_EDIT_SUMMARY "+
-  JSON.stringify({existing:pins.rows.length+panels.rows.length,changed,failed,newMessages:0}));
+  JSON.stringify({existing:pins.rows.length+panels.rows.length,changed,failed,newMessages:0,failureCodes,resume}));
  if(failed)process.exitCode=1;
 }
 main().catch(error=>{
