@@ -229,6 +229,7 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
  bot.action(/^pc:from:(recruit|room|application)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const source=ctx.match[1] as Origin;
+  let acknowledged=false;
   try{
    let seed:ProfileDraft["data"]={};
    if(source==="application"){
@@ -246,9 +247,17 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
     seed=sourceData(d.data);
    }
    await ctx.answerCbQuery();
+   acknowledged=true;
    await startCompactProfileEditor(ctx,source,seed);
   }catch{
-   await ctx.answerCbQuery("元の入力画面を確認できません。開き直してください。",{show_alert:true}).catch(()=>undefined);
+   // Telegram rejects a second answerCallbackQuery after it has been
+   // acknowledged. Previously this swallowed all errors from opening the
+   // profile, making the button appear to do nothing.
+   if(!acknowledged){
+    await ctx.answerCbQuery("元の入力画面を確認できません。開き直してください。",{show_alert:true}).catch(()=>undefined);
+   }else{
+    await ctx.reply("プロフィール画面を開けませんでした。元の募集・応募の入力内容は保持されています。もう一度「プロフ登録」を押してください。");
+   }
   }
  });
  bot.action(/^pc:(\d+):open:(position|like|love|purpose|place)$/,async ctx=>{
