@@ -15,7 +15,7 @@ export async function profileBoardDestinations(){
  const topics=await listVerifiedTopics("profile");
  const destinations=BOARD_KEYS.map(board=>{
   const matches=topics.filter(t=>t.board===board&&
-   t.chatId===BOARD_GROUP_CHAT_IDS[board]&&t.title.trim()==="みんなのプロフ");
+   t.chatId===BOARD_GROUP_CHAT_IDS[board]&&t.title.includes("みんなのプロフ"));
   if(matches.length!==1)throw Error("PROFILE_BOARD_DESTINATION_NOT_VERIFIED:"+board);
   return matches[0]!;
  });
