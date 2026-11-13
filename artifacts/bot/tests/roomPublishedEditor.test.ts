@@ -17,9 +17,10 @@ test("published Room+募集 retains owner manager and correct public group/topic
  const buttons=ui.keyboard.reply_markup.inline_keyboard.flat();
  assert.ok(buttons.some(x=>x.text.includes("編集")));
  assert.ok(buttons.some(x=>x.text.includes("終了")));
- assert.ok(buttons.some(x=>"url" in x&&x.url==="https://meet.jit.si/GACE-TEST-ROOM"));
+ assert.ok(!buttons.some(x=>"url" in x&&x.url==="https://meet.jit.si/GACE-TEST-ROOM"));
  assert.doesNotMatch(ui.text,/meet\.jit\.si/);
- assert.ok(buttons.some(x=>"url" in x&&x.url==="https://t.me/c/3847210571/839"));
+ // No destination receipts in this fixture: never invent a Topic jump URL.
+ assert.ok(!buttons.some(x=>"url" in x&&String(x.url).includes("/839")));
 });
 test("scheduled Room+募集 has cancellation but no direct join URL or live-end action",()=>{
  const ui=roomPublicationEditor({...room("scheduled"),scheduledAt:"2026-11-20T11:00:00.000Z"});
