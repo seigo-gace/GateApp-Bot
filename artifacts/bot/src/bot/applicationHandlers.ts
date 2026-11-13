@@ -144,11 +144,9 @@ export function registerApplicationHandlers(bot:Telegraf):void{
     [ctx.from.id]);
    if(previous.rows.length!==1)throw Error("ROOM_APPLICATION_ENTRY_EXPIRED");
    const choices=retainApplicationChoices(data,previous.rows[0].draft as Record<string,unknown>);
+   // The session draft is authoritative, including an intentionally empty
+   // selection. Falling back to profile tags would undo "clear all".
    const draft={...choices,
-    likeTags:(choices.likeTags as unknown[]).length?choices.likeTags:
-     linked?validLikeTags(profile!.likeTags??[]):[],
-    loveTags:(choices.loveTags as unknown[]).length?choices.loveTags:
-     linked?validLikeTags(profile!.loveTags??[]):[],
     ...(linked?{profileRevision:profile!.revision,position:profile!.position}:{})};
    await pool.query(
     `UPDATE announcement_application_sessions
