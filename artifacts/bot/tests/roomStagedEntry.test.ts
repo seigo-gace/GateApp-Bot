@@ -4,6 +4,7 @@ import {roomStageKeyboard,hasExplicitRoomTopicChoice} from "../src/bot/postingHa
 import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
 import {roomRecruitmentSelectorRow} from "../src/services/recruitmentButtonLayout.js";
 import {applicationChoiceKeyboard} from "../src/bot/applicationHandlers.js";
+import {applicationTagRows} from "../src/services/roomApplicationTags.js";
 import type {EditorDraft} from "../src/services/publicPostRepository.js";
 
 function draft(step:EditorDraft["step"],data:Record<string,unknown>={}):EditorDraft{
@@ -147,5 +148,23 @@ test("応募 starts and previews with the very same Room+募集 selector row and
  ]);
  for(const rows of [manual,linked]){
   assert.ok(rows.flat().every(button=>!button.text.includes("即開始")&&!button.text.includes("予告する")));
+ }
+});
+
+test("募集+Room is the only source of application #Like/#Love category and tag layouts",()=>{
+ const rows=(buttons:readonly (readonly {text:string;style?:string}[])[])=>
+  buttons.map(row=>row.map(button=>({text:button.text,style:button.style})));
+ for(const purpose of ["like","love"] as const){
+  const roomCategories=roomStageKeyboard(draft("preview",{
+   modeSelected:true,stage:"tag_categories",tagPurpose:purpose
+  })).reply_markup.inline_keyboard;
+  const applicantCategories=applicationTagRows(purpose,215,{},undefined);
+  assert.deepEqual(rows(applicantCategories),rows(roomCategories));
+  const roomTags=roomStageKeyboard(draft("preview",{
+   modeSelected:true,stage:"tag_items",tagPurpose:purpose,tagCategory:0,tagPage:0,
+   likeTags:[],loveTags:[]
+  })).reply_markup.inline_keyboard;
+  const applicantTags=applicationTagRows(purpose,215,{},0,0);
+  assert.deepEqual(rows(applicantTags),rows(roomTags));
  }
 });
