@@ -181,10 +181,10 @@ function roomOptions(d:EditorDraft){
   {like:roomTags(d,"likeTags").length>0,love:roomTags(d,"loveTags").length>0});
  return Markup.inlineKeyboard([
   selectors,
-  [b("🪪 プロフィール登録","pc:from:room","primary")],
   [b("▶ 即開始",`room:plan:${r}:now`,"success"),
    b("📅 予告する",`room:plan:${r}:scheduled`,"primary")],
   [b("↩ 戻る",`room:back:${r}`),
+   b("🪪 プロフ登録","pc:from:room","primary"),
    b("キャンセル",`room:cancel:${r}`,"danger")],
  ]);
 }
