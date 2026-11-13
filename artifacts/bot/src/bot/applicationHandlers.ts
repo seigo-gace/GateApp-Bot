@@ -3,6 +3,7 @@
  */
 import {Markup,type Telegraf,type Context} from "telegraf";
 import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
+import {inputInstructions} from "./recruitmentHandlers.js";
 import {styledInlineButton} from "../services/inlineButtonStyle.js";
 import {pool} from "../db/index.js";
 import {getProfile} from "../services/profileRepository.js";
@@ -58,12 +59,12 @@ export async function startApplicationEditor(ctx:Context,payload:string):Promise
 /** Initial ROOM applicant panel: all selectors are accessible BEFORE text entry.
  * They use the same draft and callbacks as the later preview. */
 function applicationEntryText(linked:boolean,source:string):string{
- return "📝 ROOMへの応募\n"+
-  (linked?"保存済みプロフィールを使用します。\n1行目：応募タイトル\n2行目以降：応募内容":
-   "1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢\n4行目以降：応募内容")+
-  "\n\n必要なボタンを選択してからテキストを送信できます。"+
-  "\n選択は保持され、プレビューに反映されます。"+
-  "\n募集："+source.slice(0,500);
+ // Same exact four-line input contract and example as 募集+Room.
+ return inputInstructions(linked)
+  .replace("📢 相手募集を作成","📝 ROOMへの応募")
+  .replaceAll("募集内容","応募内容")
+  .replace("この募集だけ","この応募だけ")+
+  "\n\n募集："+source.slice(0,500);
 }
 /** Identical selectable controls to 募集+Room; only final action differs. */
 export function applicationChoiceKeyboard(linked:boolean,position?:unknown){
