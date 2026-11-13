@@ -25,7 +25,7 @@ export function applicationTagRows(
  if(category===undefined)return roomRecruitmentCategoryRows({
   ...callbacks,back:"application:preview",
  });
- return roomRecruitmentTagRows(category,page,applicationTagValues(data,purpose),callbacks);
+ return roomRecruitmentTagRows(category,page,applicationTagValues(data,purpose),callbacks,purpose);
 }
 export function renderRoomApplicationPreview(
  draft:RecruitmentInput & RoomApplicationTags,
