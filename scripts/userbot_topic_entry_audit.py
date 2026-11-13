@@ -8,6 +8,7 @@ observations, not inferred from t.me/c URL suffixes.
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlsplit, parse_qs
 
 AREA_CHAT = -1003847210571
 CATEGORY_CHAT = -1003770334893
@@ -23,10 +24,12 @@ def posting_entry(message, bot_id: int) -> bool:
         for button in row:
             label = str(getattr(button, "text", "") or "")
             url = str(getattr(button, "url", "") or "")
-            normalized = url.lower()
-            if ("投稿" in label and
-                ("t.me/gaybbs_bot?start=" in normalized or
-                 "telegram.me/gaybbs_bot?start=" in normalized)):
+            parsed = urlsplit(url)
+            start = parse_qs(parsed.query).get("start", [])
+            if ("投稿" in label and parsed.scheme == "https" and
+                (parsed.hostname or "").lower() in {"t.me", "telegram.me"} and
+                parsed.path.lower().strip("/") == "gaybbs_bot" and
+                len(start) == 1 and bool(start[0])):
                 return True
     return False
 
