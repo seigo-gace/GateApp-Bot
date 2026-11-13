@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {roomStageKeyboard,hasExplicitRoomTopicChoice} from "../src/bot/postingHandlers.js";
+import {roomStageKeyboard,hasExplicitRoomTopicChoice,roomApplicantsCallbackPattern} from "../src/bot/postingHandlers.js";
+import {jstToday,jstCurrentMonth} from "../src/services/dateTimeInlinePicker.js";
+import {roomPublicationEditor,type RoomPublication} from "../src/services/roomPublishedEditor.js";
 import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
 import {roomRecruitmentSelectorRow} from "../src/services/recruitmentButtonLayout.js";
 import {applicationChoiceKeyboard} from "../src/bot/applicationHandlers.js";
@@ -190,4 +192,29 @@ test("Room+募集 and ROOM応募 show ✅ on selected #Like/#Love without losing
   ["ポジション選択","#Like","✅ #Love"]);
  const linked=applicationChoiceKeyboard(true,"タチ",true,false).reply_markup.inline_keyboard;
  assert.deepEqual(linked[0]!.map(button=>button.text),["✅ #Like","#Love"]);
+});
+
+test("scheduled Room calendar uses the shared inline date/time selectors",()=>{
+ const month=jstCurrentMonth(),day=jstToday();
+ const calendar=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"date_calendar",pickerMonth:month})).reply_markup.inline_keyboard;
+ assert(calendar.flat().some(b=>b.callback_data===`room:dt:day:7:${day}`));
+ assert(calendar.flat().some(b=>b.text==="⌨️ 日時を入力"));
+ assert.equal(calendar.at(-1)?.[1]?.style,"danger");
+ const hours=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"time_hour",pickerDay:day})).reply_markup.inline_keyboard;
+ assert.equal(hours[0]?.length,4);
+ assert(hours.flat().some(b=>b.callback_data==="room:dt:hour:7:20"));
+ const minutes=roomStageKeyboard(draft("preview",{modeSelected:true,stage:"time_minute",pickerDay:day,pickerHour:20})).reply_markup.inline_keyboard;
+ assert(minutes.flat().some(b=>b.callback_data==="room:dt:minute:7:55"));
+});
+test("published ROOM owner applicant action matches the registered callback with real numeric ids",()=>{
+ const published:RoomPublication={announcementId:57,roomId:31,roomRevision:4,groupTitle:"エリア BBS",topicTitle:"新宿",
+ chatId:-1003847210571,messageId:839,title:"テスト",description:"",status:"scheduled",visibility:"approved_only",scheduledAt:null,ownerJoinUrl:null};
+ const controls=roomPublicationEditor(published).keyboard.reply_markup.inline_keyboard.flat();
+ const button=controls.find(b=>b.text==="👥 応募者を見る");
+ assert(button);
+ assert("callback_data" in button);
+ assert.equal(button.callback_data,"room:published:applicants:57");
+ assert.deepEqual(roomApplicantsCallbackPattern.exec(button.callback_data)?.slice(1),["57",undefined]);
+ assert.deepEqual(roomApplicantsCallbackPattern.exec("room:published:applicants:57:1")?.slice(1),["57","1"]);
+ assert.equal(roomApplicantsCallbackPattern.test("room:published:applicants:not-a-number"),false);
 });
