@@ -28,6 +28,7 @@ import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
 import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
+import {renderRoomApplicantSummary} from "../services/announcementApplications.js";
 import {jstCurrentMonth,validPickerMonth,validPickerDay,pickerDateRows,pickerHourRows,pickerMinuteRows,pickerDateLabel,selectedPickerTime} from "../services/dateTimeInlinePicker.js";
 import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,renderRecruitmentPreview,recruitmentIdentityLines,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
@@ -45,6 +46,7 @@ async function showPostScreen(
  if(shown.messageId!==old)
   await bindDraftScreen(userId,draft.module,draft.revision,shown.messageId);
 }
+export const roomApplicantsCallbackPattern=/^room:published:applicants:(\d+)(?::(\d+))?$/;
 async function showRoomPublished(telegram:Telegram,owner:number,sourceId:number,screenId?:number):Promise<void>{
  const published=await loadRoomPublication(owner,sourceId);
  const view=roomPublicationEditor(published);
@@ -912,7 +914,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("投稿記録を確認できませんでした").catch(()=>undefined);
   }
  });
- bot.action(/^room:published:applicants:(\\d+)(?::(\\d+))?$/,async ctx=>{
+ bot.action(roomApplicantsCallbackPattern,async ctx=>{
   if(!privateDM(ctx))return;
   const announcementId=Number(ctx.match[1]),page=Number(ctx.match[2]??"0");
   if(!Number.isSafeInteger(page)||page<0||page>100){
