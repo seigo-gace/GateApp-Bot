@@ -81,3 +81,31 @@ test("all paged Like/Love candidate screens avoid single-button navigation",()=>
   }
  }
 });
+
+test("ROOM応募 and 募集+Room tag panels use 3/4 columns and shared red-cancel footer",()=>{
+ for(const purpose of ["like","love"] as const){
+  for(let category=0;category<LIKE_CATEGORIES.length;category++){
+   const total=LIKE_CATEGORIES[category]!.items.length;
+   const pages=Math.ceil(total/12);
+   for(let page=0;page<pages;page++){
+    const rows=applicationTagRows(purpose,987,{},category,page);
+    const footer=rows.at(-1)!;
+    const next=page+1<pages;
+    assert.deepEqual(footer.map(b=>b.text),
+     ["↩ 戻る","✅ 保存","キャンセル",...(next?["次 ➡️"]:[])]);
+    assert.deepEqual(footer.map(b=>b.style),
+     [undefined,"success","danger",...(next?["primary"]:[])]);
+    assert.equal(footer[0]!.callback_data,
+     page>0?`application:tag:${purpose}:987:page:${category}:${page-1}`:
+      `application:tag:${purpose}:987:back`);
+    if(next)assert.equal(footer[3]!.callback_data,
+     `application:tag:${purpose}:987:page:${category}:${page+1}`);
+    const candidates=rows.slice(0,-1);
+    assert(candidates.every(row=>row.length>=2&&row.length<=4));
+    assert(candidates.every(row=>row.length>=3)||total-page*12<=2);
+    assert(candidates.flat().every(b=>b.style===(purpose==="like"?"success":"danger")));
+    assert(candidates.every(row=>row.every(b=>!b.text.includes("次")&&!b.text.includes("戻る"))));
+   }
+  }
+ }
+});
