@@ -19,6 +19,7 @@ COPY --from=build --chown=node:node /src/artifacts/bot/dist/publishMenuPanels.mj
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/recordPhaseADmEvidence.mjs /app/recordPhaseADmEvidence.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/publishTopicBoards.mjs /app/publishTopicBoards.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/reconcileAreaEntries.mjs /app/reconcileAreaEntries.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/recolorPublishedPostingMenus.mjs /app/recolorPublishedPostingMenus.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/deploy/topic-board-ledger-v1.json /app/topic-board-ledger-v1.json
 # undici preload: Node fetch in Docker/WSL must prefer IPv4 for api.telegram.org
 USER root
