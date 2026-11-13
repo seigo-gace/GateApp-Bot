@@ -17,7 +17,7 @@ export type RoomPublication={
  groupTitle:string;topicTitle:string;chatId:number;messageId:number;
  title:string;description:string;status:string;visibility:string;
  scheduledAt:string|null;ownerJoinUrl:string|null;
- destinations?:{chatId:number;messageId:number;topicTitle:string}[];
+ destinations?:{chatId:number;threadId:number;messageId:number;topicTitle:string}[];
 };
 /** Only a fully acknowledged ROOM can be recovered as published.
  * Reuse existing MPB receipts; never send or infer an uncertain Telegram post. */
@@ -154,7 +154,7 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
  const r=await pool.query(`
   SELECT a.announcement_id,a.room_id,r.revision AS room_revision,
    r.title,r.description,r.status,r.join_visibility,r.start_at,r.join_url,
-   t.board_key,t.title AS topic_title,t.chat_id,d.telegram_message_id
+   t.board_key,t.title AS topic_title,t.chat_id,t.message_thread_id,d.telegram_message_id
   FROM announcement_posts a
   JOIN room_posts r ON r.room_id=a.room_id AND r.owner_user_id=a.owner_user_id
   JOIN posting_deliveries d ON d.source_type='announcement'
@@ -178,7 +178,7 @@ export async function loadRoomPublication(owner:number,announcementId:number):Pr
   scheduledAt:x.start_at?new Date(x.start_at).toISOString():null,
   ownerJoinUrl:typeof x.join_url==="string"&&/^https:\/\//.test(x.join_url)?x.join_url:null,
   destinations:r.rows.map((row:typeof x)=>({
-   chatId:n(row.chat_id),messageId:n(row.telegram_message_id),
+   chatId:n(row.chat_id),threadId:n(row.message_thread_id),messageId:n(row.telegram_message_id),
    topicTitle:String(row.topic_title)})),
  };
  if(![data.announcementId,data.roomId,data.roomRevision,data.messageId].every(
@@ -202,31 +202,44 @@ export function roomPublicationEditor(p:RoomPublication){
  ];
  if(p.scheduledAt)text.push("開催："+new Date(p.scheduledAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）");
  const rows:Array<Array<ReturnType<typeof Markup.button.callback>|ReturnType<typeof Markup.button.url>>>=[];
+ // Telegram cannot attach a callback directly to a word in the message body.
+ // Keep its existing edit callback immediately below the displayed text,
+ // rather than mixing it into the three primary management actions.
+ if(!["finished","cancelled"].includes(p.status))
+  rows.push([colored("✏️ 編集",`room:published:edit:${p.announcementId}`,"primary")]);
  if(["draft","scheduled","ready","postponed"].includes(p.status)){
-  rows.push([
-   colored("▶ 開始して入室へ",`room:published:start:${p.announcementId}:${p.roomRevision}`,"success"),
-   colored("✏️ 編集",`room:published:edit:${p.announcementId}`,"primary"),
-   colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger")
-  ]);
+  const primary=[
+   colored("▶ 開始して入室",`room:published:start:${p.announcementId}:${p.roomRevision}`,"success"),
+   ...(p.visibility==="approved_only"?[
+    colored("👥 応募者を見る",`room:published:applicants:${p.announcementId}`,"primary")
+   ]:[]),
+   colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger"),
+  ];
+  rows.push(primary);
  }else if(p.status==="live"){
   rows.push([
    colored("✅ 終了する",`room:published:finish:${p.announcementId}:${p.roomRevision}`,"danger"),
-   colored("✏️ 編集",`room:published:edit:${p.announcementId}`,"primary"),
-   colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger")
+   ...(p.visibility==="approved_only"?[
+    colored("👥 応募者を見る",`room:published:applicants:${p.announcementId}`,"primary")
+   ]:[]),
+   colored("🗑 削除",`room:published:delete:${p.announcementId}`,"danger"),
   ]);
  }
- const navigation:Array<ReturnType<typeof Markup.button.url>>=[];
- if(p.status==="live"&&p.ownerJoinUrl)
-  navigation.push(Markup.button.url("🎥 開始済みROOMに入る",p.ownerJoinUrl));
- for(const [i,destination] of (p.destinations??[
-  {chatId:p.chatId,messageId:p.messageId,topicTitle:p.topicTitle}]).entries()){
-  navigation.push(Markup.button.url(
-   (i===0?"📍 元の投稿先":"🎬 ビデオチャット投稿先")+"を開く",
-   telegramPublishedMessageUrl(destination.chatId,destination.messageId)));
+ // Cross-post order is original verified Topic first, same-group ROOM Topic second.
+ // Navigate to the actual Topic thread, not to an arbitrary post/message receipt.
+ const dest=p.destinations??[];
+ if(dest.length){
+  const origin=dest[0]!;
+  const dedicated=dest.find(d=>d.chatId===origin.chatId&&d.threadId!==origin.threadId);
+  if(origin.threadId>0&&Number.isSafeInteger(origin.threadId)){
+   const nav=[Markup.button.url("🔗 投稿先へ戻る",
+    telegramPublishedMessageUrl(origin.chatId,origin.threadId))];
+   if(dedicated&&Number.isSafeInteger(dedicated.threadId)&&dedicated.threadId>0)
+    nav.push(Markup.button.url("🎬 専用トピックを開く",
+     telegramPublishedMessageUrl(dedicated.chatId,dedicated.threadId)));
+   rows.push(nav);
+  }
  }
- // Use the adopted 4/3/2 layout for navigation without changing actions.
- // A sole remaining link keeps its own row; Telegram owns pixel sizing.
- rows.push(...adaptiveChoiceRows(navigation));
  return {text:text.join("\n"),keyboard:Markup.inlineKeyboard(rows)};
 }
 
