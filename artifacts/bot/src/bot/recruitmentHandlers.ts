@@ -230,6 +230,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
     mode:previous.data.mode==="linked"||previous.data.recruitmentMode==="linked"?"linked":"manual",
     purposeCodes:Array.isArray(previous.data.purposeCodes)?previous.data.purposeCodes:[],
     placeCodes:Array.isArray(previous.data.placeCodes)?previous.data.placeCodes:[],
+    likeTags:validLikeTags(Array.isArray(previous.data.likeTags)?previous.data.likeTags as LikeTag[]:[]),
+    loveTags:validLikeTags(Array.isArray(previous.data.loveTags)?previous.data.loveTags as LikeTag[]:[]),
     // Older drafts may omit body entirely; it is an optional field.
     body:typeof previous.data.body==="string"?previous.data.body:"",
    };
@@ -238,14 +240,15 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    const changed=missingText||recovered.body!==previous.data.body||
     recovered.mode!==previous.data.mode||
     recovered.purposeCodes!==previous.data.purposeCodes||
-    recovered.placeCodes!==previous.data.placeCodes;
+    recovered.placeCodes!==previous.data.placeCodes||
+    !Array.isArray(previous.data.likeTags)||!Array.isArray(previous.data.loveTags);
    if(changed){
     previous=await updateDraft(userId,"announcement",previous.revision,
      missingText?"awaiting_text":previous.step,recovered);
    }
    if(missingText){
     await show(telegram,userId,previous,inputInstructions(recovered.mode==="linked"),
-     recovered.mode==="linked"?Markup.inlineKeyboard([decisionRow(previous.revision)]):initialKeyboard(previous));
+     initialKeyboard(previous));
     return;
    }
   }
@@ -269,8 +272,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
    // owner; otherwise an older screen can lose its next text to another flow.
    const resumed=await updateDraft(userId,"announcement",previous.revision,"awaiting_text",previous.data);
    await show(telegram,userId,resumed,inputInstructions(resumed.data.mode==="linked"),
-    resumed.data.mode==="manual"?initialKeyboard(resumed):
-    Markup.inlineKeyboard([decisionRow(resumed.revision)]));return;
+    initialKeyboard(resumed));return;
   }
  }
  const profile=await getProfile(userId);
@@ -284,6 +286,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   recruitmentMode:linked?"linked":"manual",
   mode:linked?"linked":"manual",profileRevision:linked?profile!.revision:null,
   purposeCodes:[],placeCodes:[],
+  likeTags:linked?validLikeTags(profile!.likeTags??[]):[],
+  loveTags:linked?validLikeTags(profile!.loveTags??[]):[],
   ...(entry?{entryChatId:entry.chatId,entryThreadId:entry.threadId}:{}),
   ...(defaultTopic?{selectedTopicId:defaultTopic.id,destinationExplicit:false}:{}),
  });
@@ -292,7 +296,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   d.data.screenMessageId=Number(menuMessageId);
  }
  await show(telegram,userId,d,inputInstructions(linked),
-  linked?Markup.inlineKeyboard([decisionRow(d.revision)]):initialKeyboard(d));
+  initialKeyboard(d));
 }
 async function publishRecruitment(
  telegram:Telegram,owner:number,d:EditorDraft,topicId:number,explicitTopicChoice=false
@@ -439,7 +443,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    await show(ctx.telegram,ctx.from.id,next,
     "📍 投稿先："+escapeProfileHtml(String(next.data.destinationLabel))+"\n\n"+
     escapeProfileHtml(inputInstructions(next.data.mode==="linked")),
-    next.data.mode==="linked"?Markup.inlineKeyboard([decisionRow(next.revision)]):initialKeyboard(next),true);
+    initialKeyboard(next),true);
   }else await showPreview(ctx.telegram,ctx.from.id,next);
  });
 
@@ -474,6 +478,8 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     const updated=await updateDraft(ctx.from.id,"announcement",d.revision,"preview",{
      ...d.data,...input,
      purposeCodes:d.data.purposeCodes??[],placeCodes:d.data.placeCodes??[],
+     likeTags:validLikeTags(Array.isArray(d.data.likeTags)?d.data.likeTags as LikeTag[]:[]),
+     loveTags:validLikeTags(Array.isArray(d.data.loveTags)?d.data.loveTags as LikeTag[]:[]),
      position:input.mode==="manual"?(d.data.position??input.position):input.position,
      editField:null,recruitPanel:null,recruitPanelReturnStep:null});
     await showPreview(ctx.telegram,ctx.from.id,updated,warning);
@@ -491,8 +497,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     "\n再入力してください。"+(warning?"\n"+escapeProfileHtml(warning):"");
    const buttons=phase==="edit"?
     Markup.inlineKeyboard([[b("↩ 編集をやめる",`recruit:editcancel:${d.revision}`)]]):
-    d.data.mode==="manual"?initialKeyboard(d):
-    Markup.inlineKeyboard([[b("キャンセル",`recruit:cancel:${d.revision}`)]]);
+    initialKeyboard(d);
    await show(ctx.telegram,ctx.from.id,d,message,buttons,true);
   }
  });
