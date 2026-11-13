@@ -16,6 +16,7 @@ import {PURPOSE_TAGS,PLACE_TAGS,normalizePlaceCodes} from "../services/announcem
 import {LIKE_CATEGORIES,likePageBounds,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {PROFILE_ALBUM_LIMIT,appendProfileMedia,replaceProfileMedia,deleteProfileMedia,numberProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {sendProfileAlbum} from "./profileViewerHandlers.js";
+import {publishProfileToAllBoards} from "../services/profileBoardPublication.js";
 import {startCompactRecruitmentEditor} from "./recruitmentHandlers.js";
 import {startRoomEditor} from "./postingHandlers.js";
 import {resumeApplicationEditor} from "./applicationHandlers.js";
@@ -50,7 +51,7 @@ export function compactProfileRows(d:ProfileDraft){
   [button("🖼️🎬 アルバム "+(x.media?.length??0)+"/"+PROFILE_ALBUM_LIMIT,
     "pc:"+r+":media","primary"),
    button("容姿/エリア","pc:"+r+":appearance","primary")],
-  [button("✅ プロフィール保存","pc:"+r+":save","success"),
+  [button("✅ 保存・3掲示板へ投稿","pc:"+r+":save","success"),
    button("キャンセル","pc:"+r+":cancel","danger")]
  ]);
 }
@@ -58,7 +59,7 @@ function intro(d:ProfileDraft):string{
  const x=d.data;
  const guidance=[
   "🪪 プロフィール｜相手募集と共通入力",
-  "入力した情報は非公開保存され、グループには自動投稿されません。",
+  "保存を確定すると、3グループの「みんなのプロフ」へ投稿・更新します。",
   "",
   "1行目：タイトル",
   "2行目：ニックネーム",
@@ -143,7 +144,7 @@ function mediaKeyboard(d:ProfileDraft){
  return Markup.inlineKeyboard([
   [button("🖼️アルバムを見る","pc:"+r+":album","primary")],
   [button("↩ 戻る","pc:"+r+":back"),
-   button("✅ 保存","pc:"+r+":save","success"),
+   button("✅ 保存・投稿","pc:"+r+":save","success"),
    button("キャンセル","pc:"+r+":cancel","danger")],
  ]);
 }
@@ -368,10 +369,20 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
     return;
    }
    const profile=await profiles.savePrivateDraft(ctx.from.id,r,ctx.from.username??null);
-   await ctx.answerCbQuery("プロフィールを非公開保存しました");
+   await ctx.answerCbQuery("保存しました。公開先を確認しています");
    const origin=origins.has(d.data.compactOrigin as Origin)?d.data.compactOrigin as Origin:"profile";
-   await ctx.editMessageText((profile.status==="published"?"✅ 変更を保存しました。公開済み投稿は自動更新されません。\n":"✅ プロフィールを非公開保存しました。\n")+
-    renderProfileBasicPreview(profile,ctx.from.username??""),{
+   // Saving the owner's original must survive any incomplete Telegram delivery.
+   // Each board uses its existing delivery/publication ledger for safe retry.
+   let notice:string;
+   try{
+    const result=await publishProfileToAllBoards(ctx.telegram,ctx.from.id,profile);
+    notice="✅ プロフィールを3掲示板の「みんなのプロフ」に反映しました。"+
+     "（新規"+result.published+"・更新"+result.updated+"・変更なし"+result.unchanged+"）";
+   }catch{
+    notice="⚠️ プロフィールは保存しましたが、3掲示板への投稿完了は確認できません。"+
+     "一部が投稿済みの可能性があるため、自動再送はしません。";
+   }
+   await ctx.editMessageText(notice+"\n"+renderProfileBasicPreview(profile,ctx.from.username??""),{
     parse_mode:"HTML",
     ...Markup.inlineKeyboard([[button("↩ 元の操作へ戻る","pc:return:"+origin)]])
    });
