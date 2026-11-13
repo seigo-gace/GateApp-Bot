@@ -4,10 +4,31 @@ import {LIKE_CATEGORIES} from "../services/profileLike.js";
 import {parseProfileViewerPayload,profileViewerUrl,resolvePublishedProfileView,
  type ViewerPurpose} from "../services/profilePublicView.js";
 import type {SavedProfile} from "../services/profileRepository.js";
+import {PROFILE_ALBUM_LIMIT} from "../services/profileMedia.js";
 
 type ProfileMedia={itemId?:number;fileId:string;type:"photo"|"video"};
 function availableMedia(profile:SavedProfile):ProfileMedia[]{
- return profile.media??[];
+ // Keep older references in storage untouched; display at most the adopted five.
+ return (profile.media??[]).slice(0,PROFILE_ALBUM_LIMIT);
+}
+/** A Telegram media album is a group of 2-5 original file references. */
+export async function sendProfileAlbum(
+ telegram:Context["telegram"],userId:number,profile:SavedProfile
+):Promise<number>{
+ const items=availableMedia(profile);
+ if(!Number.isSafeInteger(userId)||userId<=0)throw Error("PROFILE_ALBUM_ACTOR_INVALID");
+ if(!items.length)return 0;
+ if(items.length===1){
+  const entry=items[0]!;
+  if(entry.type==="photo")await telegram.sendPhoto(userId,entry.fileId);
+  else await telegram.sendVideo(userId,entry.fileId);
+ }else{
+  const album=items.map(entry=>entry.type==="photo"?
+   {type:"photo" as const,media:entry.fileId}:
+   {type:"video" as const,media:entry.fileId});
+  await telegram.sendMediaGroup(userId,album);
+ }
+ return items.length;
 }
 export function renderPublishedTagDetail(profile:SavedProfile):string{
  const render=(purpose:"like"|"love")=>{
@@ -66,7 +87,11 @@ export async function startProfileViewer(ctx:Context,payload:string):Promise<voi
    await ctx.reply("このプロフィールに公開対象の画像・動画はありません。");
    return;
   }
-  await ctx.reply(mediaSummary(profile,0),mediaKeyboard(parsed.token,profile,0));
+  try{
+   await sendProfileAlbum(ctx.telegram,ctx.from.id,profile);
+  }catch{
+   await ctx.reply("アルバムの表示に失敗しました。あとで再度お試しください。");
+  }
  }
 }
 /** Media display never edits or forwards the owner's original upload. */
