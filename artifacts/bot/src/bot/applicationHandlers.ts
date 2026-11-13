@@ -19,6 +19,7 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {applicantDmLink} from "../services/telegramUsernameLink.js";
 import {applicationTagRows,applicationTagValues,renderRoomApplicationPreview} from "../services/roomApplicationTags.js";
+import {roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {LIKE_CATEGORIES,likePageIndex,toggleLike,validLikeTags,type ProfileTagPurpose} from "../services/profileLike.js";
 
 /** Existing plain-recruitment links keep direct owner contact.
@@ -186,8 +187,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("古い操作です");return;
   }
   await ctx.answerCbQuery();
-  await ctx.editMessageText("🏷️ #"+(purpose==="like"?"Like":"Love")+
-   "\n"+(purpose==="like"?"自分の特徴・好み・趣味・スタイルを選択":"相手に求める特徴・好み・趣味・スタイルを選択"),
+  await ctx.editMessageText(roomRecruitmentTagHeading(purpose),
    Markup.inlineKeyboard(applicationTagRows(purpose,screenId,r.rows[0].draft)));
  });
  bot.action(/^application:tag:(like|love):(\d+):(open|back|save|tag|page|clear)(?::(\d+))?(?::(\d+))?$/,async ctx=>{
@@ -234,8 +234,7 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    selectedCategory=undefined;
   }
   await ctx.answerCbQuery();
-  const heading="🏷️ #"+(purpose==="like"?"Like":"Love")+
-   (selectedCategory===undefined?"":"｜"+LIKE_CATEGORIES[selectedCategory]!.name)+
+  const heading=roomRecruitmentTagHeading(purpose,selectedCategory)+
    "\n選択中："+applicationTagValues(draft,purpose).length+"件";
   await ctx.editMessageText(heading,Markup.inlineKeyboard(
    applicationTagRows(purpose,screenId,draft,selectedCategory,page)));
