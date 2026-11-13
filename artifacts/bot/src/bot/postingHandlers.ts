@@ -931,27 +931,37 @@ export function registerPostingHandlers(bot:Telegraf):void{
       WHERE announcement_id=$1`,[announcementId]);
    const total=Number(count.rows[0]?.total??0);
    const applications=await pool.query(
-    `SELECT application_id,status FROM announcement_applications
-      WHERE announcement_id=$1 ORDER BY updated_at DESC,application_id DESC
-      LIMIT 10 OFFSET $2`,[announcementId,page*10]);
-   const buttons=applications.rows.map(row=>[
-    Markup.button.callback(
-     "👤 応募 #"+Number(row.application_id)+" / "+String(row.status),
-     `application:manage:view:${Number(row.application_id)}`),
-   ]);
+    `SELECT application_id,status,consented_profile FROM announcement_applications
+     WHERE announcement_id=$1 ORDER BY updated_at DESC,application_id DESC
+     LIMIT 3 OFFSET $2`,[announcementId,page*3]);
+   const blocks:string[]=[];
+   const buttons:Array<Array<ReturnType<typeof Markup.button.callback>>>=[];
+   for(const row of applications.rows){
+    const id=Number(row.application_id),status=String(row.status);
+    const snapshot=row.consented_profile as Record<string,unknown>|null;
+    const card=snapshot?renderRoomApplicantSummary(snapshot):
+     "応募内容を取得できませんでした";
+    blocks.push("【応募者 "+(page*3+blocks.length+1)+"】\n"+card+"\n状態："+status);
+    const controls=[Markup.button.callback("👤 応募詳細",
+     `application:manage:view:${id}`)];
+    if(["submitted","held"].includes(status))controls.push(
+     Markup.button.callback("✅ 承認",`application:decide:${id}:accepted`),
+     Markup.button.callback("❌ 拒否",`application:decide:${id}:declined`));
+    buttons.push(controls);
+   }
    const paging=[];
    if(page>0)paging.push(Markup.button.callback("◀ 前へ",
     `room:published:applicants:${announcementId}:${page-1}`));
-   if((page+1)*10<total)paging.push(Markup.button.callback("次へ ▶",
+   if((page+1)*3<total)paging.push(Markup.button.callback("次へ ▶",
     `room:published:applicants:${announcementId}:${page+1}`));
    if(paging.length)buttons.push(paging);
    buttons.push([Markup.button.callback("↩ 投稿管理へ戻る",
     `room:published:manage:${announcementId}`)]);
    await ctx.answerCbQuery();
    await ctx.editMessageText(
-    "👥 応募者を見る\\n"+published.title+"\\n応募件数："+total+
-    (total?"\\n応募者を選択すると承認・拒否できます。":"\\nまだ応募はありません。"),
-    Markup.inlineKeyboard(buttons));
+    "👥 応募者一覧\n"+escapeProfileHtml(published.title)+"\n応募件数："+total+
+    (blocks.length?"\n\n"+blocks.join("\n\n"):"\nまだ応募はありません。"),
+    {parse_mode:"HTML",...Markup.inlineKeyboard(buttons)});
   }catch{
    await ctx.answerCbQuery("応募一覧を確認できません");
   }
