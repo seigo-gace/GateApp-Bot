@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
  parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,
- validateRecruitmentReady,recruitmentTextPhase,
+ validateRecruitmentReady,validateRecruitmentIdentityReady,recruitmentTextPhase,
 } from "../src/services/recruitmentCompose.js";
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
 import {recruitmentDecisionRow} from "../src/services/recruitmentButtonLayout.js";
@@ -41,8 +41,8 @@ test("field editing preserves unrelated recruitment fields",()=>{
 });
 
 test("recruitment input rejects incomplete and unsafe text",()=>{
- assert.throws(()=>parseRecruitmentMessage("タイトルだけ",true));
- assert.throws(()=>parseRecruitmentMessage("タイトル\n名前\n175 80 40",false));
+ assert.throws(()=>parseRecruitmentMessage("",true));
+ assert.throws(()=>parseRecruitmentMessage("タイトル\n名前",false));
  assert.throws(()=>parseRecruitmentMessage("タイトル\n"+("長".repeat(3001)),true));
  const d=parseRecruitmentMessage("<script>\n本文 & <危険>",true);
  const preview=renderRecruitmentPreview(d,{nickname:"利用者",heightCm:175,weightKg:80,age:40});
@@ -121,4 +121,25 @@ test("rich owner editor begins with actual group title, topic/post ID, then titl
  assert.match(JSON.stringify(blocks[2]),/テスト/);
  assert.match(JSON.stringify(blocks[3]),/ニックネーム：テスト/);
  assert.doesNotMatch(JSON.stringify(rich),/area_bbs/);
+});
+
+test("optional fourth line: manual 3 lines and linked title-only are valid",()=>{
+ const manual=parseRecruitmentMessage("題名\nニックネーム\n175 80 40",false);
+ assert.equal(manual.body,"");
+ assert.equal(manual.nickname,"ニックネーム");
+ manual.position="リバ";
+ assert.doesNotThrow(()=>validateRecruitmentIdentityReady(manual));
+ assert.match(renderRecruitmentPreview(manual),/題名/);
+ const blankFourth=parseRecruitmentMessage("題名\nニックネーム\n175 80 40\n",false);
+ assert.equal(blankFourth.body,"");
+ const linked=parseRecruitmentMessage("題名",true);
+ assert.equal(linked.body,"");
+ assert.equal(linked.mode,"linked");
+ const edited=changeRecruitmentField(manual,"body","");
+ assert.equal(edited.body,"");
+ assert.equal(edited.title,manual.title);
+ // Required identity fields and length checks must remain enforced.
+ assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム",false));
+ assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム\n170 80 17",false));
+ assert.throws(()=>parseRecruitmentMessage("題名\nニックネーム\n175 80 40\n"+("長".repeat(3001)),false));
 });
