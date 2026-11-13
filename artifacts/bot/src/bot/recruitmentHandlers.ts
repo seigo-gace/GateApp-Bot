@@ -321,6 +321,7 @@ async function publishRecruitment(
  }:null;
  const conditions={
   inputMode:data.mode,title:data.title,
+  likeTags:validLikeTags(data.likeTags??[]),loveTags:validLikeTags(data.loveTags??[]),
   ...(data.mode==="manual"?{
    nickname:data.nickname,heightCm:data.heightCm,weightKg:data.weightKg,
    age:data.age,position:data.position,
