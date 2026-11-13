@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "room_public_readback", "room_public_post_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -50,6 +50,33 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "profile_topics_readback":
+        # Telegram's USER API returns real forum topic IDs, not t.me/c message
+        # suffixes. Only inspect the three already-approved boards, read-only.
+        from telethon import functions
+        dialogs = await client.get_dialogs(limit=500)
+        targets = (
+            ("area_bbs", -1003847210571),
+            ("video_chat", -1002373696859),
+            ("gay_board", -1003770334893),
+        )
+        results = []
+        for board, chat_id in targets:
+            entity = next((d.entity for d in dialogs if d.id == chat_id), None)
+            if entity is None:
+                raise RuntimeError("PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS")
+            forum = await client(functions.messages.GetForumTopicsRequest(
+                peer=entity, q="みんなのプロフ",
+                offset_date=0, offset_id=0, offset_topic=0, limit=100))
+            matches = [t for t in forum.topics
+                       if "みんなのプロフ" in getattr(t, "title", "")]
+            if len(matches) > 1:
+                raise RuntimeError("PROFILE_READ_MULTIPLE_TOPICS")
+            results.append({"board": board, "chat_id": chat_id,
+                            "thread_id": int(matches[0].id) if matches else None,
+                            "found": len(matches) == 1})
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "topics": results}
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}
@@ -153,6 +180,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "ROOM_READ_CHAT_NOT_ALLOWLISTED", "ROOM_READ_MESSAGE_ID_INVALID",
                 "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE", "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH",
                 "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
+                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
                 "REQUEST_SIZE_INVALID",
             }
