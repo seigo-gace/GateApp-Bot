@@ -203,6 +203,11 @@ export async function refreshPublishedTopicDmEntry(
    reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
   });
  }catch(e){
+  // A definitive Bot API rejection did not change the old message: preserve
+  // the existing valid pin and token. Only ambiguous network outcomes may
+  // require manual reconciliation.
+  const status=(e as {response?:{error_code?:number}})?.response?.error_code;
+  if(status===400||status===403||status===429)throw e;
   await pool.query(
    `UPDATE topic_dm_entry_pins SET state='needs_reconcile',updated_at=NOW()
     WHERE chat_id=$1 AND message_thread_id=$2 AND message_id=$3
