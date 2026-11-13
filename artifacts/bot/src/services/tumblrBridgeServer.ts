@@ -49,19 +49,26 @@ export async function handleTumblrBridge(
    const approved=await commonGayBbsApproval(telegram,user,group.target_id);
    return {verified:approved===true};
  }
+ // Existing MPB ledger is authoritative; readback does not repost.
+ if(input.action==="readback"){
+   if(!input.message_id || !/^[1-9][0-9]{0,15}$/.test(input.message_id))
+     throw new Error("BRIDGE_MESSAGE_INVALID");
+   const r=await pool.query<{status:string;telegram_message_id:string|null}>(
+    "SELECT status,telegram_message_id FROM posting_deliveries WHERE telegram_message_id=$1 AND owner_user_id=$2 AND posting_topic_id=$3 AND source_type='announcement' AND status='sent'",
+    [input.message_id,ownerId,topicId]);
+   return {verified:r.rows.length===1};
+ }
  const op=input.operation_key;
  if(typeof op!=="string"||! /^[a-zA-Z0-9_-]{1,80}$/.test(op))
    throw new Error("BRIDGE_OPERATION_INVALID");
- // Existing MPB owns the receipt and resolves the actual Telegram message.
  const key="announcement:"+op+":1:"+topicId;
- if(input.action==="lookup" || input.action==="readback"){
+ if(input.action==="lookup"){
    const r=await pool.query<{status:string;telegram_message_id:string|null}>(
     "SELECT status,telegram_message_id FROM posting_deliveries WHERE operation_key=$1 AND owner_user_id=$2 AND posting_topic_id=$3",
     [key,ownerId,topicId]);
    const row=r.rows[0];
    if(!row||row.status!=="sent"||!row.telegram_message_id)return {verified:false};
    const messageId=String(row.telegram_message_id);
-   if(input.action==="readback" && messageId!==input.message_id)return {verified:false};
    return {verified:true,message_id:messageId};
  }
  if(input.action==="publish"){
