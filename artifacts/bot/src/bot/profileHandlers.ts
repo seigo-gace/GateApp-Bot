@@ -8,7 +8,7 @@ import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,likePageIndex,toggleLike,v
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
-import {appendProfileMedia,mediaStatus,numberProfileMedia,replaceProfileMedia,deleteProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
+import {PROFILE_ALBUM_LIMIT,appendProfileMedia,mediaStatus,numberProfileMedia,replaceProfileMedia,deleteProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {
   PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
 } from "../services/profileCore.js";
@@ -182,7 +182,7 @@ const mediaText=(data:ProfileDraft["data"])=>{
  const page=Math.min(Math.max(data.mediaPage??1,1),pages);
  return [
   "🪪 プロフィール｜画像・動画・自己PR",
-  "画像・動画はTelegramの添付機能からこのBot DMへ送信してください（登録は任意）。",
+  "画像・動画は合計"+PROFILE_ALBUM_LIMIT+"件まで、Telegramの添付で登録できます。",
   "自己PRは通常の入力欄へ送信。再送信すると全文差し替えです。",
   "画像・動画は「削除 番号」「差替 番号」で操作します（例：差替 1）。",
   "自己PRの消去は「PR削除」、差し替え中止は「差替取消」と送信します。",
@@ -873,6 +873,13 @@ export function registerProfileHandlers(
     const nextId=Math.max(draft.data.mediaNextId??1,...oldMedia.map(item=>(item.itemId??0)+1),1);
     if(!Number.isSafeInteger(nextId))throw Error("PROFILE_MEDIA_ITEM_ID_OVERFLOW");
     const replacing=draft.data.replaceMediaId!==undefined;
+    if(!replacing&&oldMedia.length>=PROFILE_ALBUM_LIMIT&&
+      !oldMedia.some(item=>item.sourceMessageId===entry.sourceMessageId)){
+     let warning="⚠️ アルバムは画像・動画合わせて5件までです。差し替えか削除をしてください。\n";
+     try{await ctx.deleteMessage();}catch{warning+="⚠️ 添付メッセージは手動で削除してください。\n";}
+     await updateWizardScreen(ctx,repo,draft,warning+mediaText(draft.data),mediaKeyboard(draft.revision));
+     return;
+    }
     const items=replacing
       ?replaceProfileMedia(oldMedia,draft.data.replaceMediaId!,entry)
       :numberProfileMedia(appendProfileMedia(oldMedia,{...entry,itemId:nextId}));
