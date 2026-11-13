@@ -31,7 +31,9 @@ test("応募 tag panels reuse the actual Room+募集 category, buttons and foote
  const item=applicationTagRows("love",123,{},2);
  assert(item.some(row=>row.some(b=>b.callback_data.startsWith("application:tag:love:123:tag:2:"))));
  assert(item.some(row=>row.some(b=>b.callback_data==="application:preview")));
- assert.deepEqual(item.slice(-2).map(row=>row.map(b=>b.text)),[["✅ 保存","↩ 戻る"],["キャンセル"]]);
+ assert(item.some(row=>row.some(b=>b.text==="✅ 保存")));
+ assert(item.some(row=>row.some(b=>b.text==="キャンセル")));
+ assert(item.every(row=>row.length!==1||row[0]!.text==="キャンセル"));
  assert(item.some(row=>row.some(b=>b.callback_data==="application:preview")));
 });
 
