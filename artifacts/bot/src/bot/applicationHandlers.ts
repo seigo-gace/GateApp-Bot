@@ -138,6 +138,19 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
    validLikeTags(data.likeTags as []??[]).length>0,
    validLikeTags(data.loveTags as []??[]).length>0),true);
 }
+/** Owner receives the same saved applicant snapshot as the list/detail screen. */
+export function roomApplicantOwnerNotification(applicationId:number,announcementId:number,snapshot:Record<string,unknown>){
+ if(!Number.isSafeInteger(applicationId)||applicationId<=0||
+    !Number.isSafeInteger(announcementId)||announcementId<=0)throw Error("ROOM_APPLICATION_ID_INVALID");
+ return {
+  text:"📨 ROOM応募が届きました。\n"+renderRoomApplicantSummary(snapshot),
+  keyboard:Markup.inlineKeyboard([
+   [Markup.button.callback("✅ 承認",`application:decide:${applicationId}:accepted`),
+    Markup.button.callback("❌ 拒否",`application:decide:${applicationId}:declined`)],
+   [Markup.button.callback("👥 応募者を見る",`room:published:applicants:${announcementId}`)]
+  ])
+ };
+}
 export function registerApplicationHandlers(bot:Telegraf):void{
 
  bot.on("text",async(ctx,next)=>{
@@ -365,19 +378,6 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    });
   }
  });
-/** Owner receives the same saved applicant snapshot as the list/detail screen. */
-export function roomApplicantOwnerNotification(applicationId:number,announcementId:number,snapshot:Record<string,unknown>){
- if(!Number.isSafeInteger(applicationId)||applicationId<=0||
-    !Number.isSafeInteger(announcementId)||announcementId<=0)throw Error("ROOM_APPLICATION_ID_INVALID");
- return {
-  text:"📨 ROOM応募が届きました。\n"+renderRoomApplicantSummary(snapshot),
-  keyboard:Markup.inlineKeyboard([
-   [Markup.button.callback("✅ 承認",`application:decide:${applicationId}:accepted`),
-    Markup.button.callback("❌ 拒否",`application:decide:${applicationId}:declined`)],
-   [Markup.button.callback("👥 応募者を見る",`room:published:applicants:${announcementId}`)]
-  ])
- };
-}
  bot.action("application:cancel",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   await pool.query(
