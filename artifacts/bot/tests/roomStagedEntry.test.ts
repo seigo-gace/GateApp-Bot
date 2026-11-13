@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {roomStageKeyboard,hasExplicitRoomTopicChoice} from "../src/bot/postingHandlers.js";
 import {inputInstructions} from "../src/bot/recruitmentHandlers.js";
 import {roomRecruitmentSelectorRow} from "../src/services/recruitmentButtonLayout.js";
+import {applicationChoiceKeyboard} from "../src/bot/applicationHandlers.js";
 import type {EditorDraft} from "../src/services/publicPostRepository.js";
 
 function draft(step:EditorDraft["step"],data:Record<string,unknown>={}):EditorDraft{
@@ -127,4 +128,24 @@ test("ROOM応募 reuses Room+募集 selectors with its own callbacks",()=>{
  assert.deepEqual(buttons.map(b=>b.style),["primary","success","danger"]);
  assert.deepEqual(buttons.map(b=>b.callback_data),
   ["application:position","application:tag:like:open","application:tag:love:open"]);
+});
+
+test("応募 starts and previews with the very same Room+募集 selector row and 応募する/キャンセル",()=>{
+ const manual=applicationChoiceKeyboard(false,"タチ").reply_markup.inline_keyboard;
+ assert.deepEqual(manual.map(row=>row.map(button=>button.text)),[
+  ["✅ ポジション","#Like","#Love"],
+  ["応募する","キャンセル"]
+ ]);
+ assert.deepEqual(manual.map(row=>row.map(button=>button.style)),[
+  ["primary","success","danger"],["success","danger"]
+ ]);
+ assert.deepEqual(manual[1]!.map(button=>button.callback_data),
+  ["application:confirm","application:cancel"]);
+ const linked=applicationChoiceKeyboard(true,"リバ").reply_markup.inline_keyboard;
+ assert.deepEqual(linked.map(row=>row.map(button=>button.text)),[
+  ["#Like","#Love"],["応募する","キャンセル"]
+ ]);
+ for(const rows of [manual,linked]){
+  assert.ok(rows.flat().every(button=>!button.text.includes("即開始")&&!button.text.includes("予告する")));
+ }
 });
