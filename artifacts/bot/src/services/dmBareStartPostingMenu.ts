@@ -1,6 +1,6 @@
 /** DM /start fallback: full posting menu (APPROVED_POSTING_ROWS 3/2/2/3), not the old 3-button stub. */
 import { Markup } from "telegraf";
-import { APPROVED_POSTING_ROWS } from "./menuPanelRenderer.js";
+import { APPROVED_POSTING_ROWS,postingMenuButtonStyle } from "./menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
 
 export const STATIC_URL_LABELS = new Set([
@@ -122,7 +122,10 @@ export async function bareStartPostingExtra(chatId: number) {
       return Markup.button.callback(label, data);
     }),
   );
-  return Markup.inlineKeyboard(rows);
+  return Markup.inlineKeyboard(rows.map((row,rowIndex)=>row.map((button,columnIndex)=>({
+    ...button,
+    style:postingMenuButtonStyle(APPROVED_POSTING_ROWS[rowIndex]![columnIndex]!),
+  } as unknown as typeof button))));
 }
 
 /** @internal row layout check for tests */

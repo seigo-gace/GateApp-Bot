@@ -85,3 +85,17 @@ test("posting panel merges seven verified DM editors and three verified navigati
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:[...entryLinks.slice(0,3),{...entryLinks[3],ready:false}]}),/NOT_VERIFIED/);
 });
+
+test("all ten posting buttons have native Telegram colors without changing destinations",()=>{
+ const links=makeLinks(APPROVED_POSTING_ROWS);
+ const panel=renderMenuPanel({type:"posting",board:"area_bbs",links,entryLinks:[]});
+ assert.deepEqual(panel.rows.map(x=>x.length),[3,2,2,3]);
+ for(let i=0;i<APPROVED_POSTING_ROWS.length;i++){
+  for(let j=0;j<APPROVED_POSTING_ROWS[i]!.length;j++){
+   assert.equal(panel.rows[i]![j]!.url,links.find(l=>l.label===APPROVED_POSTING_ROWS[i]![j])!.url);
+   assert.ok(["primary","success","danger"].includes(panel.rows[i]![j]!.style!));
+  }
+ }
+ assert.equal(panel.rows[0]![1]!.text,"募集+Room");
+ assert.equal(panel.rows[0]![1]!.style,"success");
+});
