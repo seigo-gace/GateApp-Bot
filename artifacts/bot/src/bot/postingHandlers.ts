@@ -939,8 +939,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
    for(const row of applications.rows){
     const id=Number(row.application_id),status=String(row.status);
     const snapshot=row.consented_profile as Record<string,unknown>|null;
-    const card=snapshot?renderRoomApplicantSummary(snapshot):
-     "応募内容を取得できませんでした";
+    // Shorten display only; the existing detail view retains the full snapshot.
+    let card="応募内容を取得できませんでした";
+    if(snapshot){
+     try{
+      const body=String(snapshot.body||"");
+      card=renderRoomApplicantSummary({...snapshot,
+       body:body.slice(0,160)+(body.length>160?"…":""),
+       likeTags:validLikeTags(snapshot.likeTags as []??[]).slice(0,6),
+       loveTags:validLikeTags(snapshot.loveTags as []??[]).slice(0,6)});
+     }catch{card="応募内容の形式を確認してください。応募詳細を開けます。";}
+    }
     blocks.push("【応募者 "+(page*3+blocks.length+1)+"】\n"+card+"\n状態："+status);
     const controls=[Markup.button.callback("👤 応募詳細",
      `application:manage:view:${id}`)];
