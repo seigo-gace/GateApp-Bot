@@ -450,13 +450,13 @@ try{
  for(const [query,params] of [
   ["SELECT 1 FROM room_posts WHERE room_id=$1",[roomId]],
   ["SELECT 1 FROM room_source_events WHERE room_id=$1",[roomId]],
-  ["SELECT 1 FROM room_status_message_edits WHERE edit_id=$1",[liveEdit!.editId]],
+  ["SELECT 1 FROM room_status_message_edits WHERE edit_id=$1",[endEdit!.editId]],
   ["SELECT 1 FROM announcement_posts WHERE announcement_id=$1",[linkedId]],
   ["SELECT 1 FROM posting_deliveries WHERE operation_key=$1",["db-room-delivery"]],
  ] as const){
   assert.equal((await pool.query(query,[...params])).rows.length,0,query);
  }
- assert.equal(edits.length,2,"Telegram historical post must remain, no deletion calls");
+ assert.equal(edits.length,1,"Telegram terminal edit must remain, no deletion calls");
  console.log("GAYBBS_DB_ROOM_LIVE_END_BADGES_POST_KEPT_DB_PURGED=PASS");
  // Regression: a recruitment may be full before ROOM starts. Its public
  // message must still receive LIVE and final status rather than being skipped.
