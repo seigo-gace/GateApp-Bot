@@ -130,3 +130,17 @@ test("Like green and Love red begin at category screens, and explanations remain
  }
  assert.notEqual(roomRecruitmentTagHeading("like"),roomRecruitmentTagHeading("love"));
 });
+
+test("ROOM応募 preview and owner summary accept 3-line text with empty optional body",()=>{
+ const input=parseRecruitmentMessage("応募タイトル\n応募者\n170 80 40",false);
+ input.position="タチ";
+ assert.equal(input.body,"");
+ const summary=renderRoomApplicantSummary({...input,likeTags:[],loveTags:[]});
+ assert.match(summary,/応募タイトル/);
+ assert.match(summary,/応募者/);
+ const preview=renderRoomApplicationPreview({...input,likeTags:[],loveTags:[]});
+ assert.match(preview,/応募タイトル/);
+ assert.match(preview,/#Like：/);
+ const linked=parseRecruitmentMessage("応募タイトル",true);
+ assert.equal(linked.body,"");
+});
