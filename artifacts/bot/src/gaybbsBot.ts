@@ -125,7 +125,14 @@ async function main():Promise<void>{
   allowedUpdates:["message","callback_query","chat_join_request"],
  });
  console.log("GAYBBS_BOT_READY bot_id="+me.id);
- const bridge=startTumblrBridge(bot.telegram);
+ let bridge:ReturnType<typeof startTumblrBridge>=null;
+ try{
+  bridge=startTumblrBridge(bot.telegram);
+ }catch(error){
+  // Optional Tumblr integration must never take down the existing Bot.
+  console.error("TUMBLR_BRIDGE_START_FAILED",
+    error instanceof Error?error.message:"unknown");
+ }
  const stopWorkers=startGayBbsWorkers(bot.telegram);
  const stop=async(signal:string)=>{
   stopWorkers();
