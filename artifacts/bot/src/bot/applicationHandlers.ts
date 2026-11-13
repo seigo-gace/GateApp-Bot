@@ -12,6 +12,7 @@ import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {submitApplication,decideApplication,withdrawApplication,renderRoomApplicantSummary} from "../services/announcementApplications.js";
 import {parseRecruitmentMessage,validateRecruitmentIdentityReady,type RecruitmentInput} from "../services/recruitmentCompose.js";
 import {PROFILE_POSITIONS,isProfilePosition} from "../services/profileCore.js";
+import {positionChoiceRows} from "../services/inlineSelection.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {applicantDmLink} from "../services/telegramUsernameLink.js";
@@ -241,8 +242,9 @@ export function registerApplicationHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await ctx.editMessageText("ポジションを選択してください。",
    Markup.inlineKeyboard([
-    PROFILE_POSITIONS.slice(0,3).map((value,i)=>Markup.button.callback(value,`application:pos:${i}`)),
-    PROFILE_POSITIONS.slice(3).map((value,i)=>Markup.button.callback(value,`application:pos:${i+3}`)),
+    ...positionChoiceRows(PROFILE_POSITIONS,undefined,
+     (_value,index)=>`application:pos:${index}`)
+     .map(row=>row.map(button=>Markup.button.callback(button.text,button.callback_data))),
     [Markup.button.callback("↩ 戻る","application:preview"),
      Markup.button.callback("キャンセル","application:cancel")]
    ]));
