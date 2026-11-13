@@ -287,7 +287,8 @@ async function roomPreviewScreen(telegram:Telegram,userId:number,d:EditorDraft):
    guide+"\n\n送信した内容をBotが回収し、同じ画面のプレビューに反映します。",
    roomStageKeyboard(d));return;
  }
- const ready=String(d.data.title||"").trim()&&String(d.data.description||"").trim();
+ // The fourth free-text line is optional; a valid title can preview without it.
+ const ready=String(d.data.title||"").trim();
  if(!ready){
   const next=await updateDraft(userId,"room",d.revision,"awaiting_text",d.data);
   await roomPreviewScreen(telegram,userId,next);return;
@@ -545,8 +546,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   try{
    if(op==="plan"&&(d.step!=="preview"||
-      !String(d.data.title||"").trim()||
-      !String(d.data.description||"").trim())){
+      !String(d.data.title||"").trim())){
     await ctx.answerCbQuery("相手募集と同じ4行入力を先に送信してください。");
     const next=d.step==="awaiting_text"?d:
      await updateDraft(ctx.from.id,"room",rev,"awaiting_text",
@@ -555,7 +555,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(op==="mode"){
-    if(d.data.modeSelected&&d.data.title&&d.data.description){
+    if(d.data.modeSelected&&String(d.data.title||"").trim()){
      await ctx.answerCbQuery("ROOMの方式は選択済みです");return;
     }
     if(choice!=="jitsi"&&choice!=="external")throw new Error("ROOM_MODE_INVALID");
@@ -575,7 +575,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const profile=await getProfile(ctx.from.id);
     const linked=!!profile&&isProfilePosition(profile.position??"");
     const next=await updateDraft(ctx.from.id,"room",rev,
-     d.data.title&&d.data.description?"preview":"awaiting_text",
+     String(d.data.title||"").trim()?"preview":"awaiting_text",
      {...d.data,modeSelected:true,externalUrl:null,stage:"details",
       recruitmentMode:linked?"linked":"manual",...(linked?{
        profileRevision:profile!.revision,likeTags:profile!.likeTags??[],
@@ -1172,8 +1172,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    if(current.module==="room"&&current.step==="awaiting_room_url"){
     const externalUrl=assertHttpsMeetingUrl(input);
-    const hasDetails=Boolean(String(current.data.title||"").trim()&&
-      String(current.data.description||"").trim());
+    const hasDetails=Boolean(String(current.data.title||"").trim());
     const updated=await updateDraft(ctx.from.id,"room",current.revision,
      hasDetails?"preview":"awaiting_text",
      {...current.data,externalUrl,stage:"details"});
