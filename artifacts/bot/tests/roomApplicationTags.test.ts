@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {parseRecruitmentMessage} from "../src/services/recruitmentCompose.js";
 import {LIKE_CATEGORIES,toggleLike} from "../src/services/profileLike.js";
 import {applicationTagRows,roomChoiceRows,renderRoomApplicationPreview} from "../src/services/roomApplicationTags.js";
+import {roomRecruitmentTagHeading} from "../src/services/roomRecruitmentTagPanels.js";
 import {renderRoomApplicantSummary} from "../src/services/announcementApplications.js";
 
 test("ROOM applicant shares profile Like/Love categories and keeps separate toggles",()=>{
@@ -109,4 +110,23 @@ test("ROOM応募 and 募集+Room tag panels use 3/4 columns and shared red-cance
    }
   }
  }
+});
+
+test("Like green and Love red begin at category screens, and explanations remain on tag screens",()=>{
+ const pairs=[
+  {purpose:"like",style:"success",description:"自分の特徴・好み・趣味・スタイル"},
+  {purpose:"love",style:"danger",description:"相手に求める特徴・好み・趣味・スタイル"}
+ ] as const;
+ for(const {purpose,style,description} of pairs){
+  const categories=applicationTagRows(purpose,456,{},undefined);
+  assert.deepEqual(categories.slice(0,2).map(row=>row.length),[3,3]);
+  assert(categories.slice(0,2).flat().every(b=>b.style===style));
+  const choices=applicationTagRows(purpose,456,{},0,0);
+  assert(choices.slice(0,-1).flat().every(b=>b.style===style));
+  assert.match(roomRecruitmentTagHeading(purpose),new RegExp(description));
+  assert.match(roomRecruitmentTagHeading(purpose,0),new RegExp(description));
+  assert(roomRecruitmentTagHeading(purpose,0).includes("\\n"));
+  assert(roomRecruitmentTagHeading(purpose,0).includes(LIKE_CATEGORIES[0]!.name));
+ }
+ assert.notEqual(roomRecruitmentTagHeading("like"),roomRecruitmentTagHeading("love"));
 });
