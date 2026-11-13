@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {compactProfileRows} from "../src/bot/profileCompactHandlers.js";
+import {compactProfileRows,sourceData} from "../src/bot/profileCompactHandlers.js";
 import {sendProfileAlbum} from "../src/bot/profileViewerHandlers.js";
 import {PROFILE_ALBUM_LIMIT,appendProfileMedia,numberProfileMedia} from "../src/services/profileMedia.js";
 import {renderPublicProfile} from "../src/services/profileCore.js";
@@ -68,4 +68,26 @@ test("stored recruitment-like profile fields are escaped and remain separate fro
  assert.match(out,/#Love/);
  assert.match(out,/目的：#サシ/);
  assert.match(out,/場所：#場所あり/);
+});
+
+test("only the original entered values are copied from recruitment, Room or application",()=>{
+ const base={
+  title:"自己紹介",nickname:"ゼロ",heightCm:175,weightKg:80,age:40,
+  position:"タチ",likeTags:[{category:"パーツ",tag:"乳首"}],
+  loveTags:[{category:"パーツ",tag:"乳首"}],
+ };
+ for(const [source,content] of [
+  [{...base,body:"相手募集の文章"},"相手募集の文章"],
+  [{...base,description:"Room募集の文章"},"Room募集の文章"],
+  [{...base,body:"応募の文章"},"応募の文章"],
+ ] as const){
+  const original=structuredClone(source);
+  const result=sourceData(source);
+  assert.equal(result.title,"自己紹介");
+  assert.equal(result.nickname,"ゼロ");
+  assert.equal(result.pr,content);
+  assert.equal(result.position,"タチ");
+  assert.equal(result.likeTags?.length,1);
+  assert.deepEqual(source,original,"profile draft creation may not mutate the source draft");
+ }
 });
