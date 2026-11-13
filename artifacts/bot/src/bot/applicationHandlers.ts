@@ -3,6 +3,7 @@
  */
 import {Markup,type Telegraf,type Context} from "telegraf";
 import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
+import {styledInlineButton} from "../services/inlineButtonStyle.js";
 import {pool} from "../db/index.js";
 import {getProfile} from "../services/profileRepository.js";
 import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js";
@@ -41,7 +42,7 @@ export async function startApplicationEditor(ctx:Context,payload:string):Promise
   const profile=await getProfile(ctx.from.id);
   const linked=!!profile&&isProfilePosition(profile.position??"");
   const sent=await ctx.reply(applicationEntryText(linked,source.body),
-   applicationEntryKeyboard(linked));
+   applicationChoiceKeyboard(linked,linked?profile!.position:undefined));
   await pool.query(
    "UPDATE announcement_application_sessions SET screen_message_id=$2,draft=$3::jsonb WHERE applicant_user_id=$1 AND draft_step='awaiting_text'",
    [ctx.from.id,sent.message_id,JSON.stringify({
@@ -64,14 +65,31 @@ function applicationEntryText(linked:boolean,source:string):string{
   "\n選択は保持され、プレビューに反映されます。"+
   "\n募集："+source.slice(0,500);
 }
-function applicationEntryKeyboard(linked:boolean){
+/** Identical selectable controls to 募集+Room; only final action differs. */
+export function applicationChoiceKeyboard(linked:boolean,position?:unknown){
+ const b=styledInlineButton;
  return Markup.inlineKeyboard([
-  roomRecruitmentSelectorRow(linked?"linked":"manual",false,{
+  roomRecruitmentSelectorRow(linked?"linked":"manual",
+   isProfilePosition(String(position??"")),{
    position:"application:position",
    like:"application:tag:like:open",
    love:"application:tag:love:open"}),
-  [Markup.button.callback("キャンセル","application:cancel")]
+  [b("応募する","application:confirm","success"),
+   b("キャンセル","application:cancel","danger")]
  ]);
+}
+async function showApplicationScreen(
+ telegram:Context["telegram"],id:number,oldId:number|undefined,
+ text:string,keyboard:ReturnType<typeof Markup.inlineKeyboard>,
+ html=false
+){
+ const shown=await showWizardScreen(telegram,id,oldId,text,keyboard,html?"HTML":undefined);
+ if(shown.messageId!==oldId){
+  await pool.query(
+   `UPDATE announcement_application_sessions SET screen_message_id=$2
+      WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview')
+        AND expires_at>NOW()`,[id,shown.messageId]);
+ }
 }
 function retainApplicationChoices(data:RecruitmentInput,prior:Record<string,unknown>){
  return {...data,
@@ -82,15 +100,16 @@ function retainApplicationChoices(data:RecruitmentInput,prior:Record<string,unkn
 }
 async function applicationEntry(telegram:Context["telegram"],id:number,screenId:number|undefined,linked:boolean){
  const r=await pool.query(
-  `SELECT p.text AS body FROM announcement_application_sessions s
+  `SELECT p.text AS body,s.draft FROM announcement_application_sessions s
    JOIN announcement_application_entries e ON e.token_hash=s.token_hash
    JOIN announcement_posts p ON p.announcement_id=e.announcement_id
    WHERE s.applicant_user_id=$1 AND s.draft_step='awaiting_text'
      AND s.expires_at>NOW() AND e.enabled=TRUE AND e.expires_at>NOW()`,
   [id]);
  if(r.rows.length!==1)throw Error("ROOM_APPLICATION_ENTRY_EXPIRED");
- await showWizardScreen(telegram,id,screenId,
-  applicationEntryText(linked,String(r.rows[0].body)),applicationEntryKeyboard(linked));
+ await showApplicationScreen(telegram,id,screenId,
+  applicationEntryText(linked,String(r.rows[0].body)),
+  applicationChoiceKeyboard(linked,r.rows[0].draft?.position));
 }
 
 function applicationData(d:Record<string,unknown>):RecruitmentInput{
@@ -105,20 +124,8 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
  const draft=applicationData(data);
  const text="📝 ROOM応募内容の確認\n"+renderRoomApplicationPreview({...draft,likeTags:validLikeTags(data.likeTags as []??[]),loveTags:validLikeTags(data.loveTags as []??[])},profile)+
   "\n\n内容を確認して［応募する］を押してください。";
- const rows:any[][]=[[
-  Markup.button.callback("💖 #Like","application:tag:like:open"),
-  Markup.button.callback("💘 #Love","application:tag:love:open")
- ]];
- if(data.mode!=="linked"&&!isProfilePosition(String(data.position||"")))
-  rows.push([
-   Markup.button.callback("ポジション選択","application:position"),
-   Markup.button.callback("キャンセル","application:cancel")
-  ]);
- else rows.push([
-  Markup.button.callback("✅ 応募する","application:confirm"),
-  Markup.button.callback("キャンセル","application:cancel")
- ]);
- await showWizardScreen(telegram,id,screenId,text,Markup.inlineKeyboard(rows),"HTML");
+ await showApplicationScreen(telegram,id,screenId,text,
+  applicationChoiceKeyboard(data.mode==="linked",data.position),true);
 }
 export function registerApplicationHandlers(bot:Telegraf):void{
 
