@@ -1,0 +1,27 @@
+name: Tumblr owner bridge build and contracts
+on:
+  push:
+    branches: ['feat/tumblr-owner-bridge-20261114']
+  pull_request:
+    paths:
+      - 'artifacts/bot/src/services/tumblrBridgeServer.ts'
+      - 'artifacts/bot/src/gaybbsBot.ts'
+      - 'artifacts/bot/tests/tumblrBridgeServer.test.ts'
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/bot typecheck
+      - run: pnpm --filter @workspace/bot build:gaybbs
+      - run: pnpm --filter @workspace/bot exec tsx --test tests/tumblrBridgeServer.test.ts
+        env:
+          DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
