@@ -38,6 +38,8 @@ jobs:
         run: pnpm --dir artifacts/bot run typecheck
       - name: Verify Room common 4-3-2 UI, application, lifecycle, and published edit regressions
         run: pnpm --dir artifacts/bot exec tsx --test tests/roomApplicationTags.test.ts tests/roomCrossPost.test.ts tests/roomLifecycle.test.ts tests/roomPostStatus.test.ts tests/roomPublishedEditor.test.ts tests/roomStagedEntry.test.ts tests/recruitmentCompose.test.ts tests/profileMedia.test.ts tests/profileCompact.test.ts
+      - name: Verify five-item profile album and existing profile data in isolated PostgreSQL
+        run: pnpm --dir artifacts/bot exec tsx tests/profileCompactPersistenceIntegration.ts
       - name: Verify isolated PostgreSQL migration and application concurrency
         run: pnpm --dir artifacts/bot exec tsx tests/gaybbsMigrationIntegration.ts
       - name: Validate legacy PR migration in dry-run mode
