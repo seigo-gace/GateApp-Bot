@@ -325,6 +325,24 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("応募に失敗しました。募集状況をご確認ください。");
    return;
   }
+  // Deliver to the existing Room owner after the application DB transaction.
+  // Never block the applicant or resend on duplicate application callbacks.
+  if(!submitted.duplicate){
+   try{
+    const owner=await pool.query(
+     `SELECT owner_user_id FROM announcement_posts
+       WHERE announcement_id=$1 AND kind='recruitment' AND room_id IS NOT NULL`,
+     [session.announcementId]);
+    if(owner.rows.length===1){
+     const notice=roomApplicantOwnerNotification(submitted.applicationId,session.announcementId,snapshot);
+     await ctx.telegram.sendMessage(Number(owner.rows[0].owner_user_id),notice.text,
+      {parse_mode:"HTML",...notice.keyboard});
+    }
+   }catch(err){
+    console.warn("[ROOM_OWNER_APPLICATION_NOTICE_NOT_DELIVERED]",
+     err instanceof Error?err.message:"unknown");
+   }
+  }
   // The DB commit is the business result. Failing to update the wizard
   // screen/session must not falsely report the submitted application as FAIL.
   await pool.query(
@@ -347,6 +365,19 @@ export function registerApplicationHandlers(bot:Telegraf):void{
    });
   }
  });
+/** Owner receives the same saved applicant snapshot as the list/detail screen. */
+export function roomApplicantOwnerNotification(applicationId:number,announcementId:number,snapshot:Record<string,unknown>){
+ if(!Number.isSafeInteger(applicationId)||applicationId<=0||
+    !Number.isSafeInteger(announcementId)||announcementId<=0)throw Error("ROOM_APPLICATION_ID_INVALID");
+ return {
+  text:"📨 ROOM応募が届きました。\n"+renderRoomApplicantSummary(snapshot),
+  keyboard:Markup.inlineKeyboard([
+   [Markup.button.callback("✅ 承認",`application:decide:${applicationId}:accepted`),
+    Markup.button.callback("❌ 拒否",`application:decide:${applicationId}:declined`)],
+   [Markup.button.callback("👥 応募者を見る",`room:published:applicants:${announcementId}`)]
+  ])
+ };
+}
  bot.action("application:cancel",async ctx=>{
   if(ctx.chat?.type!=="private")return;
   await pool.query(
