@@ -1434,14 +1434,16 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const previous=Array.isArray(current.data.buttons)?
       current.data.buttons as LinkDraft["buttons"]:[];
     const replacing=current.data.linkEditMode==="replace"&&previous.length>0;
+    const editIndex=Number(current.data.linkEditIndex);
+    if(replacing&&(!Number.isSafeInteger(editIndex)||editIndex<0||
+      editIndex>=previous.length))throw Error("LINK_EDIT_TARGET_INVALID");
     const existing:LinkDraft={
      text:String(current.data.text||""),
      buttons:previous,columns:[1,2,3].includes(Number(current.data.columns))?
       Number(current.data.columns) as 1|2|3:1,
      ...(current.data.media?{media:current.data.media as LinkDraft["media"]}:{})};
-    const buttons=replacing?[...previous.slice(0,-1),{...button,
-      rowStart:previous[previous.length-1]?.rowStart??true,
-      style:previous[previous.length-1]?.style}]:
+    const buttons=replacing?previous.map((item,i)=>i===editIndex?
+      {...button,rowStart:item.rowStart,style:item.style}:item):
       previous.length===0?[{...button,rowStart:true}]:
       insertLinkButton(existing,button,
        current.data.linkPlacement==="beside"?
@@ -1449,7 +1451,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
         {kind:"newRow"});
     const editorView=previous.length>0&&current.data.linkEditorView===true;
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
-      {...current.data,buttons,linkStage:"ready",linkEditMode:null,
+      {...current.data,buttons,linkStage:"ready",linkEditMode:null,linkEditIndex:null,
        linkPlacement:null,linkTargetRow:null,linkEditorView:editorView,
        columns:existing.columns});
     if(editorView)await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
