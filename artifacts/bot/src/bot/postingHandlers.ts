@@ -1633,6 +1633,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery("編集画面を開いてください。");return;
    }
    const rows=buttonGrid(d.data as LinkDraft);
+   if(op==="edit"&&(targetRow===null||targetRow<0||
+     targetRow>=(d.data.buttons as LinkDraft["buttons"]).length)){
+    await ctx.answerCbQuery("編集するボタンを確認できません。");return;
+   }
    if(op==="beside"&&(targetRow===null||!Number.isInteger(targetRow)||
      targetRow<0||targetRow>=rows.length)){
     await ctx.answerCbQuery("追加する列を確認できません。");return;
@@ -1640,15 +1644,22 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
     {...d.data,linkEditMode:op==="edit"?"replace":"add",
      linkPlacement:op==="beside"?"beside":"nextRow",
-     linkTargetRow:op==="beside"?targetRow:null});
+     linkTargetRow:op==="beside"?targetRow:null,
+     linkEditIndex:op==="edit"?targetRow:null});
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    (op==="edit"?"📝 最後のボタンを編集":op==="beside"?
+    (op==="edit"?"📝 "+String(targetRow!+1)+"番のボタンを編集":op==="beside"?
      "➔ "+String(targetRow!+1)+"列目の右横に追加":"＋↓ 新しい列にボタンを追加")+
     "\n1行目：ボタン名\n2行目：https://URL\n2行をまとめて1回送信してください。",
-    Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
-     "post:link:back:"+next.revision)],
-     [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]]));
+    Markup.inlineKeyboard([
+     ...(op==="edit"?[
+      ["青","緑","赤","標準"].map((label,i)=>Markup.button.callback(label,
+       "post:link:color:"+next.revision+":"+targetRow+":"+i)),
+      [Markup.button.callback("🗑 削除","post:link:delete:"+next.revision+":"+targetRow)]
+     ]:[]),
+     [Markup.button.callback("↩ ボタン編集に戻る","post:link:back:"+next.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]
+   ]));
    return;
   }
   if(op==="destination"){
