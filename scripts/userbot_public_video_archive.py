@@ -87,7 +87,7 @@ async def archive_channel(call, channel_username: str, limit: int, on_progress):
         "status": "running", "channel_username": channel_username,
         "channel_id": channel_id, "discovered": len(response["videos"]),
         "saved": 0, "already_present": 0, "failed": 0, "completed": [],
-        "last_message_id": None,
+        "last_message_id": None, "failures": [],
     }
     on_progress(state)
     for record in response["videos"]:
@@ -98,8 +98,11 @@ async def archive_channel(call, channel_username: str, limit: int, on_progress):
             present = await download_one(call, channel_id, message_id, state, on_progress)
             state["already_present" if present else "saved"] += 1
             state["completed"].append(message_id)
-        except Exception:
+        except Exception as exc:
             state["failed"] += 1
+            # Preserve bounded diagnostic codes, never Telegram dialogs or secrets.
+            code = str(exc) if type(exc) is RuntimeError and str(exc).isupper() else type(exc).__name__
+            state["failures"].append({"messageId": message_id, "error": code[:96]})
         on_progress(state)
 
     state["status"] = "complete" if not state["failed"] else "partial_failure"
@@ -121,7 +124,7 @@ async def archive_all_channel(call, channel_username: str, on_progress):
     channel_id = channels[0]["id"]
     state = {"status": "running", "channel_id": channel_id, "channel_username": channel_username,
              "scanned": 0, "discovered": 0, "saved": 0, "already_present": 0,
-             "failed": 0, "last_message_id": None, "cursor": None}
+             "failed": 0, "last_message_id": None, "cursor": None, "failures": []}
     on_progress(state)
     cursor = None
     while True:
