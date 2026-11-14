@@ -19,7 +19,7 @@ async def invoke(action: str, channel_id: int | None = None, message_id: int | N
     sockstat = SOCKET_PATH.stat()
     if sockstat.st_uid != os.getuid() or stat.S_IMODE(sockstat.st_mode) != 0o600:
         raise RuntimeError("RESIDENT_USERBOT_IPC_PERMISSIONS_INVALID")
-    reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(str(SOCKET_PATH)), 5)
+    reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(str(SOCKET_PATH), limit=262144), 5)
     try:
         request_id = uuid.uuid4().hex
         request = {"request_id": request_id, "action": action}
