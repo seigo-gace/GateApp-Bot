@@ -36,6 +36,22 @@ def exactly_once(data: str, before: str, after: str, label: str) -> str:
         raise RuntimeError(f"ACTIVATION_{label}_ANCHOR_MISMATCH")
     return data.replace(before, after, 1)
 
+def add_literal_to_set_line(data: str, predicate, name: str, label: str) -> str:
+    lines = data.splitlines(keepends=True)
+    positions = [i for i, line in enumerate(lines) if predicate(line)]
+    if len(positions) != 1:
+        raise RuntimeError(f"ACTIVATION_{label}_ANCHOR_MISMATCH")
+    index = positions[0]
+    line = lines[index]
+    if f'"{name}"' in line:
+        raise RuntimeError(f"ACTIVATION_{label}_ALREADY_APPLIED")
+    closing = line.rfind("}")
+    if closing < 0 or "{" not in line[:closing]:
+        raise RuntimeError(f"ACTIVATION_{label}_INVALID_SET")
+    lines[index] = line[:closing] + f', "{name}"' + line[closing:]
+    return "".join(lines)
+
+
 def expected_page_function(source_text: str) -> str:
     tree = ast.parse(source_text)
     functions = [n for n in tree.body
@@ -53,21 +69,20 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
         raise RuntimeError("PAGINATION_ALREADY_INSTALLED_REVIEW_FIRST")
     page = expected_page_function(source(commit, "userbot_public_video_actions.py"))
     actions += "\n\n" + page
-    ipc = exactly_once(
-        ipc, '"download_channel_video_step"})',
-        '"download_channel_video_step", "list_channel_video_page"})',
-        "IPC_ACTION",
+    ipc = add_literal_to_set_line(
+        ipc, lambda line: line.startswith("ACTIONS = frozenset(")
+        and '"download_channel_video_step"' in line,
+        "list_channel_video_page", "IPC_ACTION",
     )
-    ipc = exactly_once(
-        ipc, '"request_id", "action", "channel_id", "message_id", "limit"}',
-        '"request_id", "action", "channel_id", "message_id", "limit", "before_message_id"}',
-        "IPC_FIELDS",
+    ipc = add_literal_to_set_line(
+        ipc, lambda line: "set(request) - {" in line and "request_id" in line,
+        "before_message_id", "IPC_FIELDS",
     )
-    ipc = exactly_once(
-        ipc,
-        '{"list_joined_public_channels", "list_channel_videos", "download_channel_video", "download_channel_video_step"}:',
-        '{"list_joined_public_channels", "list_channel_videos", "download_channel_video", "download_channel_video_step", "list_channel_video_page"}:',
-        "IPC_CASES",
+    ipc = add_literal_to_set_line(
+        ipc, lambda line: "if action in {" in line
+        and '"list_joined_public_channels"' in line
+        and '"download_channel_video_step"' in line,
+        "list_channel_video_page", "IPC_CASES",
     )
     ipc = exactly_once(
         ipc,
