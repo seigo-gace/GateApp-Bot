@@ -53,7 +53,8 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
             videos = await channel_videos(client, request["channel_id"], request["limit"])
             return {"request_id": request_id, "action": action, "status": "PASS", "videos": videos}
         if set(request) != required | {"channel_id", "message_id"}: raise ValueError("REQUEST_SHAPE_INVALID")
-        downloaded = await download_video(client, request["channel_id"], request["message_id"],\n            max_chunks=16 if action == "download_channel_video_step" else None)
+        downloaded = await download_video(client, request["channel_id"], request["message_id"],
+            max_chunks=16 if action == "download_channel_video_step" else None)
         return {"request_id": request_id, "action": action, "status": "PASS", **downloaded}
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
