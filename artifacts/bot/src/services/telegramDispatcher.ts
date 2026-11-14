@@ -12,9 +12,13 @@ function assertTarget(t:TransportTarget):void{
   throw new Error("MPB_TARGET_UNVERIFIED");
 }
 function markup(buttons:TransportMessage["buttons"]){
- return buttons?.length?Markup.inlineKeyboard(buttons.map(row=>
-  row.map(x=>({text:x.text,...(x.copy_text?{copy_text:x.copy_text}:{url:x.url}),...(x.style?{style:x.style}:{})})))
-  as unknown as Parameters<typeof Markup.inlineKeyboard>[0]):undefined;
+ if(!buttons?.length)return undefined;
+ const rows=buttons.map(row=>row.map(x=>({
+  text:x.text,
+  ...(x.copy_text?{copy_text:x.copy_text}:{url:x.url}),
+  ...(x.style?{style:x.style}:{})
+ })));
+ return Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
 }
 export function createTelegramDispatcher(telegram:Telegram){
  return {
