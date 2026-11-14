@@ -36,6 +36,7 @@ import {
   chatTopicSelectionExtra,
 } from "./services/dmBareStartPostingMenu.js";
 import { DM_POSTING_MENU_SCREEN_TEXT } from "./services/dmPostingMenuRestore.js";
+import {creatorPostingKeyboard,CREATOR_POSTING_TEXT} from "./services/creatorPostingMenu.js";
 import { currentMenuOrigin } from "./services/menuOriginRepository.js";
 import { activateTopicDmEntry, currentTopicDmEntry } from "./services/topicDmEntry.js";
 
@@ -77,6 +78,10 @@ async function main():Promise<void>{
   }
   if(ctx.startPayload==="help"){
    await startOperationHelp(ctx.telegram,ctx.from.id);
+   return;
+  }
+  if(ctx.startPayload==="creator"){
+   await ctx.reply(CREATOR_POSTING_TEXT,creatorPostingKeyboard());
    return;
   }
   if(ctx.startPayload?.startsWith("j_")){
@@ -143,6 +148,16 @@ async function main():Promise<void>{
  };
  // Replace the clicked DM posting-menu message with a three-board talk selector.
  // The three URL buttons open exact Master-provided Telegram message links.
+ bot.action("dm:creator-select",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery().catch(()=>undefined);
+  try{
+   await ctx.editMessageText(CREATOR_POSTING_TEXT,creatorPostingKeyboard());
+  }catch(error){
+   console.error("CREATOR_SELECTOR_EDIT_FAILED",error instanceof Error?error.name:"unknown");
+   await ctx.reply(CREATOR_POSTING_TEXT,creatorPostingKeyboard());
+  }
+ });
  bot.action("dm:chat-select",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery().catch(()=>undefined);
@@ -198,6 +213,11 @@ async function main():Promise<void>{
   // Opening the private profile editor must work without republishing menus.
   if(ctx.match[1]==="profile"){
    await openProfileFromMenu(ctx);
+   return;
+  }
+  if(ctx.match[1]==="help"){
+   await ctx.answerCbQuery().catch(()=>undefined);
+   await startOperationHelp(ctx.telegram,ctx.from.id);
    return;
   }
   await ctx.answerCbQuery(

@@ -3,19 +3,18 @@ import { Markup } from "telegraf";
 import { APPROVED_POSTING_ROWS,postingMenuButtonStyle } from "./menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
 
-export const STATIC_URL_LABELS = new Set([
-  "クリエーター有料ビデオ投稿",
-]);
+export const STATIC_URL_LABELS = new Set<string>();
 
 const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   相手募集: "dm:recruit",
   "プロフ作成": "dm:profile",
   "募集+Room": "dm:room",
   "告知/予告": "dm:announcement",
-  "🔗ボタン作成": "dm:link",
+  "🔗ボタン生成": "dm:link",
   "検索/フィルター": "dm:search",
   操作説明: "dm:help",
   雑談: "dm:chat-select",
+  "クリエーター投稿": "dm:creator-select",
   "紹介/招待": "dm:invite-select",
 };
 
@@ -24,7 +23,7 @@ const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
   "プロフ作成": "profile",
   "募集+Room": "room",
   "告知/予告": "announcement",
-  "🔗ボタン作成": "link",
+  "🔗ボタン生成": "link",
   "検索/フィルター": "search",
   操作説明: "help",
 };
@@ -103,7 +102,7 @@ export function defaultBareStartChatId(menuOriginChatId?: number | null): number
  * Their actual Telegram posting paths retain the existing release gates.
  */
 export function canOpenPostingEditor(label: string, featureReady: boolean): boolean {
-  return label === "相手募集" || label === "プロフ作成" || label === "検索/フィルター" || featureReady;
+  return label === "相手募集" || label === "プロフ作成" || label === "検索/フィルター" || label === "操作説明" || featureReady;
 }
 
 /** Missing optional navigation URLs cannot block the caller's return to the menu. */

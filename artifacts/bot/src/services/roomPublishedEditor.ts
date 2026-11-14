@@ -201,6 +201,7 @@ export function roomPublicationEditor(p:RoomPublication){
   "状態："+(state[p.status]??p.status),
  ];
  if(p.scheduledAt)text.push("開催："+new Date(p.scheduledAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})+"（日本時間）");
+ if(p.status==="live")text.push("⚠️ 外部Roomで通話を終了しても、こちらの募集は自動終了しません。終了時は必ず下の「✅ 終了する」を押してください。");
  const rows:Array<Array<ReturnType<typeof Markup.button.callback>|ReturnType<typeof Markup.button.url>>>=[];
  // Telegram cannot attach a callback directly to a word in the message body.
  // Keep its existing edit callback immediately below the displayed text,

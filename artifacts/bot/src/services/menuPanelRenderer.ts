@@ -82,8 +82,8 @@ function assertPublishedLink(link:NavLink|EntryLink):void{
  */
 export const APPROVED_POSTING_ROWS = [
  ["相手募集","募集+Room","告知/予告"],
- ["プロフ作成","クリエーター有料ビデオ投稿"],
- ["🔗ボタン作成","検索/フィルター"],
+ ["プロフ作成","クリエーター投稿"],
+ ["🔗ボタン生成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
 ] as const;
 /** Cloudflare Pages — L0 row 4 only (not Telegram doc posts). */
@@ -108,7 +108,7 @@ export const APPROVED_GUIDE_ROWS = [
 ] as const;
 export const APPROVED_HELP_ROWS = [
  ["プロフ","Room+募集","告知/予告"],
- ["🔗ボタン作成","検索/フィルター","戻る"],
+ ["🔗ボタン生成","検索/フィルター","戻る"],
 ] as const;
 
 /** Telegram Bot API styles. Colors identify navigation versus entry actions;
@@ -157,7 +157,7 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  const allowed:Readonly<Record<string,EntryLink["feature"]>>={
   "相手募集":"announcement","募集+Room":"room",
   "プロフ作成":"profile",
-  "告知/予告":"announcement","🔗ボタン作成":"link",
+  "告知/予告":"announcement","🔗ボタン生成":"link",
   "検索/フィルター":"search","操作説明":"help",
  };
  const entries=spec.entryLinks.map(entry=>{
