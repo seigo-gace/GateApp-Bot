@@ -67,6 +67,10 @@ async function main():Promise<void>{
    await startProfileViewer(ctx,ctx.startPayload);
    return;
   }
+  if(ctx.startPayload==="link"){
+   await startLinkEditor(ctx.telegram,ctx.from.id);
+   return;
+  }
   if(ctx.startPayload==="search"){
    await startSearchEditor(ctx.telegram,ctx.from.id);
    return;
