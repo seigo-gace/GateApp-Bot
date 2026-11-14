@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "search_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -137,6 +137,45 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         if options:
             latest = max(options, key=lambda m: m.id)
             labels = [[b.text for b in row] for row in latest.buttons]
+            if action == "search_button_smoke":
+                if labels != EXPECTED_MENU:
+                    raise RuntimeError("SEARCH_MENU_LAYOUT_INVALID")
+                from datetime import datetime, timezone, timedelta
+                clicked_at = datetime.now(timezone.utc)
+                await latest.click(text="検索/フィルター")
+                search_screen = None
+                for _ in range(12):
+                    recent = await client.get_messages(bot, limit=30)
+                    for screen in recent:
+                        if screen.out or "🔍 検索/フィルター" not in (screen.raw_text or ""):
+                            continue
+                        updated_at = screen.edit_date or screen.date
+                        button_labels = [b.text for row in (screen.buttons or []) for b in row]
+                        if (updated_at and updated_at >= clicked_at - timedelta(seconds=2)
+                                and "🎛 詳細フィルター" in button_labels):
+                            search_screen = screen
+                            break
+                    if search_screen is not None:
+                        break
+                    await asyncio.sleep(1)
+                if search_screen is None:
+                    raise RuntimeError("SEARCH_SCREEN_NOT_OPENED")
+                filter_clicked_at = datetime.now(timezone.utc)
+                await search_screen.click(text="🎛 詳細フィルター")
+                for _ in range(12):
+                    recent = await client.get_messages(bot, limit=30)
+                    for screen in recent:
+                        if screen.out or "絞り込む項目を選択してください。" not in (screen.raw_text or ""):
+                            continue
+                        updated_at = screen.edit_date or screen.date
+                        button_labels = [b.text for row in (screen.buttons or []) for b in row]
+                        if (updated_at and updated_at >= filter_clicked_at - timedelta(seconds=2)
+                                and "#Like" in button_labels and "#Love" in button_labels):
+                            return {"request_id": request_id, "action": action,
+                                    "status": "PASS", "search_screen_opened": True,
+                                    "filter_screen_opened": True}
+                    await asyncio.sleep(1)
+                raise RuntimeError("SEARCH_FILTER_SCREEN_NOT_OPENED")
             if action == "profile_button_smoke":
                 from datetime import datetime, timezone, timedelta
                 if labels != EXPECTED_MENU:
