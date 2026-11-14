@@ -1680,6 +1680,61 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await showPostScreen(ctx.telegram,ctx.from.id,next,
    "公開前プレビュー\n"+preview("link",next),linkPreviewKeyboard(next));
  });
+
+ bot.action(/^post:link:(color|delete):(\d+):(\d+)(?::([0-3]))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],revision=Number(ctx.match[2]);
+  const index=Number(ctx.match[3]);
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==revision||d.data.linkEditorView!==true||
+    typeof d.data.shareCode==="string"){
+   await ctx.answerCbQuery("編集画面の状態が変わりました。");return;
+  }
+  const buttons=Array.isArray(d.data.buttons)?d.data.buttons as LinkDraft["buttons"]:[];
+  if(!Number.isInteger(index)||index<0||index>=buttons.length){
+   await ctx.answerCbQuery("ボタンが見つかりません。");return;
+  }
+  if(op==="color"){
+   const colorIndex=Number(ctx.match[4]);
+   if(d.step!=="awaiting_text"||Number(d.data.linkEditIndex)!==index||
+      !Number.isInteger(colorIndex)||colorIndex<0||colorIndex>3){
+    await ctx.answerCbQuery("ボタン編集画面から色を指定してください。");return;
+   }
+   const styles=["primary","success","danger",undefined] as const;
+   const updated=await updateDraft(ctx.from.id,"link",revision,"awaiting_text",{
+    ...d.data,buttons:buttons.map((b,i)=>i===index?{
+     ...b,style:styles[colorIndex]}:b),
+   });
+   await ctx.answerCbQuery("色を変更しました");
+   await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "📝 "+String(index+1)+"番のボタンを編集\n"+
+    "色の変更を保持しました。タイトルとURLの変更は2行でDMへ送信してください。",
+    Markup.inlineKeyboard([
+     ["青","緑","赤","標準"].map((label,i)=>Markup.button.callback(
+      (i===colorIndex?"✅ ":"")+label,
+      "post:link:color:"+updated.revision+":"+index+":"+i)),
+     [Markup.button.callback("↩ ボタン編集に戻る","post:link:back:"+updated.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+updated.revision)],
+    ]));
+   return;
+  }
+  if(d.step!=="awaiting_text"||Number(d.data.linkEditIndex)!==index||
+      buttons.length<=1){
+   await ctx.answerCbQuery("最後のボタンは削除できません。");return;
+  }
+  const rows=buttonGrid(d.data as LinkDraft);
+  let seen=0;
+  const remain=rows.map(row=>{
+   const filtered=row.filter((_,i)=>seen+i!==index);
+   seen+=row.length;
+   return filtered;
+  }).filter(row=>row.length);
+  const nextButtons=remain.flatMap(row=>row.map((b,i)=>({...b,rowStart:i===0})));
+  const updated=await updateDraft(ctx.from.id,"link",revision,"preview",
+   {...d.data,buttons:nextButtons,linkEditIndex:null,linkEditMode:null,linkStage:"ready"});
+  await ctx.answerCbQuery("削除しました");
+  await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
+ });
  bot.action(/^post:choose:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const module=ctx.match[1] as Module;
