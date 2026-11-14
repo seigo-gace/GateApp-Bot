@@ -54,7 +54,7 @@ async function buildLinks(panel:PanelRow):Promise<{
  const links:NavLink[]=stored.rows.map(row=>{
   const label=String(row.label);
   if(label==="クリエーター有料ビデオ投稿")
-   return {label:"クリエーター投稿",url:String(row.destination_url),verified:true};
+   return {label:"クリエーター投稿",url:"https://t.me/CreateVdobot?start=creator",verified:true};
   if(label==="雑談")
    return {label:"雑談",url:"https://t.me/GayBBS_bot?start=talk",verified:true};
   return {label:"紹介/招待",url:"https://t.me/GayBBS_bot?start=invite",verified:true};
@@ -86,7 +86,8 @@ async function buildLinks(panel:PanelRow):Promise<{
   const hash=tokenHash(token);
   tokenHashes.push(hash);
   entries.push({feature:entry.feature,label:entry.label,
-   url:"https://t.me/GayBBS_bot?start="+entry.prefix+token,ready:true});
+   url:entry.feature==="link"?"https://t.me/GayBBS_bot?start=link":
+    "https://t.me/GayBBS_bot?start="+entry.prefix+token,ready:true});
  }
  await pool.query(
   `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at,enabled)
