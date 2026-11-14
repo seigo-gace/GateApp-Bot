@@ -2,7 +2,7 @@
  * Never fabricate Telegram message IDs, topic IDs, Cloudflare Pages URLs,
  * missing functionality or links to a disabled document.
  */
-export type NavLink={label:string;url:string;verified:boolean};
+export type NavLink={label:string;url:string;verified:boolean;copy_text?:{text:string}};
 export type EntryLink={feature:"profile"|"announcement"|"room"|"link"|"search"|"help";label:string;url:string;ready:boolean};
 export type PanelSpec={
  type:"general_guide"|"posting";
@@ -11,7 +11,7 @@ export type PanelSpec={
  entryLinks:readonly EntryLink[];
 };
 export type ButtonStyle="primary"|"success"|"danger";
-export type ButtonSpec={text:string;url:string;style?:ButtonStyle};
+export type ButtonSpec={text:string;url:string;style?:ButtonStyle;copy_text?:{text:string}};
 export type RenderedPanel={text:string;rows:ButtonSpec[][]};
 
 /** No empty Telegram inline-keyboard cells. A final single button occupies
@@ -140,6 +140,8 @@ export function renderApprovedLinks(kind:ApprovedPanel,
   throw new Error("APPROVED_MENU_MISSING_VERIFIED_LINKS");
  return expected.map(row=>row.map(label=>({
   text:label,url:seen.get(label)!.url,
+  ...(kind==="posting"&&label==="紹介/招待"&&seen.get(label)!.copy_text?
+   {copy_text:seen.get(label)!.copy_text}:{}),
   ...(kind==="posting"?{style:postingButtonStyle(label)}:{}),
  })));
 }
