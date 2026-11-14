@@ -18,6 +18,7 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   操作説明: "dm:help",
   雑談: "dm:talk",
   "紹介/招待": "dm:invite",
+  "🐞 不具合を報告": "dm:bug:open",
 };
 
 const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
@@ -41,7 +42,7 @@ const POSTING_DM_FEATURES = [
 
 export const BARE_START_POSTING_TEXT =
   "📌 各掲示板の固定メニュー（総合案内・投稿メニュー）から利用を開始してください。\n" +
-  "下の投稿メニュー（10ボタン）から機能を選べます。各掲示板の固定メニューから開くと投稿先の文脈が付きます。";
+  "下の投稿メニュー（11ボタン）から機能を選べます。各掲示板の固定メニューから開くと投稿先の文脈が付きます。";
 
 async function postingDmFeaturesReady(): Promise<ReadonlySet<string>> {
   const { pool } = await import("../db/index.js");
