@@ -82,7 +82,7 @@ function assertPublishedLink(link:NavLink|EntryLink):void{
  */
 export const APPROVED_POSTING_ROWS = [
  ["相手募集","募集+Room","告知/予告"],
- ["プロフ作成","クリエーター有料ビデオ投稿"],
+ ["プロフ作成","クリエーター投稿"],
  ["🔗ボタン作成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
 ] as const;
@@ -111,18 +111,18 @@ export const APPROVED_HELP_ROWS = [
  ["🔗ボタン作成","検索/フィルター","戻る"],
 ] as const;
 
-/** Telegram Bot API styles. Colors identify navigation versus entry actions;
- * labels and destinations remain exactly the adopted 10-button contract.
- */
-export function postingMenuButtonStyle(label:string):ButtonStyle{
- if(label==="募集+Room"||label==="相手募集"||label==="告知/予告")return "success";
- if(label==="操作説明"||label==="検索/フィルター")return "primary";
- return "primary";
-}
 export type ApprovedPanel="posting"|"general_guide"|"operation_help";
 export function approvedLayoutRows(kind:ApprovedPanel):readonly (readonly string[])[]{
  return kind==="posting"?APPROVED_POSTING_ROWS:
    kind==="general_guide"?APPROVED_GUIDE_ROWS:APPROVED_HELP_ROWS;
+}
+/** Preserve Telegram's approved semantic inline-button colors during menu edits. */
+export function postingButtonStyle(label:string):ButtonStyle{
+ if(label==="相手募集"||label==="募集+Room"||label==="告知/予告"||
+    label==="プロフ作成"||label==="クリエーター投稿")return "success";
+ if(label==="🔗ボタン作成"||label==="検索/フィルター"||
+    label==="雑談"||label==="紹介/招待"||label==="操作説明")return "primary";
+ throw new Error("POSTING_BUTTON_STYLE_UNKNOWN:"+label);
 }
 export function renderApprovedLinks(kind:ApprovedPanel,
  links:readonly NavLink[]):ButtonSpec[][]{
@@ -140,7 +140,7 @@ export function renderApprovedLinks(kind:ApprovedPanel,
   throw new Error("APPROVED_MENU_MISSING_VERIFIED_LINKS");
  return expected.map(row=>row.map(label=>({
   text:label,url:seen.get(label)!.url,
-  ...(kind==="posting"?{style:postingMenuButtonStyle(label)}:{}),
+  ...(kind==="posting"?{style:postingButtonStyle(label)}:{}),
  })));
 }
 export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
@@ -167,3 +167,6 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  return {text:"📝 投稿メニュー\nボタンを選択してください。",
    rows:renderApprovedLinks("posting",[...spec.links,...entries])};
 }
+
+/** Existing search/profile callers still import this canonical style alias. */
+export const postingMenuButtonStyle=postingButtonStyle;
