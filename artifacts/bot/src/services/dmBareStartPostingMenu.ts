@@ -4,7 +4,7 @@ import { APPROVED_POSTING_ROWS,postingMenuButtonStyle } from "./menuPanelRendere
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
 
 export const STATIC_URL_LABELS = new Set([
-  "クリエーター有料ビデオ投稿",
+  "クリエーター投稿",
 ]);
 
 const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
