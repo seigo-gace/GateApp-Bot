@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 import {CHAT_TOPIC_CHOICES} from "../src/services/dmBareStartPostingMenu.js";
-import {helpHomeKeyboard,helpSectionKeyboard,helpTopicPages,helpTagPages,helpTagKeyboard} from "../src/bot/operationHelpHandlers.js";
+import {helpHomeKeyboard,helpChatTopicKeyboard,helpSectionKeyboard,helpTopicPages,helpTagPages,helpTagKeyboard} from "../src/bot/operationHelpHandlers.js";
 
 const topics=["recruit","room","announcement","profile","paid","link","search","chat"] as const;
 const labels=(rows:ReturnType<typeof helpHomeKeyboard>["reply_markup"]["inline_keyboard"])=>
@@ -65,4 +65,8 @@ test("Chat in help leads to exactly the three specified message links",()=>{
   "https://t.me/c/3770334893/789",
  ]);
  assert.equal(keyboard.some(item=>item.text==="紹介/招待"),false);
+ const choices=helpChatTopicKeyboard(8).reply_markup.inline_keyboard;
+ assert.deepEqual(choices.slice(0,3).map(row=>row[0]?.text),CHAT_TOPIC_CHOICES.map(item=>item.label));
+ assert.deepEqual(choices.slice(0,3).map(row=>"url" in row[0]! ? row[0]!.url : undefined),CHAT_TOPIC_CHOICES.map(item=>item.url));
+ assert.equal(choices[3]?.[0]?.text,"↩ 操作説明へ戻る");
 });
