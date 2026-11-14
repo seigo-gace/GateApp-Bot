@@ -93,9 +93,15 @@ async function listPeople(t:Telegram,owner:number,notice:number,page:number,filt
    FROM announcement_applications WHERE announcement_id=$1 AND ${status}
    ORDER BY application_id DESC LIMIT 11 OFFSET $2`,[notice,page*10]);
  const entries=r.rows.slice(0,10);
- const rows=entries.map(x=>[Markup.button.callback(
-  safeName(x.consented_profile).replaceAll("&amp;","&").replaceAll("&lt;","<").replaceAll("&gt;",">"),
-  `notice:owner:dm:${Number(x.application_id)}`)]);
+ const rows=entries.map(x=>{
+  const appId=Number(x.application_id);
+  const controls=[Markup.button.callback("✉️ "+safeName(x.consented_profile).slice(0,24),
+   `notice:owner:dm:${appId}`)];
+  if(filter==="waiting")controls.push(
+   Markup.button.callback("✅ 承認",`notice:owner:decide:${appId}:accepted`),
+   Markup.button.callback("❌ 拒否",`notice:owner:decide:${appId}:declined`));
+  return controls;
+ });
  const nav=[];
  if(page>0)nav.push(Markup.button.callback("◀ 前へ",`notice:owner:list:${notice}:${page-1}:${filter}`));
  if(r.rows.length>10)nav.push(Markup.button.callback("次へ ▶",`notice:owner:list:${notice}:${page+1}:${filter}`));
@@ -158,6 +164,19 @@ export function registerNoticeInteractionHandlers(bot:Telegraf):void{
    Number(ctx.match[2]),ctx.match[3]!,
    "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);}
   catch{await ctx.reply("参加者一覧を確認できません。");}
+ });
+ bot.action(/^notice:owner:decide:(\\d+):(accepted|declined)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  await ctx.answerCbQuery();
+  const appId=Number(ctx.match[1]);
+  const r=await pool.query("SELECT announcement_id FROM announcement_applications WHERE application_id=$1",[appId]);
+  if(r.rows.length!==1){await ctx.reply("応募を確認できません。");return;}
+  const notice=Number(r.rows[0].announcement_id);
+  try{
+   await decideApplication(ctx.from.id,notice,appId,ctx.match[2] as "accepted"|"declined");
+   await listPeople(ctx.telegram,ctx.from.id,notice,0,"waiting",
+    "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
+  }catch{await ctx.reply("承認結果を確認できません。");}
  });
  bot.action(/^notice:owner:dm:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
