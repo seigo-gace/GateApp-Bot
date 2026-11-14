@@ -464,6 +464,42 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
   {visibility:"approved_only",profileLinked:false,modeSelected:false,...(screenId?{screenMessageId:screenId}:{})});
  await roomPreviewScreen(telegram,userId,draft);
 }
+
+/** Preview with media, tappable URL buttons and in-body edit callbacks. */
+async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
+ const rich=linkRichPreview(d.data as LinkDraft,d.revision,
+  typeof d.data.shareCode==="string"?d.data.shareCode:undefined);
+ const registered=typeof d.data.shareCode==="string";
+ const keyboard=Markup.inlineKeyboard([[
+  Markup.button.callback(registered?"✅ 登録済み":"✅ 登録","post:link:register:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]);
+ const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
+ const old=Number(d.data.screenMessageId);
+ if(Number.isSafeInteger(old)&&old>0){
+  try{
+   await raw.callApi("editMessageText",{chat_id:owner,message_id:old,
+    rich_message:rich,reply_markup:keyboard.reply_markup});
+   return;
+  }catch(error){
+   const reason=error instanceof Error?error.message:"";
+   if(/message is not modified/i.test(reason))return;
+   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason))
+    throw error;
+  }
+ }
+ const sent=await raw.callApi("sendRichMessage",{chat_id:owner,
+  rich_message:rich,reply_markup:keyboard.reply_markup});
+ if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
+  throw Error("LINK_RICH_SCREEN_UNCONFIRMED");
+ await bindDraftScreen(owner,"link",d.revision,sent.message_id);
+ if(old>0&&old!==sent.message_id){
+  try{await telegram.deleteMessage(owner,old);}catch{
+   console.warn("[LINK_OLD_SCREEN_REMOVE_FAILED]");
+  }
+ }
+}
+
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
 export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
