@@ -1388,15 +1388,33 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(current.module==="link"){
+    const stage=String(current.data.linkStage||"button");
+    if(stage==="content"||stage==="edittext"){
+     if(input.length>(current.data.media?1024:3500))throw Error("LINK_BODY_INVALID");
+     const editing=stage==="edittext";
+     const updated=await updateDraft(ctx.from.id,"link",current.revision,
+      editing?"preview":"awaiting_text",
+      {...current.data,text:input,linkStage:editing?"ready":"button",
+       linkEditorView:false});
+     if(editing)await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+     else await render(updated,"🔗 ボタンを作成\n\n"+
+      "次の2行をまとめて1回送信してください。\n1行目：ボタン名\n2行目：https://URL",
+      Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+       "post:link:cancel:"+updated.revision)]]));
+     return;
+    }
     const button=parseLinkButtonPair(input);
     const previous=Array.isArray(current.data.buttons)?
       current.data.buttons as LinkDraft["buttons"]:[];
     const replacing=current.data.linkEditMode==="replace"&&previous.length>0;
-    const existing={text:String(current.data.text||"🔗 リンク投稿"),
+    const existing:LinkDraft={
+     text:String(current.data.text||""),
      buttons:previous,columns:[1,2,3].includes(Number(current.data.columns))?
-      Number(current.data.columns) as 1|2|3:1};
+      Number(current.data.columns) as 1|2|3:1,
+     ...(current.data.media?{media:current.data.media as LinkDraft["media"]}:{})};
     const buttons=replacing?[...previous.slice(0,-1),{...button,
-      rowStart:previous[previous.length-1]?.rowStart??true}]:
+      rowStart:previous[previous.length-1]?.rowStart??true,
+      style:previous[previous.length-1]?.style}]:
       previous.length===0?[{...button,rowStart:true}]:
       insertLinkButton(existing,button,
        current.data.linkPlacement==="beside"?
@@ -1404,12 +1422,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
         {kind:"newRow"});
     const editorView=previous.length>0&&current.data.linkEditorView===true;
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
-      {...current.data,text:String(current.data.text||"🔗 リンク投稿"),
-       buttons,linkEditMode:null,linkPlacement:null,linkTargetRow:null,linkEditorView:editorView,
-       columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
-    await render(updated,editorView?linkEditorSummary(updated):
-      "公開前プレビュー\n"+preview("link",updated),
-      editorView?linkEditKeyboard(updated):linkPreviewKeyboard(updated));
+      {...current.data,buttons,linkStage:"ready",linkEditMode:null,
+       linkPlacement:null,linkTargetRow:null,linkEditorView:editorView,
+       columns:existing.columns});
+    if(editorView)await render(updated,linkEditorSummary(updated),linkEditKeyboard(updated));
+    else await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
     return;
    }
    if(current.module==="room"){
