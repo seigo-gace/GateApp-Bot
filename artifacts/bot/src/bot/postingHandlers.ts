@@ -542,22 +542,32 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
   await bindDraftScreen(userId,"link",prior.revision,screenId);
   prior.data.screenMessageId=screenId;
  }
- // Reopening /link must not erase a still-private, valid editor. Other
- // draft modules and published receipts are never touched.
  if(prior?.step==="preview"){
-  const editing=prior.data.linkEditorView===true;
-  await showPostScreen(telegram,userId,prior,
-   editing?linkEditorSummary(prior):"公開前プレビュー\n"+preview("link",prior),
-   editing?linkEditKeyboard(prior):linkPreviewKeyboard(prior));
+  if(prior.data.linkEditorView===true)
+   await showPostScreen(telegram,userId,prior,linkEditorSummary(prior),linkEditKeyboard(prior));
+  else await showLinkRichPreview(telegram,userId,prior);
   return;
  }
- const draft=prior?.step==="awaiting_text"?prior:
-  await beginDraft(userId,"link","awaiting_text",screenId?{screenMessageId:screenId}:{});
- await showPostScreen(telegram,userId,draft,
-  "🔗 ボタン名とURLを2行にして、DMで1回送信してください。\n1行目：ボタン名\n2行目：https://URL\n例：\n🔗 グループへ参加\nhttps://example.org/join",
+ const data=prior?.step==="awaiting_text"?prior:
+  await beginDraft(userId,"link","awaiting_text",
+   {linkStage:"content",buttons:[],columns:1,
+    ...(screenId?{screenMessageId:screenId}:{})});
+ const content=String(data.data.linkStage||"content")==="content";
+ const text=content?
+  "📝 投稿・ボタン作成\n\n最初に、このDMへ投稿内容を1件送信してください。\n"+
+  "① テキストのみ：文章を送信\n"+
+  "② 画像のみ：画像を添付して送信（文章不要）\n"+
+  "③ 画像＋コメント：画像のコメント欄を入力して送信\n"+
+  "④ 動画のみ：動画を添付して送信（文章不要）\n"+
+  "⑤ 動画＋コメント：動画のコメント欄を入力して送信\n\n"+
+  "次に、Botがボタン名とURLの2行入力を案内します。送信しただけでは公開されません。":
+  "🔗 ボタン名とURLを2行でまとめて1回送信してください。\n"+
+  "1行目：ボタン名\n2行目：https://URL";
+ await showPostScreen(telegram,userId,data,text,
   Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
-   "post:link:cancel:"+draft.revision)]]));
+   "post:link:cancel:"+data.revision)]]));
 }
+
 /** One shared Bot DM message for the approved 告知/予告 layout. */
 export function announcementPanel(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
