@@ -12,7 +12,7 @@ export function noticeParts(data:NoticeDraft):{title:string;body:string}{
 }
 export function noticeText(data:NoticeDraft):string{
  const {title,body}=noticeParts(data);
- return title+"\n"+body;
+ return [title,body].filter(Boolean).join("\n");
 }
 export function noticeLink(url:string):string{
  const u=new URL(url.trim());
@@ -34,11 +34,11 @@ export function noticeMedia(data:NoticeDraft):NoticeMedia[]{
 export function noticeEdit(data:NoticeDraft,field:string,input:string):NoticeDraft{
  const value=input.trim(),parts=noticeParts(data);
  if(field==="title"){
-  if(!value||value.length>100||value.includes("\n"))throw Error("タイトルは1〜100文字です");
+  if(value.length>100||value.includes("\n"))throw Error("タイトルは100文字以内です");
   return {...data,title:value,text:value+"\n"+parts.body};
  }
  if(field==="body"){
-  if(!value||value.length>3200)throw Error("本文は1〜3200文字です");
+  if(value.length>3200)throw Error("本文は3200文字以内です");
   return {...data,body:input.trim(),text:parts.title+"\n"+input.trim()};
  }
  if(field==="deadline"){
@@ -58,10 +58,10 @@ export function noticeEdit(data:NoticeDraft,field:string,input:string):NoticeDra
 }
 export function validateNotice(data:NoticeDraft,ownerId:number):void{
  const parts=noticeParts(data),text=noticeText(data);
- if(!parts.title||!parts.body)throw Error("タイトルと本文を入力してください");
+ if(!text.trim()&&!noticeMedia(data).length)throw Error("文章または画像・動画を登録してください");
  const event=data.eventAt?new Date(String(data.eventAt)):undefined;
  const deadline=data.deadlineAt?new Date(String(data.deadlineAt)):undefined;
- validateAnnouncement({ownerId,kind:data.kind==="preview"?"preview":"announcement",text,eventAt:event,deadlineAt:deadline});
+ validateAnnouncement({ownerId,kind:data.kind==="preview"?"preview":"announcement",text:text||"媒体のみ",eventAt:event,deadlineAt:deadline});
  if(data.linkLabel||data.linkUrl){
   if(!data.linkLabel||!data.linkUrl)throw Error("リンク名とURLが両方必要です");
   noticeLink(String(data.linkUrl));
@@ -72,7 +72,8 @@ export function noticeCard(data:NoticeDraft,ownerId:number):string{
  const parts=noticeParts(data);
  const dt=(input:unknown)=>new Date(String(input)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"});
  const lines=[data.kind==="preview"?"📅 予告":"📢 告知",
-  escapeProfileHtml(parts.title),escapeProfileHtml(parts.body)];
+  ...(parts.title?[escapeProfileHtml(parts.title)]:[]),
+  ...(parts.body?[escapeProfileHtml(parts.body)]:[])];
  if(data.eventAt)lines.push("開催："+dt(data.eventAt));
  if(data.deadlineAt)lines.push("受付終了："+dt(data.deadlineAt));
  return lines.join("\n");
