@@ -12,7 +12,7 @@ class ArchiveGDriveStateTests(unittest.TestCase):
             root = Path(temp) / "public_channel_videos" / "_jobs"
             root.mkdir(parents=True)
             destination = root / "example.json"
-            with patch.object(module, "STORAGE", Path("/mnt/g/GserverStorage")), \
+            with patch.object(module, "STORAGE", Path(temp)), \
                  patch.object(module, "STATE_ROOT", root), \
                  patch.object(module.os, "chmod", side_effect=PermissionError("DrvFS chmod not supported")):
                 module.write_state(destination, {"status": "running", "discovered": 12})
