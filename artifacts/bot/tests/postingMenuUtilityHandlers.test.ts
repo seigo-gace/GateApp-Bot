@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {TALK_TOPICS,copyInviteCell,inviteCopyRows} from "../src/bot/postingMenuUtilityHandlers.js";
+import {TALK_TOPICS,copyInviteCell,commonInviteCopyRows} from "../src/bot/postingMenuUtilityHandlers.js";
 
 test("talk selector points only to three Master-verified topic links",()=>{
  assert.deepEqual(TALK_TOPICS.map(x=>x.url),[
@@ -16,19 +16,11 @@ test("Telegram copy_text is real clipboard action, not URL navigation",()=>{
  assert.equal("url" in cell,false);
  assert.throws(()=>copyInviteCell("fake","http://invalid.example"),/INVITE_LINK_NOT_VERIFIED/);
 });
-const routes=[
- {group:"area_bbs",gateStartUrl:"https://t.me/GayBBS_bot?start=online_aaaaaaaaaaaaaaaaaaaaaaaa",verified:true},
- {group:"video_chat",gateStartUrl:"https://t.me/GayBBS_bot?start=online_bbbbbbbbbbbbbbbbbbbbbbbb",verified:true},
- {group:"gay_board",gateStartUrl:"https://t.me/GayBBS_bot?start=online_cccccccccccccccccccccccc",verified:true},
-];
-test("nonmember receives approved gate copy; verified member receives group link",async()=>{
- const rows=await inviteCopyRows(async chatId=>chatId===-1002373696859,routes);
- assert.equal(rows.length,3);
- assert.match(rows[0]![0]!.text,/承認ゲート/);
- assert.equal(rows[1]![0]!.copy_text.text,"https://t.me/c/2373696859/1");
- assert.match(rows[2]![0]!.text,/承認ゲート/);
- assert.throws(()=>copyInviteCell("bad","https://evil.example/"),/INVITE_LINK_NOT_VERIFIED/);
-});
-test("missing approved gate fails closed, never copies invented destination",async()=>{
- await assert.rejects(()=>inviteCopyRows(async()=>false,routes.slice(0,2)),/INVITE_GATE_ROUTE_UNVERIFIED/);
+test("common Gate is copied once and chooser remains owned by existing Gate",()=>{
+ const url="https://t.me/GayBBS_bot?start=gate_shared01";
+ const rows=commonInviteCopyRows(url);
+ assert.equal(rows.length,1);
+ assert.equal(rows[0]![0]!.copy_text.text,url);
+ assert.equal(rows[0]![0]!.text,"📋 共通参加承認ゲートをコピー");
+ assert.equal("url" in rows[0]![0]!,false);
 });
