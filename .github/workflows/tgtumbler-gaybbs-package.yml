@@ -26,11 +26,13 @@ jobs:
           container=$(docker create gaybbs:ci)
           trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
           docker cp "$container:/app/gaybbs.mjs" /tmp/gaybbs-ci-bundle/gaybbs.mjs
+          docker cp "$container:/app/publishMenuPanels.mjs" /tmp/gaybbs-ci-bundle/publishMenuPanels.mjs
           node --check /tmp/gaybbs-ci-bundle/gaybbs.mjs
-          sha256sum /tmp/gaybbs-ci-bundle/gaybbs.mjs
+          node --check /tmp/gaybbs-ci-bundle/publishMenuPanels.mjs
+          sha256sum /tmp/gaybbs-ci-bundle/gaybbs.mjs /tmp/gaybbs-ci-bundle/publishMenuPanels.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: gaybbs-profile-bundle
-          path: /tmp/gaybbs-ci-bundle/gaybbs.mjs
+          path: /tmp/gaybbs-ci-bundle/*.mjs
           if-no-files-found: error
           retention-days: 2
