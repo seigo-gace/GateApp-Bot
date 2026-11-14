@@ -85,6 +85,7 @@ export const APPROVED_POSTING_ROWS = [
  ["プロフ作成","クリエーター投稿"],
  ["🔗ボタン作成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
+ ["🐞 不具合を報告"],
 ] as const;
 /** Cloudflare Pages — L0 row 4 only (not Telegram doc posts). */
 export const GUIDE_PAGES_URLS = {
@@ -122,6 +123,7 @@ export function postingButtonStyle(label:string):ButtonStyle{
     label==="プロフ作成"||label==="クリエーター投稿")return "success";
  if(label==="🔗ボタン作成"||label==="検索/フィルター"||
     label==="雑談"||label==="紹介/招待"||label==="操作説明")return "primary";
+ if(label==="🐞 不具合を報告")return "danger";
  throw new Error("POSTING_BUTTON_STYLE_UNKNOWN:"+label);
 }
 export function renderApprovedLinks(kind:ApprovedPanel,
