@@ -22,7 +22,11 @@ async def invoke(action: str, channel_id: int | None = None, message_id: int | N
     reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(str(SOCKET_PATH)), 5)
     try:
         request_id = uuid.uuid4().hex
-        request = {"request_id": request_id, "action": action}\n        if channel_id is not None: request["channel_id"] = channel_id\n        if message_id is not None: request["message_id"] = message_id\n        if limit is not None: request["limit"] = limit\n        writer.write((json.dumps(request) + "\n").encode())
+        request = {"request_id": request_id, "action": action}
+        if channel_id is not None: request["channel_id"] = channel_id
+        if message_id is not None: request["message_id"] = message_id
+        if limit is not None: request["limit"] = limit
+        writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
         reply = await asyncio.wait_for(reader.readline(), 930)
         result = json.loads(reply)
@@ -37,19 +41,29 @@ async def invoke(action: str, channel_id: int | None = None, message_id: int | N
 def main() -> int:
     parser = argparse.ArgumentParser(description="Safe resident Userbot verification")
     parser.add_argument("action", choices=sorted(ACTIONS))
-    parser.add_argument("--channel-id", type=int)\n    parser.add_argument("--message-id", type=int)\n    parser.add_argument("--limit", type=int)\n    parser.add_argument("--json", action="store_true", help="Print bounded public metadata or storage reference")\n    args = parser.parse_args()
+    parser.add_argument("--channel-id", type=int)
+    parser.add_argument("--message-id", type=int)
+    parser.add_argument("--limit", type=int)
+    parser.add_argument("--json", action="store_true", help="Print bounded public metadata or storage reference")
+    args = parser.parse_args()
     try:
         result = asyncio.run(invoke(args.action, args.channel_id, args.message_id, args.limit))
         if result.get("status") != "PASS":
             print("USERBOT_TEST_RESULT=FAIL")
             print("USERBOT_TEST_ERROR=" + re.sub(r"[^A-Z0-9_]", "_", str(result.get("error", "CONTRACT_MISMATCH")).upper())[:128])
             return 1
-        if args.json:\n            print(json.dumps(result, ensure_ascii=False))\n            return 0\n        print("USERBOT_TEST_RESULT=PASS")
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        print("USERBOT_TEST_RESULT=PASS")
         print("USERBOT_TEST_ACTION=" + args.action)
         if "row_sizes" in result:
             print("USERBOT_TEST_MENU_ROWS=" + ",".join(map(str, result["row_sizes"])))
         if "steps" in result:
             print("USERBOT_TEST_STEPS=" + ",".join(str(step) for step in result["steps"]))
+        if "channels" in result: print("USERBOT_PUBLIC_CHANNEL_COUNT=" + str(len(result["channels"])))
+        if "videos" in result: print("USERBOT_VIDEO_COUNT=" + str(len(result["videos"])))
+        if "storageKey" in result: print("USERBOT_VIDEO_DOWNLOAD=CONFIRMED")
         return 0
     except Exception as exc:
         print("USERBOT_TEST_RESULT=BLOCKED")
