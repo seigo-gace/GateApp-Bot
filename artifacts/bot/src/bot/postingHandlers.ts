@@ -17,7 +17,7 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkButtonPair,renderLinkCard,buttonGrid,insertLinkButton,type LinkDraft} from "../services/linkButtonDomain.js";
 import {registerLinkShare} from "../services/linkInlineShare.js";
-import {linkRichPreview} from "../services/linkRichPreview.js";
+import {linkRichPreview,linkRichEditor} from "../services/linkRichPreview.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {roomPublicButtons} from "../services/roomPublicButtons.js";
@@ -500,6 +500,34 @@ async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft)
  }
 }
 
+
+async function showLinkRichEditor(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
+ const rich=linkRichEditor(d.data as LinkDraft,d.revision);
+ const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
+ const old=Number(d.data.screenMessageId);
+ if(Number.isSafeInteger(old)&&old>0){
+  try{
+   await raw.callApi("editMessageText",{chat_id:owner,message_id:old,
+    rich_message:rich,reply_markup:{inline_keyboard:[]}});
+   return;
+  }catch(error){
+   const reason=error instanceof Error?error.message:"";
+   if(/message is not modified/i.test(reason))return;
+   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason))
+    throw error;
+  }
+ }
+ const sent=await raw.callApi("sendRichMessage",{chat_id:owner,rich_message:rich});
+ if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
+  throw Error("LINK_EDITOR_SCREEN_UNCONFIRMED");
+ await bindDraftScreen(owner,"link",d.revision,sent.message_id);
+ if(old>0&&old!==sent.message_id){
+  try{await telegram.deleteMessage(owner,old);}catch{
+   console.warn("[LINK_OLD_EDITOR_REMOVE_FAILED]");
+  }
+ }
+}
+
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
 export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
@@ -543,8 +571,7 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
   prior.data.screenMessageId=screenId;
  }
  if(prior?.step==="preview"){
-  if(prior.data.linkEditorView===true)
-   await showPostScreen(telegram,userId,prior,linkEditorSummary(prior),linkEditKeyboard(prior));
+  if(prior.data.linkEditorView===true)await showLinkRichEditor(telegram,userId,prior);
   else await showLinkRichPreview(telegram,userId,prior);
   return;
  }
@@ -1425,7 +1452,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
       {...current.data,buttons,linkStage:"ready",linkEditMode:null,
        linkPlacement:null,linkTargetRow:null,linkEditorView:editorView,
        columns:existing.columns});
-    if(editorView)await render(updated,linkEditorSummary(updated),linkEditKeyboard(updated));
+    if(editorView)await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
     else await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
     return;
    }
@@ -1596,8 +1623,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const next=await updateDraft(ctx.from.id,"link",rev,"preview",
     {...d.data,linkEditorView:true});
    await ctx.answerCbQuery();
-   await showPostScreen(ctx.telegram,ctx.from.id,next,
-    linkEditorSummary(next),linkEditKeyboard(next));
+   await showLinkRichEditor(ctx.telegram,ctx.from.id,next);
    return;
   }
   if(op==="add"||op==="beside"||op==="edit"){
