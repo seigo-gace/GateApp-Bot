@@ -62,7 +62,7 @@ function preview(module:Module,draft:EditorDraft):string {
   const d=draft.data as LinkDraft;
   return renderLinkCard(d)+"\n"+d.buttons.map((b,i)=>
    (i+1)+". "+escapeProfileHtml(b.label)+" → "+escapeProfileHtml(new URL(b.url).hostname)).join("\n")+
-   "\n表示列数："+d.columns;
+   "\nボタン配置："+buttonGrid(d).map(row=>row.map(b=>escapeProfileHtml(b.label)).join(" ／ ")).join(" | ");
  }
  if(module==="room"){
   const title=String(draft.data.title||"");
@@ -466,17 +466,12 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
 export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
  const count=Array.isArray(d.data.buttons)?d.data.buttons.length:0;
- // One button has no horizontal layout choice. Two buttons show 1/2,
- // and three or more may choose 1/2/3 without adding dummy buttons.
- const layout=count<2?[]:[([1,2,3] as const).filter(i=>i<=count).map(i=>
-  Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
-   "post:linkcols:"+rev+":"+i))];
  return Markup.inlineKeyboard([
-  ...layout,
-  [Markup.button.callback("➕ ボタン追加","post:link:add:"+rev),
-   Markup.button.callback("📝 最後を編集","post:link:edit:"+rev)],
-  [Markup.button.callback("📍 投稿先を選択","post:link:destination:"+rev),
-   Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
+  ...(count>0?[[Markup.button.callback("➕ ボタンを追加","post:link:add:"+rev),
+    Markup.button.callback("➡️ 横にボタンを作る","post:link:beside:"+rev)]]:[]),
+  ...(count>0?[[Markup.button.callback("📝 最後を編集","post:link:edit:"+rev),
+    Markup.button.callback("📍 投稿先を選択","post:link:destination:"+rev)]]:[]),
+  [Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
  ]);
 }
 export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
@@ -489,8 +484,7 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
  // draft modules and published receipts are never touched.
  if(prior?.step==="preview"){
   await showPostScreen(telegram,userId,prior,"公開前プレビュー\n"+preview("link",prior)+
-   (Array.isArray(prior.data.buttons)&&prior.data.buttons.length>1?
-    "\n\n横列の配置を選択できます。":"\n\n追加する場合は「➕ ボタン追加」を押してください。"),
+   "\n\n➕ ボタンを追加＝次の行、➡️ 横にボタンを作る＝前のボタンの右横",
    linkPreviewKeyboard(prior));
   return;
  }
@@ -1325,13 +1319,20 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const previous=Array.isArray(current.data.buttons)?
       current.data.buttons as LinkDraft["buttons"]:[];
     const replacing=current.data.linkEditMode==="replace"&&previous.length>0;
-    const buttons=replacing?[...previous.slice(0,-1),button]:[...previous,button];
+    const oldColumns=Number(current.data.columns||1);
+    const normalized=previous.map((item,i)=>({...item,
+     rowStart:typeof item.rowStart==="boolean"?item.rowStart:i===0||i%oldColumns===0}));
+    const positioned={...button,rowStart:replacing?
+     (normalized[normalized.length-1]?.rowStart??true):
+     current.data.linkPlacement!=="beside"};
+    const buttons=replacing?[...normalized.slice(0,-1),positioned]:
+     [...normalized,positioned];
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
       {...current.data,text:String(current.data.text||"🔗 リンク投稿"),
-       buttons,linkEditMode:null,
+       buttons,linkEditMode:null,linkPlacement:null,
        columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
     await render(updated,"公開前プレビュー\n"+preview("link",updated)+
-      "\n\nボタンの表示列数を選択してください。",
+      "\n\n追加する場合は次の行か右横かを選択してください。",
       linkPreviewKeyboard(updated));
     return;
    }
@@ -1383,7 +1384,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     ]):undefined);
   }
  });
- bot.action(/^post:link:(add|edit|cancel|back|destination):(\d+)$/,async ctx=>{
+ bot.action(/^post:link:(add|beside|edit|cancel|back|destination):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
   const d=await getDraft(ctx.from.id,"link");
@@ -1396,15 +1397,17 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await editMessageToDmPostingMenu(ctx,ctx.from.id);
    return;
   }
-  if(op==="add"||op==="edit"){
+  if(op==="add"||op==="beside"||op==="edit"){
    if(d.step!=="preview"){
     await ctx.answerCbQuery("先にボタン名とURLを入力してください。");return;
    }
    const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
-    {...d.data,linkEditMode:op==="edit"?"replace":"add"});
+    {...d.data,linkEditMode:op==="edit"?"replace":"add",
+     linkPlacement:op==="beside"?"beside":"nextRow"});
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    (op==="edit"?"📝 最後のボタンを編集":"➕ 新しいボタンを追加")+
+    (op==="edit"?"📝 最後のボタンを編集":op==="beside"?
+     "➡️ 右横にボタンを追加":"➕ 次の行にボタンを追加")+
     "\n1行目：ボタン名\n2行目：https://URL\n2行をまとめて1回送信してください。",
     Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
      "post:link:back:"+next.revision)],
@@ -1427,23 +1430,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   await showPostScreen(ctx.telegram,ctx.from.id,next,"公開前プレビュー\n"+preview("link",next)+
    "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(next));
- });
- bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
-  if(!privateDM(ctx))return;
-  const rev=Number(ctx.match[1]),cols=Number(ctx.match[2]) as 1|2|3;
-  const d=await getDraft(ctx.from.id,"link");
-  if(!d||d.step!=="preview"||d.revision!==rev){
-   await ctx.answerCbQuery("古い選択です。/link で再開してください。");return;
-  }
-  const count=Array.isArray(d.data.buttons)?d.data.buttons.length:0;
-  if(count<2||cols>count){
-   await ctx.answerCbQuery("横列の指定は2個目のボタン作成後からです。");return;
-  }
-  const data={...d.data,columns:cols};
-  const next=await updateDraft(ctx.from.id,"link",rev,"preview",data);
-  await ctx.answerCbQuery("列数を保存しました");
-  await showPostScreen(ctx.telegram,ctx.from.id,next,
-   "公開前プレビュー\n"+preview("link",next),linkPreviewKeyboard(next));
  });
  bot.action(/^post:choose:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
