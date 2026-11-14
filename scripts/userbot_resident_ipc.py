@@ -21,12 +21,13 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 262144
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "list_joined_public_channels", "list_channel_videos", "download_channel_video", "download_channel_video_step", "list_channel_video_page"})
+ACTIONS = frozenset({"health", "bot_start_menu", "report_recipient_id", "room_private_smoke", "list_joined_public_channels", "list_channel_videos", "download_channel_video", "download_channel_video_step", "list_channel_video_page"})
 EXPECTED_MENU = [
     ["相手募集", "募集+Room", "告知/予告"],
-    ["プロフ作成", "クリエーター有料ビデオ投稿"],
+    ["プロフ作成", "クリエーター投稿"],
     ["🔗ボタン作成", "検索/フィルター"],
     ["雑談", "紹介/招待", "操作説明"],
+    ["🐞 不具合を報告"],
 ]
 
 
@@ -64,6 +65,14 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "report_recipient_id":
+        if set(request) != {"request_id", "action"}:
+            raise ValueError("REQUEST_SHAPE_INVALID")
+        account = await client.get_me()
+        if not account or getattr(account,"bot",False) or not isinstance(getattr(account,"id",None),int) or account.id <= 0:
+            raise RuntimeError("REPORT_RECIPIENT_IDENTITY_NOT_VERIFIED")
+        # Private owner-only IPC reply; callers must never print this ID to public logs.
+        return {"request_id":request_id,"action":action,"status":"PASS","recipient_id":account.id}
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}

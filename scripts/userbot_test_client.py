@@ -54,6 +54,10 @@ def main() -> int:
             print("USERBOT_TEST_RESULT=FAIL")
             print("USERBOT_TEST_ERROR=" + re.sub(r"[^A-Z0-9_]", "_", str(result.get("error", "CONTRACT_MISMATCH")).upper())[:128])
             return 1
+        if args.json and args.action == "report_recipient_id":
+            print("USERBOT_TEST_RESULT=BLOCKED")
+            print("USERBOT_TEST_ERROR=PRIVATE_ID_JSON_EXPORT_FORBIDDEN")
+            return 2
         if args.json:
             print(json.dumps(result, ensure_ascii=False))
             return 0
