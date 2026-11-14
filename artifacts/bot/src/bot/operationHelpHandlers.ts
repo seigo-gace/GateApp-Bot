@@ -5,7 +5,7 @@
 import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
-import {APPROVED_HELP_ROWS} from "../services/menuPanelRenderer.js";
+import {APPROVED_POSTING_ROWS} from "../services/menuPanelRenderer.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {startRoomEditor,startAnnouncementEditor,startLinkEditor} from "./postingHandlers.js";
 
@@ -19,7 +19,7 @@ const SECTION_KEYS:readonly Topic[]=["profile","room","announcement","link","sea
 const sectionLabels:Readonly<Record<Topic,string>>={
  profile:"プロフ",room:"Room+募集",announcement:"告知/予告",
  link:"🔗ボタン作成",search:"検索/フィルター",
- recruit:"相手募集",chat:"雑談",invite:"紹介/招待",paid:"有料ビデオ"
+ recruit:"相手募集",chat:"雑談",invite:"紹介/招待",paid:"クリエーター有料ビデオ投稿"
 };
 const sectionText:Readonly<Record<Topic,string>>={
  profile:"🪪 プロフ作成｜使い方\n\n【1 入力する】\n「プロフ作成」を押し、DMに次の順で1通送信します。\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢（空白区切り）\n4行目以降：自己PR（任意・改行可）\n\n入力例：\n自己紹介\nゼロ\n175 80 40\n気軽に話しかけてください。\n\n【2 ボタンで条件を選ぶ】\n「ポジション」「#Like」「#Love」「目的」「場所」を開き、該当する項目をタップします。 #Like（緑）は自分の特徴・好み、#Love（赤）は相手に求める特徴・好みです。6分類から該当する言葉を複数選択し、「✅ 保存」で確定します。下の「🏷️ #Like・#Loveの説明」で詳しく確認できます。選択した項目には✅が付きます。再タップで解除できます。「容姿/エリア」から外見や地域も設定できます。\n\n【3 写真・動画を付ける】\n「🖼️🎬 アルバム」を押し、Telegramの添付から送信します。画像と動画を合計5件まで登録できます。内容の確認は「🖼️アルバムを見る」、差し替えや削除は表示される番号を使います。\n\n【4 登録・投稿する】\n画面の入力済みプレビューを確認し、「✅ 保存・3掲示板へ投稿」を押します。3掲示板の「みんなのプロフ」への反映結果がDMに通知されます。保存後も投稿確認が未完了なら成功とは表示されません。\n\n【別画面からの登録】\n相手募集・募集+Room・応募の「プロフ登録」からも同じ画面へ進めます。既存プロフィールは自動上書きせず、本人の確定操作で更新します。",
@@ -34,7 +34,7 @@ const sectionText:Readonly<Record<Topic,string>>={
 };
 export const TAG_HELP_TEXT="🏷️ #Like と #Love｜違いと選び方\n\n【何を設定するもの？】\n🟢 #Like＝自分自身の特徴・好み・趣味・スタイル。\n🔴 #Love＝相手に求める特徴・好み・趣味・スタイル。\n同じ言葉でも「自分のこと」か「相手への希望」かで意味が変わります。\n\n【どこで使う？】\n「相手募集」「募集+Room」「プロフ作成」の入力画面にある「#Like」「#Love」から設定します。Room応募でも同じタグの選択画面を使います。\n\n【具体的な選び方】\n① 緑の「#Like」または赤の「#Love」を押します。\n② 6分類「エロワード」「パーツ」「プレイ」「雰囲気/外見」「着衣/装備」「性感帯」から分類を選びます。\n③ 候補の言葉をタップします。▫️が✅になれば選択済みです。\n④ 複数選択できます。もう一度タップすると、その項目だけ解除されます。\n⑤ 候補が多いときは「次 ➡️」で次のページ、「↩ 戻る」で前のページまたは分類に戻ります。\n⑥ 「✅ 保存」を押して元の入力画面に戻り、✅ #Like／✅ #Loveを確認します。\n\n【例】\n自分の好きな服装が「スーツ」なら、#Like →「着衣/装備」→「スーツ」を選択。\n相手に「年上好き」のような希望を伝えたいときは、#Love →「雰囲気/外見」から選択。\n実際に自分や相手に当てはまるものだけ選んでください。\n\n【修正するには】\n選択済みの言葉をもう一度押せば解除できます。「キャンセル」は選択操作を中止するときに使います。タグ選択だけで投稿されることはありません。\n\n覚え方：#Like＝自分、#Love＝相手への希望。";
 export function helpHomeKeyboard(rev:number){
- const rows=[...APPROVED_HELP_ROWS.map(row=>[...row]),["相手募集","雑談"],["紹介/招待","有料ビデオ"]];
+ const rows=APPROVED_POSTING_ROWS.map(row=>row.map(label=>label==="操作説明"?"戻る":label));
  return Markup.inlineKeyboard(rows.map(row=>row.map(label=>
   Markup.button.callback(label,label==="戻る"?`help:back:${rev}`:
     `help:topic:${rev}:${SECTION_KEYS.find(key=>sectionLabels[key]===label)}`))));
@@ -71,7 +71,7 @@ async function advance(id:number,revision:number,section:HelpSection):Promise<Se
 }
 async function show(t:Telegram,id:number,s:Session){
  const topic=s.section==="home"||s.section==="tags"?null:s.section;
- const text=s.section==="tags"?TAG_HELP_TEXT:topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・会話する → 雑談\n・参加リンクを紹介 → 紹介/招待\n・動画を販売 → 有料ビデオ\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":sectionText[topic];
+ const text=s.section==="tags"?TAG_HELP_TEXT:topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・会話する → 雑談\n・参加リンクを紹介 → 紹介/招待\n・動画を販売 → クリエーター有料ビデオ投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":sectionText[topic];
  const keyboard=s.section==="tags"?Markup.inlineKeyboard([[Markup.button.callback("↩ 操作説明へ戻る",`help:home:${s.revision}`)]]):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic);
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,keyboard);
  if(s.screenMessageId!==view.messageId){
