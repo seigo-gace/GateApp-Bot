@@ -10,7 +10,10 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {beginSearch,getSearchSession,updateSearch,bindSearchScreen,findPublicSearchHits,type SearchSession} from "../services/searchRepository.js";
 import {setSearchFilter,initialSearchFilters,searchOptions,toggleSearchTag,parseSearchAge,type SearchOptionKey} from "../services/searchDomain.js";
 import {authorizedSearchGroupIds} from "../services/searchAccess.js";
-import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
+import {currentMenuOrigin} from "../services/menuOriginRepository.js";
+import {currentTopicDmEntry} from "../services/topicDmEntry.js";
+import {bareStartPostingExtra,defaultBareStartChatId} from "../services/dmBareStartPostingMenu.js";
+import {DM_POSTING_MENU_SCREEN_TEXT} from "../services/dmPostingMenuRestore.js";
 const dm=(c:any)=>c.chat?.type==="private";
 const button=(text:string,data:string)=>Markup.button.callback(text,data);
 async function show(t:Telegram,id:number,s:SearchSession,text:string,rows:any[][]){
