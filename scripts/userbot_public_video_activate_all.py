@@ -145,10 +145,10 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
     client = exactly_once(
         client,
         '        elif action == "list_channel_videos":',
-        '        elif action == "list_channel_video_page":\\n'
-        '            if channel_id is None or chat_id is not None or message_id is not None or limit is not None:\\n'
-        '                raise ValueError("VIDEO_PAGE_TARGET_REQUIRED")\\n'
-        '            request["channel_id"] = channel_id\\n'
+        '        elif action == "list_channel_video_page":\n'
+        '            if channel_id is None or chat_id is not None or message_id is not None or limit is not None:\n'
+        '                raise ValueError("VIDEO_PAGE_TARGET_REQUIRED")\n'
+        '            request["channel_id"] = channel_id\n'
         '        elif action == "list_channel_videos":',
         "CLIENT_VIDEO_PAGE_TARGET",
     )
