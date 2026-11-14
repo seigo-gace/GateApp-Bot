@@ -47,6 +47,23 @@ export function helpTopicPages(topic:Topic):string[]{
   title+"\n"+(index+1)+" / "+segments.length+"\n\n"+segment);
  return pages;
 }
+export function helpTagPages():string[]{
+ const first=TAG_HELP_TEXT.indexOf("\n\n");
+ const title=TAG_HELP_TEXT.slice(0,first);
+ const sections=TAG_HELP_TEXT.slice(first+2).split(/\n\n(?=【)/).filter(Boolean);
+ return sections.map((item,index)=>title+"\n"+(index+1)+" / "+sections.length+"\n\n"+item);
+}
+export function helpTagKeyboard(rev:number,page:number){
+ const total=helpTagPages().length;
+ const navigation=[
+  ...(page>0?[Markup.button.callback("⬅ 前へ",`help:tagpage:${rev}:${page-1}`)]:[]),
+  ...(page+1<total?[Markup.button.callback("次 ➔",`help:tagpage:${rev}:${page+1}`)]:[]),
+ ];
+ return Markup.inlineKeyboard([
+  ...(navigation.length?[navigation]:[]),
+  [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
+ ]);
+}
 export function helpHomeKeyboard(rev:number){
  const rows=APPROVED_POSTING_ROWS.map(row=>row.map(label=>label==="操作説明"?"戻る":label));
  return Markup.inlineKeyboard(rows.map(row=>row.map(label=>
@@ -91,8 +108,8 @@ async function advance(id:number,revision:number,section:HelpSection):Promise<Se
 }
 async function show(t:Telegram,id:number,s:Session,page=0){
  const topic=s.section==="home"||s.section==="tags"?null:s.section;
- const text=s.section==="tags"?TAG_HELP_TEXT:topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・会話する → 雑談\n・参加リンクを紹介 → 紹介/招待\n・動画を販売 → クリエーター有料ビデオ投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":helpTopicPages(topic)[page]??helpTopicPages(topic)[0];
- const keyboard=s.section==="tags"?Markup.inlineKeyboard([[Markup.button.callback("↩ 操作説明へ戻る",`help:home:${s.revision}`)]]):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
+ const text=s.section==="tags"?(helpTagPages()[page]??helpTagPages()[0]):topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・会話する → 雑談\n・参加リンクを紹介 → 紹介/招待\n・動画を販売 → クリエーター有料ビデオ投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":helpTopicPages(topic)[page]??helpTopicPages(topic)[0];
+ const keyboard=s.section==="tags"?helpTagKeyboard(s.revision,page):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,keyboard);
  if(s.screenMessageId!==view.messageId){
   const updated=await pool.query("UPDATE gaybbs_help_sessions SET screen_message_id=$3 WHERE owner_user_id=$1 AND revision=$2 RETURNING owner_user_id",
@@ -155,6 +172,17 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   }
   await ctx.answerCbQuery();
   await show(ctx.telegram,ctx.from.id,await advance(ctx.from.id,rev,"tags"));
+ });
+ bot.action(/^help:tagpage:(\d+):(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),page=Number(ctx.match[2]);
+  const session=await load(ctx.from.id);
+  if(!session||session.revision!==rev||session.section!=="tags"||
+   !Number.isSafeInteger(page)||page<0||page>=helpTagPages().length){
+   await ctx.answerCbQuery("古い操作です。操作説明から開き直してください。");return;
+  }
+  await ctx.answerCbQuery();
+  await show(ctx.telegram,ctx.from.id,await advance(ctx.from.id,rev,"tags"),page);
  });
  bot.action(/^help:(home|back):(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
