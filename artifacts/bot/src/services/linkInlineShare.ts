@@ -30,7 +30,7 @@ export async function registerLinkShare(ownerId:number,revision:number,draft:Lin
  if(q.rows.length!==1)throw Error("LINK_SHARE_REGISTER_UNCONFIRMED");
  const row=q.rows[0];
  const persisted:LinkDraft={text:String(row.content),buttons:row.buttons,
-  columns:Number(row.columns),
+  columns:Number(row.columns) as 1|2|3,
   ...(row.media_kind?{media:{type:row.media_kind,fileId:row.media_file_id}}:{}),
   captionAbove:row.caption_above===true};
  const normal=(v:LinkDraft)=>JSON.stringify({
@@ -55,7 +55,7 @@ export async function readLinkShare(ownerId:number,code:string):Promise<LinkInli
     WHERE owner_user_id=$1 AND share_code=$2 AND status='draft'`,[ownerId,code]);
  if(q.rows.length!==1)return null;
  const row=q.rows[0];
- const draft:LinkDraft={text:row.content,buttons:row.buttons,columns:Number(row.columns),
+ const draft:LinkDraft={text:row.content,buttons:row.buttons,columns:Number(row.columns) as 1|2|3,
    ...(row.media_kind?{media:{type:row.media_kind,fileId:row.media_file_id}}:{}),
    captionAbove:row.caption_above===true};
  validateLinkDraft(draft);
