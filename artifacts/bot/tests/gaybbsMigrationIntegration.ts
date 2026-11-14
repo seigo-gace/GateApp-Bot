@@ -427,18 +427,17 @@ try{
   sendMessage:async()=>{throw new Error("DUPLICATE_PUBLIC_POST_FORBIDDEN")},
  } as unknown as Telegram;
  process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED="enabled";
- const liveEdit=await updateNextRoomStatusMessage(historicalBot);
- assert.equal(liveEdit?.state,"confirmed");
- assert.match(edits[0]!.text,/🔴 LIVE中/);
- assert.match(edits[0]!.text,/元の公開ROOM告知/);
- assert.equal(edits[0]!.messageId,87654);
- // The final ROOM event may have been projected later; no terminal DB purge
- // until the *same* existing Telegram message displays the end badge.
+ // The ROOM is already terminal in the source DB. The terminal edit
+ // must supersede an unconfirmed older LIVE event rather than briefly
+ // showing a stale LIVE badge and join button to real users.
  const endEdit=await updateNextRoomStatusMessage(historicalBot);
  assert.equal(endEdit?.state,"confirmed");
- assert.match(edits[1]!.text,/✅ 終了/);
- assert.equal(edits[1]!.messageId,87654);
- assert.equal(edits.length,2);
+ assert.match(edits[0]!.text,/✅ 終了/);
+ assert.match(edits[0]!.text,/元の公開ROOM告知/);
+ assert.equal(edits[0]!.messageId,87654);
+ const staleLive=await updateNextRoomStatusMessage(historicalBot);
+ assert.equal(staleLive,null,"older LIVE event must be skipped after terminal confirmation");
+ assert.equal(edits.length,1);
  delete process.env.GAYBBS_ROOM_STATUS_EDIT_ENABLED;
  // An unresolved DM is explicitly reconciled here in the isolated fixture.
  await pool.query(
@@ -451,13 +450,13 @@ try{
  for(const [query,params] of [
   ["SELECT 1 FROM room_posts WHERE room_id=$1",[roomId]],
   ["SELECT 1 FROM room_source_events WHERE room_id=$1",[roomId]],
-  ["SELECT 1 FROM room_status_message_edits WHERE edit_id=$1",[liveEdit!.editId]],
+  ["SELECT 1 FROM room_status_message_edits WHERE edit_id=$1",[endEdit!.editId]],
   ["SELECT 1 FROM announcement_posts WHERE announcement_id=$1",[linkedId]],
   ["SELECT 1 FROM posting_deliveries WHERE operation_key=$1",["db-room-delivery"]],
  ] as const){
   assert.equal((await pool.query(query,[...params])).rows.length,0,query);
  }
- assert.equal(edits.length,2,"Telegram historical post must remain, no deletion calls");
+ assert.equal(edits.length,1,"Telegram terminal edit must remain, no deletion calls");
  console.log("GAYBBS_DB_ROOM_LIVE_END_BADGES_POST_KEPT_DB_PURGED=PASS");
  // Regression: a recruitment may be full before ROOM starts. Its public
  // message must still receive LIVE and final status rather than being skipped.

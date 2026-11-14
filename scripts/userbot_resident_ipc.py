@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "room_public_readback", "room_public_post_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -50,6 +50,33 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "profile_topics_readback":
+        # Telegram's USER API returns real forum topic IDs, not t.me/c message
+        # suffixes. Only inspect the three already-approved boards, read-only.
+        from telethon import functions
+        dialogs = await client.get_dialogs(limit=500)
+        targets = (
+            ("area_bbs", -1003847210571),
+            ("video_chat", -1002373696859),
+            ("gay_board", -1003770334893),
+        )
+        results = []
+        for board, chat_id in targets:
+            entity = next((d.entity for d in dialogs if d.id == chat_id), None)
+            if entity is None:
+                raise RuntimeError("PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS")
+            forum = await client(functions.messages.GetForumTopicsRequest(
+                peer=entity, q="みんなのプロフ",
+                offset_date=0, offset_id=0, offset_topic=0, limit=100))
+            matches = [t for t in forum.topics
+                       if "みんなのプロフ" in getattr(t, "title", "")]
+            if len(matches) > 1:
+                raise RuntimeError("PROFILE_READ_MULTIPLE_TOPICS")
+            results.append({"board": board, "chat_id": chat_id,
+                            "thread_id": int(matches[0].id) if matches else None,
+                            "found": len(matches) == 1})
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "topics": results}
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}
@@ -110,6 +137,23 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         if options:
             latest = max(options, key=lambda m: m.id)
             labels = [[b.text for b in row] for row in latest.buttons]
+            if action == "profile_button_smoke":
+                from datetime import datetime, timezone, timedelta
+                if labels != EXPECTED_MENU:
+                    raise RuntimeError("PROFILE_MENU_LAYOUT_INVALID")
+                clicked_at = datetime.now(timezone.utc)
+                await latest.click(text="プロフ作成")
+                for _ in range(12):
+                    recent = await client.get_messages(bot, limit=80)
+                    for screen in recent:
+                        if screen.out or "プロフィール｜相手募集と共通入力" not in (screen.raw_text or ""):
+                            continue
+                        updated_at = screen.edit_date or screen.date
+                        if updated_at and updated_at >= clicked_at - timedelta(seconds=2):
+                            return {"request_id": request_id, "action": action,
+                                    "status": "PASS", "profile_editor_opened": True}
+                    await asyncio.sleep(1)
+                raise RuntimeError("PROFILE_BUTTON_SCREEN_NOT_OPENED")
             return {
                 "request_id": request_id, "action": action,
                 "status": "PASS" if labels == EXPECTED_MENU else "FAIL",
@@ -153,6 +197,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "ROOM_READ_CHAT_NOT_ALLOWLISTED", "ROOM_READ_MESSAGE_ID_INVALID",
                 "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE", "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH",
                 "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
+                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
                 "REQUEST_SIZE_INVALID",
             }

@@ -10,10 +10,16 @@ test("Telegram media references only",()=>{
  assert.equal(appendProfileMedia(b,b[0]!).length,2);
 });
 
-test("no unapproved arbitrary cap on media references",()=>{
- const items=Array.from({length:101},(_,i)=>({type:"photo" as const,fileId:"media-"+i,sourceMessageId:i+1}));
+test("album accepts five combined photo/video references but never a sixth",()=>{
+ const items=Array.from({length:5},(_,i)=>({type:(i%2?"video":"photo") as "photo"|"video",fileId:"media-"+i,sourceMessageId:i+1}));
  validateProfileMedia(items);
- assert.equal(items.length,101);
+ assert.equal(items.length,5);
+ assert.throws(()=>appendProfileMedia(items,{type:"photo",fileId:"sixth",sourceMessageId:6}),/PROFILE_ALBUM_FULL/);
+ assert.equal(appendProfileMedia(items,items[1]!).length,5,"duplicate Telegram retry is idempotent");
+ assert.throws(()=>validateProfileMedia([...items,{type:"video",fileId:"sixth",sourceMessageId:6}]),/PROFILE_ALBUM_LIMIT_EXCEEDED/);
+ const replaced=replaceProfileMedia(numberProfileMedia(items),3,{type:"video",fileId:"replacement",sourceMessageId:7});
+ assert.equal(replaced.length,5);
+ assert.equal(replaced.find(x=>x.itemId===3)?.fileId,"replacement");
 });
 
 test("③ media item numbers remain stable through replacement and deletion",()=>{

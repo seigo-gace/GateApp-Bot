@@ -1,4 +1,6 @@
 /** Profile draft media metadata, sourced only from Telegram private DM. */
+/** New profile albums contain up to five Telegram photo/video references combined. */
+export const PROFILE_ALBUM_LIMIT=5;
 export type ProfileMediaItem={
  type:"photo"|"video";
  itemId?:number;
@@ -16,11 +18,13 @@ export function appendProfileMedia(items:readonly ProfileMediaItem[]|undefined,i
  if(item.itemId!==undefined&&(!Number.isSafeInteger(item.itemId)||item.itemId<1))throw Error("PROFILE_MEDIA_INVALID");
  // The original Telegram message is the durable idempotency key.
  if(existing.some(x=>x.sourceMessageId===item.sourceMessageId))return [...existing];
+ if(existing.length>=PROFILE_ALBUM_LIMIT)throw Error("PROFILE_ALBUM_FULL");
  return [...existing,item];
 }
 export function validateProfileMedia(items:readonly ProfileMediaItem[]|undefined):void{
  if(!items)return;
  if(!Array.isArray(items))throw Error("PROFILE_MEDIA_INVALID");
+ if(items.length>PROFILE_ALBUM_LIMIT)throw Error("PROFILE_ALBUM_LIMIT_EXCEEDED");
  const seen=new Set<number>();
  const seenIds=new Set<number>();
  for(const item of items){

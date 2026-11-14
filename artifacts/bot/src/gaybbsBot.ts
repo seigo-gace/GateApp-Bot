@@ -3,6 +3,7 @@ import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
+import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/profileCompactHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
@@ -98,7 +99,7 @@ async function main():Promise<void>{
    try{
     const origin=await activateMenuOrigin(ctx.from.id,ctx.startPayload);
     if(origin.feature==="profile"){
-     await startProfileEditor(ctx);
+     await startCompactProfileEditor(ctx);
     }else if(origin.feature==="room"){
      await startRoomEditor(ctx.telegram,ctx.from.id);
     }else if(origin.feature==="announcement"){
@@ -125,12 +126,31 @@ async function main():Promise<void>{
   const keyboard=await bareStartPostingExtra(chatId);
   await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
  });
+ // Both current and already-sent posting-menu buttons must use the same
+ // user-visible private-editor path. Do not silently swallow DB/Telegram errors.
+ const openProfileFromMenu=async (ctx:Parameters<typeof startCompactProfileEditor>[0])=>{
+  await ctx.answerCbQuery().catch(()=>undefined);
+  try{
+   await startCompactProfileEditor(ctx);
+  }catch(error){
+   console.error("PROFILE_DM_OPEN_FAILED",
+    error instanceof Error?error.name:"unknown");
+   await ctx.reply("プロフィール入力画面を開けませんでした。入力内容は保持されています。もう一度「プロフ作成」を押してください。")
+    .catch(()=>undefined);
+  }
+ };
  bot.action("dm:nav-unavailable",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery("このリンクはまだ確認できません。", {show_alert:true});
  });
  bot.action(/^dm:blocked:(profile|announcement|room|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
+  // Already-sent posting menus may still carry this old callback_data.
+  // Opening the private profile editor must work without republishing menus.
+  if(ctx.match[1]==="profile"){
+   await openProfileFromMenu(ctx);
+   return;
+  }
   await ctx.answerCbQuery(
    "この機能は現在準備中です。各掲示板の固定投稿メニューからお試しください。",
    { show_alert: true },
@@ -138,17 +158,18 @@ async function main():Promise<void>{
  });
  bot.action(/^dm:(profile|recruit|room|announcement|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
-  await ctx.answerCbQuery();
   const kind=ctx.match[1];
-  if(kind==="profile")await startProfileEditor(ctx);
-  else if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
+  if(kind==="profile"){await openProfileFromMenu(ctx);return;}
+  await ctx.answerCbQuery();
+  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
   else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
-  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else await startOperationHelp(ctx.telegram,ctx.from.id);
  });
  registerCompactRecruitmentHandlers(bot);
+ registerCompactProfileHandlers(bot);
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);

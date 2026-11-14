@@ -82,6 +82,7 @@ export function applicationChoiceKeyboard(
    love:"application:tag:love:open"},
    {like:likeSelected,love:loveSelected}),
   [b("応募する","application:confirm","success"),
+   b("🪪 プロフ登録","pc:from:application","primary"),
    b("キャンセル","application:cancel","danger")]
  ]);
 }
@@ -138,6 +139,26 @@ async function applicationPreview(telegram:Context["telegram"],id:number,data:Re
    validLikeTags(data.likeTags as []??[]).length>0,
    validLikeTags(data.loveTags as []??[]).length>0),true);
 }
+/** Resume the original application after an optional private profile save. */
+export async function resumeApplicationEditor(
+ telegram:Context["telegram"],userId:number
+):Promise<void>{
+ const rows=await pool.query(
+  "SELECT draft,screen_message_id,draft_step FROM announcement_application_sessions "+
+  "WHERE applicant_user_id=$1 AND draft_step IN ('awaiting_text','preview') "+
+  "AND expires_at>NOW() LIMIT 1",[userId]);
+ if(rows.rows.length!==1){
+  await telegram.sendMessage(userId,"この応募は現在再開できません。元の募集ボタンから開き直してください。");
+  return;
+ }
+ const entry=rows.rows[0],draft=entry.draft as Record<string,unknown>;
+ const linked=draft.mode==="linked";
+ const id=Number(entry.screen_message_id)||undefined;
+ if(entry.draft_step==="preview")
+  await applicationPreview(telegram,userId,draft,id);
+ else await applicationEntry(telegram,userId,id,linked);
+}
+
 export function registerApplicationHandlers(bot:Telegraf):void{
 
  bot.on("text",async(ctx,next)=>{

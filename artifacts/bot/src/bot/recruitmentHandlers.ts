@@ -96,12 +96,15 @@ function keyboard(d:EditorDraft){
   position:!!data.position,like:!!data.likeTags?.length,love:!!data.loveTags?.length,
   purpose:data.purposeCodes.length>0,place:data.placeCodes.length>0,
  });
- rows.push(d.data.publishedSourceId?
-  [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev));
+ const finalRow=d.data.publishedSourceId?
+  [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev);
+ rows.push([finalRow[0]!,b("🪪 プロフ登録","pc:from:recruit","primary"),finalRow[1]!]);
  return Markup.inlineKeyboard(rows);
 }
 function initialKeyboard(d:EditorDraft){
- return Markup.inlineKeyboard([...recruitmentSelectorRows(d),decisionRow(d.revision)]);
+ const finalRow=decisionRow(d.revision);
+ return Markup.inlineKeyboard([...recruitmentSelectorRows(d),
+  [finalRow[0]!,b("🪪 プロフ登録","pc:from:recruit","primary"),finalRow[1]!]]);
 }
 export function inputInstructions(linked:boolean){
  return linked?

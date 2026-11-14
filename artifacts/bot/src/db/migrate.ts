@@ -20,6 +20,7 @@ export async function runMigrations(): Promise<void> {
       );
       ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pr_ref TEXT;
       ALTER TABLE profiles ADD COLUMN IF NOT EXISTS media_next_id BIGINT NOT NULL DEFAULT 1;
+      ALTER TABLE profiles ADD COLUMN IF NOT EXISTS profile_context JSONB NOT NULL DEFAULT '{}'::jsonb;
       ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_height_cm_check;
       ALTER TABLE profiles ADD CONSTRAINT profiles_height_cm_check CHECK (height_cm BETWEEN 100 AND 250) NOT VALID;
       ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_weight_kg_check;

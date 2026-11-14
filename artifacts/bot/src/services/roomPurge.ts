@@ -37,7 +37,7 @@ export async function purgeRoomTerminal(
       WHERE room_id=$1 AND state<>'applied') AS pending_events,
     EXISTS(SELECT 1 FROM room_status_message_edits q
       JOIN room_source_events e ON e.event_id=q.room_event_id
-      WHERE e.room_id=$1 AND q.state<>'confirmed') AS unconfirmed_edits,
+      WHERE e.room_id=$1 AND q.state NOT IN ('confirmed','skipped')) AS unconfirmed_edits,
     EXISTS(SELECT 1 FROM posting_deliveries d
       JOIN announcement_posts a ON a.announcement_id::text=d.source_id
       WHERE a.room_id=$1 AND d.source_type='announcement'

@@ -184,6 +184,7 @@ function roomOptions(d:EditorDraft){
   [b("▶ 即開始",`room:plan:${r}:now`,"success"),
    b("📅 予告する",`room:plan:${r}:scheduled`,"primary")],
   [b("↩ 戻る",`room:back:${r}`),
+   b("🪪 プロフ登録","pc:from:room","primary"),
    b("キャンセル",`room:cancel:${r}`,"danger")],
  ]);
 }
