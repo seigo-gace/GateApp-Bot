@@ -3,9 +3,7 @@ import { Markup } from "telegraf";
 import { APPROVED_POSTING_ROWS,postingMenuButtonStyle } from "./menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
 
-export const STATIC_URL_LABELS = new Set([
-  "クリエーター有料ビデオ投稿",
-]);
+export const STATIC_URL_LABELS = new Set<string>();
 
 const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   相手募集: "dm:recruit",
@@ -16,6 +14,7 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   "検索/フィルター": "dm:search",
   操作説明: "dm:help",
   雑談: "dm:chat-select",
+  "クリエーター用投稿": "dm:creator-select",
   "紹介/招待": "dm:invite-select",
 };
 
