@@ -4,6 +4,7 @@
  */
 import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {pool} from "../db/index.js";
+import {readFileSync} from "node:fs";
 import {bareStartPostingExtra,defaultBareStartChatId,BARE_START_POSTING_TEXT}
  from "../services/dmBareStartPostingMenu.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
@@ -14,7 +15,11 @@ const REPORT_LIMIT=2000;
 const REPORT_LABEL="🐞 不具合を報告";
 
 function recipientId():number|null {
- const raw=process.env.GAYBBS_USERBOT_REPORT_CHAT_ID;
+ let raw=process.env.GAYBBS_USERBOT_REPORT_CHAT_ID;
+ if(!raw&&process.env.GAYBBS_USERBOT_REPORT_CHAT_ID_FILE){
+  try{raw=readFileSync(process.env.GAYBBS_USERBOT_REPORT_CHAT_ID_FILE,"utf8").trim();}
+  catch{return null;}
+ }
  if(!raw||!/^[1-9]\d{4,18}$/.test(raw))return null;
  const id=Number(raw);
  return Number.isSafeInteger(id)?id:null;
