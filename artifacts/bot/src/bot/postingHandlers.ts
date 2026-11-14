@@ -1520,7 +1520,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
  };
  bot.on("photo",async(ctx,next)=>receiveLinkMedia(ctx,next,"photo"));
  bot.on("video",async(ctx,next)=>receiveLinkMedia(ctx,next,"video"));
- bot.action(/^post:link:(panel|add|beside|edit|cancel|back|destination):(\d+)(?::(\d+))?$/,async ctx=>{
+ bot.action(/^post:link:(register|edittext|editmedia|captiontop|captionbottom|panel|add|beside|edit|cancel|back|destination):(\d+)(?::(\d+))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
   const targetRow=ctx.match[3]===undefined?null:Number(ctx.match[3]);
@@ -1532,6 +1532,63 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await updateDraft(ctx.from.id,"link",rev,"cancelled",{cancelled:true});
    await ctx.answerCbQuery();
    await editMessageToDmPostingMenu(ctx,ctx.from.id);
+   return;
+  }
+
+  if(op==="register"){
+   if(d.step!=="preview"||d.data.linkEditorView===true){
+    await ctx.answerCbQuery("先に投稿プレビューへ戻ってください。");return;
+   }
+   if(typeof d.data.shareCode==="string"){
+    await ctx.answerCbQuery("登録済みです。");await showLinkRichPreview(ctx.telegram,ctx.from.id,d);return;
+   }
+   const me=await ctx.telegram.getMe();
+   if(!("supports_inline_queries" in me)||me.supports_inline_queries!==true){
+    await ctx.answerCbQuery("Botのインライン機能が未有効です。登録を行いません。",{show_alert:true});
+    return;
+   }
+   try{
+    const receipt=await registerLinkShare(ctx.from.id,rev,d.data as LinkDraft);
+    const updated=await updateDraft(ctx.from.id,"link",rev,"preview",{
+     ...d.data,shareCode:receipt.code,linkSourceId:receipt.sourceId,
+    });
+    await ctx.answerCbQuery("登録しました");
+    await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   }catch(error){
+    const reason=error instanceof Error?error.message:"unknown";
+    console.error("[LINK_REGISTER_FAILED]",reason);
+    await ctx.answerCbQuery("登録結果を確認できません。元の下書きは保持しています。",{show_alert:true});
+   }
+   return;
+  }
+  if(op==="edittext"||op==="editmedia"){
+   if(d.step!=="preview"){await ctx.answerCbQuery("編集中です。");return;}
+   if(typeof d.data.shareCode==="string"){
+    await ctx.answerCbQuery("登録済みの内容は変更できません。新規作成してください。",{show_alert:true});
+    return;
+   }
+   const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+    {...d.data,linkStage:op==="edittext"?"edittext":"editmedia"});
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    op==="edittext"?
+     "📝 テキスト編集\n現在の文章：\n"+String(d.data.text||"（なし）")+
+      "\n\n新しい文章をDMで送信してください。":
+     "🖼 画像/動画編集\n新しい画像または動画をDMへ送信してください。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
+     "post:link:back:"+updated.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+updated.revision)]]));
+   return;
+  }
+  if(op==="captiontop"||op==="captionbottom"){
+   if(d.step!=="preview"||!d.data.media||!String(d.data.text||"").trim()||
+      typeof d.data.shareCode==="string"){
+    await ctx.answerCbQuery("コメント付き画像・動画の場合のみ変更できます。");return;
+   }
+   const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...d.data,captionAbove:op==="captiontop"});
+   await ctx.answerCbQuery();
+   await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
    return;
   }
   if(op==="panel"){
