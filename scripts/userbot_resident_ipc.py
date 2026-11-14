@@ -166,8 +166,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                         else:
                             if len(actual) == 4 and len(actual[0]) == len(actual[1]) == len(actual[2]) == 2 and actual[3] == ["🔙 戻る"]:
                                 gate_codes = {"ee538b32b74f", "6f581d52e546", "e31b8d1dd707"}
-                                raw = [screen.reply_markup.rows[i].buttons[1] for i in range(3)]
-                                # Telegram represents native clipboard buttons as KeyboardButtonCopy.
+                                raw = [getattr(screen.reply_markup.rows[i].buttons[1], "button",
+                                               screen.reply_markup.rows[i].buttons[1]) for i in range(3)]
+                                # Telethon may wrap raw clipboard buttons in KeyboardInlineButton.
                                 # Compare the Telegram payload, not a Telethon class
                                 # name (which can differ between installed versions).
                                 texts = [str(getattr(b, "copy_text", "")) for b in raw]
