@@ -1477,6 +1477,49 @@ export function registerPostingHandlers(bot:Telegraf):void{
     ]):undefined);
   }
  });
+
+ // Uses the existing DM text-owner and Telegram file_id mechanism from profiles.
+ const receiveLinkMedia=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video")=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return next();
+  if(await currentDmTextOwner(ctx.from.id)!=="link")return next();
+  const draft=await getWaitingDraft(ctx.from.id);
+  if(!draft||draft.module!=="link"||
+    !["content","editmedia"].includes(String(draft.data.linkStage)))return next();
+  const msg=ctx.message;
+  if(!msg)return next();
+  const file=kind==="photo"&&"photo" in msg?msg.photo.at(-1):
+    kind==="video"&&"video" in msg?msg.video:undefined;
+  if(!file?.file_id)return next();
+  const caption="caption" in msg&&typeof msg.caption==="string"?msg.caption:"";
+  const replaced=draft.data.linkStage==="editmedia";
+  const oldText=String(draft.data.text||"");
+  const text=caption|| (replaced?oldText:"");
+  const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,msg.message_id);
+  const notice=deleted?"":"\n⚠️ 送信した媒体メッセージを削除できません。手動で削除してください。";
+  try{
+   if(text.length>1024)throw Error("LINK_BODY_INVALID");
+   const updated=await updateDraft(ctx.from.id,"link",draft.revision,
+    replaced?"preview":"awaiting_text",{
+     ...draft.data,text,
+     media:{type:kind,fileId:file.file_id},
+     captionAbove:draft.data.captionAbove===true,
+     linkStage:replaced?"ready":"button",linkEditorView:false});
+   if(replaced)await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   else await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "✅ "+(kind==="photo"?"画像":"動画")+"を受け取りました。"+notice+
+    "\n\n次の2行をまとめて1回送信してください。\n1行目：ボタン名\n2行目：https://URL",
+    Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+     "post:link:cancel:"+updated.revision)]]));
+  }catch(error){
+   const reason=error instanceof Error?error.message:"登録失敗";
+   await showPostScreen(ctx.telegram,ctx.from.id,draft,
+    "⚠️ 媒体を登録できませんでした："+reason+notice,
+    Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+     "post:link:cancel:"+draft.revision)]]));
+  }
+ };
+ bot.on("photo",async(ctx,next)=>receiveLinkMedia(ctx,next,"photo"));
+ bot.on("video",async(ctx,next)=>receiveLinkMedia(ctx,next,"video"));
  bot.action(/^post:link:(panel|add|beside|edit|cancel|back|destination):(\d+)(?::(\d+))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
