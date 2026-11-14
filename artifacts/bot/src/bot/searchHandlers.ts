@@ -55,15 +55,15 @@ function options(s:SearchSession,key:SearchOptionKey){
 export function searchFilterRows(s:SearchSession){
  const r=s.revision;
  const rows=s.filters.kind==="profile"?[
-  [button("📍 エリア",`search:panel:${r}:region`,"primary"),button("年齢",`search:age:${r}`,"primary"),
-   button("ポジション",`search:panel:${r}:position`,"primary")],
-  [button("体型",`search:panel:${r}:body`,"primary"),button("髪型",`search:panel:${r}:hair`,"primary"),
-   button("目的",`search:panel:${r}:purpose`,"primary")],
-  [button("#Like",`search:tag:${r}:like`,"primary"),button("#Love",`search:tag:${r}:love`,"primary")],
+  [button("📍 エリア",`search:panel:${r}:region`,s.filters.region?"success":"primary"),button("年齢",`search:age:${r}`,s.filters.ageMin!==null?"success":"primary"),
+   button("ポジション",`search:panel:${r}:position`,s.filters.position?"success":"primary")],
+  [button("体型",`search:panel:${r}:body`,s.filters.body?"success":"primary"),button("髪型",`search:panel:${r}:hair`,s.filters.hair?"success":"primary"),
+   button("目的",`search:panel:${r}:purpose`,s.filters.purpose?"success":"primary")],
+  [button("#Like",`search:tag:${r}:like`,s.filters.like?"success":"primary"),button("#Love",`search:tag:${r}:love`,s.filters.love?"success":"primary")],
  ]:[
-  [button("📍 エリア",`search:panel:${r}:region`,"primary"),
-   button("ポジション",`search:panel:${r}:position`,"primary"),
-   button("目的",`search:panel:${r}:purpose`,"primary")],
+  [button("📍 エリア",`search:panel:${r}:region`,s.filters.region?"success":"primary"),
+   button("ポジション",`search:panel:${r}:position`,s.filters.position?"success":"primary"),
+   button("目的",`search:panel:${r}:purpose`,s.filters.purpose?"success":"primary")],
  ];
  rows.push([button("🔎 検索実行",`search:run:${r}`,"primary"),button("↩ 戻る",`search:back:${r}`)]);
  return rows;
