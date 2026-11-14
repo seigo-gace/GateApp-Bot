@@ -19,7 +19,7 @@ from userbot_session import SECRETS
 
 SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
-MAX_RESPONSE_BYTES = 8192
+MAX_RESPONSE_BYTES = 65536
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "list_joined_public_channels", "list_channel_videos", "download_channel_video"})
 EXPECTED_MENU = [
