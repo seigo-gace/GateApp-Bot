@@ -10,7 +10,7 @@ import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js"
 import {startRoomEditor,startAnnouncementEditor,startLinkEditor} from "./postingHandlers.js";
 
 import {startSearchEditor} from "./searchHandlers.js";
-import {startProfileEditor} from "./profileHandlers.js";
+import {startCompactProfileEditor} from "./profileCompactHandlers.js";
 
 type Topic="profile"|"room"|"announcement"|"link"|"search";
 type HelpSection=Topic|"home";
@@ -21,11 +21,11 @@ const sectionLabels:Readonly<Record<Topic,string>>={
  link:"🔗ボタン作成",search:"検索/フィルター"
 };
 const sectionText:Readonly<Record<Topic,string>>={
- profile:"🪪 プロフ（プロフィール）\n① 名前と身長・体重・年齢を入力します。\n② ポジション、容姿・エリア、写真・動画・自己PR、#Like/#Loveを選択します。\n③ プレビューを確認して保存します。保存だけなら非公開です。掲載したい場合は別途、公開先と内容を確認して公開します。",
- room:"🎬 Room+募集\n① ROOMのタイトル・説明を入力します。\n② 参加方式とプロフィール連携を選びます。\n③ 内容・投稿先を確認してから公開します。\n入力途中の内容は保持され、公開前ならキャンセルできます。\n「▶ この機能を開く」から投稿機能へ進みます。",
- announcement:"📣 告知/予告\n① 告知または予告の種類を選びます。\n② 本文を入力し、予告の場合は日本時間で日時を指定します。\n③ プロフィールとの連携や投稿先を確認します。\n④ プレビューを確認し、本人が公開ボタンを押した場合だけ投稿します。\n入力を中断しても未公開の下書きは残ります。",
- link:"🔗 ボタン作成\n① 1行目に本文を入力します。\n② 2行目以降に1ボタンずつ『表示名 | https://URL』と書きます。\n③ 1〜3列の表示を選び、プレビューで表示名・リンク先を確認します。\n④ 必要なら修正して、投稿先を確認し公開します。\nHTTPや短縮URLなど、使用できないリンクは理由を確認して修正します。",
- search:"🔍 検索/フィルター\n① プロフィールと相手募集から探す対象を選びます。\n② キーワードや地域・目的などで絞ります。プロフィールでは年齢・体型・髪型・#Like/#Loveも選択できます。\n③ 検索結果を5件ずつ確認し、気になる投稿を開きます。\n現在参加中のグループの公開済み投稿だけを表示します。"
+ profile:"🪪 プロフ作成\n① 相手募集と共通の入力画面で基本情報やタグを選択します。\n② 写真・動画を合わせて最大5件登録できます。\n③ 内容を確認し、保存・投稿を選択します。\n④ 相手募集・募集+Room・応募画面からもプロフィール登録へ進めます。\n※公開先は操作した掲示板の「みんなのプロフ」です。",
+ room:"🎬 募集+Room\n① 募集タイトル・本文とポジション、#Like、#Love、目的・場所を設定します。\n② 参加方式を選択し、内容を確認して投稿します。\n③ 投稿後は応募者を見る・開始して入室・削除などをDMから操作します。\n④ 終了すると募集のLIVE状態も終了に連動します。",
+ announcement:"📣 告知/予告\n① お知らせする内容と必要な日時・リンクを入力します。\n② プレビューと投稿先を確認し、投稿します。\n③ 投稿した内容は本人の編集・削除操作から管理します。",
+ link:"🔗 ボタン作成\n① 表示したい本文とボタン名・リンク先を入力します。\n② ボタンの並びとプレビューを確認します。\n③ 投稿先を選んで公開します。\n※リンク先を必ず確認してから投稿してください。",
+ search:"🔍 検索/フィルター\n① 検索対象を選びます。\n② エリア、目的、ポジションやタグなどで絞り込みます。\n③ 結果から投稿・プロフィールを開きます。\n※検索は既存の公開投稿を対象とします。"
 };
 export function helpHomeKeyboard(rev:number){
  return Markup.inlineKeyboard(APPROVED_HELP_ROWS.map(row=>row.map(label=>
@@ -98,7 +98,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   const screenId=s.screenMessageId??undefined;
   if(!screenId){await startOperationHelp(ctx.telegram,ctx.from.id);return;}
   await advance(ctx.from.id,rev,"home");
-  if(topic==="profile")await startProfileEditor(ctx);
+  if(topic==="profile")await startCompactProfileEditor(ctx);
   else if(topic==="room")await startRoomEditor(ctx.telegram,ctx.from.id,screenId);
   else if(topic==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id,screenId);
   else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id,screenId);
