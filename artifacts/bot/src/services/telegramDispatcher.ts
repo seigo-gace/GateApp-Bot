@@ -5,15 +5,20 @@
 import type {Telegram} from "telegraf";
 import {Markup} from "telegraf";
 export type TransportTarget={chatId:number;threadId:number};
-export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";buttons?:readonly (readonly {text:string;url:string;style?:"primary"|"success"|"danger"}[])[]};
+export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";buttons?:readonly (readonly {text:string;url:string;copy_text?:{text:string};style?:"primary"|"success"|"danger"}[])[]};
 function assertTarget(t:TransportTarget):void{
  if(!Number.isSafeInteger(t.chatId)||t.chatId>=0||
     !Number.isSafeInteger(t.threadId)||t.threadId<=0)
   throw new Error("MPB_TARGET_UNVERIFIED");
 }
 function markup(buttons:TransportMessage["buttons"]){
- return buttons?.length?Markup.inlineKeyboard(buttons.map(row=>
-  row.map(x=>({text:x.text,url:x.url,...(x.style?{style:x.style}:{})})))):undefined;
+ if(!buttons?.length)return undefined;
+ const rows=buttons.map(row=>row.map(x=>({
+  text:x.text,
+  ...(x.copy_text?{copy_text:x.copy_text}:{url:x.url}),
+  ...(x.style?{style:x.style}:{})
+ })));
+ return Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
 }
 export function createTelegramDispatcher(telegram:Telegram){
  return {

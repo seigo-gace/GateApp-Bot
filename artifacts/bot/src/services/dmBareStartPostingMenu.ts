@@ -1,12 +1,11 @@
 /** DM /start fallback: full posting menu (APPROVED_POSTING_ROWS 3/2/2/3), not the old 3-button stub. */
 import { Markup } from "telegraf";
-import { APPROVED_POSTING_ROWS,postingMenuButtonStyle } from "./menuPanelRenderer.js";
+import { APPROVED_POSTING_ROWS, postingButtonStyle } from "./menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
+import {commonGateUrl,gateInviteCopyButton} from "./commonGateInvite.js";
 
 export const STATIC_URL_LABELS = new Set([
-  "クリエーター有料ビデオ投稿",
-  "雑談",
-  "紹介/招待",
+  "クリエーター投稿",
 ]);
 
 const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
@@ -17,6 +16,8 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   "🔗ボタン作成": "dm:link",
   "検索/フィルター": "dm:search",
   操作説明: "dm:help",
+  雑談: "dm:talk",
+  "紹介/招待": "dm:invite",
 };
 
 const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
@@ -69,7 +70,9 @@ async function loadPostingNavUrls(
   );
   const map = new Map<string, string>();
   for (const row of r.rows) {
-    map.set(String(row.label), String(row.destination_url));
+    const label=String(row.label)==="クリエーター有料ビデオ投稿"
+      ?"クリエーター投稿":String(row.label);
+    map.set(label, String(row.destination_url));
   }
   return map;
 }
@@ -85,11 +88,11 @@ export function defaultBareStartChatId(menuOriginChatId?: number | null): number
   return BOARD_GROUP_CHAT_IDS.area_bbs;
 }
 
-/** Opening profile or recruitment editors is a private draft operation, not publication.
- * Their actual Telegram posting paths retain the existing release gates.
+/** Opening a private recruitment draft does not grant permission to publish it.
+ * publishPost still enforces the announcement release gate before any Telegram post.
  */
 export function canOpenPostingEditor(label: string, featureReady: boolean): boolean {
-  return label === "相手募集" || label === "プロフ作成" || label === "検索/フィルター" || featureReady;
+  return ["相手募集","プロフ作成","検索/フィルター","🔗ボタン作成"].includes(label) || featureReady;
 }
 
 /** Missing optional navigation URLs cannot block the caller's return to the menu. */
@@ -101,31 +104,33 @@ export function navigationButton(label: string, verifiedUrl?: string) {
 
 /** Builds the authoritative 3/2/2/3 inline keyboard for bare /start in DM. */
 export async function bareStartPostingExtra(chatId: number) {
-  const [ready, urls] = await Promise.all([
+  const [ready, urls, inviteUrl] = await Promise.all([
     postingDmFeaturesReady(),
     loadPostingNavUrls(chatId),
+    commonGateUrl(),
   ]);
   const rows = APPROVED_POSTING_ROWS.map((row) =>
     row.map((label) => {
+      const colorize=<T extends object>(button:T):T & {style:"primary"|"success"|"danger"}=>
+        ({...button,style:postingButtonStyle(label)});
+      if(label==="紹介/招待")return colorize(gateInviteCopyButton(label,inviteUrl));
       if (STATIC_URL_LABELS.has(label)) {
-        const url = urls.get(label);
+        const url = label==="クリエーター投稿"
+          ? "https://t.me/CreateVdobot?start=creator" : urls.get(label);
         // An unavailable link must never prevent the rest of the posting menu
         // (including a cancel -> menu return) from being rendered.
-        return navigationButton(label, url);
+        return colorize(navigationButton(label, url));
       }
       const data = CALLBACK_BY_LABEL[label];
       if (!data) throw new Error("POSTING_CALLBACK_LABEL_UNKNOWN:" + label);
       const feature = FEATURE_BY_LABEL[label];
       if (feature && !canOpenPostingEditor(label, ready.has(feature))) {
-        return Markup.button.callback(label, "dm:blocked:" + feature);
+        return colorize(Markup.button.callback(label, "dm:blocked:" + feature));
       }
-      return Markup.button.callback(label, data);
+      return colorize(Markup.button.callback(label, data));
     }),
   );
-  return Markup.inlineKeyboard(rows.map((row,rowIndex)=>row.map((button,columnIndex)=>({
-    ...button,
-    style:postingMenuButtonStyle(APPROVED_POSTING_ROWS[rowIndex]![columnIndex]!),
-  } as unknown as typeof button))));
+  return Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
 }
 
 /** @internal row layout check for tests */

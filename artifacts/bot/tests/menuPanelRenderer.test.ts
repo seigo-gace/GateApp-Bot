@@ -15,7 +15,7 @@ test("Master-approved posting rows remain exactly 3/2/2/3, with profile creation
   links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
  assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_POSTING_ROWS.map(r=>[...r]));
  assert.deepEqual(result.rows.map(r=>r.length),[3,2,2,3]);
- assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエーター有料ビデオ投稿"]);
+ assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエーター投稿"]);
 });
 test("Master-approved general-guide rows remain exactly 3/3/3/4",()=>{
  const result=renderMenuPanel({type:"general_guide",board:"gay_board",
@@ -59,7 +59,7 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
 });
 
 test("posting panel merges seven verified DM editors and three verified navigation URLs",()=>{
- const staticLabels=["クリエーター有料ビデオ投稿",
+ const staticLabels=["クリエーター投稿",
   "雑談","紹介/招待"];
  const links=staticLabels.map((label,i)=>({label,
   url:"https://t.me/c/3847210571/"+(500+i),verified:true}));
@@ -98,4 +98,15 @@ test("all ten posting buttons have native Telegram colors without changing desti
  }
  assert.equal(panel.rows[0]![1]!.text,"募集+Room");
  assert.equal(panel.rows[0]![1]!.style,"success");
+});
+
+test("invite button copies the existing shared Gate URL without redirecting to DM",()=>{
+ const url="https://t.me/GayBBS_bot?start=gate_existing";
+ const links=makeLinks(APPROVED_POSTING_ROWS).map(link=>
+  link.label==="紹介/招待"?{...link,url,copy_text:{text:url}}:link);
+ const panel=renderMenuPanel({type:"posting",board:"area_bbs",links,entryLinks:[]});
+ assert.deepEqual(panel.rows.map(r=>r.length),[3,2,2,3]);
+ assert.deepEqual(panel.rows[3]![1]!.copy_text,{text:url});
+ assert.equal(panel.rows[3]![1]!.text,"紹介/招待");
+ assert.equal(panel.rows[1]![0]!.text,"プロフ作成");
 });
