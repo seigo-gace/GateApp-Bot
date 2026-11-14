@@ -1412,7 +1412,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
      await roomPreviewScreen(ctx.telegram,ctx.from.id,updated);
      return;
     }
-    data={...current.data,eventAt:date.toISOString()};
+    data={...current.data,
+     [current.data.editField==="deadline"?"deadlineAt":"eventAt"]:date.toISOString(),
+     editField:null,noticeDateField:null,noticePickerStage:null};
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
     if(current.module==="announcement"&&data.kind!=="recruitment"){
      await announcementScreen(ctx.telegram,ctx.from.id,updated);
