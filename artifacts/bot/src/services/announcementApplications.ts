@@ -92,7 +92,7 @@ export async function decideApplication(
  try{
   await c.query("BEGIN");
   const post=await c.query(
-   `SELECT owner_user_id,status,kind,capacity,accept_applications
+   `SELECT owner_user_id,status,kind,capacity,accept_applications,conditions
     FROM announcement_posts WHERE announcement_id=$1 FOR UPDATE`,[announcementId]);
   if(post.rows.length!==1||Number(post.rows[0].owner_user_id)!==ownerUserId)
    throw new Error("APPLICATION_OWNER_MISMATCH");
