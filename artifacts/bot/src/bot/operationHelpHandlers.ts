@@ -6,21 +6,20 @@ import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
 import {APPROVED_POSTING_ROWS} from "../services/menuPanelRenderer.js";
-import {CHAT_TOPIC_CHOICES} from "../services/dmBareStartPostingMenu.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {startRoomEditor,startAnnouncementEditor,startLinkEditor} from "./postingHandlers.js";
 
 import {startSearchEditor} from "./searchHandlers.js";
 import {startCompactProfileEditor} from "./profileCompactHandlers.js";
 
-type Topic="profile"|"room"|"announcement"|"link"|"search"|"recruit"|"chat"|"paid";
-type HelpSection=Topic|"home"|"tags"|"chat_select";
+type Topic="profile"|"room"|"announcement"|"link"|"search"|"recruit"|"paid";
+type HelpSection=Topic|"home"|"tags";
 type Session={revision:number;section:HelpSection;screenMessageId:number|null};
-const SECTION_KEYS:readonly Topic[]=["profile","room","announcement","link","search","recruit","chat","paid"];
+const SECTION_KEYS:readonly Topic[]=["profile","room","announcement","link","search","recruit","paid"];
 const sectionLabels:Readonly<Record<Topic,string>>={
  profile:"プロフ",room:"Room+募集",announcement:"告知/予告",
  link:"🔗ボタン作成",search:"検索/フィルター",
- recruit:"相手募集",chat:"雑談",paid:"クリエーター用投稿"
+ recruit:"相手募集",paid:"クリエーター用投稿"
 };
 const sectionText:Readonly<Record<Topic,string>>={
  recruit:"📝 相手募集｜画面の使い方\n\n■ この機能でできること\n「こんな人と会いたい」「一緒に過ごせる人を探したい」という募集を、自分が選んだ掲示板のトピックに掲載できます。募集内容・希望条件を見た人からの応募を受け付ける機能です。Roomを作る場合は「募集+Room」を使ってください。\n\n■ 1. 最初に送る文章\n「相手募集」を押すとDMの編集画面が開きます。プロフィールの登録状況によって入力内容が変わります。\n\n【プロフ未登録の人】\n① 募集タイトル\n② ニックネーム\n③ 身長 体重 年齢\n④ 募集内容（何をしたいか、いつ、どんな相手を探すか）\n\n入力例（4行をまとめて送信）：\n今夜話せる人を募集\nゼロ\n175 80 40\n今夜、近くで会って話せる人を探しています。時間は相談したいです。\n\n【プロフ登録済みの人】\n1行目：タイトル\n2行目以降：募集内容\n基本情報は保存済みのプロフから連動できます。\n\n■ 2. ボタンは何を選ぶもの？\n「ポジション選択」：自分のポジション\n「#Like」（緑）：自分の特徴や好み\n「#Love」（赤）：相手に求める特徴や好み\n「目的」：この募集で何をしたいか\n「場所」：場所の有無や移動できるか\n\n#Likeと#Loveは、分類→候補の順に押して選択します。✅が付けば選択中。同じ項目を再押下すると解除できます。複数選んで「✅ 保存」で確定します。\n「🪪 プロフ登録」は、この募集を作っている途中でプロフィールも登録したい人向けです。\n\n■ 3. 内容を確認して投稿\n入力やボタン選択はプレビューに反映されます。タイトル・ニックネーム・希望条件を確認し「✅ 投稿する」を押します。投稿先を選ぶ画面が出たらトピックを選択します。「キャンセル」は投稿せず編集をやめるときに使います。\n\n■ 4. 投稿した後\nDMの「✏️ 編集」で内容の変更、「🗑 削除」で取り消し、「📍 投稿先を開く」で掲載先へ戻れます。自分の募集だけ編集・削除できます。",
@@ -28,7 +27,7 @@ const sectionText:Readonly<Record<Topic,string>>={
  announcement:"📣 告知/予告｜予定を掲示板に知らせる\n\n【何をする機能？】\nメンバーへお知らせを届ける「告知」と、これからの予定・開催時刻を知らせる「予告」を作る機能です。\n\n【① 種類を選ぶ】\n「告知/予告」を押して、「📢 告知」または「📅 予告」を選びます。✅が付いた方が選択中です。\n\n【② 内容を書く】\n「📝 本文編集」を押して案内文を1通送信します。\n例：今夜の交流会のお知らせ。参加希望の方は募集内容をご確認ください。\n\n【③ 日時と投稿先】\n予告では「📅 日時・受付」から開催日時・受付内容を設定します。\n「🔗 プロフ連携」は自分のプロフィールを付ける設定です。\n「📍 投稿先」から掲示板の投稿先トピックを選びます。\n\n【④ 保存・公開】\n本文・日時・投稿先を確認して「✅ 投稿」で公開します。あとで作業を続けたいときは「下書き保存」。「キャンセル」は投稿しません。\n\n【確認ポイント】\n予告は予定日時を間違えないようにしてください。送信しただけではなく、最終の投稿ボタンで公開します。",
  profile:"🪪 プロフ作成｜登録と編集の手順\n\n■ この機能でできること\nあなた自身のプロフィールを作る機能です。募集する相手に、自分がどんな人か、どんなことが好きかを伝えられます。文章だけでなく、写真・動画を合わせて5件まで載せられます。\n\n■ 1. 最初に入力する内容\n「プロフ作成」を押し、DMに次の順で1通送信します。\n\n1行目：タイトル（例：自己紹介）\n2行目：ニックネーム\n3行目：身長 体重 年齢（数字を空白で区切る）\n4行目以降：自己PR（任意・改行自由）\n\n入力例：\n自己紹介\nゼロ\n175 80 40\n休みの日は映画を見ています。気軽に話しかけてください。\n\n■ 2. 各ボタンの意味\n「ポジション」：自分のポジションを選ぶ\n「#Like」（緑）：自分自身の特徴・好み・趣味\n「#Love」（赤）：相手に求める特徴・好み\n「目的」：どんな交流を希望するか\n「場所」：場所や移動に関する条件\n「容姿/エリア」：外見に関する項目・住んでいる地域を設定する\n\n#Like・#Loveは6分類から言葉を選びます。複数選択可能。✅なら選択中、同じ候補をもう一度押せば解除です。選び終えたら「✅ 保存」で戻ります。\n「#Like・#Loveの説明」から操作の詳細も読めます。\n\n■ 3. 写真・動画を載せる\n「🖼️🎬 アルバム」を押し、Telegramの添付から写真または動画を送ります。合計5件まで登録できます。\n「🖼️アルバムを見る」で登録済みの画像・動画を確認します。\n既存の素材を変えるときは「差替 番号」、消すときは「削除 番号」とDMに入力します。番号はアルバム画面に表示されます。\n\n■ 4. 公開する\nプレビューで内容を確かめ「✅ 保存・3掲示板へ投稿」を押します。3グループの「みんなのプロフ」への反映を行い、結果をDMで通知します。保存だけ成功し投稿結果が未確認の場合は成功と表示しません。\n\n■ 5. ほかの操作中に登録したいとき\n相手募集・募集+Room・応募画面の「🪪 プロフ登録」からも進めます。作りかけの募集・応募は保持し、既存プロフィールを無断で上書きしません。",
  paid:"🎨 クリエーター用投稿｜ステッカー/絵文字\n\n【何ができる？】\n自分のステッカーやカスタム絵文字をパックにまとめて登録・管理できます。気持ちを伝えるステッカーや、メッセージの中で使う絵文字を作りたいときに利用してください。\n\n【① 作成画面を開く】\n投稿メニューの「クリエーター用投稿」を押し、「ステッカー/絵文字」を選びます。作成と編集は専用のCreateVdobotで行います。\n\n【② パックを選ぶ】\n「ステッカーパック」または「絵文字パック」を選択します。すでに作成したパックがある場合は一覧から選べます。複数のパックを持っている場合も、それぞれ分けて管理できます。\n\n【③ 素材を追加する】\n追加したいパックの「追加」から、ステッカーや絵文字の素材を送ります。画面の案内に沿って登録してください。登録後はパックの中身を確認します。\n\n【④ 中身を確認・編集する】\nパックの「編集」を押すと登録済みの素材を一覧で確認できます。変更したい画像や絵文字そのものを選び、用意された編集操作へ進みます。パック名を変える場合も編集画面から行います。\n\n【覚えておこう】\n「戻る」で前の画面へ戻れます。別のパックを管理したい場合はパック一覧から選び直してください。" ,
- link:"🔗 ボタン作成｜リンク付き投稿を作る\n\n【どんな機能？】\nTelegramの投稿に、押すと指定URLへ移動するボタンを付ける機能です。掲示板や案内ページへの誘導に使います。本文とボタンだけでなく、「テキストのみ」「画像＋コメント」「動画＋コメント」の3形式を使い分けるのが新しい採用設計です。\n※画像・動画の登録とコメントの配置はPR #55では未実装です。現在のBotで使えると断定しないでください。\n\n【① 投稿する内容を決める】\nテキストのみ＝文章とリンクボタン。\n画像＋コメント＝写真・説明文・リンクボタン。\n動画＋コメント＝動画・説明文・リンクボタン。\nまずどの形式を使うか考えます。媒体付きの操作画面は対応実装後に利用してください。\n\n【② 最初のボタンを作る】\n「🔗ボタン作成」を押し、ボタン名とURLを次の2行でまとめて1通送信します。\n1行目：ボタンに表示する名前\n2行目：https://で始まるリンク先\n\n入力例：\nグループの案内を見る\nhttps://example.org/guide\n\n1個目は横列を指定しません。リンク先はHTTPS形式で、URL短縮サービスなどは使えません。\n\n【③ 2個目以降を追加する】\nプレビューにある「➕ ボタンを追加」＝次の行に作る。\n「➡️ 横にボタンを作る」＝直前のボタンの右隣に作る。\nどちらかを押して、次のボタン名とURLをまた2行で送信します。押すたびに追加先が決まり、元のボタンは残ります。\n\n【④ 編集・投稿する】\n「📝 最後を編集」＝最後のボタンの名前・URLを直す。\n「📍 投稿先を選択」＝投稿するトピックを選ぶ。\n公開前プレビューのボタン配置とリンク先を確認し、投稿操作へ進みます。「キャンセル」は編集を中止します。\n\n【確認してほしいこと】\n画像＋コメント／動画＋コメントの細かな操作は未実装のため、このガイドは採用設計の案内です。実際に選択できるようになるまで、対応済みとは表示しません。",
+ link:"🔗 ボタン作成｜リンク付き投稿を作る\n\n【どんな機能？】\nTelegramの投稿に、押すと指定URLへ移動するボタンを付ける機能です。掲示板や案内ページへの誘導に使います。本文とボタンだけでなく、文章とリンクボタンだけの投稿、画像にコメントを付ける投稿、動画にコメントを付ける投稿などの案内に利用します。\n\n【① 投稿する内容を決める】\nテキストのみ＝文章とリンクボタン。\n画像＋コメント＝写真・説明文・リンクボタン。\n動画＋コメント＝動画・説明文・リンクボタン。\n投稿したい内容に合う種類を選びます。画面で選べる投稿形式に従って進めてください。\n\n【② 最初のボタンを作る】\n「🔗ボタン作成」を押し、ボタン名とURLを次の2行でまとめて1通送信します。\n1行目：ボタンに表示する名前\n2行目：https://で始まるリンク先\n\n入力例：\nグループの案内を見る\nhttps://example.org/guide\n\n1個目は横列を指定しません。リンク先はHTTPS形式で、URL短縮サービスなどは使えません。\n\n【③ 2個目以降を追加する】\nプレビューにある「➕ ボタンを追加」＝次の行に作る。\n「➡️ 横にボタンを作る」＝直前のボタンの右隣に作る。\nどちらかを押して、次のボタン名とURLをまた2行で送信します。押すたびに追加先が決まり、元のボタンは残ります。\n\n【④ 編集・投稿する】\n「📝 最後を編集」＝最後のボタンの名前・URLを直す。\n「📍 投稿先を選択」＝投稿するトピックを選ぶ。\n公開前プレビューのボタン配置とリンク先を確認し、投稿操作へ進みます。「キャンセル」は編集を中止します。\n\n【入力で迷ったら】\n入力例と同じように、ボタン名を1行目、URLを2行目に入れ、まとめて1回送信してください。",
  search:"🔍 検索/フィルター｜投稿や相手を探す\n\n【何をする機能？】\n参加している掲示板の公開済みプロフィールや相手募集を、言葉・条件から探します。新しく投稿する機能ではありません。\n\n【① 探す対象】\n「検索/フィルター」を押し、「プロフ」「相手募集」を選びます。✅が付いている方を検索します。\n\n【② 言葉で探す】\n「🔍 キーワード検索」を押して、探したい言葉を80文字以内で1通送信します。\n\n【③ 条件で絞る】\n「🎛 詳細フィルター」を押します。\nプロフ：エリア／年齢／ポジション／体型／髪型／目的／#Like／#Love。\n相手募集：エリア／ポジション／目的。\n選択肢をタップすると条件に反映され、同じ項目の再タップで解除できます。\n\n【④ 結果を見る】\n「🔎 検索実行」で結果を表示します。1ページ5件。「次へ ▶」「◀ 前へ」でページを切り替え、結果を押すと元の投稿へ移動します。\n\n【⑤ 探し直す】\n「🎛 条件変更」で条件を修正。「条件クリア」で指定した条件を消します。「↩ 戻る」で戻れます。",
 
 };
@@ -64,16 +63,10 @@ export function helpTagKeyboard(rev:number,page:number){
   [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
  ]);
 }
-export function helpChatTopicKeyboard(rev:number){
- return Markup.inlineKeyboard([
-  ...CHAT_TOPIC_CHOICES.map(({label,url})=>[Markup.button.url(label,url)]),
-  [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
- ]);
-}
 export function helpHomeKeyboard(rev:number){
  const rows=APPROVED_POSTING_ROWS.map(row=>row.filter(label=>label!=="紹介/招待"&&label!=="雑談").map(label=>label==="操作説明"?"戻る":label));
  return Markup.inlineKeyboard(rows.map(row=>row.map(label=>
-  Markup.button.callback(label,label==="戻る"?`help:back:${rev}`:label==="雑談"?`help:chatselect:${rev}`:
+  Markup.button.callback(label,label==="戻る"?`help:back:${rev}`:
     `help:topic:${rev}:${SECTION_KEYS.find(key=>sectionLabels[key]===label)}`))));
 }
 export function helpSectionKeyboard(rev:number,section:Topic,page=0){
@@ -113,9 +106,9 @@ async function advance(id:number,revision:number,section:HelpSection):Promise<Se
   screenMessageId:x.screen_message_id===null?null:Number(x.screen_message_id)};
 }
 async function show(t:Telegram,id:number,s:Session,page=0){
- const topic=s.section==="home"||s.section==="tags"||s.section==="chat_select"?null:s.section;
- const text=s.section==="chat_select"?"💬 雑談｜移動先の掲示板を選んでください。\n下の3つのリンクから移動できます。":s.section==="tags"?(helpTagPages()[page]??helpTagPages()[0]):topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・ステッカーや絵文字を作る → クリエーター用投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":helpTopicPages(topic)[page]??helpTopicPages(topic)[0];
- const keyboard=s.section==="chat_select"?helpChatTopicKeyboard(s.revision):s.section==="tags"?helpTagKeyboard(s.revision,page):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
+ const topic=s.section==="home"||s.section==="tags"?null:s.section;
+ const text=s.section==="tags"?(helpTagPages()[page]??helpTagPages()[0]):topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・ステッカーや絵文字を作る → クリエーター用投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":helpTopicPages(topic)[page]??helpTopicPages(topic)[0];
+ const keyboard=s.section==="tags"?helpTagKeyboard(s.revision,page):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,keyboard);
  if(s.screenMessageId!==view.messageId){
   const updated=await pool.query("UPDATE gaybbs_help_sessions SET screen_message_id=$3 WHERE owner_user_id=$1 AND revision=$2 RETURNING owner_user_id",
@@ -132,16 +125,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   if(ctx.chat.type!=="private")return;
   await startOperationHelp(ctx.telegram,ctx.from.id);
  });
- bot.action(/^help:chatselect:(\d+)$/,async ctx=>{
-  if(ctx.chat?.type!=="private")return;
-  const rev=Number(ctx.match[1]),session=await load(ctx.from.id);
-  if(!session||session.revision!==rev||session.section!=="home"){
-   await ctx.answerCbQuery("古い操作です。操作説明から開き直してください。");return;
-  }
-  await ctx.answerCbQuery();
-  await show(ctx.telegram,ctx.from.id,await advance(ctx.from.id,rev,"chat_select"));
- });
- bot.action(/^help:(topic|open):(\d+):(profile|room|announcement|link|search|recruit|chat|paid)$/,async ctx=>{
+ bot.action(/^help:(topic|open):(\d+):(profile|room|announcement|link|search|recruit|paid)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),topic=ctx.match[3] as Topic;
   const s=await load(ctx.from.id);
@@ -167,7 +151,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id,screenId);
   else await startSearchEditor(ctx.telegram,ctx.from.id,screenId);
  });
- bot.action(/^help:page:(\d+):(profile|room|announcement|link|search|recruit|chat|paid):(\d+)$/,async ctx=>{
+ bot.action(/^help:page:(\d+):(profile|room|announcement|link|search|recruit|paid):(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const rev=Number(ctx.match[1]),topic=ctx.match[2] as Topic,page=Number(ctx.match[3]);
   const session=await load(ctx.from.id);
