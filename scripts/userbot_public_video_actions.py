@@ -78,10 +78,12 @@ async def _remote_first_chunk(client, media, file_size):
             await close()
 
 
-async def download_video(client, channel_id, message_id):
+async def download_video(client, channel_id, message_id, max_chunks=None):
     """Resume only a verified prefix; never overwrite a valid partial file."""
     if type(message_id) is not int or message_id <= 0:
         raise ValueError("MESSAGE_ID_INVALID")
+    if max_chunks is not None and (type(max_chunks) is not int or not 1 <= max_chunks <= 128):
+        raise ValueError("VIDEO_CHUNK_LIMIT_INVALID")
     entity = await joined_channel(client, channel_id)
     message = await client.get_messages(entity, ids=message_id)
     if message is None or not message.video:
@@ -117,7 +119,7 @@ async def download_video(client, channel_id, message_id):
         if found.stat().st_size != file_size:
             raise RuntimeError("EXISTING_VIDEO_SIZE_MISMATCH")
         return {"storageKey": str(found), "alreadyPresent": True,
-                "sizeBytes": file_size, "verifiedSize": True}
+                "sizeBytes": file_size, "verifiedSize": True, "completed": True}
 
     if partial.is_symlink() or (partial.exists() and not partial.is_file()):
         raise RuntimeError("PARTIAL_VIDEO_PATH_INVALID")
@@ -137,6 +139,7 @@ async def download_video(client, channel_id, message_id):
             raise RuntimeError("PARTIAL_PREFIX_MISMATCH")
 
     if offset < file_size:
+        chunks_written = 0
         with partial.open("ab") as handle:
             async for chunk in client.iter_download(
                 message.media, offset=offset, request_size=CHUNK_BYTES,
@@ -147,15 +150,21 @@ async def download_video(client, channel_id, message_id):
                     raise RuntimeError("VIDEO_CHUNK_INVALID")
                 handle.write(block)
                 offset += len(block)
-                if offset == file_size:
+                chunks_written += 1
+                if offset == file_size or (max_chunks is not None and chunks_written >= max_chunks):
                     break
             handle.flush()
             os.fsync(handle.fileno())
 
-    if not partial.is_file() or partial.stat().st_size != file_size:
+    if not partial.is_file():
+        raise RuntimeError("DOWNLOAD_INCOMPLETE")
+    if partial.stat().st_size != file_size:
+        if max_chunks is not None:
+            return {"completed": False, "progressBytes": partial.stat().st_size,
+                    "sizeBytes": file_size}
         raise RuntimeError("DOWNLOAD_INCOMPLETE")
     if destination.exists() or destination.is_symlink():
         raise RuntimeError("EXISTING_VIDEO_CONFLICT")
     os.replace(partial, destination)
     return {"storageKey": str(destination), "alreadyPresent": False,
-            "sizeBytes": file_size, "verifiedSize": True}
+            "sizeBytes": file_size, "verifiedSize": True, "completed": True}
