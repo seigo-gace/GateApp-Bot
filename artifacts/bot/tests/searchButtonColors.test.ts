@@ -32,4 +32,6 @@ test("search detailed filters keep the existing callbacks and blue action style"
  assert.equal(rows[2]![0]!.style,"primary");
  assert.equal(rows[3]![0]!.style,"primary");
  assert.equal(rows[3]![1]!.style,undefined);
+ const selected=searchFilterRows({...session(),filters:{...initialSearchFilters(),region:"北海道"}} as SearchSession);
+ assert.equal(selected[0]![0]!.style,"success");
 });
