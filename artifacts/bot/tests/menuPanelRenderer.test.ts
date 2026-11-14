@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   renderMenuPanel,renderAreaBlockBoard,renderApprovedLinks,approvedLayoutRows,
-  APPROVED_POSTING_ROWS,APPROVED_GUIDE_ROWS,APPROVED_HELP_ROWS,
+  APPROVED_POSTING_ROWS,APPROVED_GUIDE_ROWS,APPROVED_HELP_ROWS,postingButtonStyle,
 } from "../src/services/menuPanelRenderer.js";
 
 const makeLinks=(labels:readonly (readonly string[])[]) =>
@@ -15,7 +15,7 @@ test("Master-approved posting rows remain exactly 3/2/2/3, with profile creation
   links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
  assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_POSTING_ROWS.map(r=>[...r]));
  assert.deepEqual(result.rows.map(r=>r.length),[3,2,2,3]);
- assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエーター有料ビデオ投稿"]);
+ assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエーター投稿"]);
 });
 test("Master-approved general-guide rows remain exactly 3/3/3/4",()=>{
  const result=renderMenuPanel({type:"general_guide",board:"gay_board",
@@ -59,7 +59,7 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
 });
 
 test("posting panel merges seven verified DM editors and three verified navigation URLs",()=>{
- const staticLabels=["クリエーター有料ビデオ投稿",
+ const staticLabels=["クリエーター投稿",
   "雑談","紹介/招待"];
  const links=staticLabels.map((label,i)=>({label,
   url:"https://t.me/c/3847210571/"+(500+i),verified:true}));
@@ -80,8 +80,20 @@ test("posting panel merges seven verified DM editors and three verified navigati
  assert.ok(result.rows[0][0]!.url.includes("start=r_"));
  assert.equal(result.rows[1][0]!.text,"プロフ作成");
  assert.equal(result.rows[2][0]!.text,"🔗ボタン作成");
+ assert.equal(result.rows[1][1]!.style,"success");
+ assert.equal(result.rows[2][0]!.style,"primary");
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:entryLinks.slice(0,3) as any}),/MISSING_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:[...entryLinks.slice(0,3),{...entryLinks[3],ready:false}]}),/NOT_VERIFIED/);
+});
+
+test("posting menu colors survive rendering without changing approved row order",()=>{
+ const result=renderMenuPanel({type:"posting",board:"area_bbs",links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
+ assert.deepEqual(result.rows.map(row=>row.map(b=>b.style)),[
+  ["success","success","success"],["success","success"],
+  ["primary","primary"],["primary","primary","primary"]
+ ]);
+ assert.equal(postingButtonStyle("クリエーター投稿"),"success");
+ assert.throws(()=>postingButtonStyle("unknown"),/POSTING_BUTTON_STYLE_UNKNOWN/);
 });
