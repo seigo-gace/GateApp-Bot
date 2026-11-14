@@ -42,6 +42,13 @@ test("Like and Love have same short page navigation and remain accessible from a
  }
 });
 
+test("Room help explains manual end independently of external conference lifecycle",()=>{
+ const guide=helpTopicPages("room").join("\n");
+ assert.match(guide,/外部.*通話を終了しても/);
+ assert.match(guide,/「✅ 終了する」を押してください/);
+ assert.match(guide,/外部会議そのものは終了しません/);
+});
+
 test("link guide describes new 2-line entry and next-row versus horizontal action",()=>{
  const guide=helpTopicPages("link").join("\n");
  assert.match(guide,/1行目：ボタンに表示する名前/);
