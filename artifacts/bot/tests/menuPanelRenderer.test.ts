@@ -99,3 +99,14 @@ test("all ten posting buttons have native Telegram colors without changing desti
  assert.equal(panel.rows[0]![1]!.text,"募集+Room");
  assert.equal(panel.rows[0]![1]!.style,"success");
 });
+
+test("invite button copies the existing shared Gate URL without redirecting to DM",()=>{
+ const url="https://t.me/GayBBS_bot?start=gate_existing";
+ const links=makeLinks(APPROVED_POSTING_ROWS).map(link=>
+  link.label==="紹介/招待"?{...link,url,copy_text:{text:url}}:link);
+ const panel=renderMenuPanel({type:"posting",board:"area_bbs",links,entryLinks:[]});
+ assert.deepEqual(panel.rows.map(r=>r.length),[3,2,2,3]);
+ assert.deepEqual(panel.rows[3]![1]!.copy_text,{text:url});
+ assert.equal(panel.rows[3]![1]!.text,"紹介/招待");
+ assert.equal(panel.rows[1]![0]!.text,"プロフ作成");
+});
