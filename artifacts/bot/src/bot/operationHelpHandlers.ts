@@ -70,7 +70,7 @@ async function advance(id:number,revision:number,section:HelpSection):Promise<Se
   screenMessageId:x.screen_message_id===null?null:Number(x.screen_message_id)};
 }
 async function show(t:Telegram,id:number,s:Session){
- const topic=s.section==="home"?null:s.section;
+ const topic=s.section==="home"||s.section==="tags"?null:s.section;
  const text=s.section==="tags"?TAG_HELP_TEXT:topic===null?"📚 操作説明｜投稿メニュー\n\nこの画面では、各機能の使い方を確認できます。下の「プロフ」「Room+募集」「告知/予告」「🔗ボタン作成」「検索/フィルター」を押すと具体的な入力手順を表示します。\n\n【📝 相手募集】\n① 投稿メニューで「相手募集」を押す。\n② プロフ未登録なら1行目タイトル、2行目ニックネーム、3行目「身長 体重 年齢」、4行目以降に募集内容を入力し、1通送信する。\n　例：今夜遊べる人募集\n　　　ゼロ\n　　　175 80 40\n　　　会える方を探しています。\n③ 登録済みなら1行目タイトル、2行目以降に募集内容を入力。プロフィール情報と連動する。\n④ ポジション・#Like・#Love・目的・場所を選びます。#Like（緑）は自分の特徴・好み、#Love（赤）は相手への希望。分類から項目を選択し「✅ 保存」で確定します。必要なら「プロフ登録」も利用します。\n⑤ プレビューから投稿先を選択して投稿する。投稿後はDMの「編集」「削除」「投稿先を開く」から管理できる。\n\n【💬 雑談】\n「雑談」を押すと3つの掲示板が表示されます。移動先を選んでタップします。「🔙 戻る」で投稿メニューに戻ります。\n\n【🤝 紹介/招待】\n「紹介/招待」を押すと、各掲示板へ案内するリンクが表示されます。まだ承認されていない方は参加質問ゲートへ、承認済みの方は参加先へのリンクを利用します。コピー用のリンクが表示された場合はコピーして共有できます。\n\n【🎬 クリエーター有料ビデオ投稿】\nこのボタンから動画販売用のCreateVdobotへ進みます。動画の登録・価格設定・販売管理は移動先の専用Botで行います。\n\n【📚 操作説明】\n下の項目をタップ → 詳細を読む →「▶ この機能を開く」でその機能へ進む。「↩ 操作説明へ戻る」で一覧に戻ります。最後の「戻る」は投稿メニューへ戻る操作です。":sectionText[topic];
  const keyboard=s.section==="tags"?Markup.inlineKeyboard([[Markup.button.callback("↩ 操作説明へ戻る",`help:home:${s.revision}`)]]):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic);
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,keyboard);
