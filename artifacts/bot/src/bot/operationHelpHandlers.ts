@@ -41,7 +41,7 @@ export function helpHomeKeyboard(rev:number){
 }
 export function helpSectionKeyboard(rev:number,section:Topic){
  return Markup.inlineKeyboard([
-  ...(section==="profile"||section==="room"?[[Markup.button.callback("🏷️ #Like・#Loveの説明",`help:tags:${rev}`)]]:[]),
+  ...(section==="profile"||section==="room"||section==="recruit"?[[Markup.button.callback("🏷️ #Like・#Loveの説明",`help:tags:${rev}`)]]:[]),
   ...(["profile","room","announcement","link","search"].includes(section)?[[Markup.button.callback("▶ この機能を開く",`help:open:${rev}:${section}`)]]:[]),
   [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
  ]);
@@ -118,7 +118,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
  bot.action(/^help:tags:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const rev=Number(ctx.match[1]),session=await load(ctx.from.id);
-  if(!session||session.revision!==rev||!(session.section==="profile"||session.section==="room")){
+  if(!session||session.revision!==rev||!(session.section==="profile"||session.section==="room"||session.section==="recruit")){
    await ctx.answerCbQuery("古い操作です。操作説明から開き直してください。");return;
   }
   await ctx.answerCbQuery();
