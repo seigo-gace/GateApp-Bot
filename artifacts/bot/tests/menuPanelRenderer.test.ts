@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   renderMenuPanel,renderAreaBlockBoard,renderApprovedLinks,approvedLayoutRows,
-  APPROVED_POSTING_ROWS,APPROVED_GUIDE_ROWS,APPROVED_HELP_ROWS,
+  APPROVED_POSTING_ROWS,APPROVED_GUIDE_ROWS,APPROVED_HELP_ROWS,postingButtonStyle,
 } from "../src/services/menuPanelRenderer.js";
 
 const makeLinks=(labels:readonly (readonly string[])[]) =>
@@ -84,4 +84,14 @@ test("posting panel merges seven verified DM editors and three verified navigati
   entryLinks:entryLinks.slice(0,3) as any}),/MISSING_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:[...entryLinks.slice(0,3),{...entryLinks[3],ready:false}]}),/NOT_VERIFIED/);
+});
+
+test("posting menu colors survive rendering without changing approved row order",()=>{
+ const result=renderMenuPanel({type:"posting",board:"area_bbs",links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
+ assert.deepEqual(result.rows.map(row=>row.map(b=>b.style)),[
+  ["success","success","success"],["success","success"],
+  ["primary","primary"],["primary","primary","primary"]
+ ]);
+ assert.equal(postingButtonStyle("クリエーター投稿"),"success");
+ assert.throws(()=>postingButtonStyle("unknown"),/POSTING_BUTTON_STYLE_UNKNOWN/);
 });
