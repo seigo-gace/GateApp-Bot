@@ -1704,7 +1704,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
       buttons=[[{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]];
      }
     }
-   }
    // One source and independently acknowledged Telegram delivery per Topic.
    let result:{messageId:number;chatId:number;threadId:number}|undefined;
    if(module==="room"&&roomTargets){
