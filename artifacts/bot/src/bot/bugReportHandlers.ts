@@ -139,8 +139,8 @@ export function startBugReportDeliveryWorker(t:Telegram):()=>void {
     const row=claimed.rows[0]!;
     try{
      const msg=await t.sendMessage(recipient,
-      REPORT_LABEL+"\\n報告ID: "+row.id+"\\nユーザー: "+row.owner_user_id+
-      "\\n報告内容:\\n"+row.body);
+      REPORT_LABEL+"\n報告ID: "+row.id+"\nユーザー: "+row.owner_user_id+
+      "\n報告内容:\n"+row.body);
      await pool.query(
       "UPDATE gaybbs_bug_reports SET state='delivered',destination_message_id=$2,updated_at=NOW() WHERE id=$1",
       [row.id,msg.message_id]);
