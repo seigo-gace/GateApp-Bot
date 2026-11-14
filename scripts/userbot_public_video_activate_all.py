@@ -52,6 +52,20 @@ def add_literal_to_set_line(data: str, predicate, name: str, label: str) -> str:
     return "".join(lines)
 
 
+def append_function_argument(data: str, starting: str, argument: str,
+                             ending: str, label: str) -> str:
+    lines = data.splitlines(keepends=True)
+    indices = [i for i, line in enumerate(lines) if starting in line and ending in line]
+    if len(indices) != 1:
+        raise RuntimeError(f"ACTIVATION_{label}_ANCHOR_MISMATCH")
+    i = indices[0]
+    if argument in lines[i]:
+        raise RuntimeError(f"ACTIVATION_{label}_ALREADY_APPLIED")
+    position = lines[i].rfind(ending)
+    lines[i] = lines[i][:position] + ", " + argument + lines[i][position:]
+    return "".join(lines)
+
+
 def expected_page_function(source_text: str) -> str:
     tree = ast.parse(source_text)
     functions = [n for n in tree.body
@@ -74,9 +88,14 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
         and '"download_channel_video_step"' in line,
         "list_channel_video_page", "IPC_ACTION",
     )
-    ipc = add_literal_to_set_line(
-        ipc, lambda line: "set(request) - {" in line and "request_id" in line,
-        "before_message_id", "IPC_FIELDS",
+    ipc = exactly_once(
+        ipc,
+        '    expected = {"request_id", "action"}',
+        '    expected = {"request_id", "action"}\n'
+        '    if action == "list_channel_video_page":\n'
+        '        expected |= {"channel_id"}\n'
+        '        if "before_message_id" in request: expected.add("before_message_id")',
+        "IPC_FIELDS",
     )
     ipc = add_literal_to_set_line(
         ipc, lambda line: "if action in {" in line
@@ -100,11 +119,14 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
         + anchor
     )
     ipc = exactly_once(ipc, anchor, extension, "IPC_DISPATCH")
-    ipc = exactly_once(ipc, "MAX_RESPONSE_BYTES = 65536", "MAX_RESPONSE_BYTES = 262144", "IPC_RESPONSE_SIZE")
-    client = exactly_once(
-        client, "limit: int | None = None) -> dict:",
-        "limit: int | None = None, before_message_id: int | None = None) -> dict:",
-        "CLIENT_SIGNATURE",
+    if "MAX_RESPONSE_BYTES = 65536" in ipc:
+        ipc = exactly_once(ipc, "MAX_RESPONSE_BYTES = 65536",
+                           "MAX_RESPONSE_BYTES = 262144", "IPC_RESPONSE_SIZE")
+    elif "MAX_RESPONSE_BYTES = 262144" not in ipc:
+        raise RuntimeError("IPC_RESPONSE_SIZE_UNKNOWN")
+    client = append_function_argument(
+        client, "async def invoke(", "before_message_id: int | None = None",
+        ") -> dict:", "CLIENT_SIGNATURE",
     )
     client = exactly_once(
         client, '        if limit is not None: request["limit"] = limit',
@@ -112,20 +134,20 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
         '        if before_message_id is not None: request["before_message_id"] = before_message_id',
         "CLIENT_REQUEST",
     )
-    client = exactly_once(
-        client, "asyncio.open_unix_connection(str(SOCKET_PATH))",
-        "asyncio.open_unix_connection(str(SOCKET_PATH), limit=262144)",
-        "CLIENT_BUFFER",
-    )
+    if "asyncio.open_unix_connection(str(SOCKET_PATH), limit=262144)" not in client:
+        client = exactly_once(
+            client, "asyncio.open_unix_connection(str(SOCKET_PATH))",
+            "asyncio.open_unix_connection(str(SOCKET_PATH), limit=262144)",
+            "CLIENT_BUFFER",
+        )
     client = exactly_once(
         client, '    parser.add_argument("--limit", type=int)',
         '    parser.add_argument("--limit", type=int)\n    parser.add_argument("--before-message-id", type=int)',
         "CLIENT_CLI",
     )
-    client = exactly_once(
-        client, "args.channel_id, args.message_id, args.limit))",
-        "args.channel_id, args.message_id, args.limit, args.before_message_id))",
-        "CLIENT_CALL",
+    client = append_function_argument(
+        client, "result = asyncio.run(invoke(", "args.before_message_id",
+        "))", "CLIENT_CALL",
     )
     updated = {
         TARGETS["actions"]: actions.encode(),
