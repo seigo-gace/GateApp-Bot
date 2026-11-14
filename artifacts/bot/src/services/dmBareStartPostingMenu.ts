@@ -14,7 +14,7 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   "検索/フィルター": "dm:search",
   操作説明: "dm:help",
   雑談: "dm:chat-select",
-  "クリエイター投稿": "dm:creator-select",
+  "クリエーター投稿": "dm:creator-select",
   "紹介/招待": "dm:invite-select",
 };
 
