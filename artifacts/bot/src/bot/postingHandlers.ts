@@ -535,7 +535,30 @@ export function announcementSummary(d:EditorDraft):string{
   "投稿先："+escapeProfileHtml(String(d.data.destinationLabel||"未選択"))
  ].join("\n");
 }
+/** Reuse the established Room date picker for notice dates and deadlines. */
+async function announcementDatePicker(t:Telegram,id:number,d:EditorDraft):Promise<void>{
+ const rev=d.revision,stage=String(d.data.noticePickerStage||"date_calendar");
+ const field=d.data.noticeDateField==="deadline"?"deadline":"event";
+ const actions={
+  month:(v:string)=>`post:announce:dt:month:${rev}:${v}`,
+  day:(v:string)=>`post:announce:dt:day:${rev}:${v}`,
+  hour:(v:string)=>`post:announce:dt:hour:${rev}:${v}`,
+  minute:(v:string)=>`post:announce:dt:minute:${rev}:${v}`,
+  manual:`post:announce:dt:manual:${rev}`,
+  back:`post:announce:back:${rev}`,
+  cancel:`post:announce:back:${rev}`,
+ };
+ const month=String(d.data.pickerMonth||"");
+ const rows=stage==="date_calendar"?
+  pickerDateRows(validPickerMonth(month)?month:jstCurrentMonth(),actions):
+  stage==="time_hour"?pickerHourRows(actions):pickerMinuteRows(actions);
+ await showPostScreen(t,id,d,(field==="deadline"?"📅 受付終了日時":"📅 開催日時")+
+  "（日本時間）を選択してください。",Markup.inlineKeyboard(rows));
+}
 async function announcementScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
+ if(["date_calendar","time_hour","time_minute"].includes(String(d.data.noticePickerStage||""))){
+  await announcementDatePicker(telegram,userId,d);return;
+ }
  await showPostScreen(telegram,userId,d,announcementSummary(d),announcementPanel(d),true);
 }
 async function announcementDestinationPicker(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
@@ -1140,9 +1163,16 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else if(["edit","title","body","deadline","link","media"].includes(op)){
      const editField=op==="edit"?"body":op;
      const next=await updateDraft(ctx.from.id,"announcement",rev,
-      editField==="media"?"awaiting_media":"awaiting_text",{...d.data,editField});
+      editField==="media"?"awaiting_media":editField==="deadline"?"preview":"awaiting_text",
+      editField==="deadline"?{...d.data,noticePickerStage:"date_calendar",noticeDateField:"deadline",
+       pickerMonth:jstCurrentMonth(),pickerDay:null,pickerHour:null}:
+       {...d.data,editField});
     await ctx.answerCbQuery();
-    await showPostScreen(ctx.telegram,ctx.from.id,next,
+    if(editField==="deadline"){
+      await announcementDatePicker(ctx.telegram,ctx.from.id,next);
+      return;
+     }
+     await showPostScreen(ctx.telegram,ctx.from.id,next,
      ({title:"タイトルを入力してください。",body:"内容を入力してください。",
        deadline:"受付終了日時（YYYY/MM/DD HH:mm）または「なし」を入力してください。",
        link:"1行目：ボタン名　2行目：HTTPS URL。「なし」で解除できます。",
@@ -1155,13 +1185,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
       {...d.data,participation:kindChoice});
      await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
     }else if(op==="date"){
-     const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_datetime",d.data);
-    await ctx.answerCbQuery();
-    await showPostScreen(ctx.telegram,ctx.from.id,next,
-     "📅 日時を日本時間で1通送信してください。例：2026/11/20 20:00",
-     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
-      `post:announce:back:${next.revision}`)]]));
-   }else if(op==="profile"){
+     const next=await updateDraft(ctx.from.id,"announcement",rev,"preview",
+      {...d.data,noticePickerStage:"date_calendar",noticeDateField:"event",
+       pickerMonth:jstCurrentMonth(),pickerDay:null,pickerHour:null});
+     await ctx.answerCbQuery();
+     await announcementDatePicker(ctx.telegram,ctx.from.id,next);
+    }else if(op==="profile"){
     if(!d.data.profileLinked&&!await existingPublishedProfileUrl(ctx.from.id)){
      await ctx.answerCbQuery("利用可能な公開プロフィールがありません。");return;
     }
@@ -1188,7 +1217,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await destinationMenu(ctx,"announcement",rev);
    }else if(op==="back"){
     const next=await updateDraft(ctx.from.id,"announcement",rev,
-     noticeParts(d.data).body?"preview":"awaiting_text",d.data);
+     noticeParts(d.data).body?"preview":"awaiting_text",
+      {...d.data,noticePickerStage:null,noticeDateField:null,editField:null});
     await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="save"){
     await saveAnnouncementEditorDraft(ctx.from.id,rev);
@@ -1206,6 +1236,51 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }catch{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
+ });
+ bot.action(/^post:announce:dt:(month|day|hour|minute|manual):(\\d+)(?::(\\d{2,8}))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const op=ctx.match[1],rev=Number(ctx.match[2]),value=ctx.match[3]||"";
+  const d=await getDraft(ctx.from.id,"announcement");
+  const stage=String(d?.data.noticePickerStage||"");
+  if(!d||d.step!=="preview"||d.revision!==rev||
+   d.data.kind==="recruitment"||
+   !["date_calendar","time_hour","time_minute"].includes(stage)){
+   await ctx.answerCbQuery("古い日時選択です");return;
+  }
+  try{
+   let data={...d.data};
+   if(op==="month"){
+    if(stage!=="date_calendar"||!validPickerMonth(value))throw Error("NOTICE_DATE_MONTH");
+    data={...data,pickerMonth:value};
+   }else if(op==="day"){
+    if(stage!=="date_calendar"||!validPickerDay(value)||
+       value.slice(0,6)!==String(data.pickerMonth))throw Error("NOTICE_DATE_DAY");
+    data={...data,pickerDay:value,pickerHour:null,noticePickerStage:"time_hour"};
+   }else if(op==="hour"){
+    if(stage!=="time_hour"||!/^(0\\d|1\\d|2[0-3])$/.test(value)||
+       !validPickerDay(String(data.pickerDay||"")))throw Error("NOTICE_DATE_HOUR");
+    data={...data,pickerHour:Number(value),noticePickerStage:"time_minute"};
+   }else if(op==="minute"){
+    if(stage!=="time_minute"||!/^[0-5]\\d$/.test(value)||
+       Number(value)%5!==0)throw Error("NOTICE_DATE_MINUTE");
+    const when=selectedPickerTime(String(data.pickerDay||""),
+     Number(data.pickerHour),Number(value));
+    data={...data,
+     [data.noticeDateField==="deadline"?"deadlineAt":"eventAt"]:when.toISOString(),
+     noticePickerStage:null,noticeDateField:null};
+   }else if(op==="manual"){
+    data={...data,noticePickerStage:null,
+     editField:data.noticeDateField==="deadline"?"deadline":"event"};
+   }else throw Error("NOTICE_DATE_INVALID");
+   const next=await updateDraft(ctx.from.id,"announcement",rev,
+    op==="manual"?"awaiting_datetime":"preview",data);
+   await ctx.answerCbQuery();
+   if(op==="manual")
+    await showPostScreen(ctx.telegram,ctx.from.id,next,
+     "日時を YYYY/MM/DD HH:mm で入力してください。",
+     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${next.revision}`)]]));
+   else await announcementScreen(ctx.telegram,ctx.from.id,next);
+  }catch{await ctx.answerCbQuery("日時を選び直してください");}
  });
  bot.action(/^post:kind:(\d+):(announcement|preview|recruitment)$/,async ctx=>{
   if(!privateDM(ctx))return;
