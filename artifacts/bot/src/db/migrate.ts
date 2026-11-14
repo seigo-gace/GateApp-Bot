@@ -4,6 +4,21 @@ export async function runMigrations(): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query(`
+      CREATE TABLE IF NOT EXISTS gaybbs_bug_reports (
+        id BIGSERIAL PRIMARY KEY,
+        owner_user_id BIGINT NOT NULL CHECK(owner_user_id > 0),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','forwarding','delivered','queued','uncertain','cancelled')),
+        body TEXT,
+        source_message_id BIGINT,
+        destination_message_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS gaybbs_bug_report_one_pending
+        ON gaybbs_bug_reports(owner_user_id) WHERE state='pending';
+      CREATE INDEX IF NOT EXISTS gaybbs_bug_report_delivery_idx
+        ON gaybbs_bug_reports(state,created_at);
       CREATE TABLE IF NOT EXISTS profiles (
         owner_user_id BIGINT PRIMARY KEY,
         nickname TEXT,
