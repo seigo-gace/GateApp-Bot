@@ -1146,7 +1146,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   await startAnnouncementEditor(ctx.telegram,ctx.from.id);
  });
- bot.action(/^post:announce:(kind|edit|title|body|date|deadline|link|media|join|profile|destination|topics|back|publish|save|cancel):(\d+)(?::(announcement|preview|public|approved_only|none))?$/,async ctx=>{
+ bot.action(/^post:announce:(kind|edit|title|body|date|deadline|link|media|joinmenu|join|profile|destination|topics|back|publish|save|cancel):(\d+)(?::(announcement|preview|public|approved_only|none))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
   const kindChoice=ctx.match[3];
