@@ -5,7 +5,7 @@ import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 
 test("GayBBS retains 3/2/2/3 posting menu with renamed creator entry",()=>{
  assert.deepEqual(APPROVED_POSTING_ROWS.map(row=>row.length),[3,2,2,3]);
- assert.deepEqual(APPROVED_POSTING_ROWS[1],["プロフ作成","クリエーター用投稿"]);
+ assert.deepEqual(APPROVED_POSTING_ROWS[1],["プロフ作成","クリエイター投稿"]);
 });
 
 test("creator launcher has exactly two CreateVdobot responsibilities and Back",()=>{
