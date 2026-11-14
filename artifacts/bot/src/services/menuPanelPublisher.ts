@@ -45,7 +45,7 @@ async function buildLinks(panel:PanelRow):Promise<{
    WHERE chat_id=$1 AND enabled=TRUE AND verified_by IS NOT NULL
      AND verified_at IS NOT NULL`,[chatId]);
  const links:NavLink[]=stored.rows.filter(row=>staticLabels.includes(String(row.label) as typeof staticLabels[number])).map(row=>({
-  label:String(row.label),url:String(row.destination_url),verified:true
+  label:"クリエーター投稿",url:String(row.destination_url),verified:true
  }));
  if(links.length!==staticLabels.length||
     links.some(x=>!staticLabels.includes(x.label as typeof staticLabels[number]))||
