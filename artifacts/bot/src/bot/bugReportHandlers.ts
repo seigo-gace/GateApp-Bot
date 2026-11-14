@@ -37,8 +37,8 @@ export async function startBugReport(t:Telegram,userId:number,screenId?:number):
    ON CONFLICT (owner_user_id) WHERE state='pending'
    DO UPDATE SET updated_at=NOW()`,[userId]);
  await showWizardScreen(t,userId,screenId,
-  "🐞 不具合を報告\\n\\nどのボタン・画面で何が起きたか、できるだけ具体的に入力してください。\\n" +
-  "例：相手募集→投稿するを押しても反応しない\\n\\n送信した文章は運営にのみ届けます。",
+  "🐞 不具合を報告\n\nどのボタン・画面で何が起きたか、できるだけ具体的に入力してください。\n" +
+  "例：相手募集→投稿するを押しても反応しない\n\n送信した文章は運営にのみ届けます。",
   CANCEL);
 }
 async function returnMenu(t:Telegram,id:number,screenId?:number):Promise<void>{
@@ -64,8 +64,8 @@ async function submitReport(t:Telegram,userId:number,sourceId:number,body:string
   return "queued";
  }
  const safeUser=username&&/^[a-zA-Z0-9_]{5,32}$/.test(username)?("@"+username):"(username未設定)";
- const payload=REPORT_LABEL+"\\n報告ID: "+id+"\\nユーザー: "+userId+" "+safeUser+
-  "\\n報告内容:\\n"+body;
+ const payload=REPORT_LABEL+"\n報告ID: "+id+"\nユーザー: "+userId+" "+safeUser+
+  "\n報告内容:\n"+body;
  try{
   const message=await t.sendMessage(recipient,payload);
   await pool.query(
