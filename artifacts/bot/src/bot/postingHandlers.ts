@@ -496,29 +496,25 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
 }
 /** One shared Bot DM message for the approved 告知/予告 layout. */
 export function announcementPanel(d:EditorDraft):WizardKeyboard{
- const rev=d.revision,parts=noticeParts(d.data);
+ const rev=d.revision;
  const kind=d.data.kind==="preview"?"preview":"announcement";
  const join=noticeJoin(d.data);
- const field=(name:string,value:unknown,action:string)=>[
-  Markup.button.callback(name+"："+String(value||"未設定").slice(0,24),`post:announce:${action}:${rev}`),
-  Markup.button.callback("［編集］",`post:announce:${action}:${rev}`)];
+ const button=(text:string,action:string)=>Markup.button.callback(text,`post:announce:${action}:${rev}`);
  return Markup.inlineKeyboard([
-  [Markup.button.callback(kind==="announcement"?"✅ 告知":"▫️ 告知",`post:announce:kind:${rev}:announcement`),
-   Markup.button.callback(kind==="preview"?"✅ 予告":"▫️ 予告",`post:announce:kind:${rev}:preview`)],
-  field("タイトル",parts.title,"title"),field("内容",parts.body,"body"),
-  field("開催日時",d.data.eventAt?"設定済み":"未設定","date"),
-  field("受付期間",d.data.deadlineAt?"設定済み":"期限なし","deadline"),
-  [Markup.button.callback(join==="public"?"✅ 自由参加":"▫️ 自由参加",`post:announce:join:${rev}:public`),
-   Markup.button.callback(join==="approved_only"?"✅ 承認制":"▫️ 承認制",`post:announce:join:${rev}:approved_only`),
-   Markup.button.callback(join==="none"?"✅ 受付なし":"▫️ 受付なし",`post:announce:join:${rev}:none`)],
-  field("🔗 ボタン",d.data.linkLabel,"link"),
-  field("🖼 画像/動画",noticeMedia(d.data).length+"件","media"),
-  [Markup.button.callback(d.data.profileLinked?"✅ プロフ連携":"▫️ プロフ連携",`post:announce:profile:${rev}`),
-   Markup.button.callback("📍 投稿先",`post:announce:destination:${rev}`)],
-  [Markup.button.callback("下書き保存",`post:announce:save:${rev}`),
+  [button(kind==="announcement"?"✅ 告知":"▫️ 告知","kind:"+ "announcement"),
+   button(kind==="preview"?"✅ 予告":"▫️ 予告","kind:"+ "preview")],
+  [button("タイトル","title"),button("告知内容","body")],
+  [button("開催日時","date"),button("受付期限","deadline")],
+  [button(join==="public"?"✅ 自由参加":"▫️ 自由参加","join:public"),
+   button(join==="approved_only"?"✅ 承認制":"▫️ 承認制","join:approved_only"),
+   button(join==="none"?"✅ 受付なし":"▫️ 受付なし","join:none")],
+  [button("🔗 リンクボタン","link"),button("🖼 画像・動画","media")],
+  [button(d.data.profileLinked?"✅ プロフ連携":"▫️ プロフ連携","profile"),
+   button("📍 投稿先","destination")],
+  [button("下書き保存","save"),
    Markup.button.callback("📢 投稿する",typeof d.data.topicId==="number"?
     `post:publish:announcement:${rev}:${d.data.topicId}`:`post:announce:publish:${rev}`)],
-  [Markup.button.callback("キャンセル",`post:announce:cancel:${rev}`)]
+  [button("キャンセル","cancel")]
  ]);
 }
 export function announcementSummary(d:EditorDraft):string{
