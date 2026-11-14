@@ -168,9 +168,11 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                                 gate_codes = {"ee538b32b74f", "6f581d52e546", "e31b8d1dd707"}
                                 raw = [screen.reply_markup.rows[i].buttons[1] for i in range(3)]
                                 # Telegram represents native clipboard buttons as KeyboardButtonCopy.
-                                if any(type(b).__name__ != "KeyboardButtonCopy" for b in raw):
-                                    raise RuntimeError("INVITE_COPY_BUTTON_TYPE_MISMATCH")
+                                # Compare the Telegram payload, not a Telethon class
+                                # name (which can differ between installed versions).
                                 texts = [str(getattr(b, "copy_text", "")) for b in raw]
+                                if any(not text.startswith("https://t.me/GayBBS_bot?start=gate_") for text in texts):
+                                    raise RuntimeError("INVITE_COPY_BUTTON_TYPE_MISMATCH")
                                 if {t.split("gate_")[-1] for t in texts} != gate_codes:
                                     raise RuntimeError("INVITE_COPY_GATE_MISMATCH")
                                 await screen.click(text="🔙 戻る")
