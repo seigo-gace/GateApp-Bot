@@ -17,6 +17,8 @@ test("host Room start action is paired with LIVE room entry, and finish removes 
  assert(!start.some(b=>"url" in b&&b.url===base.ownerJoinUrl));
  const live=roomPublicationEditor({...base,status:"live"});
  assert.match(live.text,/🔴 LIVE中/);
+ assert.match(live.text,/外部Roomで通話を終了しても/);
+ assert.match(live.text,/✅ 終了する/);
  const liveButtons=live.keyboard.reply_markup.inline_keyboard.flat();
  assert(liveButtons.some(b=>"callback_data" in b&&String(b.callback_data).includes(":finish:")),
   "LIVE room must allow the owner to finish");
