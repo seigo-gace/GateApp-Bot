@@ -1674,7 +1674,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    return;
   }
   if(op==="panel"){
-   if(d.step!=="preview"){await ctx.answerCbQuery("操作中です。");return;}
+   if(d.step!=="preview"||typeof d.data.shareCode==="string"){await ctx.answerCbQuery("登録済みの投稿は変更できません。",{show_alert:true});return;}
    const next=await updateDraft(ctx.from.id,"link",rev,"preview",
     {...d.data,linkEditorView:true});
    await ctx.answerCbQuery();
@@ -1682,7 +1682,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    return;
   }
   if(op==="add"||op==="beside"||op==="edit"){
-   if(d.step!=="preview"||d.data.linkEditorView!==true){
+   if(d.step!=="preview"||d.data.linkEditorView!==true||
+     typeof d.data.shareCode==="string"){
     await ctx.answerCbQuery("編集画面を開いてください。");return;
    }
    const rows=buttonGrid(d.data as LinkDraft);
