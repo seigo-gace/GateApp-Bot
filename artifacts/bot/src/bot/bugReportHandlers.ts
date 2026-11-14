@@ -116,3 +116,47 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   await returnMenu(ctx.telegram,ctx.from.id);
  });
 }
+
+
+/** Only reports that were never sent (queued due to missing configuration)
+ * may be retried. Uncertain Telegram sends remain parked for reconciliation.
+ */
+export function startBugReportDeliveryWorker(t:Telegram):()=>void {
+ let busy=false;
+ const tick=async()=>{
+  if(busy||!recipientId())return;
+  busy=true;
+  try{
+   const recipient=recipientId();
+   if(!recipient)return;
+   for(let n=0;n<5;n++){
+    const claimed=await pool.query<{id:string;owner_user_id:string;body:string}>(
+     `UPDATE gaybbs_bug_reports SET state='forwarding',updated_at=NOW()
+       WHERE id=(SELECT id FROM gaybbs_bug_reports WHERE state='queued'
+         ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
+       RETURNING id,owner_user_id,body`);
+    if(!claimed.rows.length)break;
+    const row=claimed.rows[0]!;
+    try{
+     const msg=await t.sendMessage(recipient,
+      REPORT_LABEL+"\\n報告ID: "+row.id+"\\nユーザー: "+row.owner_user_id+
+      "\\n報告内容:\\n"+row.body);
+     await pool.query(
+      "UPDATE gaybbs_bug_reports SET state='delivered',destination_message_id=$2,updated_at=NOW() WHERE id=$1",
+      [row.id,msg.message_id]);
+    }catch{
+     await pool.query(
+      "UPDATE gaybbs_bug_reports SET state='uncertain',updated_at=NOW() WHERE id=$1",
+      [row.id]);
+     break;
+    }
+   }
+  }catch(error){
+   console.error("BUG_REPORT_DELIVERY_WORKER_FAILED",
+    error instanceof Error?error.name:"unknown");
+  }finally{busy=false;}
+ };
+ void tick();
+ const timer=setInterval(()=>{void tick();},60_000);
+ return ()=>clearInterval(timer);
+}
