@@ -89,7 +89,7 @@ export function defaultBareStartChatId(menuOriginChatId?: number | null): number
  * publishPost still enforces the announcement release gate before any Telegram post.
  */
 export function canOpenPostingEditor(label: string, featureReady: boolean): boolean {
-  return label === "相手募集" || featureReady;
+  return label === "相手募集" || label === "検索/フィルター" || featureReady;
 }
 
 /** Missing optional navigation URLs cannot block the caller's return to the menu. */
