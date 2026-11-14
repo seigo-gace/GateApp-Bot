@@ -14,9 +14,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from userbot_public_video_archive_all import (
-    CURRENT_UNIT, main_async as archive_all_joined,
-)
+from userbot_public_video_archive_all import CURRENT_UNIT
 
 ROOT = Path(__file__).resolve().parent
 TARGETS = {
@@ -176,7 +174,15 @@ async def activate(commit: str) -> None:
         run("systemctl", "--user", "restart", "gace-userbot-verify.service", timeout=45)
         raise
     print("ALL_JOINED_IPC_ACTIVATED=PASS", flush=True)
-    result = await archive_all_joined()
+    # Reload imported code so this worker uses the NEW client cursor arguments.
+    import importlib
+    import userbot_test_client
+    import userbot_public_video_archive
+    import userbot_public_video_archive_all
+    importlib.reload(userbot_test_client)
+    importlib.reload(userbot_public_video_archive)
+    importlib.reload(userbot_public_video_archive_all)
+    result = await userbot_public_video_archive_all.main_async()
     if result:
         raise RuntimeError("ALL_JOINED_COLLECTION_PARTIAL_FAILURE")
 
