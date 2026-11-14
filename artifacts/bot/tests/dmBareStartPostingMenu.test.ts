@@ -8,7 +8,7 @@ test("bare /start posting menu uses Master 3/2/2/3 rows", () => {
   assert.deepEqual(rows, APPROVED_POSTING_ROWS.map((r) => [...r]));
   assert.equal(rows.flat().length, 10);
   assert.deepEqual(rows.map((r) => r.length), [3, 2, 2, 3]);
-  assert.deepEqual(rows[1], ["プロフ作成", "クリエーター有料ビデオ投稿"]);
+  assert.deepEqual(rows[1], ["プロフ作成", "クリエーター用投稿"]);
 });
 
 
@@ -29,6 +29,8 @@ test("recruitment and profile editors open without granting Telegram publication
   assert.equal(canOpenPostingEditor("プロフ作成", true), true);
   assert.equal(canOpenPostingEditor("検索/フィルター", false), true);
   assert.equal(canOpenPostingEditor("検索/フィルター", true), true);
+  assert.equal(canOpenPostingEditor("操作説明", false), true);
+  assert.equal(canOpenPostingEditor("操作説明", true), true);
   assert.equal(canOpenPostingEditor("告知/予告", false), false);
   assert.equal(canOpenPostingEditor("告知/予告", true), true);
   assert.equal(canOpenPostingEditor("募集+Room", false), false);

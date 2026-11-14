@@ -44,9 +44,12 @@ test("partial block resolve matches Master-verified DB rows", () => {
     "東北/山形": "https://t.me/c/3847210571/53",
     "東京/新宿": "https://t.me/c/3847210571/66",
   };
-  const tohoku = resolveBlockChildUrlsPartial("東北", db);
-  assert.equal(Object.keys(tohoku).length, 1);
-  assert.throws(() => resolveBlockChildUrls("東北", db), /AREA_CHILD_LINK_UNVERIFIED:東北\/青森/);
+  const tohoku=resolveBlockChildUrlsPartial("東北",db);
+  assert.equal(Object.keys(tohoku).length,6,
+   "the six canonical Master-verified child URLs stay available without DB rows");
+  assert.equal(tohoku["東北/山形"],"https://t.me/c/3847210571/53");
+  assert.deepEqual(resolveBlockChildUrls("東北",db),tohoku);
+  assert.deepEqual(resolveBlockChildUrls("東北",{}),tohoku);
 });
 
 test("area block L1 uses inline keyboard via renderAreaBlockBoard", () => {
@@ -58,5 +61,8 @@ test("area block L1 uses inline keyboard via renderAreaBlockBoard", () => {
     back: "https://t.me/c/3847210571/1166",
   });
   assert.ok(panel.rows.length >= 3);
-  assert.throws(() => resolveBlockChildUrls("東北", {}), /AREA_CHILD_LINK_UNVERIFIED/);
+  const complete=resolveBlockChildUrls("東北",{});
+  assert.equal(Object.keys(complete).length,6);
+  assert.equal(complete["東北/青森"],"https://t.me/c/3847210571/50");
+  assert.throws(()=>resolveBlockChildUrls("存在しない地域",{}),/AREA_BLOCK_UNKNOWN/);
 });

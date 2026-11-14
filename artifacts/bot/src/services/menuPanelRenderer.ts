@@ -82,7 +82,7 @@ function assertPublishedLink(link:NavLink|EntryLink):void{
  */
 export const APPROVED_POSTING_ROWS = [
  ["相手募集","募集+Room","告知/予告"],
- ["プロフ作成","クリエーター有料ビデオ投稿"],
+ ["プロフ作成","クリエーター用投稿"],
  ["🔗ボタン作成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
 ] as const;
