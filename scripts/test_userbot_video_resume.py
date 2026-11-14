@@ -73,6 +73,17 @@ class ResumeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(partial.exists())
         self.assertEqual((self.root / "42" / "8.mp4").read_bytes(), b"abcdefghijk")
 
+    async def test_bounded_step_then_resume_to_completion(self):
+        client = Client(b"abcdefghijk")
+        first = await archive.download_video(client, 42, 8, max_chunks=1)
+        self.assertEqual(first, {"completed": False, "progressBytes": 4, "sizeBytes": 11})
+        self.assertTrue((self.root / "42" / "8.partial").exists())
+        second = await archive.download_video(client, 42, 8, max_chunks=1)
+        self.assertEqual(second["progressBytes"], 8)
+        third = await archive.download_video(client, 42, 8, max_chunks=1)
+        self.assertTrue(third["completed"])
+        self.assertEqual((self.root / "42" / "8.mp4").read_bytes(), b"abcdefghijk")
+
     async def test_prefix_mismatch_preserves_existing_partial(self):
         partial = self.root / "42" / "8.partial"
         partial.write_bytes(b"wxyz")
