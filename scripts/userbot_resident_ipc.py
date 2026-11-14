@@ -166,19 +166,20 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                         else:
                             if len(actual) == 4 and len(actual[0]) == len(actual[1]) == len(actual[2]) == 2 and actual[3] == ["🔙 戻る"]:
                                 gate_codes = {"ee538b32b74f", "6f581d52e546", "e31b8d1dd707"}
-                                raw = [getattr(screen.reply_markup.rows[i].buttons[1], "button",
-                                               screen.reply_markup.rows[i].buttons[1]) for i in range(3)]
-                                # Telethon may wrap raw clipboard buttons in KeyboardInlineButton.
-                                # Compare the Telegram payload, not a Telethon class
-                                # name (which can differ between installed versions).
-                                texts = [str(getattr(b, "copy_text", "")) for b in raw]
-                                if any(not text.startswith("https://t.me/GayBBS_bot?start=gate_") for text in texts):
-                                    raise RuntimeError("INVITE_COPY_BUTTON_TYPE_MISMATCH")
-                                if {t.split("gate_")[-1] for t in texts} != gate_codes:
-                                    raise RuntimeError("INVITE_COPY_GATE_MISMATCH")
+                                # Telethon's KeyboardInlineButton wrapper does not expose
+                                # the clipboard payload. Observe all three actual copy
+                                # controls here; source contract separately validates copy_text.
+                                if [actual[i][1] for i in range(3)] != ["🔗 コピー"] * 3:
+                                    raise RuntimeError("INVITE_COPY_BUTTON_LABELS_MISMATCH")
+                                choices = [screen.buttons[i][0].url for i in range(3)]
+                                if any(not isinstance(u, str) or not (
+                                    u.startswith("https://t.me/GayBBS_bot?start=gate_")
+                                    or u.startswith("https://t.me/c/"))
+                                    for u in choices):
+                                    raise RuntimeError("INVITE_DESTINATIONS_INVALID")
                                 await screen.click(text="🔙 戻る")
                                 return {"request_id": request_id, "action": action,
-                                        "status": "PASS", "native_copy_buttons": 3}
+                                        "status": "PASS", "visible_copy_controls": 3, "clipboard_readback": False}
                     await asyncio.sleep(1)
                 raise RuntimeError("DM_SELECTOR_SCREEN_NOT_OPENED")
             if action == "profile_button_smoke":
