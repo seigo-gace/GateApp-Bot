@@ -1237,7 +1237,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
  });
- bot.action(/^post:announce:dt:(month|day|hour|minute|manual):(\\d+)(?::(\\d{2,8}))?$/,async ctx=>{
+ bot.action(/^post:announce:dt:(month|day|hour|minute|manual):(\d+)(?::(\d{2,8}))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),value=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"announcement");
@@ -1257,11 +1257,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
        value.slice(0,6)!==String(data.pickerMonth))throw Error("NOTICE_DATE_DAY");
     data={...data,pickerDay:value,pickerHour:null,noticePickerStage:"time_hour"};
    }else if(op==="hour"){
-    if(stage!=="time_hour"||!/^(0\\d|1\\d|2[0-3])$/.test(value)||
+    if(stage!=="time_hour"||!/^(0\d|1\d|2[0-3])$/.test(value)||
        !validPickerDay(String(data.pickerDay||"")))throw Error("NOTICE_DATE_HOUR");
     data={...data,pickerHour:Number(value),noticePickerStage:"time_minute"};
    }else if(op==="minute"){
-    if(stage!=="time_minute"||!/^[0-5]\\d$/.test(value)||
+    if(stage!=="time_minute"||!/^[0-5]\d$/.test(value)||
        Number(value)%5!==0)throw Error("NOTICE_DATE_MINUTE");
     const when=selectedPickerTime(String(data.pickerDay||""),
      Number(data.pickerHour),Number(value));
