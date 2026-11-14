@@ -16,7 +16,7 @@ export function creatorPostingKeyboard(){
  ]);
 }
 export const CREATOR_POSTING_TEXT=
- "🎨 クリエーター用投稿\n\n投稿する種類を選んでください。\n\n"+
+ "🎨 クリエイター投稿\n\n投稿する種類を選んでください。\n\n"+
  "🎬 動画：動画の投稿・管理へ進みます。\n"+
  "🎨 ステッカー/絵文字：パックの作成・追加・編集へ進みます。\n\n"+
  "選択するとCreateVdobotが開きます。";
