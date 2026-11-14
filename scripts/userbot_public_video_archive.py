@@ -36,7 +36,16 @@ def write_state(path: Path, value: dict) -> None:
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
-        os.chmod(temporary, 0o600)
+        try:
+            os.chmod(temporary, 0o600)
+        except PermissionError:
+            # The existing Windows G: DrvFS (9p) mount may not support chmod.
+            # Only ignore this operation on the fixed Gserver storage path.
+            # The file is still written atomically with fsync + os.replace.
+            if not (STORAGE == Path("/mnt/g/GserverStorage")
+                    and path.is_relative_to(STATE_ROOT)
+                    and not path.parent.is_symlink()):
+                raise
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
