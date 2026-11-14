@@ -528,6 +528,23 @@ async function showLinkRichEditor(telegram:Telegram,owner:number,d:EditorDraft):
  }
 }
 
+
+function linkMediaEditorKeyboard(d:EditorDraft):WizardKeyboard{
+ const rev=d.revision;
+ const withCaption=Boolean(d.data.media)&&Boolean(String(d.data.text||"").trim());
+ const top=d.data.captionAbove===true;
+ return Markup.inlineKeyboard([
+  ...(withCaption?[[
+   Markup.button.callback((top?"✅ ":"▫️ ")+"上に表示","post:link:captiontop:"+rev),
+   Markup.button.callback((!top?"✅ ":"▫️ ")+"下に表示","post:link:captionbottom:"+rev),
+  ]]:[]),
+  [Markup.button.callback("🖼 画像/動画の差し替え","post:link:mediareplace:"+rev),
+   Markup.button.callback("🗑 画像/動画を削除","post:link:mediadelete:"+rev)],
+  [Markup.button.callback("↩ プレビューに戻る","post:link:back:"+rev),
+   Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
+ ]);
+}
+
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
 export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
