@@ -1480,16 +1480,16 @@ export function registerPostingHandlers(bot:Telegraf):void{
 
  // Uses the existing DM text-owner and Telegram file_id mechanism from profiles.
  const receiveLinkMedia=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video")=>{
-  if(ctx.chat?.type!=="private"||!ctx.from)return next();
-  if(await currentDmTextOwner(ctx.from.id)!=="link")return next();
+  if(ctx.chat?.type!=="private"||!ctx.from){await next();return;}
+  if(await currentDmTextOwner(ctx.from.id)!=="link"){await next();return;}
   const draft=await getWaitingDraft(ctx.from.id);
   if(!draft||draft.module!=="link"||
-    !["content","editmedia"].includes(String(draft.data.linkStage)))return next();
+    !["content","editmedia"].includes(String(draft.data.linkStage))){await next();return;}
   const msg=ctx.message;
-  if(!msg)return next();
+  if(!msg){await next();return;}
   const file=kind==="photo"&&"photo" in msg?msg.photo.at(-1):
     kind==="video"&&"video" in msg?msg.video:undefined;
-  if(!file?.file_id)return next();
+  if(!file?.file_id){await next();return;}
   const caption="caption" in msg&&typeof msg.caption==="string"?msg.caption:"";
   const replaced=draft.data.linkStage==="editmedia";
   const oldText=String(draft.data.text||"");
