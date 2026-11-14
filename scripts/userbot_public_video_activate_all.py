@@ -140,15 +140,6 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
             "asyncio.open_unix_connection(str(SOCKET_PATH), limit=262144)",
             "CLIENT_BUFFER",
         )
-    client = exactly_once(
-        client, '    parser.add_argument("--limit", type=int)',
-        '    parser.add_argument("--limit", type=int)\n    parser.add_argument("--before-message-id", type=int)',
-        "CLIENT_CLI",
-    )
-    client = append_function_argument(
-        client, "result = asyncio.run(invoke(", "args.before_message_id",
-        "))", "CLIENT_CALL",
-    )
     updated = {
         TARGETS["actions"]: actions.encode(),
         TARGETS["ipc"]: ipc.encode(),
