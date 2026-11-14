@@ -28,6 +28,7 @@ import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
  suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
+import {registerBugReportHandlers,startBugReport} from "./bot/bugReportHandlers.js";
 import {startTumblrBridge} from "./services/tumblrBridgeServer.js";
 import {
   BARE_START_POSTING_TEXT,
@@ -47,6 +48,7 @@ async function main():Promise<void>{
  if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
  await runMigrations();
+ registerBugReportHandlers(bot);
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
   if(ctx.startPayload?.startsWith("p_")){
@@ -68,6 +70,10 @@ async function main():Promise<void>{
   }
   if(parseProfileViewerPayload(ctx.startPayload||"")){
    await startProfileViewer(ctx,ctx.startPayload);
+   return;
+  }
+  if(ctx.startPayload==="bugreport"){
+   await startBugReport(ctx.telegram,ctx.from.id);
    return;
   }
   if(ctx.startPayload==="link"){
