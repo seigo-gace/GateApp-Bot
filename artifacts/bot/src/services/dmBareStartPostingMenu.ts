@@ -85,11 +85,11 @@ export function defaultBareStartChatId(menuOriginChatId?: number | null): number
   return BOARD_GROUP_CHAT_IDS.area_bbs;
 }
 
-/** Opening a private recruitment draft does not grant permission to publish it.
- * publishPost still enforces the announcement release gate before any Telegram post.
+/** Opening profile or recruitment editors is a private draft operation, not publication.
+ * Their actual Telegram posting paths retain the existing release gates.
  */
 export function canOpenPostingEditor(label: string, featureReady: boolean): boolean {
-  return label === "相手募集" || featureReady;
+  return label === "相手募集" || label === "プロフ作成" || featureReady;
 }
 
 /** Missing optional navigation URLs cannot block the caller's return to the menu. */
