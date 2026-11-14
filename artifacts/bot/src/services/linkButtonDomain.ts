@@ -2,8 +2,9 @@
  * Safety: format & known redirectors are checked; not a remote malware scan.
  */
 import {escapeProfileHtml} from "./profileCore.js";
-export type LinkButton={label:string;url:string;rowStart?:boolean};
-export type LinkDraft={text:string;buttons:LinkButton[];columns:1|2|3};
+export type LinkButton={label:string;url:string;rowStart?:boolean;style?:"primary"|"success"|"danger"};
+export type LinkMedia={type:"photo"|"video";fileId:string};
+export type LinkDraft={text:string;buttons:LinkButton[];columns:1|2|3;media?:LinkMedia;captionAbove?:boolean};
 const SHORTENERS=new Set(["bit.ly","tinyurl.com","t.co","is.gd","cutt.ly",
  "tiny.cc","rb.gy","rebrand.ly","goo.gl","ow.ly","shorturl.at"]);
 export function validateLinkDestination(raw:string):string{
@@ -23,13 +24,17 @@ export function validateLinkDestination(raw:string):string{
  return url.toString();
 }
 export function validateLinkDraft(d:LinkDraft):LinkDraft{
- if(!d.text.trim()||d.text.length>3500)throw new Error("LINK_BODY_INVALID");
+ if((!d.text.trim()&&!d.media)||d.text.length>(d.media?1024:3500))
+  throw new Error("LINK_BODY_INVALID");
+ if(d.media&&(!["photo","video"].includes(d.media.type)||!d.media.fileId||d.media.fileId.length>512))
+  throw new Error("LINK_MEDIA_INVALID");
  if(![1,2,3].includes(d.columns))throw new Error("LINK_COLUMN_INVALID");
  if(!Array.isArray(d.buttons)||!d.buttons.length||d.buttons.length>100)
   throw new Error("LINK_BUTTON_COUNT_INVALID");
  for(const b of d.buttons){
   if(!b.label.trim()||b.label.length>64)throw new Error("LINK_LABEL_INVALID");
   validateLinkDestination(b.url);
+  if(b.style!==undefined&&!["primary","success","danger"].includes(b.style))throw Error("LINK_STYLE_INVALID");
  }
  return d;
 }
@@ -62,7 +67,7 @@ export function parseLinkInput(input:string):Pick<LinkDraft,"text"|"buttons">{
 }
 export function renderLinkCard(d:LinkDraft):string{
  validateLinkDraft(d);
- return "🔗 リンク投稿\n"+escapeProfileHtml(d.text.trim());
+ return (d.text.trim()?escapeProfileHtml(d.text.trim()):"🔗 リンク投稿");
 }
 export function buttonGrid(d:LinkDraft):Array<Array<LinkButton>>{
  validateLinkDraft(d);
