@@ -25,6 +25,8 @@ test("missing verified navigation URL does not crash the DM menu or create an un
 test("recruitment drafting is available without releasing public Telegram posting", () => {
   assert.equal(canOpenPostingEditor("相手募集", false), true);
   assert.equal(canOpenPostingEditor("相手募集", true), true);
+  assert.equal(canOpenPostingEditor("検索/フィルター", false), true);
+  assert.equal(canOpenPostingEditor("検索/フィルター", true), true);
   assert.equal(canOpenPostingEditor("告知/予告", false), false);
   assert.equal(canOpenPostingEditor("告知/予告", true), true);
 });
