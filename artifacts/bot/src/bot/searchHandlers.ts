@@ -139,11 +139,14 @@ export function registerSearchHandlers(bot:Telegraf){
   else{
    const next=await updateSearch(ctx.from.id,rev,"home",s.filters);
    if(s.step!=="home"){await home(ctx.telegram,ctx.from.id,next);return;}
-   const url=await verifiedPostingMenuReturnUrl(ctx.from.id);
-   await show(ctx.telegram,ctx.from.id,next,
-    "🔍 検索を終了しました。"+(url?"\n↩ 元の投稿メニューへ戻れます。":
-      "\n起点の投稿メニューは確認できません。必要な場合はBotの /start から共通メニューを開いてください。"),
-    url?[[Markup.button.url("↩ 元の投稿メニュー",url)]]:[]);
+   // Restore the shared ten-button menu on the same DM screen.
+   const origin=await currentMenuOrigin(ctx.from.id);
+   const topic=origin?null:await currentTopicDmEntry(ctx.from.id);
+   const keyboard=await bareStartPostingExtra(defaultBareStartChatId(origin?.chatId??topic?.chatId));
+   const view=await showWizardScreen(ctx.telegram,ctx.from.id,next.screenMessageId??undefined,
+    DM_POSTING_MENU_SCREEN_TEXT,keyboard);
+   if(view.messageId!==next.screenMessageId)
+    await bindSearchScreen(ctx.from.id,next.revision,view.messageId);
   }
  });
  bot.action(/^search:kind:(\d+):(profile|recruitment)$/,async ctx=>{
