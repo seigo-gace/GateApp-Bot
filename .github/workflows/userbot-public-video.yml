@@ -1,0 +1,24 @@
+name: Resident Userbot public video offline tests
+on:
+  push:
+    branches:
+      - chat/userbot-public-video-ipc-20261114
+  pull_request:
+    paths:
+      - scripts/userbot_public_video_actions.py
+      - scripts/userbot_resident_ipc.py
+      - scripts/userbot_test_client.py
+      - scripts/test_userbot_public_video_actions.py
+      - .github/workflows/userbot-public-video.yml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: python -m py_compile scripts/userbot_public_video_actions.py scripts/userbot_resident_ipc.py scripts/userbot_test_client.py scripts/test_userbot_public_video_actions.py
+      - name: Offline public video contract tests
+        run: cd scripts && python -m unittest -v test_userbot_public_video_actions
