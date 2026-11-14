@@ -74,12 +74,26 @@ async def archive_channel(call, channel_username: str, limit: int, on_progress):
         state["last_message_id"] = message_id
         on_progress(state)
         try:
-            saved = await call("download_channel_video", channel_id=channel_id,
-                               message_id=message_id)
-            if saved.get("status") != "PASS" or not saved.get("storageKey"):
-                raise RuntimeError("DOWNLOAD_NOT_CONFIRMED")
-            state["already_present" if saved.get("alreadyPresent") is True else "saved"] += 1
-            state["completed"].append(message_id)
+            last_progress = -1
+            while True:
+                saved = await call("download_channel_video_step", channel_id=channel_id,
+                                   message_id=message_id)
+                if saved.get("status") != "PASS":
+                    raise RuntimeError("DOWNLOAD_STEP_FAILED")
+                if saved.get("completed") is True and saved.get("storageKey"):
+                    state["already_present" if saved.get("alreadyPresent") is True else "saved"] += 1
+                    state["completed"].append(message_id)
+                    break
+                position, total = saved.get("progressBytes"), saved.get("sizeBytes")
+                if (type(position) is not int or type(total) is not int
+                        or position <= last_progress or position > total):
+                    raise RuntimeError("DOWNLOAD_STEP_STALLED")
+                last_progress = position
+                state["current_progress_bytes"] = position
+                state["current_total_bytes"] = total
+                on_progress(state)
+            state.pop("current_progress_bytes", None)
+            state.pop("current_total_bytes", None)
         except Exception:
             state["failed"] += 1
         on_progress(state)
