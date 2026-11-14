@@ -61,7 +61,7 @@ export function validateNotice(data:NoticeDraft,ownerId:number):void{
  if(!parts.title||!parts.body)throw Error("タイトルと本文を入力してください");
  const event=data.eventAt?new Date(String(data.eventAt)):undefined;
  const deadline=data.deadlineAt?new Date(String(data.deadlineAt)):undefined;
- validateAnnouncement({ownerId,kind:data.kind==="preview"?"preview":"announcement",text,eventAt,deadlineAt:deadline});
+ validateAnnouncement({ownerId,kind:data.kind==="preview"?"preview":"announcement",text,eventAt:event,deadlineAt:deadline});
  if(data.linkLabel||data.linkUrl){
   if(!data.linkLabel||!data.linkUrl)throw Error("リンク名とURLが両方必要です");
   noticeLink(String(data.linkUrl));
