@@ -13,7 +13,7 @@ import uuid
 from userbot_resident_ipc import SOCKET_PATH, ACTIONS
 
 
-async def invoke(action: str, channel_id: int | None = None, message_id: int | None = None, limit: int | None = None) -> dict:
+async def invoke(action: str, channel_id: int | None = None, message_id: int | None = None, limit: int | None = None, before_message_id: int | None = None) -> dict:
     if not SOCKET_PATH.exists() or not SOCKET_PATH.is_socket():
         raise RuntimeError("RESIDENT_USERBOT_IPC_NOT_AVAILABLE")
     sockstat = SOCKET_PATH.stat()
@@ -26,6 +26,7 @@ async def invoke(action: str, channel_id: int | None = None, message_id: int | N
         if channel_id is not None: request["channel_id"] = channel_id
         if message_id is not None: request["message_id"] = message_id
         if limit is not None: request["limit"] = limit
+        if before_message_id is not None: request["before_message_id"] = before_message_id
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
         reply = await asyncio.wait_for(reader.readline(), 930)
@@ -44,10 +45,11 @@ def main() -> int:
     parser.add_argument("--channel-id", type=int)
     parser.add_argument("--message-id", type=int)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--before-message-id", type=int)
     parser.add_argument("--json", action="store_true", help="Print bounded public metadata or storage reference")
     args = parser.parse_args()
     try:
-        result = asyncio.run(invoke(args.action, args.channel_id, args.message_id, args.limit))
+        result = asyncio.run(invoke(args.action, args.channel_id, args.message_id, args.limit, args.before_message_id))
         if result.get("status") != "PASS":
             print("USERBOT_TEST_RESULT=FAIL")
             print("USERBOT_TEST_ERROR=" + re.sub(r"[^A-Z0-9_]", "_", str(result.get("error", "CONTRACT_MISMATCH")).upper())[:128])
