@@ -80,7 +80,7 @@ async def download_video(client, channel_id, message_id):
     stem = str(message_id)
     # Reuse only a completed local file. Never treat a partial as downloaded.
     existing = [p for p in root.glob(stem + ".*")
-                if p.is_file() and p.suffix != ".partial" and p.stat().st_size > 0]
+                if p.is_file() and not p.name.startswith(stem + ".partial") and p.stat().st_size > 0]
     if existing:
         return {"storageKey": str(existing[0]), "alreadyPresent": True}
 
