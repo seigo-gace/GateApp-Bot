@@ -4,7 +4,7 @@ import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
 
 export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_media"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
@@ -42,7 +42,7 @@ export async function getDraft(id:number,module:PostModule):Promise<EditorDraft|
 export async function getWaitingDraft(id:number):Promise<EditorDraft|null>{
  const r=await pool.query(
   `SELECT module,step,data,revision FROM public_post_drafts
-   WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_datetime','awaiting_room_url')
+   WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_datetime','awaiting_room_url','awaiting_media')
    ORDER BY updated_at DESC LIMIT 1`,[validOwner(id)]
  );
  return r.rows[0]??null;
