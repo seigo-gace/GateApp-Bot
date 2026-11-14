@@ -21,11 +21,30 @@ export type TumblrBridgeInput = {
   operation_key?: string;
   message_id?: string;
   text?: string;
+  cm_buttons?: unknown;
 };
 export type TumblrBridgeOutput = {
   verified?: boolean; authorized?: boolean; message_id?: string;
+  inline_keyboard?: {text:string;url:string}[][];
 };
 
+export function validateCmFooter(value:unknown):{text:string;url:string}[][] {
+ if(value===undefined)return [];
+ if(!Array.isArray(value)||value.length>3)throw new Error('BRIDGE_CM_INVALID');
+ return value.map((row:unknown)=>{
+  if(!Array.isArray(row)||row.length!==1)throw new Error('BRIDGE_CM_INVALID');
+  const item=row[0] as Record<string,unknown>|null;
+  if(!item||typeof item.text!=='string'||!item.text.startsWith('PR / ')||
+     item.text.length>65||typeof item.url!=='string'||item.url.length>2048)
+    throw new Error('BRIDGE_CM_INVALID');
+  let url:URL;
+  try{url=new URL(item.url);}catch{throw new Error('BRIDGE_CM_INVALID');}
+  if(url.protocol!=='https:'||!url.hostname||url.username||url.password||
+     (url.port&&url.port!=='443')||/\s/.test(item.url))
+    throw new Error('BRIDGE_CM_INVALID');
+  return [{text:item.text,url:item.url}];
+ });
+}
 export async function handleTumblrBridge(
  telegram: Telegram, input: TumblrBridgeInput
 ): Promise<TumblrBridgeOutput> {
@@ -55,10 +74,12 @@ export async function handleTumblrBridge(
  if(input.action==="readback"){
    if(!input.message_id || !/^[1-9][0-9]{0,15}$/.test(input.message_id))
      throw new Error("BRIDGE_MESSAGE_INVALID");
-   const r=await pool.query<{status:string;telegram_message_id:string|null}>(
-    "SELECT status,telegram_message_id FROM posting_deliveries WHERE telegram_message_id=$1 AND owner_user_id=$2 AND posting_topic_id=$3 AND source_type='announcement' AND status='sent'",
+   const r=await pool.query<{status:string;telegram_message_id:string|null;inline_buttons:unknown}>(
+    "SELECT status,telegram_message_id,inline_buttons FROM posting_deliveries WHERE telegram_message_id=$1 AND owner_user_id=$2 AND posting_topic_id=$3 AND source_type='announcement' AND status='sent'",
     [input.message_id,ownerId,topicId]);
-   return {verified:r.rows.length===1};
+   if(r.rows.length!==1)return {verified:false};
+   const saved=r.rows[0].inline_buttons;
+   return {verified:true,inline_keyboard:Array.isArray(saved)?saved:[]};
  }
  const op=input.operation_key;
  if(typeof op!=="string"||! /^[a-zA-Z0-9_-]{1,80}$/.test(op))
@@ -79,7 +100,7 @@ export async function handleTumblrBridge(
    const result=await publishPost(telegram,{
      sourceType:"announcement",destinationPurpose:"announcement",
      sourceId:op,ownerId,revision:1,topicId,text:escapeProfileHtml(input.text),
-     approved:true,
+     buttons:validateCmFooter(input.cm_buttons),approved:true,
    });
    return {verified:true,message_id:String(result.messageId)};
  }
