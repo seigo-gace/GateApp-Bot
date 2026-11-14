@@ -5,8 +5,6 @@ import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
 
 export const STATIC_URL_LABELS = new Set([
   "クリエーター有料ビデオ投稿",
-  "雑談",
-  "紹介/招待",
 ]);
 
 const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
@@ -17,6 +15,8 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   "🔗ボタン作成": "dm:link",
   "検索/フィルター": "dm:search",
   操作説明: "dm:help",
+  雑談: "dm:talk",
+  "紹介/招待": "dm:invite",
 };
 
 const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
