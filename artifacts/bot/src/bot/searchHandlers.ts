@@ -10,7 +10,10 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {beginSearch,getSearchSession,updateSearch,bindSearchScreen,findPublicSearchHits,type SearchSession} from "../services/searchRepository.js";
 import {setSearchFilter,initialSearchFilters,searchOptions,toggleSearchTag,parseSearchAge,type SearchOptionKey} from "../services/searchDomain.js";
 import {authorizedSearchGroupIds} from "../services/searchAccess.js";
-import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
+import {currentMenuOrigin} from "../services/menuOriginRepository.js";
+import {currentTopicDmEntry} from "../services/topicDmEntry.js";
+import {bareStartPostingExtra,defaultBareStartChatId} from "../services/dmBareStartPostingMenu.js";
+import {DM_POSTING_MENU_SCREEN_TEXT} from "../services/dmPostingMenuRestore.js";
 const dm=(c:any)=>c.chat?.type==="private";
 const button=(text:string,data:string)=>Markup.button.callback(text,data);
 async function show(t:Telegram,id:number,s:SearchSession,text:string,rows:any[][]){
@@ -136,11 +139,13 @@ export function registerSearchHandlers(bot:Telegraf){
   else{
    const next=await updateSearch(ctx.from.id,rev,"home",s.filters);
    if(s.step!=="home"){await home(ctx.telegram,ctx.from.id,next);return;}
-   const url=await verifiedPostingMenuReturnUrl(ctx.from.id);
-   await show(ctx.telegram,ctx.from.id,next,
-    "🔍 検索を終了しました。"+(url?"\n↩ 元の投稿メニューへ戻れます。":
-      "\n起点の投稿メニューは確認できません。必要な場合はBotの /start から共通メニューを開いてください。"),
-    url?[[Markup.button.url("↩ 元の投稿メニュー",url)]]:[]);
+   const origin=await currentMenuOrigin(ctx.from.id);
+   const topic=origin?null:await currentTopicDmEntry(ctx.from.id);
+   const keyboard=await bareStartPostingExtra(defaultBareStartChatId(origin?.chatId??topic?.chatId));
+   const view=await showWizardScreen(ctx.telegram,ctx.from.id,next.screenMessageId??undefined,
+    DM_POSTING_MENU_SCREEN_TEXT,keyboard);
+   if(view.messageId!==next.screenMessageId)
+    await bindSearchScreen(ctx.from.id,next.revision,view.messageId);
   }
  });
  bot.action(/^search:kind:(\d+):(profile|recruitment)$/,async ctx=>{
