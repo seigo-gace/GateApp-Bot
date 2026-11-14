@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 65536
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "list_joined_public_channels", "list_channel_videos", "download_channel_video"})
+ACTIONS = frozenset({"health", "bot_start_menu", "room_private_smoke", "list_joined_public_channels", "list_channel_videos", "download_channel_video", "download_channel_video_step"})
 EXPECTED_MENU = [
     ["相手募集", "募集+Room", "告知/予告"],
     ["プロフ作成", "クリエーター有料ビデオ投稿"],
@@ -41,7 +41,7 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         raise ValueError("ACTION_NOT_ALLOWLISTED")
     if not await client.is_user_authorized():
         raise RuntimeError("RESIDENT_USERBOT_NOT_AUTHORIZED")
-    if action in {"list_joined_public_channels", "list_channel_videos", "download_channel_video"}:
+    if action in {"list_joined_public_channels", "list_channel_videos", "download_channel_video", "download_channel_video_step"}:
         from userbot_public_video_actions import joined_public_channels, channel_videos, download_video
         required = {"request_id", "action"}
         if action == "list_joined_public_channels":
@@ -53,7 +53,7 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
             videos = await channel_videos(client, request["channel_id"], request["limit"])
             return {"request_id": request_id, "action": action, "status": "PASS", "videos": videos}
         if set(request) != required | {"channel_id", "message_id"}: raise ValueError("REQUEST_SHAPE_INVALID")
-        downloaded = await download_video(client, request["channel_id"], request["message_id"])
+        downloaded = await download_video(client, request["channel_id"], request["message_id"],\n            max_chunks=16 if action == "download_channel_video_step" else None)
         return {"request_id": request_id, "action": action, "status": "PASS", **downloaded}
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
@@ -107,7 +107,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             request = json.loads(data.decode("utf-8"))
             async with lock:
                 response = await asyncio.wait_for(process_request(client, request),
-                    timeout=900 if request.get("action") == "download_channel_video" else 60)
+                    timeout=900 if request.get("action") == "download_channel_video" else 90 if request.get("action") == "download_channel_video_step" else 60)
         except Exception as exc:
             response = {"status": "FAIL", "error": type(exc).__name__ + ":" +
                         (str(exc) if isinstance(exc, (ValueError, RuntimeError, PermissionError)) else "INTERNAL")}
