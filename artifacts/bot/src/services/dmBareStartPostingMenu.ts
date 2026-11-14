@@ -10,11 +10,11 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   "プロフ作成": "dm:profile",
   "募集+Room": "dm:room",
   "告知/予告": "dm:announcement",
-  "🔗ボタン作成": "dm:link",
+  "🔗ボタン生成": "dm:link",
   "検索/フィルター": "dm:search",
   操作説明: "dm:help",
   雑談: "dm:chat-select",
-  "クリエーター用投稿": "dm:creator-select",
+  "クリエイター投稿": "dm:creator-select",
   "紹介/招待": "dm:invite-select",
 };
 
@@ -23,7 +23,7 @@ const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
   "プロフ作成": "profile",
   "募集+Room": "room",
   "告知/予告": "announcement",
-  "🔗ボタン作成": "link",
+  "🔗ボタン生成": "link",
   "検索/フィルター": "search",
   操作説明: "help",
 };
