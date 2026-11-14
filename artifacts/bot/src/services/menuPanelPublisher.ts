@@ -5,6 +5,7 @@
 import type { Telegram } from "telegraf";
 import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
+import {commonGateUrl} from "./commonGateInvite.js";
 import {newMenuToken,tokenHash} from "./menuOrigin.js";
 import {loadGeneralGuideNavLinks} from "./generalGuideNavLinks.js";
 import {renderMenuPanel,type ButtonSpec,type EntryLink,type NavLink} from "./menuPanelRenderer.js";
@@ -51,13 +52,14 @@ async function buildLinks(panel:PanelRow):Promise<{
     stored.rows.some(row=>!staticLabels.includes(String(row.label) as typeof staticLabels[number]))||
     new Set(stored.rows.map(row=>String(row.label))).size!==staticLabels.length)
    throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
+ const gateUrl=await commonGateUrl();
  const links:NavLink[]=stored.rows.map(row=>{
   const label=String(row.label);
   if(label==="クリエーター有料ビデオ投稿")
    return {label:"クリエーター投稿",url:"https://t.me/CreateVdobot?start=creator",verified:true};
   if(label==="雑談")
    return {label:"雑談",url:"https://t.me/GayBBS_bot?start=talk",verified:true};
-  return {label:"紹介/招待",url:"https://t.me/GayBBS_bot?start=invite",verified:true};
+  return {label:"紹介/招待",url:gateUrl,copy_text:{text:gateUrl},verified:true};
  });
  const gates=await pool.query(
   `SELECT feature FROM gaybbs_feature_release_gates
