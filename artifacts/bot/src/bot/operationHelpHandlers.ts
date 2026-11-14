@@ -6,20 +6,21 @@ import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
 import {APPROVED_POSTING_ROWS} from "../services/menuPanelRenderer.js";
+import {CHAT_TOPIC_CHOICES} from "../services/dmBareStartPostingMenu.js";
 import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
 import {startRoomEditor,startAnnouncementEditor,startLinkEditor} from "./postingHandlers.js";
 
 import {startSearchEditor} from "./searchHandlers.js";
 import {startCompactProfileEditor} from "./profileCompactHandlers.js";
 
-type Topic="profile"|"room"|"announcement"|"link"|"search"|"recruit"|"chat"|"invite"|"paid";
-type HelpSection=Topic|"home"|"tags";
+type Topic="profile"|"room"|"announcement"|"link"|"search"|"recruit"|"chat"|"paid";
+type HelpSection=Topic|"home"|"tags"|"chat_select";
 type Session={revision:number;section:HelpSection;screenMessageId:number|null};
-const SECTION_KEYS:readonly Topic[]=["profile","room","announcement","link","search","recruit","chat","invite","paid"];
+const SECTION_KEYS:readonly Topic[]=["profile","room","announcement","link","search","recruit","chat","paid"];
 const sectionLabels:Readonly<Record<Topic,string>>={
  profile:"プロフ",room:"Room+募集",announcement:"告知/予告",
  link:"🔗ボタン作成",search:"検索/フィルター",
- recruit:"相手募集",chat:"雑談",invite:"紹介/招待",paid:"クリエーター有料ビデオ投稿"
+ recruit:"相手募集",chat:"雑談",paid:"クリエーター有料ビデオ投稿"
 };
 const sectionText:Readonly<Record<Topic,string>>={
  recruit:"📝 相手募集｜画面の使い方\n\n■ この機能でできること\n「こんな人と会いたい」「一緒に過ごせる人を探したい」という募集を、自分が選んだ掲示板のトピックに掲載できます。募集内容・希望条件を見た人からの応募を受け付ける機能です。Roomを作る場合は「募集+Room」を使ってください。\n\n■ 1. 最初に送る文章\n「相手募集」を押すとDMの編集画面が開きます。プロフィールの登録状況によって入力内容が変わります。\n\n【プロフ未登録の人】\n① 募集タイトル\n② ニックネーム\n③ 身長 体重 年齢\n④ 募集内容（何をしたいか、いつ、どんな相手を探すか）\n\n入力例（4行をまとめて送信）：\n今夜話せる人を募集\nゼロ\n175 80 40\n今夜、近くで会って話せる人を探しています。時間は相談したいです。\n\n【プロフ登録済みの人】\n1行目：タイトル\n2行目以降：募集内容\n基本情報は保存済みのプロフから連動できます。\n\n■ 2. ボタンは何を選ぶもの？\n「ポジション選択」：自分のポジション\n「#Like」（緑）：自分の特徴や好み\n「#Love」（赤）：相手に求める特徴や好み\n「目的」：この募集で何をしたいか\n「場所」：場所の有無や移動できるか\n\n#Likeと#Loveは、分類→候補の順に押して選択します。✅が付けば選択中。同じ項目を再押下すると解除できます。複数選んで「✅ 保存」で確定します。\n「🪪 プロフ登録」は、この募集を作っている途中でプロフィールも登録したい人向けです。\n\n■ 3. 内容を確認して投稿\n入力やボタン選択はプレビューに反映されます。タイトル・ニックネーム・希望条件を確認し「✅ 投稿する」を押します。投稿先を選ぶ画面が出たらトピックを選択します。「キャンセル」は投稿せず編集をやめるときに使います。\n\n■ 4. 投稿した後\nDMの「✏️ 編集」で内容の変更、「🗑 削除」で取り消し、「📍 投稿先を開く」で掲載先へ戻れます。自分の募集だけ編集・削除できます。",
@@ -30,7 +31,7 @@ const sectionText:Readonly<Record<Topic,string>>={
  link:"🔗 ボタン作成｜リンク付き投稿を作る\n\n【どんな機能？】\nTelegramの投稿に、押すと指定URLへ移動するボタンを付ける機能です。掲示板や案内ページへの誘導に使います。本文とボタンだけでなく、「テキストのみ」「画像＋コメント」「動画＋コメント」の3形式を使い分けるのが新しい採用設計です。\n※画像・動画の登録とコメントの配置はPR #55では未実装です。現在のBotで使えると断定しないでください。\n\n【① 投稿する内容を決める】\nテキストのみ＝文章とリンクボタン。\n画像＋コメント＝写真・説明文・リンクボタン。\n動画＋コメント＝動画・説明文・リンクボタン。\nまずどの形式を使うか考えます。媒体付きの操作画面は対応実装後に利用してください。\n\n【② 最初のボタンを作る】\n「🔗ボタン作成」を押し、ボタン名とURLを次の2行でまとめて1通送信します。\n1行目：ボタンに表示する名前\n2行目：https://で始まるリンク先\n\n入力例：\nグループの案内を見る\nhttps://example.org/guide\n\n1個目は横列を指定しません。リンク先はHTTPS形式で、URL短縮サービスなどは使えません。\n\n【③ 2個目以降を追加する】\nプレビューにある「➕ ボタンを追加」＝次の行に作る。\n「➡️ 横にボタンを作る」＝直前のボタンの右隣に作る。\nどちらかを押して、次のボタン名とURLをまた2行で送信します。押すたびに追加先が決まり、元のボタンは残ります。\n\n【④ 編集・投稿する】\n「📝 最後を編集」＝最後のボタンの名前・URLを直す。\n「📍 投稿先を選択」＝投稿するトピックを選ぶ。\n公開前プレビューのボタン配置とリンク先を確認し、投稿操作へ進みます。「キャンセル」は編集を中止します。\n\n【確認してほしいこと】\n画像＋コメント／動画＋コメントの細かな操作は未実装のため、このガイドは採用設計の案内です。実際に選択できるようになるまで、対応済みとは表示しません。",
  search:"🔍 検索/フィルター｜投稿や相手を探す\n\n【何をする機能？】\n参加している掲示板の公開済みプロフィールや相手募集を、言葉・条件から探します。新しく投稿する機能ではありません。\n\n【① 探す対象】\n「検索/フィルター」を押し、「プロフ」「相手募集」を選びます。✅が付いている方を検索します。\n\n【② 言葉で探す】\n「🔍 キーワード検索」を押して、探したい言葉を80文字以内で1通送信します。\n\n【③ 条件で絞る】\n「🎛 詳細フィルター」を押します。\nプロフ：エリア／年齢／ポジション／体型／髪型／目的／#Like／#Love。\n相手募集：エリア／ポジション／目的。\n選択肢をタップすると条件に反映され、同じ項目の再タップで解除できます。\n\n【④ 結果を見る】\n「🔎 検索実行」で結果を表示します。1ページ5件。「次へ ▶」「◀ 前へ」でページを切り替え、結果を押すと元の投稿へ移動します。\n\n【⑤ 探し直す】\n「🎛 条件変更」で条件を修正。「条件クリア」で指定した条件を消します。「↩ 戻る」で戻れます。",
  chat:"💬 雑談｜掲示板で会話する\n\n【何をする機能？】\n3つの掲示板にある雑談トピックへ移動します。気軽な会話や交流に使います。募集を投稿するための画面ではありません。\n\n【操作方法】\n① 投稿メニューから「雑談」を押します。\n② 「エリア’s BBS」「ビデオChatの掲示板」「ゲイのための掲示板♂」から移動先を選びます。\n③ 選択したリンクを開いて雑談トピックへ移動し、そこでメッセージを書きます。\n④ 移動をやめるときは「🔙 戻る」で投稿メニューへ戻ります。\n\n【覚えておくこと】\nこのボタンは会話する場所を選ぶためのものです。押しただけではメッセージや募集は投稿されません。",
- invite:"🤝 紹介/招待｜掲示板を人に紹介する\n\n【何をする機能？】\n3つの掲示板の参加先を案内したり、紹介用リンクをコピーして友人に送ったりします。\n\n【操作方法】\n① 投稿メニューから「紹介/招待」を押します。\n② 表示された掲示板から紹介したい先を選びます。\n③ まだ参加承認を受けていない人には「参加質問ゲート」へのリンクを案内します。\n④ 承認済みの人には、各掲示板への参加リンクを案内します。\n⑤ 「リンクをコピー」のボタンがある場合は押してコピーし、紹介したい相手のチャットに貼り付けます。\n⑥ 「🔙 戻る」で投稿メニューに戻ります。\n\n【注意】\n参加資格・規約・ルールの確認が必要な人には、承認質問を飛ばすリンクではなく、質問ゲートの入口を案内してください。"
+
 };
 export const TAG_HELP_TEXT="🏷️ #Like と #Love｜違いと選び方\n\n【何を設定するもの？】\n🟢 #Like＝自分自身の特徴・好み・趣味・スタイル。\n🔴 #Love＝相手に求める特徴・好み・趣味・スタイル。\n同じ言葉でも「自分のこと」か「相手への希望」かで意味が変わります。\n\n【どこで使う？】\n「相手募集」「募集+Room」「プロフ作成」の入力画面にある「#Like」「#Love」から設定します。Room応募でも同じタグの選択画面を使います。\n\n【具体的な選び方】\n① 緑の「#Like」または赤の「#Love」を押します。\n② 6分類「エロワード」「パーツ」「プレイ」「雰囲気/外見」「着衣/装備」「性感帯」から分類を選びます。\n③ 候補の言葉をタップします。▫️が✅になれば選択済みです。\n④ 複数選択できます。もう一度タップすると、その項目だけ解除されます。\n⑤ 候補が多いときは「次 ➡️」で次のページ、「↩ 戻る」で前のページまたは分類に戻ります。\n⑥ 「✅ 保存」を押して元の入力画面に戻り、✅ #Like／✅ #Loveを確認します。\n\n【例】\n自分の好きな服装が「スーツ」なら、#Like →「着衣/装備」→「スーツ」を選択。\n相手に「年上好き」のような希望を伝えたいときは、#Love →「雰囲気/外見」から選択。\n実際に自分や相手に当てはまるものだけ選んでください。\n\n【修正するには】\n選択済みの言葉をもう一度押せば解除できます。「キャンセル」は選択操作を中止するときに使います。タグ選択だけで投稿されることはありません。\n\n覚え方：#Like＝自分、#Love＝相手への希望。";
 /** Each screen is one topic step, not a long scrolling wall of text.
@@ -65,9 +66,9 @@ export function helpTagKeyboard(rev:number,page:number){
  ]);
 }
 export function helpHomeKeyboard(rev:number){
- const rows=APPROVED_POSTING_ROWS.map(row=>row.map(label=>label==="操作説明"?"戻る":label));
+ const rows=APPROVED_POSTING_ROWS.map(row=>row.filter(label=>label!=="紹介/招待").map(label=>label==="操作説明"?"戻る":label));
  return Markup.inlineKeyboard(rows.map(row=>row.map(label=>
-  Markup.button.callback(label,label==="戻る"?`help:back:${rev}`:
+  Markup.button.callback(label,label==="戻る"?`help:back:${rev}`:label==="雑談"?`help:chatselect:${rev}`:
     `help:topic:${rev}:${SECTION_KEYS.find(key=>sectionLabels[key]===label)}`))));
 }
 export function helpSectionKeyboard(rev:number,section:Topic,page=0){
@@ -107,9 +108,9 @@ async function advance(id:number,revision:number,section:HelpSection):Promise<Se
   screenMessageId:x.screen_message_id===null?null:Number(x.screen_message_id)};
 }
 async function show(t:Telegram,id:number,s:Session,page=0){
- const topic=s.section==="home"||s.section==="tags"?null:s.section;
- const text=s.section==="tags"?(helpTagPages()[page]??helpTagPages()[0]):topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・会話する → 雑談\n・参加リンクを紹介 → 紹介/招待\n・動画を販売 → クリエーター有料ビデオ投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":helpTopicPages(topic)[page]??helpTopicPages(topic)[0];
- const keyboard=s.section==="tags"?helpTagKeyboard(s.revision,page):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
+ const topic=s.section==="home"||s.section==="tags"||s.section==="chat_select"?null:s.section;
+ const text=s.section==="chat_select"?"💬 雑談｜移動先の掲示板を選んでください。\n下の3つのリンクから移動できます。":s.section==="tags"?(helpTagPages()[page]??helpTagPages()[0]):topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・会話する → 雑談\n・動画を販売 → クリエーター有料ビデオ投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":helpTopicPages(topic)[page]??helpTopicPages(topic)[0];
+ const keyboard=s.section==="chat_select"?Markup.inlineKeyboard([...CHAT_TOPIC_CHOICES.map(({label,url})=>[Markup.button.url(label,url)]),[Markup.button.callback("↩ 操作説明へ戻る",`help:home:${s.revision}`)]]):s.section==="tags"?helpTagKeyboard(s.revision,page):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,keyboard);
  if(s.screenMessageId!==view.messageId){
   const updated=await pool.query("UPDATE gaybbs_help_sessions SET screen_message_id=$3 WHERE owner_user_id=$1 AND revision=$2 RETURNING owner_user_id",
@@ -126,7 +127,16 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   if(ctx.chat.type!=="private")return;
   await startOperationHelp(ctx.telegram,ctx.from.id);
  });
- bot.action(/^help:(topic|open):(\d+):(profile|room|announcement|link|search|recruit|chat|invite|paid)$/,async ctx=>{
+ bot.action(/^help:chatselect:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const rev=Number(ctx.match[1]),session=await load(ctx.from.id);
+  if(!session||session.revision!==rev||session.section!=="home"){
+   await ctx.answerCbQuery("古い操作です。操作説明から開き直してください。");return;
+  }
+  await ctx.answerCbQuery();
+  await show(ctx.telegram,ctx.from.id,await advance(ctx.from.id,rev,"chat_select"));
+ });
+ bot.action(/^help:(topic|open):(\d+):(profile|room|announcement|link|search|recruit|chat|paid)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),topic=ctx.match[3] as Topic;
   const s=await load(ctx.from.id);
@@ -152,7 +162,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id,screenId);
   else await startSearchEditor(ctx.telegram,ctx.from.id,screenId);
  });
- bot.action(/^help:page:(\d+):(profile|room|announcement|link|search|recruit|chat|invite|paid):(\d+)$/,async ctx=>{
+ bot.action(/^help:page:(\d+):(profile|room|announcement|link|search|recruit|chat|paid):(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const rev=Number(ctx.match[1]),topic=ctx.match[2] as Topic,page=Number(ctx.match[3]);
   const session=await load(ctx.from.id);
