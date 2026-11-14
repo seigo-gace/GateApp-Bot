@@ -79,3 +79,19 @@ export function buttonGrid(d:LinkDraft):Array<Array<LinkButton>>{
  }
  return rows;
 }
+
+/** Insert a new button to the right of the chosen row, not necessarily the last row.
+ * rowIndex is zero-based; other rows remain unchanged.
+ */
+export function insertLinkButton(d:LinkDraft,button:LinkButton,location:
+ {kind:"newRow"}|{kind:"right";rowIndex:number}):LinkButton[]{
+ const rows=buttonGrid(d).map(row=>row.map(b=>({...b})));
+ if(location.kind==="newRow")rows.push([{...button,rowStart:true}]);
+ else {
+  if(!Number.isInteger(location.rowIndex)||location.rowIndex<0||location.rowIndex>=rows.length)
+   throw new Error("LINK_ROW_INVALID");
+  rows[location.rowIndex]!.push({...button,rowStart:false});
+ }
+ if(rows.flat().length>100)throw new Error("LINK_BUTTON_COUNT_INVALID");
+ return rows.flatMap(row=>row.map((b,i)=>({...b,rowStart:i===0})));
+}
