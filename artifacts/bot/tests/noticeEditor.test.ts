@@ -45,14 +45,16 @@ test("notice preview and public card require title and body",()=>{
  assert.match(noticeCard(data,1),/題名/);
  assert.match(noticeCard(data,1),/受付終了/);
 });
-test("approved notice inline buttons use adjacent editing and preserve layout semantics",()=>{
+test("pre-publication roleplay controls do not show post-registration edit buttons",()=>{
  const panel=announcementPanel({module:"announcement",step:"preview",revision:7,
-  data:{kind:"announcement",title:"題名",body:"本文",text:"題名\n本文",
+  data:{kind:"announcement",title:"題名",body:"本文",text:"題名\\n本文",
    participation:"public"}});
  const rows=panel.reply_markup.inline_keyboard;
- assert.deepEqual(rows[1]?.map(x=>x.text),["タイトル：題名","［編集］"]);
- assert.deepEqual(rows[2]?.map(x=>x.text),["内容：本文","［編集］"]);
- assert.equal(rows[5]?.[0]?.text,"✅ 自由参加");
+ assert.deepEqual(rows[1]?.map(x=>x.text),["開催日時","受付期限"]);
+ assert.equal(rows[2]?.[0]?.text,"✅ 自由参加");
  assert.ok(rows.flat().some(x=>x.callback_data==="post:announce:link:7"));
  assert.ok(rows.flat().some(x=>x.callback_data==="post:announce:media:7"));
+ assert.ok(rows.flat().some(x=>x.text==="📢 投稿する"));
+ assert.equal(rows.flat().some(x=>x.text.includes("編集")),false);
+ assert.equal(rows.flat().some(x=>x.text.startsWith("タイトル：")),false);
 });
