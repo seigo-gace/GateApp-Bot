@@ -46,7 +46,7 @@ async function commonGateUrl():Promise<string>{
  WHERE target_type='entry_group' AND chat_id=ANY($1::bigint[])
  ORDER BY chat_id`,[ADMISSION_BOARD_CHAT_IDS]);
  if(r.rows.length!==3||new Set(r.rows.map(x=>String(x.chat_id))).size!==3 ||
-    r.rows.some(x=>!ADMISSION_BOARD_CHAT_IDS.includes(Number(x.chat_id))||
+    r.rows.some(x=>!new Set<number>(ADMISSION_BOARD_CHAT_IDS).has(Number(x.chat_id))||
       !/^[A-Za-z0-9_-]{1,48}$/.test(String(x.gate_code))))
   throw new Error("COMMON_GATE_ROUTE_NOT_VERIFIED");
  return "https://t.me/GayBBS_bot?start=gate_"+r.rows[0]!.gate_code;
