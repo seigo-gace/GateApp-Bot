@@ -63,7 +63,7 @@ async function advance(id:number,revision:number,section:HelpSection):Promise<Se
 }
 async function show(t:Telegram,id:number,s:Session){
  const topic=s.section==="home"?null:s.section;
- const text=topic===null?"📚 操作説明\n知りたい機能を選択してください。":sectionText[topic];
+ const text=topic===null?"📚 操作説明｜投稿メニュー\n\n下のボタンから詳しい手順を確認できます。\n\n📝 相手募集：条件・タグを選択して募集を投稿します。\n💬 雑談：3つの掲示板から移動先を選択します。\n🤝 紹介/招待：未承認の方は参加質問ゲート、承認済みの方は各掲示板へのリンクを案内します。\n🎬 有料ビデオ投稿：専用のCreateVdobotへ移動して操作します。\n\n※投稿や編集は各機能の画面で行います。":sectionText[topic];
  const keyboard=topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic);
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,keyboard);
  if(s.screenMessageId!==view.messageId){
