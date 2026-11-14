@@ -126,6 +126,19 @@ async function main():Promise<void>{
   const keyboard=await bareStartPostingExtra(chatId);
   await ctx.reply(BARE_START_POSTING_TEXT,keyboard);
  });
+ // Both current and already-sent posting-menu buttons must use the same
+ // user-visible private-editor path. Do not silently swallow DB/Telegram errors.
+ const openProfileFromMenu=async (ctx:Parameters<typeof startCompactProfileEditor>[0])=>{
+  await ctx.answerCbQuery().catch(()=>undefined);
+  try{
+   await startCompactProfileEditor(ctx);
+  }catch(error){
+   console.error("PROFILE_DM_OPEN_FAILED",
+    error instanceof Error?error.name:"unknown");
+   await ctx.reply("プロフィール入力画面を開けませんでした。入力内容は保持されています。もう一度「プロフ作成」を押してください。")
+    .catch(()=>undefined);
+  }
+ };
  bot.action("dm:nav-unavailable",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery("このリンクはまだ確認できません。", {show_alert:true});
@@ -135,8 +148,7 @@ async function main():Promise<void>{
   // Already-sent posting menus may still carry this old callback_data.
   // Opening the private profile editor must work without republishing menus.
   if(ctx.match[1]==="profile"){
-   await ctx.answerCbQuery();
-   await startCompactProfileEditor(ctx);
+   await openProfileFromMenu(ctx);
    return;
   }
   await ctx.answerCbQuery(
@@ -146,10 +158,10 @@ async function main():Promise<void>{
  });
  bot.action(/^dm:(profile|recruit|room|announcement|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
-  await ctx.answerCbQuery();
   const kind=ctx.match[1];
-  if(kind==="profile")await startCompactProfileEditor(ctx);
-  else if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
+  if(kind==="profile"){await openProfileFromMenu(ctx);return;}
+  await ctx.answerCbQuery();
+  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
   else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
