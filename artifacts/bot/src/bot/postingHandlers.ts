@@ -551,7 +551,8 @@ export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  return Markup.inlineKeyboard([
   [Markup.button.callback("📝 編集","post:link:panel:"+rev),
    Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
-  [Markup.button.callback("📍 投稿先を選択","post:link:destination:"+rev)],
+  [Markup.button.callback(typeof d.data.shareCode==="string"?"✅ 登録済み":"✅ 登録",
+    "post:link:register:"+rev)],
  ]);
 }
 /** Compact editing summary: no media or full posting preview. */
@@ -1725,7 +1726,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery("先にリンクボタンを追加してください。");return;
    }
    await ctx.answerCbQuery();
-   await destinationMenu(ctx,"link",rev);
+   await ctx.answerCbQuery("投稿先を選ぶ必要はありません。投稿コードを登録し、任意のチャットで使用してください。",{show_alert:true});
    return;
   }
   if(!Array.isArray(d.data.buttons)||!d.data.buttons.length){
