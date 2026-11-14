@@ -9,7 +9,7 @@ on:
       - scripts/userbot_public_video_actions.py
       - scripts/userbot_resident_ipc.py
       - scripts/userbot_test_client.py
-      - scripts/test_userbot_public_video_actions.py scripts/userbot_public_video_collect_once.py scripts/test_userbot_public_video_collect_once.py
+      - scripts/test_userbot_public_video_actions.py
       - scripts/userbot_public_video_collect_once.py
       - scripts/test_userbot_public_video_collect_once.py
       - .github/workflows/userbot-public-video.yml
@@ -22,6 +22,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Syntax check
-        run: python -m py_compile scripts/userbot_public_video_actions.py scripts/userbot_resident_ipc.py scripts/userbot_test_client.py scripts/test_userbot_public_video_actions.py
+        run: python -m py_compile scripts/userbot_public_video_actions.py scripts/userbot_resident_ipc.py scripts/userbot_test_client.py scripts/test_userbot_public_video_actions.py scripts/userbot_public_video_collect_once.py scripts/test_userbot_public_video_collect_once.py
       - name: Offline public video contract tests
         run: cd scripts && python -m unittest -v test_userbot_public_video_actions test_userbot_public_video_collect_once
