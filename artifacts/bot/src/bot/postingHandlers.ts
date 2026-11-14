@@ -38,6 +38,7 @@ import {roomCrossPostTargets} from "../services/roomCrossPost.js";
 import {adaptiveChoiceRows,positionChoiceRows} from "../services/inlineSelection.js";
 import {rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard} from "../services/noticeEditor.js";
+import {showPublishedNoticeOwner} from "./noticeInteractions.js";
 
 async function showPostScreen(
  telegram:Telegram,userId:number,draft:EditorDraft,text:string,keyboard?:WizardKeyboard,html=false,
@@ -1593,6 +1594,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    let hostJoinUrl:string|null=null;
    let isScheduledRoom=false;
    let buttons:ReadonlyArray<ReadonlyArray<{text:string;url:string}>>|undefined;
+   let noticeAttachment:ReturnType<typeof noticeMedia>|undefined;
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
     if(!p||p.revision!==revision)throw new Error("プロフィールが更新されています。");
@@ -1664,20 +1666,41 @@ export function registerPostingHandlers(bot:Telegraf):void{
     }else{
      const kind=draft.data.kind as AnnouncementKind;
      isRecruitment=kind==="recruitment";
-     const value=String(draft.data.text);
+     const isNotice=kind==="announcement"||kind==="preview";
+     if(isNotice)validateNotice(draft.data,ctx.from.id);
+     const value=isNotice?noticeText(draft.data):String(draft.data.text);
      const eventAt=draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined;
      const purposeCodes=Array.isArray(draft.data.purposeCodes)?draft.data.purposeCodes as string[]:[];
      const placeCodes=Array.isArray(draft.data.placeCodes)?draft.data.placeCodes as string[]:[];
+     const details=isNotice?{conditions:{
+      participation:noticeJoin(draft.data),
+      deadlineAt:draft.data.deadlineAt||null,
+      linkLabel:draft.data.linkLabel||null,linkUrl:draft.data.linkUrl||null,
+      media:noticeMedia(draft.data),
+     }}:undefined;
      const ann=await createAnnouncement(ctx.from.id,revision,kind,value,eventAt,
-       purposeCodes,placeCodes);
-     sourceId=ann.sourceId;text=buildAnnouncementCard({ownerId:ctx.from.id,
+      purposeCodes,placeCodes,undefined,details);
+     sourceId=ann.sourceId;
+     text=isNotice?noticeCard(draft.data,ctx.from.id):
+      buildAnnouncementCard({ownerId:ctx.from.id,
        kind,text:value,eventAt,purposeCodes,placeCodes});
-     if(kind!=="recruitment"&&draft.data.profileLinked){
-      const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
-      if(!profileUrl)throw new Error("ANNOUNCEMENT_PROFILE_NOT_AVAILABLE");
-      buttons=[[{text:"🪪 プロフを見る",url:profileUrl}]];
-     }
-     if(kind==="recruitment"){
+     if(isNotice){
+      const actions:{text:string;url:string}[]=[];
+      const join=noticeJoin(draft.data);
+      const entry=await makeApplicationLink(ctx.from.id,Number(sourceId));
+      if(join==="public")actions.push({text:"✅ 参加する",url:entry});
+      else if(join==="approved_only")actions.push({text:"📝 応募する",url:entry});
+      actions.push({text:"✉️ 質問する",url:entry});
+      if(draft.data.linkLabel&&draft.data.linkUrl)
+       actions.push({text:String(draft.data.linkLabel),url:String(draft.data.linkUrl)});
+      if(draft.data.profileLinked){
+       const profileUrl=await existingPublishedProfileUrl(ctx.from.id);
+       if(!profileUrl)throw Error("ANNOUNCEMENT_PROFILE_NOT_AVAILABLE");
+       actions.push({text:"🪪 プロフを見る",url:profileUrl});
+      }
+      buttons=adaptiveChoiceRows(actions);
+      noticeAttachment=noticeMedia(draft.data);
+     }else if(kind==="recruitment"){
       buttons=[[{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]];
      }
     }
@@ -1689,7 +1712,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const sent=await publishPost(ctx.telegram,{
       sourceType:"announcement",destinationPurpose:target.purpose,
       sourceId,ownerId:ctx.from.id,revision,topicId:target.topicId,text,
-      buttons,approved:true});
+      buttons,media:noticeAttachment,approved:true});
      if(!result)result=sent;
     }
    }else{
@@ -1746,6 +1769,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const screenId="message" in ctx.callbackQuery?
      ctx.callbackQuery.message?.message_id:undefined;
     await showRoomPublished(ctx.telegram,ctx.from.id,Number(sourceId),screenId);
+   }else if(module==="announcement"&&!isRecruitment){
+    await showPublishedNoticeOwner(ctx.telegram,ctx.from.id,Number(sourceId),
+     "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
    }else await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
