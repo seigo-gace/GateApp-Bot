@@ -165,7 +165,7 @@ async function main():Promise<void>{
   else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
   else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
-  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id);
+  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
   else await startOperationHelp(ctx.telegram,ctx.from.id);
  });
  registerCompactRecruitmentHandlers(bot);
