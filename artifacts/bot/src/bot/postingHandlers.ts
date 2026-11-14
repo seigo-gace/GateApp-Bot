@@ -1354,12 +1354,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
        current.data.linkPlacement==="beside"?
         {kind:"right",rowIndex:Number(current.data.linkTargetRow)}:
         {kind:"newRow"});
+    const editorView=previous.length>0&&current.data.linkEditorView===true;
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
       {...current.data,text:String(current.data.text||"🔗 リンク投稿"),
-       buttons,linkEditMode:null,linkPlacement:null,linkTargetRow:null,linkEditorView:false,
+       buttons,linkEditMode:null,linkPlacement:null,linkTargetRow:null,linkEditorView:editorView,
        columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
-    await render(updated,"公開前プレビュー\n"+preview("link",updated),
-      linkPreviewKeyboard(updated));
+    await render(updated,editorView?linkEditorSummary(updated):
+      "公開前プレビュー\n"+preview("link",updated),
+      editorView?linkEditKeyboard(updated):linkPreviewKeyboard(updated));
     return;
    }
    if(current.module==="room"){
