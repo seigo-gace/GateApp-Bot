@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseLinkInput,buttonGrid,renderLinkCard,validateLinkDestination,validateLinkDraft} from "../src/services/linkButtonDomain.js";
+import {parseLinkInput,parseLinkButtonPair,buttonGrid,renderLinkCard,validateLinkDestination,validateLinkDraft} from "../src/services/linkButtonDomain.js";
 
 test("Notion LinkButton format, same draft, and 1–3 grid columns",()=>{
  const parsed=parseLinkInput("見てください\n公式 | https://example.org/a\n案内 | https://t.me/GayBBS_bot");
@@ -29,3 +29,24 @@ test("malformed button, missing body and invalid column count are refused",()=>{
  assert.throws(()=>validateLinkDraft({text:"本文",buttons:[],columns:1}));
  assert.throws(()=>validateLinkDraft({text:"本文",buttons:[{label:"表示",url:"https://example.org"}],columns:4 as 1}));
 });
+
+test("Telegram two-line single-send name and URL input",()=>{
+ const item=parseLinkButtonPair("🔗 グループへ参加\nhttps://example.org/join");
+ assert.deepEqual(item,{label:"🔗 グループへ参加",url:"https://example.org/join"});
+ assert.equal(parseLinkButtonPair("案内\r\nhttps://example.org/").label,"案内");
+ for(const invalid of ["案内","案内\n","\nhttps://example.org","案内\nhttp://example.org","案内\nhttps://bit.ly/1","案内\nhttps://example.org\n余分"])
+  assert.throws(()=>parseLinkButtonPair(invalid));
+});
+
+test("horizontal add starts no new row and next-row add preserves prior rows",()=>{
+ const pair=(label:string,rowStart:boolean)=>({...parseLinkButtonPair(label+"\nhttps://example.org/"),rowStart});
+ const first=pair("1",true);
+ const second=pair("2",false);
+ const third=pair("3",true);
+ const fourth=pair("4",false);
+ const draft={text:"画像の投稿",buttons:[first,second,third,fourth],columns:1 as const};
+ assert.deepEqual(buttonGrid(draft).map(row=>row.map(b=>b.label)),[["1","2"],["3","4"]]);
+ assert.deepEqual(buttonGrid({...draft,buttons:[first]}).map(row=>row.map(b=>b.label)),[["1"]]);
+ assert.deepEqual(buttonGrid({...draft,buttons:[first,second]}).map(row=>row.map(b=>b.label)),[["1","2"]]);
+});
+

@@ -15,7 +15,7 @@ import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic } from "../services/topicDmEntry.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
-import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
+import {parseLinkButtonPair,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {roomPublicButtons} from "../services/roomPublicButtons.js";
@@ -62,7 +62,7 @@ function preview(module:Module,draft:EditorDraft):string {
   const d=draft.data as LinkDraft;
   return renderLinkCard(d)+"\n"+d.buttons.map((b,i)=>
    (i+1)+". "+escapeProfileHtml(b.label)+" → "+escapeProfileHtml(new URL(b.url).hostname)).join("\n")+
-   "\n表示列数："+d.columns;
+   "\nボタン配置："+buttonGrid(d).map(row=>row.map(b=>escapeProfileHtml(b.label)).join(" ／ ")).join(" | ");
  }
  if(module==="room"){
   const title=String(draft.data.title||"");
@@ -466,9 +466,32 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
 export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
  return Markup.inlineKeyboard([
-  [1,2,3].map(i=>Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
-    "post:linkcols:"+rev+":"+i)),
-  [Markup.button.callback("📝 内容を修正","post:link:edit:"+rev),
+  [Markup.button.callback("📝 編集","post:link:panel:"+rev),
+   Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
+  [Markup.button.callback("📍 投稿先を選択","post:link:destination:"+rev)],
+ ]);
+}
+/** Compact editing summary: no media or full posting preview. */
+export function linkEditorSummary(d:EditorDraft):string{
+ const data=d.data as LinkDraft;
+ if(!Array.isArray(data.buttons)||!data.buttons.length)return "🔗 ボタン編集\nまだボタンはありません。";
+ const layout=buttonGrid(data);
+ const positions=new Map(data.buttons.map((b,i)=>[b,String(i+1)]));
+ const details=data.buttons.map((b,i)=>
+  String(i+1)+"　"+escapeProfileHtml(b.label)+"\n"+escapeProfileHtml(b.url)).join("\n\n");
+ return "🔗 ボタン編集\n\n"+details+
+  "\n\n【配置】\n"+layout.map(row=>
+   row.map(b=>"［"+positions.get(b)+"］").join("")).join("\n");
+}
+/** Keep editing controls separate from the posting preview. */
+export function linkEditKeyboard(d:EditorDraft):WizardKeyboard{
+ const rev=d.revision;
+ const count=Array.isArray(d.data.buttons)?d.data.buttons.length:0;
+ return Markup.inlineKeyboard([
+  ...(count?[[Markup.button.callback("➕ ボタンを追加","post:link:add:"+rev),
+   Markup.button.callback("➡️ 横にボタンを作る","post:link:beside:"+rev)]]:[]),
+  ...(count?[[Markup.button.callback("📝 最後を編集","post:link:edit:"+rev)]]:[]),
+  [Markup.button.callback("👁 プレビュー","post:link:back:"+rev),
    Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
  ]);
 }
@@ -481,14 +504,16 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
  // Reopening /link must not erase a still-private, valid editor. Other
  // draft modules and published receipts are never touched.
  if(prior?.step==="preview"){
-  await showPostScreen(telegram,userId,prior,"公開前プレビュー\n"+preview("link",prior)+
-   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(prior));
+  const editing=prior.data.linkEditorView===true;
+  await showPostScreen(telegram,userId,prior,
+   editing?linkEditorSummary(prior):"公開前プレビュー\n"+preview("link",prior),
+   editing?linkEditKeyboard(prior):linkPreviewKeyboard(prior));
   return;
  }
  const draft=prior?.step==="awaiting_text"?prior:
   await beginDraft(userId,"link","awaiting_text",screenId?{screenMessageId:screenId}:{});
  await showPostScreen(telegram,userId,draft,
-  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。",
+  "🔗 ボタン名とURLを2行にして、DMで1回送信してください。\n1行目：ボタン名\n2行目：https://URL\n例：\n🔗 グループへ参加\nhttps://example.org/join",
   Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
    "post:link:cancel:"+draft.revision)]]));
 }
@@ -1312,11 +1337,23 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(current.module==="link"){
-    const parsed=parseLinkInput(input);
+    const button=parseLinkButtonPair(input);
+    const previous=Array.isArray(current.data.buttons)?
+      current.data.buttons as LinkDraft["buttons"]:[];
+    const replacing=current.data.linkEditMode==="replace"&&previous.length>0;
+    const oldColumns=Number(current.data.columns||1);
+    const normalized=previous.map((item,i)=>({...item,
+     rowStart:typeof item.rowStart==="boolean"?item.rowStart:i===0||i%oldColumns===0}));
+    const positioned={...button,rowStart:replacing?
+     (normalized[normalized.length-1]?.rowStart??true):
+     current.data.linkPlacement!=="beside"};
+    const buttons=replacing?[...normalized.slice(0,-1),positioned]:
+     [...normalized,positioned];
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
-      {...current.data,...parsed,columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
-    await render(updated,"公開前プレビュー\n"+preview("link",updated)+
-      "\n\nボタンの表示列数を選択してください。",
+      {...current.data,text:String(current.data.text||"🔗 リンク投稿"),
+       buttons,linkEditMode:null,linkPlacement:null,linkEditorView:false,
+       columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
+    await render(updated,"公開前プレビュー\n"+preview("link",updated),
       linkPreviewKeyboard(updated));
     return;
    }
@@ -1368,7 +1405,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     ]):undefined);
   }
  });
- bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
+ bot.action(/^post:link:(panel|add|beside|edit|cancel|back|destination):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
   const d=await getDraft(ctx.from.id,"link");
@@ -1381,39 +1418,49 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await editMessageToDmPostingMenu(ctx,ctx.from.id);
    return;
   }
-  if(op==="edit"){
-   if(d.step!=="preview"){
-    await ctx.answerCbQuery("先にURLと表示名を入力してください。");return;
-   }
-   const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",d.data);
+  if(op==="panel"){
+   if(d.step!=="preview"){await ctx.answerCbQuery("操作中です。");return;}
+   const next=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...d.data,linkEditorView:true});
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    "📝 本文とリンクをまとめて再入力してください。\n1行目：本文\n2行目以降：表示名 | https://URL\n以前の入力は確定するまで保持します。",
+    linkEditorSummary(next),linkEditKeyboard(next));
+   return;
+  }
+  if(op==="add"||op==="beside"||op==="edit"){
+   if(d.step!=="preview"||d.data.linkEditorView!==true){
+    await ctx.answerCbQuery("編集画面を開いてください。");return;
+   }
+   const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+    {...d.data,linkEditMode:op==="edit"?"replace":"add",
+     linkPlacement:op==="beside"?"beside":"nextRow"});
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,next,
+    (op==="edit"?"📝 最後のボタンを編集":op==="beside"?
+     "➡️ 右横にボタンを追加":"➕ 次の行にボタンを追加")+
+    "\n1行目：ボタン名\n2行目：https://URL\n2行をまとめて1回送信してください。",
     Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
      "post:link:back:"+next.revision)],
      [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]]));
    return;
   }
+  if(op==="destination"){
+   if(d.step!=="preview"||d.data.linkEditorView===true||
+      !Array.isArray(d.data.buttons)||!d.data.buttons.length){
+    await ctx.answerCbQuery("先にリンクボタンを追加してください。");return;
+   }
+   await ctx.answerCbQuery();
+   await destinationMenu(ctx,"link",rev);
+   return;
+  }
   if(!Array.isArray(d.data.buttons)||!d.data.buttons.length){
    await ctx.answerCbQuery("先にリンクを入力してください。");return;
   }
-  const next=d.step==="awaiting_text"?
-   await updateDraft(ctx.from.id,"link",rev,"preview",d.data):d;
+  const next=await updateDraft(ctx.from.id,"link",rev,"preview",
+   {...d.data,linkEditorView:false,linkEditMode:null,linkPlacement:null});
   await ctx.answerCbQuery();
-  await showPostScreen(ctx.telegram,ctx.from.id,next,"公開前プレビュー\n"+preview("link",next)+
-   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(next));
- });
- bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
-  if(!privateDM(ctx))return;
-  const rev=Number(ctx.match[1]),cols=Number(ctx.match[2]) as 1|2|3;
-  const d=await getDraft(ctx.from.id,"link");
-  if(!d||d.step!=="preview"||d.revision!==rev){
-   await ctx.answerCbQuery("古い選択です。/link で再開してください。");return;
-  }
-  const data={...d.data,columns:cols};
-  const next=await updateDraft(ctx.from.id,"link",rev,"preview",data);
-  await ctx.answerCbQuery("列数を保存しました");
-  await destinationMenu(ctx,"link",next.revision);
+  await showPostScreen(ctx.telegram,ctx.from.id,next,
+   "公開前プレビュー\n"+preview("link",next),linkPreviewKeyboard(next));
  });
  bot.action(/^post:choose:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;

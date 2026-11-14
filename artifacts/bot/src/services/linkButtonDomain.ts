@@ -2,7 +2,7 @@
  * Safety: format & known redirectors are checked; not a remote malware scan.
  */
 import {escapeProfileHtml} from "./profileCore.js";
-export type LinkButton={label:string;url:string};
+export type LinkButton={label:string;url:string;rowStart?:boolean};
 export type LinkDraft={text:string;buttons:LinkButton[];columns:1|2|3};
 const SHORTENERS=new Set(["bit.ly","tinyurl.com","t.co","is.gd","cutt.ly",
  "tiny.cc","rb.gy","rebrand.ly","goo.gl","ow.ly","shorturl.at"]);
@@ -33,6 +33,18 @@ export function validateLinkDraft(d:LinkDraft):LinkDraft{
  }
  return d;
 }
+/** Telegram DM: a single two-line message creates exactly one URL button.
+ * Line 1: displayed name, line 2: complete https:// destination.
+ * A blank name, extra line, or malformed URL is rejected without changing the draft.
+ */
+export function parseLinkButtonPair(input:string):LinkButton{
+ const lines=input.replace(/\r\n?/g,"\n").split("\n").map(line=>line.trim());
+ if(lines.length!==2||!lines[0]||!lines[1])
+  throw new Error("ボタン名とURLを2行でまとめて送信してください。");
+ const label=lines[0];
+ if(label.length>64)throw new Error("LINK_LABEL_INVALID");
+ return {label,url:validateLinkDestination(lines[1])};
+}
 /** One message: first line body, then label | https://... per button. */
 export function parseLinkInput(input:string):Pick<LinkDraft,"text"|"buttons">{
  const lines=input.trim().split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
@@ -55,6 +67,15 @@ export function renderLinkCard(d:LinkDraft):string{
 export function buttonGrid(d:LinkDraft):Array<Array<LinkButton>>{
  validateLinkDraft(d);
  const rows:LinkButton[][]=[];
- for(let i=0;i<d.buttons.length;i+=d.columns)rows.push(d.buttons.slice(i,i+d.columns));
+ // Preserve the old evenly-spaced layout for saved drafts without row markers.
+ const hasExplicitRows=d.buttons.some(b=>typeof b.rowStart==="boolean");
+ if(!hasExplicitRows){
+  for(let i=0;i<d.buttons.length;i+=d.columns)rows.push(d.buttons.slice(i,i+d.columns));
+  return rows;
+ }
+ for(const [index,button] of d.buttons.entries()){
+  if(index===0||button.rowStart===true)rows.push([button]);
+  else rows[rows.length-1]!.push(button);
+ }
  return rows;
 }
