@@ -13,6 +13,9 @@ class MockClient:
         self.menu = menu if menu is not None else EXPECTED_MENU
         self.sent = []
 
+    async def get_me(self):
+        return SimpleNamespace(id=987654321,bot=False)
+
     async def is_user_authorized(self):
         return self.authorized
 
@@ -40,11 +43,19 @@ class ResidentSafetyTests(unittest.TestCase):
         self.assertEqual(out["status"], "PASS")
         self.assertEqual(c.sent, [])
 
+    def test_recipient_identity_is_read_only_and_not_a_login(self):
+        c = MockClient()
+        out = asyncio.run(process_request(c, {"request_id":"recipient-1","action":"report_recipient_id"}))
+        self.assertEqual(out["recipient_id"],987654321)
+        self.assertEqual(c.sent,[])
+        with self.assertRaises(ValueError):
+            asyncio.run(process_request(c, {"request_id":"x","action":"report_recipient_id","message_id":42}))
+
     def test_live_bot_menu_allowlisted(self):
         c = MockClient()
         out = asyncio.run(process_request(c, {"request_id": "menu-1", "action": "bot_start_menu"}))
         self.assertEqual(out["status"], "PASS")
-        self.assertEqual(out["row_sizes"], [3, 2, 2, 3])
+        self.assertEqual(out["row_sizes"], [3, 2, 2, 3, 1])
         self.assertEqual(c.sent, ["/start"])
 
     def test_wrong_menu_not_pass(self):
