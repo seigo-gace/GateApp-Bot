@@ -4,7 +4,8 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {pool} from "../src/db/index.js";
 import {runMigrations} from "../src/db/migrate.js";
-import {putDraft,getProfile,savePrivateDraft} from "../src/services/profileRepository.js";
+import {putDraft,getDraft,getProfile,savePrivateDraft} from "../src/services/profileRepository.js";
+import {startCompactProfileEditor} from "../src/bot/profileCompactHandlers.js";
 
 const owner=900000000098;
 const previous=process.env.PROFILE_PR_STORAGE_DIR;
@@ -48,6 +49,24 @@ try{
  assert.deepEqual(after?.purposeCodes,["サシ"]);
  assert.deepEqual(after?.placeCodes,["場所あり","足あり"]);
  assert.equal(after?.media?.length,5);
+ // Clicking a newer posting menu must edit *that* message, not an older
+ // profile wizard screen held in the existing draft.
+ const prior=await putDraft(owner,"compact",{
+  ...input,screenMessageId:1200
+ });
+ const edits:unknown[][]=[];
+ await startCompactProfileEditor({
+  chat:{type:"private"},from:{id:owner,username:"test_user_998"},
+  callbackQuery:{message:{message_id:1300}},
+  telegram:{editMessageText:async(...args:unknown[])=>{edits.push(args);}},
+  reply:async()=>{throw Error("UNEXPECTED_PROFILE_FALLBACK_REPLY");}
+ } as any);
+ const refreshed=await getDraft(owner);
+ assert.equal(refreshed?.data.screenMessageId,1300);
+ assert.equal(edits.length,1);
+ assert.equal(edits[0]?.[1],1300,"profile must open on the tapped menu message");
+ assert.ok((refreshed?.revision??0)>prior.revision);
+ console.log("PROFILE_MENU_CALLBACK_SCREEN_REBIND=PASS");
  console.log("PROFILE_SHARED_ALBUM_SQL_ROUNDTRIP=PASS");
 }finally{
  try{
