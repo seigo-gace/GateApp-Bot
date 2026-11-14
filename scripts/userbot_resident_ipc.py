@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "chat_selector_smoke", "invite_selector_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -137,6 +137,47 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         if options:
             latest = max(options, key=lambda m: m.id)
             labels = [[b.text for b in row] for row in latest.buttons]
+            if action in {"chat_selector_smoke", "invite_selector_smoke"}:
+                if labels != EXPECTED_MENU:
+                    raise RuntimeError("DM_POSTING_MENU_LAYOUT_MISMATCH")
+                await latest.click(text="雑談" if action == "chat_selector_smoke" else "紹介/招待")
+                for _ in range(12):
+                    screen = await client.get_messages(bot, ids=latest.id)
+                    if screen and screen.buttons:
+                        actual = [[b.text for b in row] for row in screen.buttons]
+                        if action == "chat_selector_smoke":
+                            expected = [
+                                ["ビデオChatの掲示板"],
+                                ["エリア’s BBS"],
+                                ["ゲイのための掲示板♂"],
+                                ["🔙 戻る"],
+                            ]
+                            urls = [
+                                "https://t.me/c/2373696859/4291",
+                                "https://t.me/c/3847210571/44",
+                                "https://t.me/c/3770334893/789",
+                            ]
+                            if actual == expected:
+                                if [screen.buttons[i][0].url for i in range(3)] != urls:
+                                    raise RuntimeError("CHAT_SELECTOR_URL_MISMATCH")
+                                await screen.click(text="🔙 戻る")
+                                return {"request_id": request_id, "action": action,
+                                        "status": "PASS", "links_correct": True}
+                        else:
+                            if len(actual) == 4 and len(actual[0]) == len(actual[1]) == len(actual[2]) == 2 and actual[3] == ["🔙 戻る"]:
+                                gate_codes = {"ee538b32b74f", "6f581d52e546", "e31b8d1dd707"}
+                                raw = [screen.reply_markup.rows[i].buttons[1] for i in range(3)]
+                                # Telegram represents native clipboard buttons as KeyboardButtonCopy.
+                                if any(type(b).__name__ != "KeyboardButtonCopy" for b in raw):
+                                    raise RuntimeError("INVITE_COPY_BUTTON_TYPE_MISMATCH")
+                                texts = [str(getattr(b, "copy_text", "")) for b in raw]
+                                if {t.split("gate_")[-1] for t in texts} != gate_codes:
+                                    raise RuntimeError("INVITE_COPY_GATE_MISMATCH")
+                                await screen.click(text="🔙 戻る")
+                                return {"request_id": request_id, "action": action,
+                                        "status": "PASS", "native_copy_buttons": 3}
+                    await asyncio.sleep(1)
+                raise RuntimeError("DM_SELECTOR_SCREEN_NOT_OPENED")
             if action == "profile_button_smoke":
                 from datetime import datetime, timezone, timedelta
                 if labels != EXPECTED_MENU:
