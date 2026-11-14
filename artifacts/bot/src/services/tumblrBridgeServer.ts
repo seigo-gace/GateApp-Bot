@@ -133,7 +133,7 @@ export function startTumblrBridge(telegram: Telegram): Server|null {
    try{
      for await(const chunk of req){
        size+=Buffer.byteLength(chunk);
-       if(size>8192){respond(413,{ok:false});return}
+       if(size>16384){respond(413,{ok:false});return}
        body+=String(chunk);
      }
      const input=JSON.parse(body) as TumblrBridgeInput;
