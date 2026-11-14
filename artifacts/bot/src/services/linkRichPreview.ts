@@ -44,3 +44,39 @@ export function linkRichPreview(draft:LinkDraft,revision:number,code?:string){
  }
  return {blocks};
 }
+
+/** Editor is NOT a copy of the public preview. It displays only edit links,
+ * title/URL and a compact row-number map; public buttons stay tappable in preview.
+ */
+export function linkRichEditor(draft:LinkDraft,revision:number){
+ validateLinkDraft(draft);
+ const blocks:Block[]=[para("🔗 ボタン編集")];
+ const marks=["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"];
+ const number=(n:number)=>marks[n]??String(n+1);
+ draft.buttons.forEach((b,i)=>{
+  const editItem={type:"button",button:{text:"［編集］",style:"link",
+   callback_data:"post:link:edit:"+revision+":"+i}};
+  blocks.push(para([editItem,number(i)+" "+b.label+" / "+b.url]));
+ });
+ const grouped=buttonGrid(draft);
+ let offset=0;
+ blocks.push(para("【ボタン配置】"));
+ grouped.forEach(row=>{
+  blocks.push(para(row.map((_,index)=>"［"+number(offset+index)+"］").join("")));
+  offset+=row.length;
+ });
+ blocks.push({type:"divider"});
+ blocks.push({type:"buttons",buttons:[{
+  text:"＋↓にボタンをつける",callback_data:"post:link:add:"+revision,
+ }]});
+ grouped.forEach((_,i)=>{
+  blocks.push({type:"buttons",buttons:[{
+   text:i===0?"➔にボタンを追加":"➔にボタンを追加（"+(i+1)+"列目）",
+   callback_data:"post:link:beside:"+revision+":"+i,
+  }]});
+ });
+ blocks.push({type:"buttons",buttons:[{
+  text:"👁 プレビュー",callback_data:"post:link:back:"+revision,
+ },{text:"キャンセル",callback_data:"post:link:cancel:"+revision}]});
+ return {blocks};
+}
