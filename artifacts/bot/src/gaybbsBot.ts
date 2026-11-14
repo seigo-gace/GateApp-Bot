@@ -18,6 +18,7 @@ import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js"
 import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
+import {registerNoticeInteractionHandlers} from "./bot/noticeInteractions.js";
 import {resolveRoomJoinLink,roomJoinDenialReason} from "./services/roomJoinLinks.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
@@ -184,6 +185,7 @@ async function main():Promise<void>{
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
  registerPostingHandlers(bot);
+ registerNoticeInteractionHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
  registerMenuPanelHandlers(bot);
