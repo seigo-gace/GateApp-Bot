@@ -1711,13 +1711,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const sent=await publishPost(ctx.telegram,{
       sourceType:"announcement",destinationPurpose:target.purpose,
       sourceId,ownerId:ctx.from.id,revision,topicId:target.topicId,text,
-      buttons,media:noticeAttachment,approved:true});
+      buttons,approved:true});
      if(!result)result=sent;
     }
    }else{
     result=await publishPost(ctx.telegram,{
      sourceType:module,sourceId,ownerId:ctx.from.id,revision,topicId,text,
-     buttons,approved:true});
+     buttons,media:noticeAttachment,approved:true});
    }
    if(!result)throw Error("POST_DELIVERY_MISSING");
    try{
