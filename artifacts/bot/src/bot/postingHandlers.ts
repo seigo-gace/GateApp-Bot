@@ -471,6 +471,18 @@ export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
   [Markup.button.callback("📍 投稿先を選択","post:link:destination:"+rev)],
  ]);
 }
+/** Compact editing summary: no media or full posting preview. */
+export function linkEditorSummary(d:EditorDraft):string{
+ const data=d.data as LinkDraft;
+ if(!Array.isArray(data.buttons)||!data.buttons.length)return "🔗 ボタン編集\nまだボタンはありません。";
+ const layout=buttonGrid(data);
+ const positions=new Map(data.buttons.map((b,i)=>[b,String(i+1)]));
+ const details=data.buttons.map((b,i)=>
+  String(i+1)+"　"+escapeProfileHtml(b.label)+"\n"+escapeProfileHtml(b.url)).join("\n\n");
+ return "🔗 ボタン編集\n\n"+details+
+  "\n\n【配置】\n"+layout.map(row=>
+   row.map(b=>"［"+positions.get(b)+"］").join("")).join("\n");
+}
 /** Keep editing controls separate from the posting preview. */
 export function linkEditKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
@@ -494,7 +506,7 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
  if(prior?.step==="preview"){
   const editing=prior.data.linkEditorView===true;
   await showPostScreen(telegram,userId,prior,
-   (editing?"🔗 ボタン編集\n":"公開前プレビュー\n")+preview("link",prior),
+   editing?linkEditorSummary(prior):"公開前プレビュー\n"+preview("link",prior),
    editing?linkEditKeyboard(prior):linkPreviewKeyboard(prior));
   return;
  }
@@ -1412,7 +1424,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     {...d.data,linkEditorView:true});
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    "🔗 ボタン編集\n"+preview("link",next),linkEditKeyboard(next));
+    linkEditorSummary(next),linkEditKeyboard(next));
    return;
   }
   if(op==="add"||op==="beside"||op==="edit"){
