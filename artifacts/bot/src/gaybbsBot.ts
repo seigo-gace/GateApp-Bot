@@ -200,6 +200,11 @@ async function main():Promise<void>{
    await openProfileFromMenu(ctx);
    return;
   }
+  if(ctx.match[1]==="help"){
+   await ctx.answerCbQuery().catch(()=>undefined);
+   await startOperationHelp(ctx.telegram,ctx.from.id);
+   return;
+  }
   await ctx.answerCbQuery(
    "この機能は現在準備中です。各掲示板の固定投稿メニューからお試しください。",
    { show_alert: true },
