@@ -64,7 +64,7 @@ test("talk and invitation do not appear in help; sticker and emoji guide does",(
  const choices=helpHomeKeyboard(7).reply_markup.inline_keyboard.flat().map(item=>item.text);
  assert.equal(choices.includes("雑談"),false);
  assert.equal(choices.includes("紹介/招待"),false);
- assert.ok(choices.includes("クリエーター用投稿"));
+ assert.ok(choices.includes("クリエイター投稿"));
  const guide=helpTopicPages("paid").join("\n");
  assert.match(guide,/ステッカーパック/);
  assert.match(guide,/絵文字パック/);
