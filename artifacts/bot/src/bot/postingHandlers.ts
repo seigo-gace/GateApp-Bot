@@ -1674,11 +1674,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!Array.isArray(d.data.buttons)||!d.data.buttons.length){
    await ctx.answerCbQuery("先にリンクを入力してください。");return;
   }
+  const editing=d.data.linkEditorView===true;
   const next=await updateDraft(ctx.from.id,"link",rev,"preview",
-   {...d.data,linkEditorView:false,linkEditMode:null,linkPlacement:null});
+   {...d.data,linkEditorView:editing,linkEditMode:null,linkEditIndex:null,
+    linkPlacement:null,linkTargetRow:null,linkStage:"ready"});
   await ctx.answerCbQuery();
-  await showPostScreen(ctx.telegram,ctx.from.id,next,
-   "公開前プレビュー\n"+preview("link",next),linkPreviewKeyboard(next));
+  if(editing)await showLinkRichEditor(ctx.telegram,ctx.from.id,next);
+  else await showLinkRichPreview(ctx.telegram,ctx.from.id,next);
  });
 
  bot.action(/^post:link:(color|delete):(\d+):(\d+)(?::([0-3]))?$/,async ctx=>{
