@@ -65,6 +65,12 @@ export function helpTagKeyboard(rev:number,page:number){
   [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
  ]);
 }
+export function helpChatTopicKeyboard(rev:number){
+ return Markup.inlineKeyboard([
+  ...CHAT_TOPIC_CHOICES.map(({label,url})=>[Markup.button.url(label,url)]),
+  [Markup.button.callback("↩ 操作説明へ戻る",`help:home:${rev}`)],
+ ]);
+}
 export function helpHomeKeyboard(rev:number){
  const rows=APPROVED_POSTING_ROWS.map(row=>row.filter(label=>label!=="紹介/招待").map(label=>label==="操作説明"?"戻る":label));
  return Markup.inlineKeyboard(rows.map(row=>row.map(label=>
@@ -110,7 +116,7 @@ async function advance(id:number,revision:number,section:HelpSection):Promise<Se
 async function show(t:Telegram,id:number,s:Session,page=0){
  const topic=s.section==="home"||s.section==="tags"||s.section==="chat_select"?null:s.section;
  const text=s.section==="chat_select"?"💬 雑談｜移動先の掲示板を選んでください。\n下の3つのリンクから移動できます。":s.section==="tags"?(helpTagPages()[page]??helpTagPages()[0]):topic===null?"📚 操作説明\n\n何をしたいか、下のボタンから選んでください。\n\n・相手を探す → 相手募集\n・通話やRoomを募集 → Room+募集\n・自分を紹介 → プロフ\n・日時や予定を知らせる → 告知/予告\n・リンク付き投稿 → 🔗ボタン作成\n・相手や投稿を探す → 検索/フィルター\n・会話する → 雑談\n・動画を販売 → クリエーター有料ビデオ投稿\n\n各説明では「何ができるか」「入力・ボタン操作」「完了後の操作」を案内します。説明を読んだだけでは投稿されません。":helpTopicPages(topic)[page]??helpTopicPages(topic)[0];
- const keyboard=s.section==="chat_select"?Markup.inlineKeyboard([...CHAT_TOPIC_CHOICES.map(({label,url})=>[Markup.button.url(label,url)]),[Markup.button.callback("↩ 操作説明へ戻る",`help:home:${s.revision}`)]]):s.section==="tags"?helpTagKeyboard(s.revision,page):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
+ const keyboard=s.section==="chat_select"?helpChatTopicKeyboard(s.revision):s.section==="tags"?helpTagKeyboard(s.revision,page):topic===null?helpHomeKeyboard(s.revision):helpSectionKeyboard(s.revision,topic,page);
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,keyboard);
  if(s.screenMessageId!==view.messageId){
   const updated=await pool.query("UPDATE gaybbs_help_sessions SET screen_message_id=$3 WHERE owner_user_id=$1 AND revision=$2 RETURNING owner_user_id",
