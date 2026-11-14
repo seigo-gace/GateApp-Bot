@@ -503,11 +503,12 @@ export function announcementPanel(d:EditorDraft):WizardKeyboard{
  return Markup.inlineKeyboard([
   [button(kind==="announcement"?"✅ 告知":"▫️ 告知","kind:announcement"),
    button(kind==="preview"?"✅ 予告":"▫️ 予告","kind:preview")],
+  [button("📝 タイトル・説明","edit"),button("🖼 画像・動画","media")],
   [button("開催日時","date"),button("受付期限","deadline")],
   [button(join==="public"?"✅ 自由参加":"▫️ 自由参加","join:public"),
    button(join==="approved_only"?"✅ 承認制":"▫️ 承認制","join:approved_only"),
    button(join==="none"?"✅ 受付なし":"▫️ 受付なし","join:none")],
-  [button("🔗 リンクボタン","link"),button("🖼 画像・動画","media")],
+  [button("🔗 リンクボタン","link")],
   [button(d.data.profileLinked?"✅ プロフ連携":"▫️ プロフ連携","profile"),
    button("📍 投稿先","destination")],
   [button("下書き保存","save"),
@@ -573,7 +574,7 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number,sc
  if(existing?.step==="saved"&&existing.data.kind!=="recruitment"){
   const {savedTemplate:_previous,...template}=existing.data;
   const resumed=await updateDraft(userId,"announcement",existing.revision,
-   noticeParts(template).body?"preview":"awaiting_text",
+   (noticeText(template).trim()||noticeMedia(template).length)?"preview":"awaiting_text",
    {...template,savedTemplate:template});
   await announcementScreen(telegram,userId,resumed);
   return;
@@ -589,15 +590,15 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number,sc
     await showPostScreen(telegram,userId,existing,"画像または動画を送信してください。最大5件。［戻る］でプレビューへ戻れます。",
      Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${existing.revision}`)]]));
    }else if(existing.step==="awaiting_text"){
-    const prompt=existing.data.editField==="body"?"告知/予告の本文を入力してください。":"告知/予告のタイトルを入力してください。";
+    const prompt="1行目：タイトル\n2行目：説明\n画像・動画もこの画面で送信できます。画像・動画があれば文章は省略できます。";
     await showPostScreen(telegram,userId,existing,prompt,
      Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`post:announce:cancel:${existing.revision}`)]]));
    }else await announcementScreen(telegram,userId,existing);
   return;
  }
  const draft=await beginDraft(userId,"announcement","awaiting_text",
-  {kind:"announcement",participation:"none",profileLinked:false,editField:"title",...(screenId?{screenMessageId:screenId}:{})});
- await showPostScreen(telegram,userId,draft,"告知/予告のタイトルを入力してください。",
+  {kind:"announcement",participation:"none",profileLinked:false,editField:"initial",...(screenId?{screenMessageId:screenId}:{})});
+ await showPostScreen(telegram,userId,draft,"1行目：タイトル\n2行目：説明\n画像・動画もここで送信してください。画像・動画がある場合、タイトル・説明は省略できます。",
   Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`post:announce:cancel:${draft.revision}`)]]));
 }
 export function registerPostingHandlers(bot:Telegraf):void{
@@ -1161,7 +1162,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
      ...d.data,kind:kindChoice,eventAt:kindChoice==="announcement"?null:d.data.eventAt});
     await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
    }else if(["edit","title","body","deadline","link","media"].includes(op)){
-     const editField=op==="edit"?"body":op;
+     const editField=op==="edit"?"initial":op;
      const next=await updateDraft(ctx.from.id,"announcement",rev,
       editField==="media"?"awaiting_media":editField==="deadline"?"preview":"awaiting_text",
       editField==="deadline"?{...d.data,noticePickerStage:"date_calendar",noticeDateField:"deadline",
@@ -1173,7 +1174,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
       return;
      }
      await showPostScreen(ctx.telegram,ctx.from.id,next,
-     ({title:"タイトルを入力してください。",body:"内容を入力してください。",
+     ({initial:"1行目：タイトル\n2行目：説明（画像・動画がある場合は省略可能）",title:"タイトルを入力してください。",body:"内容を入力してください。",
        deadline:"受付終了日時（YYYY/MM/DD HH:mm）または「なし」を入力してください。",
        link:"1行目：ボタン名　2行目：HTTPS URL。「なし」で解除できます。",
        media:"画像・動画を送信してください（最大5件）。"}[editField]||"本文を入力してください。"),
@@ -1198,15 +1199,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
      {...d.data,profileLinked:!d.data.profileLinked});
     await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="destination"||op==="publish"){
-    if(op==="publish"&&(!noticeParts(d.data).title||!noticeParts(d.data).body||
-       (d.data.kind==="preview"&&!d.data.eventAt))){
+    if(op==="publish"&&!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
      await ctx.answerCbQuery("本文と必要な日時を入力してください。");return;
     }
     await ctx.answerCbQuery();
     await announcementDestinationPicker(ctx.telegram,ctx.from.id,d);
    }else if(op==="topics"){
-    if(!noticeParts(d.data).title||!noticeParts(d.data).body||
-       (d.data.kind==="preview"&&!d.data.eventAt)){
+    if(!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
      await ctx.answerCbQuery("本文と必要な開催日時を入力してください。");return;
     }
     const current=await getDraft(ctx.from.id,"announcement");
@@ -1383,18 +1382,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
       current.step==="awaiting_text"){
     const field=String(current.data.editField||"initial");
     let update:Record<string,unknown>;
-    if(field==="title"){
-     update=noticeEdit(current.data,"title",input);
-     const next=await updateDraft(ctx.from.id,"announcement",current.revision,"awaiting_text",
-      {...update,editField:"body"});
-     await render(next,"告知/予告の本文を入力してください。",
-      Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`post:announce:cancel:${next.revision}`)]]));
-     return;
-    }
     if(field==="initial"){
      const split=input.indexOf("\n");
-     if(split<1)throw Error("1行目にタイトル、2行目以降に本文を入力してください");
-     update=noticeEdit(noticeEdit(current.data,"title",input.slice(0,split)),"body",input.slice(split+1));
+     const title=split<0?input:input.slice(0,split);
+     const body=split<0?"":input.slice(split+1);
+     update=noticeEdit(noticeEdit(current.data,"title",title),"body",body);
     }else update=noticeEdit(current.data,field,input);
     const next=await updateDraft(ctx.from.id,"announcement",current.revision,"preview",
      {...update,editField:null});
@@ -1499,7 +1491,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
  async function receiveNoticeMedia(telegram:Telegram,userId:number,chatId:number,
   messageId:number,kind:"photo"|"video",fileId:string):Promise<boolean>{
   const d=await getDraft(userId,"announcement");
-  if(!d||d.step!=="awaiting_media"||d.data.kind==="recruitment"||
+  if(!d||!["awaiting_media","awaiting_text","preview"].includes(d.step)||d.data.kind==="recruitment"||
      await currentDmTextOwner(userId)!=="announcement")return false;
   const removed=await removeUserWizardInput(telegram,chatId,messageId);
   const media=noticeMedia(d.data);
@@ -1509,12 +1501,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
    return true;
   }
-  const next=await updateDraft(userId,"announcement",d.revision,"awaiting_media",
+  const next=await updateDraft(userId,"announcement",d.revision,"preview",
    {...d.data,media:[...media,{kind,fileId}]});
   await showPostScreen(telegram,userId,next,
    "画像/動画 "+(media.length+1)+"件を登録しました。続けて追加できます。"+
    (removed?"":"\n⚠️ 入力媒体は手動削除してください。"),
-   Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューへ",`post:announce:back:${next.revision}`)]]));
+   announcementPanel(next));
   return true;
  }
  bot.on("photo",async(ctx,next)=>{
