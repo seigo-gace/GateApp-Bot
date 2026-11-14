@@ -1409,6 +1409,39 @@ export function registerPostingHandlers(bot:Telegraf):void{
     ]):undefined);
   }
  });
+ // Notice-only media, using Telegram file_id references.
+ async function receiveNoticeMedia(telegram:Telegram,userId:number,chatId:number,
+  messageId:number,kind:"photo"|"video",fileId:string):Promise<boolean>{
+  const d=await getDraft(userId,"announcement");
+  if(!d||d.step!=="awaiting_media"||d.data.kind==="recruitment"||
+     await currentDmTextOwner(userId)!=="announcement")return false;
+  const removed=await removeUserWizardInput(telegram,chatId,messageId);
+  const media=noticeMedia(d.data);
+  if(media.length>=5){
+   await showPostScreen(telegram,userId,d,"画像/動画は最大5件です。"+
+    (removed?"":"\n⚠️ 入力媒体は手動削除してください。"),
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
+   return true;
+  }
+  const next=await updateDraft(userId,"announcement",d.revision,"awaiting_media",
+   {...d.data,media:[...media,{kind,fileId}]});
+  await showPostScreen(telegram,userId,next,
+   "画像/動画 "+(media.length+1)+"件を登録しました。続けて追加できます。"+
+   (removed?"":"\n⚠️ 入力媒体は手動削除してください。"),
+   Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューへ",`post:announce:back:${next.revision}`)]]));
+  return true;
+ }
+ bot.on("photo",async(ctx,next)=>{
+  if(ctx.chat.type!=="private")return next();
+  const file=ctx.message.photo.at(-1);
+  if(!file||!await receiveNoticeMedia(ctx.telegram,ctx.from.id,ctx.chat.id,
+    ctx.message.message_id,"photo",file.file_id))return next();
+ });
+ bot.on("video",async(ctx,next)=>{
+  if(ctx.chat.type!=="private")return next();
+  if(!await receiveNoticeMedia(ctx.telegram,ctx.from.id,ctx.chat.id,
+    ctx.message.message_id,"video",ctx.message.video.file_id))return next();
+ });
  bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
