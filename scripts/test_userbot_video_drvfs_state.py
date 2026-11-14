@@ -24,7 +24,7 @@ class ArchiveGDriveStateTests(unittest.TestCase):
             other = Path(temp) / "other"
             root.mkdir()
             other.mkdir()
-            with patch.object(module, "STORAGE", Path("/mnt/g/GserverStorage")), \
+            with patch.object(module, "STORAGE", Path(temp)), \
                  patch.object(module, "STATE_ROOT", root):
                 with self.assertRaisesRegex(RuntimeError, "ARCHIVE_STATE_PATH_INVALID"):
                     module.write_state(other / "wrong.json", {"status": "running"})
