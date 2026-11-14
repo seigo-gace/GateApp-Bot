@@ -2,7 +2,7 @@
  * Safety: format & known redirectors are checked; not a remote malware scan.
  */
 import {escapeProfileHtml} from "./profileCore.js";
-export type LinkButton={label:string;url:string};
+export type LinkButton={label:string;url:string;rowStart?:boolean};
 export type LinkDraft={text:string;buttons:LinkButton[];columns:1|2|3};
 const SHORTENERS=new Set(["bit.ly","tinyurl.com","t.co","is.gd","cutt.ly",
  "tiny.cc","rb.gy","rebrand.ly","goo.gl","ow.ly","shorturl.at"]);
@@ -67,6 +67,15 @@ export function renderLinkCard(d:LinkDraft):string{
 export function buttonGrid(d:LinkDraft):Array<Array<LinkButton>>{
  validateLinkDraft(d);
  const rows:LinkButton[][]=[];
- for(let i=0;i<d.buttons.length;i+=d.columns)rows.push(d.buttons.slice(i,i+d.columns));
+ // Preserve the old evenly-spaced layout for saved drafts without row markers.
+ const hasExplicitRows=d.buttons.some(b=>typeof b.rowStart==="boolean");
+ if(!hasExplicitRows){
+  for(let i=0;i<d.buttons.length;i+=d.columns)rows.push(d.buttons.slice(i,i+d.columns));
+  return rows;
+ }
+ for(const [index,button] of d.buttons.entries()){
+  if(index===0||button.rowStart===true)rows.push([button]);
+  else rows[rows.length-1]!.push(button);
+ }
  return rows;
 }
