@@ -103,7 +103,7 @@ export function defaultBareStartChatId(menuOriginChatId?: number | null): number
  * Their actual Telegram posting paths retain the existing release gates.
  */
 export function canOpenPostingEditor(label: string, featureReady: boolean): boolean {
-  return label === "相手募集" || label === "プロフ作成" || label === "検索/フィルター" || featureReady;
+  return label === "相手募集" || label === "プロフ作成" || label === "検索/フィルター" || label === "操作説明" || featureReady;
 }
 
 /** Missing optional navigation URLs cannot block the caller's return to the menu. */
