@@ -16,6 +16,8 @@ import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic }
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkButtonPair,renderLinkCard,buttonGrid,insertLinkButton,type LinkDraft} from "../services/linkButtonDomain.js";
+import {registerLinkShare} from "../services/linkInlineShare.js";
+import {linkRichPreview} from "../services/linkRichPreview.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {roomPublicButtons} from "../services/roomPublicButtons.js";
