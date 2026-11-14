@@ -178,12 +178,19 @@ export async function startCompactProfileEditor(
   await ctx.reply("プロフィール登録にはTelegramのusernameが必要です。");return;
  }
  if(!origins.has(origin))throw Error("PROFILE_COMPACT_ORIGIN_INVALID");
+ // A menu callback must replace the exact menu message the user tapped.
+ // Reusing an old draft's screenMessageId silently edits a message elsewhere
+ // in DM, making this menu button appear unresponsive.
+ const tapped=ctx.callbackQuery&&"message" in ctx.callbackQuery?
+  ctx.callbackQuery.message?.message_id:undefined;
+ const menuScreenId=Number.isSafeInteger(tapped)&&Number(tapped)>0?
+  Number(tapped):undefined;
  const existingDraft=await profiles.getDraft(ctx.from.id);
  if(existingDraft){
-  // Always enter the same compact editor, including users with older
-  // in-progress profile drafts. Preserve their input and linked media.
+  // Preserve the existing draft, changing only the display location.
   const next=await profiles.putDraft(ctx.from.id,"compact",{
-   ...existingDraft.data,compactOrigin:origin
+   ...existingDraft.data,compactOrigin:origin,
+   screenMessageId:menuScreenId??existingDraft.data.screenMessageId
   },existingDraft.revision);
   await render(ctx.telegram,ctx.from.id,next);return;
  }
@@ -192,7 +199,8 @@ export async function startCompactProfileEditor(
  const base=existing?seedExisting(existing):source;
  const data={...base,compactOrigin:origin,purposeCodes:base.purposeCodes??[],
   placeCodes:base.placeCodes??[],likeTags:base.likeTags??[],loveTags:base.loveTags??[],
-  media:base.media??[],mediaNextId:base.mediaNextId??1};
+  media:base.media??[],mediaNextId:base.mediaNextId??1,
+  ...(menuScreenId?{screenMessageId:menuScreenId}:{})};
  const draft=await profiles.putDraft(ctx.from.id,"compact",data);
  await render(ctx.telegram,ctx.from.id,draft,
   existing&&origin!=="profile"?"登録済みプロフィールを開きました。今回の募集・応募内容で自動上書きしていません。":"");
