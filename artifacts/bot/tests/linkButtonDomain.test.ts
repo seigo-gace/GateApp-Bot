@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseLinkInput,parseLinkButtonPair,buttonGrid,renderLinkCard,validateLinkDestination,validateLinkDraft} from "../src/services/linkButtonDomain.js";
+import {parseLinkInput,parseLinkButtonPair,buttonGrid,insertLinkButton,renderLinkCard,validateLinkDestination,validateLinkDraft} from "../src/services/linkButtonDomain.js";
 
 test("Notion LinkButton format, same draft, and 1–3 grid columns",()=>{
  const parsed=parseLinkInput("見てください\n公式 | https://example.org/a\n案内 | https://t.me/GayBBS_bot");
@@ -50,3 +50,17 @@ test("horizontal add starts no new row and next-row add preserves prior rows",()
  assert.deepEqual(buttonGrid({...draft,buttons:[first,second]}).map(row=>row.map(b=>b.label)),[["1","2"]]);
 });
 
+
+test("horizontal insertion targets a specified existing row without changing others",()=>{
+ const make=(label:string)=>({label,url:"https://example.org/"+label});
+ let d={text:"text",columns:1 as const,buttons:[
+  {...make("1"),rowStart:true},{...make("2"),rowStart:false},
+  {...make("3"),rowStart:true}]};
+ d={...d,buttons:insertLinkButton(d,make("4"),{kind:"right",rowIndex:1})};
+ assert.deepEqual(buttonGrid(d).map(r=>r.map(x=>x.label)),[["1","2"],["3","4"]]);
+ d={...d,buttons:insertLinkButton(d,make("5"),{kind:"right",rowIndex:0})};
+ assert.deepEqual(buttonGrid(d).map(r=>r.map(x=>x.label)),[["1","2","5"],["3","4"]]);
+ d={...d,buttons:insertLinkButton(d,make("6"),{kind:"newRow"})};
+ assert.deepEqual(buttonGrid(d).map(r=>r.map(x=>x.label)),[["1","2","5"],["3","4"],["6"]]);
+ assert.throws(()=>insertLinkButton(d,make("7"),{kind:"right",rowIndex:3}),/LINK_ROW_INVALID/);
+});
