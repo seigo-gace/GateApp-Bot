@@ -15,7 +15,7 @@ test("Master-approved posting rows remain exactly 3/2/2/3, with profile creation
   links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
  assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_POSTING_ROWS.map(r=>[...r]));
  assert.deepEqual(result.rows.map(r=>r.length),[3,2,2,3]);
- assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエーター用投稿"]);
+ assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエイター投稿"]);
 });
 test("Master-approved general-guide rows remain exactly 3/3/3/4",()=>{
  const result=renderMenuPanel({type:"general_guide",board:"gay_board",
@@ -59,7 +59,7 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
 });
 
 test("posting panel merges seven verified DM editors and three verified navigation URLs",()=>{
- const staticLabels=["クリエーター用投稿",
+ const staticLabels=["クリエイター投稿",
   "雑談","紹介/招待"];
  const links=staticLabels.map((label,i)=>({label,
   url:"https://t.me/c/3847210571/"+(500+i),verified:true}));
@@ -68,7 +68,7 @@ test("posting panel merges seven verified DM editors and three verified navigati
   {label:"募集+Room",feature:"room",url:"https://t.me/GayBBS_bot?start=m_123",ready:true},
   {label:"告知/予告",feature:"announcement",url:"https://t.me/GayBBS_bot?start=m_456",ready:true},
   {label:"プロフ作成",feature:"profile",url:"https://t.me/GayBBS_bot?start=m_457",ready:true},
-  {label:"🔗ボタン作成",feature:"link",url:"https://t.me/GayBBS_bot?start=m_789",ready:true},
+  {label:"🔗ボタン生成",feature:"link",url:"https://t.me/GayBBS_bot?start=m_789",ready:true},
   {label:"検索/フィルター",feature:"search",url:"https://t.me/GayBBS_bot?start=m_900",ready:true},
   {label:"操作説明",feature:"help",url:"https://t.me/GayBBS_bot?start=m_901",ready:true},
  ] as const;
@@ -79,7 +79,7 @@ test("posting panel merges seven verified DM editors and three verified navigati
  assert.deepEqual(result.rows.map(row=>row.length),[3,2,2,3]);
  assert.ok(result.rows[0][0]!.url.includes("start=r_"));
  assert.equal(result.rows[1][0]!.text,"プロフ作成");
- assert.equal(result.rows[2][0]!.text,"🔗ボタン作成");
+ assert.equal(result.rows[2][0]!.text,"🔗ボタン生成");
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:entryLinks.slice(0,3) as any}),/MISSING_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
