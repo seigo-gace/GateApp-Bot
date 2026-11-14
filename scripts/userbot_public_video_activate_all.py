@@ -112,8 +112,6 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
     anchor = '        if action == "list_channel_videos":'
     extension = (
         '        if action == "list_channel_video_page":\n'
-        '            if set(request) not in (required | {"channel_id"}, required | {"channel_id", "before_message_id"}):\n'
-        '                raise ValueError("REQUEST_SHAPE_INVALID")\n'
         '            page = await channel_video_page(client, request["channel_id"], request.get("before_message_id"))\n'
         '            return {"request_id": request_id, "action": action, "status": "PASS", **page}\n'
         + anchor
