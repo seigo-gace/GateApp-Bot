@@ -32,6 +32,7 @@ import {
   BARE_START_POSTING_TEXT,
   bareStartPostingExtra,
   defaultBareStartChatId,
+  chatTopicSelectionExtra,
 } from "./services/dmBareStartPostingMenu.js";
 import { DM_POSTING_MENU_SCREEN_TEXT } from "./services/dmPostingMenuRestore.js";
 import { currentMenuOrigin } from "./services/menuOriginRepository.js";
@@ -139,6 +140,31 @@ async function main():Promise<void>{
     .catch(()=>undefined);
   }
  };
+ // Replace the clicked DM posting-menu message with a three-board talk selector.
+ // The three URL buttons open exact Master-provided Telegram message links.
+ bot.action("dm:chat-select",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery().catch(()=>undefined);
+  try{
+   await ctx.editMessageText("💬 雑談｜移動する掲示板を選択してください。",chatTopicSelectionExtra());
+  }catch(error){
+   console.error("CHAT_SELECTOR_OPEN_FAILED",error instanceof Error?error.name:"unknown");
+   await ctx.reply("💬 雑談｜移動する掲示板を選択してください。",chatTopicSelectionExtra());
+  }
+ });
+ bot.action("dm:chat-back",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery().catch(()=>undefined);
+  const origin=await currentMenuOrigin(ctx.from.id);
+  const topicOrigin=origin?null:await currentTopicDmEntry(ctx.from.id);
+  const keyboard=await bareStartPostingExtra(defaultBareStartChatId(origin?.chatId??topicOrigin?.chatId));
+  try{
+   await ctx.editMessageText(DM_POSTING_MENU_SCREEN_TEXT,keyboard);
+  }catch(error){
+   console.error("CHAT_SELECTOR_BACK_FAILED",error instanceof Error?error.name:"unknown");
+   await ctx.reply(DM_POSTING_MENU_SCREEN_TEXT,keyboard);
+  }
+ });
  bot.action("dm:nav-unavailable",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery("このリンクはまだ確認できません。", {show_alert:true});
