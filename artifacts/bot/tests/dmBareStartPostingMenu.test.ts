@@ -29,6 +29,8 @@ test("recruitment and profile editors open without granting Telegram publication
   assert.equal(canOpenPostingEditor("プロフ作成", true), true);
   assert.equal(canOpenPostingEditor("検索/フィルター", false), true);
   assert.equal(canOpenPostingEditor("検索/フィルター", true), true);
+  assert.equal(canOpenPostingEditor("操作説明", false), true);
+  assert.equal(canOpenPostingEditor("操作説明", true), true);
   assert.equal(canOpenPostingEditor("告知/予告", false), false);
   assert.equal(canOpenPostingEditor("告知/予告", true), true);
   assert.equal(canOpenPostingEditor("募集+Room", false), false);
