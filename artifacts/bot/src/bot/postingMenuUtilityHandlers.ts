@@ -8,8 +8,7 @@ import {bareStartPostingExtra,defaultBareStartChatId,BARE_START_POSTING_TEXT}
  from "../services/dmBareStartPostingMenu.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
 import {currentTopicDmEntry} from "../services/topicDmEntry.js";
-import {ADMISSION_BOARD_CHAT_IDS} from "../modules/gaybbsApproval/contract.js";
-import {pool} from "../db/index.js";
+import {commonGateUrl,gateInviteCopyButton} from "../services/commonGateInvite.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
 
 export const TALK_TOPICS=[
@@ -34,22 +33,11 @@ type CopyCell={text:string;copy_text:{text:string}};
 export function copyInviteCell(label:string,url:string):CopyCell{
  if(!/^https:\/\/t\.me\/[A-Za-z0-9_+/?=&-]{2,250}$/.test(url))
   throw new Error("INVITE_LINK_NOT_VERIFIED");
- return {text:label,copy_text:{text:url}};
+ return gateInviteCopyButton(label,url);
 }
 /** One shared questionnaire and post-approval three-group chooser. */
 export function commonInviteCopyRows(url:string):CopyCell[][]{
  return [[copyInviteCell("📋 共通参加承認ゲートをコピー",url)]];
-}
-async function commonGateUrl():Promise<string>{
- const r=await pool.query<{chat_id:string;gate_code:string}>(`
- SELECT chat_id,gate_code FROM targets
- WHERE target_type='entry_group' AND chat_id=ANY($1::bigint[])
- ORDER BY chat_id`,[ADMISSION_BOARD_CHAT_IDS]);
- if(r.rows.length!==3||new Set(r.rows.map(x=>String(x.chat_id))).size!==3 ||
-    r.rows.some(x=>!new Set<number>(ADMISSION_BOARD_CHAT_IDS).has(Number(x.chat_id))||
-      !/^[A-Za-z0-9_-]{1,48}$/.test(String(x.gate_code))))
-  throw new Error("COMMON_GATE_ROUTE_NOT_VERIFIED");
- return "https://t.me/GayBBS_bot?start=gate_"+r.rows[0]!.gate_code;
 }
 async function showInvite(t:Telegram,id:number,screenId?:number):Promise<void>{
  const url=await commonGateUrl();
