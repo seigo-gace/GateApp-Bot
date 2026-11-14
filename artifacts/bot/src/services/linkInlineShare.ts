@@ -29,19 +29,18 @@ export async function registerLinkShare(ownerId:number,revision:number,draft:Lin
    media?.type??null,media?.fileId??null,draft.captionAbove===true,code]);
  if(q.rows.length!==1)throw Error("LINK_SHARE_REGISTER_UNCONFIRMED");
  const row=q.rows[0];
- const persisted={
-  text:String(row.content),
-  buttons:row.buttons,
+ const persisted:LinkDraft={text:String(row.content),buttons:row.buttons,
   columns:Number(row.columns),
   ...(row.media_kind?{media:{type:row.media_kind,fileId:row.media_file_id}}:{}),
-  captionAbove:row.caption_above===true,
- };
- // A retry may return the already-committed source. Never reissue a new code
- // or silently overwrite a previously registered post.
- if(JSON.stringify(persisted)!==JSON.stringify({
-  text:draft.text,buttons:draft.buttons,columns:draft.columns,
-  ...(draft.media?{media:draft.media}:{}),captionAbove:draft.captionAbove===true,
- }))throw Error("LINK_SHARE_REGISTER_CONFLICT");
+  captionAbove:row.caption_above===true};
+ const normal=(v:LinkDraft)=>JSON.stringify({
+  text:v.text,
+  buttons:v.buttons.map(b=>[b.label,b.url,b.rowStart??null,b.style??null]),
+  columns:v.columns,media:v.media?[v.media.type,v.media.fileId]:null,
+  captionAbove:v.captionAbove===true,
+ });
+ // JSONB reorders object fields, so compare stable tuples, not raw JSON strings.
+ if(normal(persisted)!==normal(draft))throw Error("LINK_SHARE_REGISTER_CONFLICT");
  if(!/^[A-Za-z0-9_-]{24}$/.test(row.share_code))
   throw Error("LINK_SHARE_READBACK_INVALID");
  return {sourceId:String(row.link_post_id),code:String(row.share_code)};
