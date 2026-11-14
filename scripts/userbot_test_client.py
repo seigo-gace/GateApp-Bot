@@ -55,6 +55,10 @@ def main() -> int:
             return 1
         print("USERBOT_TEST_RESULT=PASS")
         print("USERBOT_TEST_ACTION=" + args.action)
+        if args.action == "profile_button_smoke":
+            if result.get("profile_editor_opened") is not True:
+                raise RuntimeError("PROFILE_BUTTON_SCREEN_NOT_OPENED")
+            print("USERBOT_PROFILE_BUTTON=PASS")
         if args.action == "profile_topics_readback":
             topics = result.get("topics")
             if (not isinstance(topics, list) or len(topics) != 3
