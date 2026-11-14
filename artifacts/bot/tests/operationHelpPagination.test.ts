@@ -1,19 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
+import {CHAT_TOPIC_CHOICES} from "../src/services/dmBareStartPostingMenu.js";
 import {helpHomeKeyboard,helpSectionKeyboard,helpTopicPages,helpTagPages,helpTagKeyboard} from "../src/bot/operationHelpHandlers.js";
 
-const topics=["recruit","room","announcement","profile","paid","link","search","chat","invite"] as const;
+const topics=["recruit","room","announcement","profile","paid","link","search","chat"] as const;
 const labels=(rows:ReturnType<typeof helpHomeKeyboard>["reply_markup"]["inline_keyboard"])=>
  rows.map(row=>row.map(item=>item.text));
 
-test("operation help keeps exact posting menu 3/2/2/3 order except Back replacing Help",()=>{
+test("operation help preserves posting-menu order without unnecessary invitation explanation",()=>{
  const actual=labels(helpHomeKeyboard(7).reply_markup.inline_keyboard);
- const expected=APPROVED_POSTING_ROWS.map(row=>row.map(item=>item==="操作説明"?"戻る":item));
+ const expected=APPROVED_POSTING_ROWS.map(row=>row.filter(item=>item!=="紹介/招待").map(item=>item==="操作説明"?"戻る":item));
  assert.deepEqual(actual,expected);
 });
 
-test("all nine features use short multi-page Telegram text, with no content dropped",()=>{
+test("all eight described features use short multi-page Telegram text, with no content dropped",()=>{
  for(const topic of topics){
   const pages=helpTopicPages(topic);
   assert.ok(pages.length>=2,topic);
@@ -23,7 +24,7 @@ test("all nine features use short multi-page Telegram text, with no content drop
   }
   assert.ok(pages[0].includes("【")||pages[0].includes("■"),topic+" missing purpose");
   const first=helpSectionKeyboard(12,topic,0).reply_markup.inline_keyboard.flat();
-  assert.ok(first.some(b=>b.text==="次 ➔"),topic+" has no Next");
+  if(topic!=="chat")assert.ok(first.some(b=>b.text==="次 ➔"),topic+" has no Next");
   const last=helpSectionKeyboard(12,topic,pages.length-1).reply_markup.inline_keyboard.flat();
   assert.ok(last.some(b=>b.text==="⬅ 前へ"),topic+" has no Previous");
   assert.equal(last.some(b=>b.text==="次 ➔"),false,topic+" leaked Next");
@@ -51,4 +52,17 @@ test("link guide describes new 2-line entry and next-row versus horizontal actio
  assert.match(guide,/画像＋コメント/);
  assert.match(guide,/未実装/);
  assert.doesNotMatch(guide,/表示名 \| https:/);
+});
+
+test("Chat in help leads to exactly the three specified message links",()=>{
+ const keyboard=helpHomeKeyboard(7).reply_markup.inline_keyboard.flat();
+ const talk=keyboard.find(item=>item.text==="雑談");
+ assert.ok(talk&&"callback_data" in talk);
+ assert.equal(talk.callback_data,"help:chatselect:7");
+ assert.deepEqual(CHAT_TOPIC_CHOICES.map(item=>item.url),[
+  "https://t.me/c/2373696859/4291",
+  "https://t.me/c/3847210571/44",
+  "https://t.me/c/3770334893/789",
+ ]);
+ assert.equal(keyboard.some(item=>item.text==="紹介/招待"),false);
 });
