@@ -36,6 +36,7 @@ import {
   chatTopicSelectionExtra,
 } from "./services/dmBareStartPostingMenu.js";
 import { DM_POSTING_MENU_SCREEN_TEXT } from "./services/dmPostingMenuRestore.js";
+import {verifiedCreatorDestinations,creatorPostingKeyboard,CREATOR_POSTING_TEXT} from "./services/creatorPostingMenu.js";
 import { currentMenuOrigin } from "./services/menuOriginRepository.js";
 import { activateTopicDmEntry, currentTopicDmEntry } from "./services/topicDmEntry.js";
 
@@ -77,6 +78,14 @@ async function main():Promise<void>{
   }
   if(ctx.startPayload==="help"){
    await startOperationHelp(ctx.telegram,ctx.from.id);
+   return;
+  }
+  if(ctx.startPayload==="creator"){
+   const menuOrigin=await currentMenuOrigin(ctx.from.id);
+   const topicOrigin=menuOrigin?null:await currentTopicDmEntry(ctx.from.id);
+   const chatId=defaultBareStartChatId(menuOrigin?.chatId??topicOrigin?.chatId);
+   const urls=await verifiedCreatorDestinations(chatId);
+   await ctx.reply(CREATOR_POSTING_TEXT,creatorPostingKeyboard(urls));
    return;
   }
   if(ctx.startPayload?.startsWith("j_")){
@@ -143,6 +152,28 @@ async function main():Promise<void>{
  };
  // Replace the clicked DM posting-menu message with a three-board talk selector.
  // The three URL buttons open exact Master-provided Telegram message links.
+ bot.action("dm:creator-select",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery().catch(()=>undefined);
+  const menuOrigin=await currentMenuOrigin(ctx.from.id);
+  const topicOrigin=menuOrigin?null:await currentTopicDmEntry(ctx.from.id);
+  const chatId=defaultBareStartChatId(menuOrigin?.chatId??topicOrigin?.chatId);
+  const urls=await verifiedCreatorDestinations(chatId);
+  try{
+   await ctx.editMessageText(CREATOR_POSTING_TEXT,creatorPostingKeyboard(urls));
+  }catch(error){
+   console.error("CREATOR_SELECTOR_EDIT_FAILED",error instanceof Error?error.name:"unknown");
+   await ctx.reply(CREATOR_POSTING_TEXT,creatorPostingKeyboard(urls));
+  }
+ });
+ bot.action(/^dm:creator-unavailable:(video|sticker)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  await ctx.answerCbQuery(
+   ctx.match[1]==="video"?
+    "動画投稿の接続は準備中です。":
+    "ステッカー/絵文字の接続先を確認できません。",
+   {show_alert:true});
+ });
  bot.action("dm:chat-select",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery().catch(()=>undefined);
