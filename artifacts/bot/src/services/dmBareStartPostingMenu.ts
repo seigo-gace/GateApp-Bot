@@ -112,7 +112,8 @@ export async function bareStartPostingExtra(chatId: number) {
       const colorize=<T extends object>(button:T):T & {style:"primary"|"success"|"danger"}=>
         ({...button,style:postingButtonStyle(label)});
       if (STATIC_URL_LABELS.has(label)) {
-        const url = urls.get(label);
+        const url = label==="クリエーター投稿"
+          ? "https://t.me/CreateVdobot?start=creator" : urls.get(label);
         // An unavailable link must never prevent the rest of the posting menu
         // (including a cancel -> menu return) from being rendered.
         return colorize(navigationButton(label, url));
