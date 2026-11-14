@@ -18,7 +18,7 @@ export async function verifiedCreatorDestinations(chatId:number):Promise<Readonl
    const parsed=new URL(entry.destination_url);
    if(parsed.protocol!=="https:"||parsed.hostname!=="t.me"||
     !/^\/[A-Za-z][A-Za-z0-9_]{4,31}$/.test(parsed.pathname)||
-    !/^\/?start=/.test(parsed.search))continue;
+    !parsed.searchParams.has("start"))continue;
    urls.set(kind,parsed.toString());
   }catch{/* Not a verified Telegram bot link. */}
  }
