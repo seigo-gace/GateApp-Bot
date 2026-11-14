@@ -576,7 +576,10 @@ export function linkEditKeyboard(d:EditorDraft):WizardKeyboard{
   ...rows.map((_,i)=>[Markup.button.callback(
    i===0?"➔にボタンを追加":"➔にボタンを追加（"+(i+1)+"列目）",
    "post:link:beside:"+rev+":"+i)]),
-  ...(count?[[Markup.button.callback("📝 最後を編集","post:link:edit:"+rev)]]:[]),
+  ...(count?(d.data.buttons as LinkDraft["buttons"]).map((b,i)=>[
+   Markup.button.callback("［編集］"+String(i+1)+" "+b.label,
+    "post:link:edit:"+rev+":"+i)
+  ]):[]),
   [Markup.button.callback("👁 プレビュー","post:link:back:"+rev),
    Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
  ]);
