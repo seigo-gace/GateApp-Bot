@@ -80,6 +80,8 @@ test("posting panel merges seven verified DM editors and three verified navigati
  assert.ok(result.rows[0][0]!.url.includes("start=r_"));
  assert.equal(result.rows[1][0]!.text,"プロフ作成");
  assert.equal(result.rows[2][0]!.text,"🔗ボタン作成");
+ assert.equal(result.rows[1][1]!.style,"success");
+ assert.equal(result.rows[2][0]!.style,"primary");
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
   entryLinks:entryLinks.slice(0,3) as any}),/MISSING_VERIFIED/);
  assert.throws(()=>renderMenuPanel({type:"posting",board:"video_chat",links,
