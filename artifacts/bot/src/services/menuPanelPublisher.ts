@@ -81,6 +81,7 @@ async function buildLinks(panel:PanelRow):Promise<{
   {label:"検索/フィルター",feature:"search",prefix:"m_"},
   {label:"操作説明",feature:"help",prefix:"m_"},
  ] as const;
+ links.push({label:"🐞 不具合を報告",url:"https://t.me/GayBBS_bot?start=bugreport",verified:true});
  const entries:EntryLink[]=[];
  const tokenHashes:string[]=[];
  for(const entry of entrySpecs){
