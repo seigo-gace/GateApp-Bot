@@ -129,8 +129,8 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
         ") -> dict:", "CLIENT_SIGNATURE",
     )
     client = exactly_once(
-        client, '        if limit is not None: request["limit"] = limit',
-        '        if limit is not None: request["limit"] = limit\n'
+        client, '        request = {"request_id": request_id, "action": action}',
+        '        request = {"request_id": request_id, "action": action}\n'
         '        if before_message_id is not None: request["before_message_id"] = before_message_id',
         "CLIENT_REQUEST",
     )
