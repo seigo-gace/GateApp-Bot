@@ -115,7 +115,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   else if(topic==="link")await startLinkEditor(ctx.telegram,ctx.from.id,screenId);
   else await startSearchEditor(ctx.telegram,ctx.from.id,screenId);
  });
- bot.action(/^help:tags:(\\d+)$/,async ctx=>{
+ bot.action(/^help:tags:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const rev=Number(ctx.match[1]),session=await load(ctx.from.id);
   if(!session||session.revision!==rev||!(session.section==="profile"||session.section==="room")){
