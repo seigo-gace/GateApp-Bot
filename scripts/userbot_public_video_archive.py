@@ -95,7 +95,15 @@ async def archive_channel(call, channel_username: str, limit: int, on_progress):
         state["last_message_id"] = message_id
         on_progress(state)
         try:
-            present = await download_one(call, channel_id, message_id, state, on_progress)
+            for attempt in range(1, 4):
+                try:
+                    present = await download_one(call, channel_id, message_id, state, on_progress)
+                    break
+                except Exception:
+                    if attempt == 3:
+                        raise
+                    # The resident socket is not reauthenticated or restarted.
+                    await asyncio.sleep(attempt)
             state["already_present" if present else "saved"] += 1
             state["completed"].append(message_id)
         except Exception as exc:
@@ -146,7 +154,14 @@ async def archive_all_channel(call, channel_username: str, on_progress):
             state["last_message_id"] = message_id
             on_progress(state)
             try:
-                present = await download_one(call, channel_id, message_id, state, on_progress)
+                for attempt in range(1, 4):
+                    try:
+                        present = await download_one(call, channel_id, message_id, state, on_progress)
+                        break
+                    except Exception:
+                        if attempt == 3:
+                            raise
+                        await asyncio.sleep(attempt)
                 state["already_present" if present else "saved"] += 1
             except Exception:
                 state["failed"] += 1
