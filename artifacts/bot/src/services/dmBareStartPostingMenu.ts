@@ -5,8 +5,6 @@ import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
 
 export const STATIC_URL_LABELS = new Set([
   "クリエーター有料ビデオ投稿",
-  "雑談",
-  "紹介/招待",
 ]);
 
 const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
@@ -17,6 +15,8 @@ const CALLBACK_BY_LABEL: Readonly<Record<string, string>> = {
   "🔗ボタン作成": "dm:link",
   "検索/フィルター": "dm:search",
   操作説明: "dm:help",
+  雑談: "dm:chat-select",
+  "紹介/招待": "dm:invite-select",
 };
 
 const FEATURE_BY_LABEL: Readonly<Record<string, string>> = {
@@ -37,6 +37,20 @@ const POSTING_DM_FEATURES = [
   "search",
   "help",
 ] as const;
+
+/** Master-confirmed talk destinations; URL suffixes are message locators, not inferred thread IDs. */
+export const CHAT_TOPIC_CHOICES = [
+  { label: "ビデオChatの掲示板", url: "https://t.me/c/2373696859/4291" },
+  { label: "エリア’s BBS", url: "https://t.me/c/3847210571/44" },
+  { label: "ゲイのための掲示板♂", url: "https://t.me/c/3770334893/789" },
+] as const;
+
+export function chatTopicSelectionExtra() {
+  return Markup.inlineKeyboard([
+    ...CHAT_TOPIC_CHOICES.map(({ label, url }) => [Markup.button.url(label, url)]),
+    [Markup.button.callback("🔙 戻る", "dm:chat-back")],
+  ]);
+}
 
 export const BARE_START_POSTING_TEXT =
   "📌 各掲示板の固定メニュー（総合案内・投稿メニュー）から利用を開始してください。\n" +

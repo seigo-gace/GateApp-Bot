@@ -207,6 +207,41 @@ async function issueInvite(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promi
  * Uses the same document version, three approval receipts and membership
  * mapping as startGayBbsAdmission. Never equate membership with approval.
  */
+/** Reuse the LIVE, three-board Gate mapping behind existing community introductions.
+ * Share links always run the recipient's own Gate decision; joined users may
+ * open their corresponding group without answering again.
+ */
+export type CommunityInviteChoice = {
+ label:string;chatId:number;gateUrl:string;directUrl:string;joined:boolean;
+};
+export async function communityInviteChoices(
+ telegram:Telegram,userId:number,
+):Promise<{approved:boolean;choices:CommunityInviteChoice[]}|null>{
+ const root=await targetRepo.getTargetByChatId(ADMISSION_BOARD_CHAT_IDS[0]);
+ if(!root || root.target_type!=="entry_group")return null;
+ const cfg=await configured(root.target_id);
+ if(!cfg)return null;
+ const blacklist=await blacklistRepo.getBlacklisted(userId);
+ if(blacklist?.status==="blocked")return null;
+ const route=await resolveGateEntry(
+  telegram,userId,cfg.documentVersion,
+  cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title})),
+  false,
+ );
+ const choices=cfg.boards.map(b=>{
+  const code=b.target.gate_code;
+  if(typeof code!=="string" || !/^[A-Za-z0-9_-]{1,48}$/.test(code))
+   throw new Error("COMMUNITY_GATE_CODE_INVALID");
+  return {
+   label:b.target.title,chatId:Number(b.target.chat_id),
+   gateUrl:"https://t.me/GayBBS_bot?start=gate_"+code,
+   directUrl:groupDeepLink(Number(b.target.chat_id)),
+   joined:route.joined.includes(Number(b.target.chat_id)),
+  };
+ });
+ return {approved:!!route.attempt,choices};
+}
+
 export async function commonGayBbsApproval(
  telegram:Telegram,userId:number,targetId:number,
 ):Promise<boolean>{

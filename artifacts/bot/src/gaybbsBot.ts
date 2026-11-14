@@ -22,7 +22,8 @@ import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
 import {startGayBbsWorkers} from "./services/gaybbsWorkers.js";
 import { activateMenuOrigin } from "./services/menuOriginRepository.js";
-import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gaybbsApproval/handlers.js";
+import {startGayBbsAdmission,registerGayBbsApprovalHandlers,communityInviteChoices} from "./modules/gaybbsApproval/handlers.js";
+import {invitationMenu,invitationText} from "./services/communityInviteMenu.js";
 import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
  suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
@@ -32,6 +33,7 @@ import {
   BARE_START_POSTING_TEXT,
   bareStartPostingExtra,
   defaultBareStartChatId,
+  chatTopicSelectionExtra,
 } from "./services/dmBareStartPostingMenu.js";
 import { DM_POSTING_MENU_SCREEN_TEXT } from "./services/dmPostingMenuRestore.js";
 import { currentMenuOrigin } from "./services/menuOriginRepository.js";
@@ -139,6 +141,53 @@ async function main():Promise<void>{
     .catch(()=>undefined);
   }
  };
+ // Replace the clicked DM posting-menu message with a three-board talk selector.
+ // The three URL buttons open exact Master-provided Telegram message links.
+ bot.action("dm:chat-select",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery().catch(()=>undefined);
+  try{
+   await ctx.editMessageText("💬 雑談｜移動する掲示板を選択してください。",chatTopicSelectionExtra());
+  }catch(error){
+   console.error("CHAT_SELECTOR_OPEN_FAILED",error instanceof Error?error.name:"unknown");
+   await ctx.reply("💬 雑談｜移動する掲示板を選択してください。",chatTopicSelectionExtra());
+  }
+ });
+ bot.action("dm:invite-select",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery().catch(()=>undefined);
+  try{
+   const state=await communityInviteChoices(ctx.telegram,ctx.from.id);
+   if(!state){
+    await ctx.reply("現在、紹介/招待リンクの確認ができません。既存のグループ紹介からお進みください。");
+    return;
+   }
+   const keyboard=invitationMenu(state.approved,state.choices);
+   const text=invitationText(state.approved);
+   try{
+    await ctx.editMessageText(text,keyboard);
+   }catch(error){
+    console.error("INVITE_SELECTOR_EDIT_FAILED",error instanceof Error?error.name:"unknown");
+    await ctx.reply(text,keyboard);
+   }
+  }catch(error){
+   console.error("INVITE_SELECTOR_OPEN_FAILED",error instanceof Error?error.name:"unknown");
+   await ctx.reply("紹介/招待リンクを確認できませんでした。後ほどもう一度お試しください。");
+  }
+ });
+ bot.action("dm:chat-back",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery().catch(()=>undefined);
+  const origin=await currentMenuOrigin(ctx.from.id);
+  const topicOrigin=origin?null:await currentTopicDmEntry(ctx.from.id);
+  const keyboard=await bareStartPostingExtra(defaultBareStartChatId(origin?.chatId??topicOrigin?.chatId));
+  try{
+   await ctx.editMessageText(DM_POSTING_MENU_SCREEN_TEXT,keyboard);
+  }catch(error){
+   console.error("CHAT_SELECTOR_BACK_FAILED",error instanceof Error?error.name:"unknown");
+   await ctx.reply(DM_POSTING_MENU_SCREEN_TEXT,keyboard);
+  }
+ });
  bot.action("dm:nav-unavailable",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery("このリンクはまだ確認できません。", {show_alert:true});
