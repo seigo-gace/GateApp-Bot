@@ -8,6 +8,8 @@ import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileVie
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
 import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
+import {registerLinkInlineHandlers} from "./bot/linkInlineHandlers.js";
+import {registerPostingMenuUtilityHandlers,startPostingMenuUtility} from "./bot/postingMenuUtilityHandlers.js";
 import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "./bot/recruitmentHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
@@ -71,6 +73,10 @@ async function main():Promise<void>{
   }
   if(ctx.startPayload==="search"){
    await startSearchEditor(ctx.telegram,ctx.from.id);
+   return;
+  }
+  if(ctx.startPayload==="talk"||ctx.startPayload==="invite"){
+   await startPostingMenuUtility(ctx.telegram,ctx.from.id,ctx.startPayload);
    return;
   }
   if(ctx.startPayload==="help"){
@@ -174,6 +180,8 @@ async function main():Promise<void>{
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
  registerPostingHandlers(bot);
+ registerLinkInlineHandlers(bot);
+ registerPostingMenuUtilityHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
  registerMenuPanelHandlers(bot);
@@ -248,7 +256,7 @@ async function main():Promise<void>{
  process.once("SIGTERM",()=>{void stop("SIGTERM")});
  await bot.launch({
   dropPendingUpdates:false,
-  allowedUpdates:["message","callback_query","chat_join_request"],
+  allowedUpdates:["message","callback_query","chat_join_request","inline_query"],
  },()=>{
   console.log("GAYBBS_BOT_READY bot_id="+me.id);
   stopWorkers=startGayBbsWorkers(bot.telegram);
