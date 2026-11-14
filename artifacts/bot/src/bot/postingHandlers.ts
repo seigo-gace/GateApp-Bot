@@ -1566,7 +1566,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
  };
  bot.on("photo",async(ctx,next)=>receiveLinkMedia(ctx,next,"photo"));
  bot.on("video",async(ctx,next)=>receiveLinkMedia(ctx,next,"video"));
- bot.action(/^post:link:(register|edittext|editmedia|captiontop|captionbottom|panel|add|beside|edit|cancel|back|destination):(\d+)(?::(\d+))?$/,async ctx=>{
+ bot.action(/^post:link:(register|edittext|editmedia|mediareplace|mediadelete|captiontop|captionbottom|panel|add|beside|edit|cancel|back|destination):(\d+)(?::(\d+))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
   const targetRow=ctx.match[3]===undefined?null:Number(ctx.match[3]);
@@ -1610,31 +1610,67 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(op==="edittext"||op==="editmedia"){
    if(d.step!=="preview"){await ctx.answerCbQuery("編集中です。");return;}
    if(typeof d.data.shareCode==="string"){
-    await ctx.answerCbQuery("登録済みの内容は変更できません。新規作成してください。",{show_alert:true});
+    await ctx.answerCbQuery("登録済みは変更できません。新規作成してください。",{show_alert:true});return;
+   }
+   if(op==="editmedia"){
+    const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+     {...d.data,linkMediaPanel:true,linkEditorView:false});
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,updated,
+     "🖼 画像/動画編集\n現在："+(d.data.media?"登録済み":"未登録")+
+     "\n画像・動画の差し替え、削除、コメント位置を選択できます。",
+     linkMediaEditorKeyboard(updated));
     return;
    }
    const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
-    {...d.data,linkStage:op==="edittext"?"edittext":"editmedia"});
+    {...d.data,linkStage:"edittext",linkMediaPanel:false});
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,updated,
-    op==="edittext"?
-     "📝 テキスト編集\n現在の文章：\n"+String(d.data.text||"（なし）")+
-      "\n\n新しい文章をDMで送信してください。":
-     "🖼 画像/動画編集\n新しい画像または動画をDMへ送信してください。",
+    "📝 テキスト編集\n現在の文章：\n"+String(d.data.text||"（なし）")+
+    "\n\n新しい文章をDMで送信してください。",
     Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
      "post:link:back:"+updated.revision)],
      [Markup.button.callback("キャンセル","post:link:cancel:"+updated.revision)]]));
    return;
   }
+  if(op==="mediareplace"){
+   if(d.step!=="preview"||typeof d.data.shareCode==="string"||
+     d.data.linkMediaPanel!==true){await ctx.answerCbQuery("編集画面を開いてください。");return;}
+   const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+    {...d.data,linkStage:"editmedia"});
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "新しい画像または動画をDMへ送信してください。未送信の間は既存の媒体を保持します。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+     "post:link:back:"+updated.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+updated.revision)]]));
+   return;
+  }
+  if(op==="mediadelete"){
+   if(d.step!=="preview"||d.data.linkMediaPanel!==true||!d.data.media||
+     typeof d.data.shareCode==="string"){await ctx.answerCbQuery("削除できません。");return;}
+   if(!String(d.data.text||"").trim()){
+    await ctx.answerCbQuery("画像・動画のみの投稿です。先にテキストを追加してください。",{show_alert:true});return;
+   }
+   const {media:unused,...rest}=d.data;
+   const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...rest,linkMediaPanel:false,captionAbove:false});
+   await ctx.answerCbQuery("媒体を削除しました");
+   await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   return;
+  }
   if(op==="captiontop"||op==="captionbottom"){
-   if(d.step!=="preview"||!d.data.media||!String(d.data.text||"").trim()||
-      typeof d.data.shareCode==="string"){
+   if(d.step!=="preview"||d.data.linkMediaPanel!==true||
+     !d.data.media||!String(d.data.text||"").trim()||
+     typeof d.data.shareCode==="string"){
     await ctx.answerCbQuery("コメント付き画像・動画の場合のみ変更できます。");return;
    }
    const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
     {...d.data,captionAbove:op==="captiontop"});
-   await ctx.answerCbQuery();
-   await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   await ctx.answerCbQuery("表示位置を保存しました");
+   await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "🖼 画像/動画編集\nコメント位置："+(op==="captiontop"?"上":"下"),
+    linkMediaEditorKeyboard(updated));
    return;
   }
   if(op==="panel"){
