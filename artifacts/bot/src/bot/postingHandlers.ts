@@ -1303,6 +1303,27 @@ export function registerPostingHandlers(bot:Telegraf):void{
      Number(current.data.screenMessageId)||undefined);
     return;
    }
+   if(current.module==="announcement"&&current.data.kind!=="recruitment"&&
+      current.step==="awaiting_text"){
+    const field=String(current.data.editField||"initial");
+    let update:Record<string,unknown>;
+    if(field==="initial"){
+     const split=input.indexOf("\n");
+     if(split<1)throw Error("1行目にタイトル、2行目以降に本文を入力してください");
+     update=noticeEdit(noticeEdit(current.data,"title",input.slice(0,split)),"body",input.slice(split+1));
+    }else update=noticeEdit(current.data,field,input);
+    const next=await updateDraft(ctx.from.id,"announcement",current.revision,"preview",
+     {...update,editField:null});
+    await announcementScreen(ctx.telegram,ctx.from.id,next);
+    return;
+   }
+   if(current.module==="announcement"&&current.step==="awaiting_media"){
+    if(input!=="なし")throw Error("画像または動画を送信してください。解除は「なし」です");
+    const next=await updateDraft(ctx.from.id,"announcement",current.revision,"preview",
+     noticeEdit(current.data,"media",input));
+    await announcementScreen(ctx.telegram,ctx.from.id,next);
+    return;
+   }
    let data:Record<string,unknown>;
    if(current.step==="awaiting_datetime"){
     const day=String(current.data.pickerDay||"");
@@ -1316,8 +1337,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
      return;
     }
     data={...current.data,eventAt:date.toISOString()};
-    validateAnnouncement({ownerId:ctx.from.id,
-      kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
     if(current.module==="announcement"&&data.kind!=="recruitment"){
      await announcementScreen(ctx.telegram,ctx.from.id,updated);
