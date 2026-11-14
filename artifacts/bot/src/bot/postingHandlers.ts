@@ -465,9 +465,14 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
 /** LinkButton uses the same DM draft, owner and verified topic as other posts. */
 export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
+ const count=Array.isArray(d.data.buttons)?d.data.buttons.length:0;
+ // One button has no horizontal layout choice. Two buttons show 1/2,
+ // and three or more may choose 1/2/3 without adding dummy buttons.
+ const layout=count<2?[]:[([1,2,3] as const).filter(i=>i<=count).map(i=>
+  Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
+   "post:linkcols:"+rev+":"+i))];
  return Markup.inlineKeyboard([
-  [1,2,3].map(i=>Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
-    "post:linkcols:"+rev+":"+i)),
+  ...layout,
   [Markup.button.callback("➕ ボタン追加","post:link:add:"+rev),
    Markup.button.callback("📝 最後を編集","post:link:edit:"+rev)],
   [Markup.button.callback("📍 投稿先を選択","post:link:destination:"+rev),
@@ -484,7 +489,9 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
  // draft modules and published receipts are never touched.
  if(prior?.step==="preview"){
   await showPostScreen(telegram,userId,prior,"公開前プレビュー\n"+preview("link",prior)+
-   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(prior));
+   (Array.isArray(prior.data.buttons)&&prior.data.buttons.length>1?
+    "\n\n横列の配置を選択できます。":"\n\n追加する場合は「➕ ボタン追加」を押してください。"),
+   linkPreviewKeyboard(prior));
   return;
  }
  const draft=prior?.step==="awaiting_text"?prior:
@@ -1427,6 +1434,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const d=await getDraft(ctx.from.id,"link");
   if(!d||d.step!=="preview"||d.revision!==rev){
    await ctx.answerCbQuery("古い選択です。/link で再開してください。");return;
+  }
+  const count=Array.isArray(d.data.buttons)?d.data.buttons.length:0;
+  if(count<2||cols>count){
+   await ctx.answerCbQuery("横列の指定は2個目のボタン作成後からです。");return;
   }
   const data={...d.data,columns:cols};
   const next=await updateDraft(ctx.from.id,"link",rev,"preview",data);
