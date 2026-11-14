@@ -130,7 +130,7 @@ export async function bareStartPostingExtra(chatId: number) {
       return colorize(Markup.button.callback(label, data));
     }),
   );
-  return Markup.inlineKeyboard(rows);
+  return Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
 }
 
 /** @internal row layout check for tests */
