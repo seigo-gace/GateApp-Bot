@@ -14,7 +14,7 @@ test("Master-approved posting rows remain exactly 3/2/2/3, with profile creation
  const result=renderMenuPanel({type:"posting",board:"area_bbs",
   links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
  assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_POSTING_ROWS.map(r=>[...r]));
- assert.deepEqual(result.rows.map(r=>r.length),[3,2,2,3]);
+ assert.deepEqual(result.rows.map(r=>r.length),[3,2,2,3,1]);
  assert.deepEqual(result.rows[1].map(x=>x.text),["プロフ作成","クリエーター投稿"]);
 });
 test("Master-approved general-guide rows remain exactly 3/3/3/4",()=>{
@@ -76,7 +76,7 @@ test("posting panel merges seven verified DM editors and three verified navigati
   entryLinks:[...entryLinks]});
  assert.deepEqual(result.rows.map(row=>row.map(x=>x.text)),
   APPROVED_POSTING_ROWS.map(row=>[...row]));
- assert.deepEqual(result.rows.map(row=>row.length),[3,2,2,3]);
+ assert.deepEqual(result.rows.map(row=>row.length),[3,2,2,3,1]);
  assert.ok(result.rows[0][0]!.url.includes("start=r_"));
  assert.equal(result.rows[1][0]!.text,"プロフ作成");
  assert.equal(result.rows[2][0]!.text,"🔗ボタン作成");
@@ -89,7 +89,7 @@ test("posting panel merges seven verified DM editors and three verified navigati
 test("all ten posting buttons have native Telegram colors without changing destinations",()=>{
  const links=makeLinks(APPROVED_POSTING_ROWS);
  const panel=renderMenuPanel({type:"posting",board:"area_bbs",links,entryLinks:[]});
- assert.deepEqual(panel.rows.map(x=>x.length),[3,2,2,3]);
+ assert.deepEqual(panel.rows.map(x=>x.length),[3,2,2,3,1]);
  for(let i=0;i<APPROVED_POSTING_ROWS.length;i++){
   for(let j=0;j<APPROVED_POSTING_ROWS[i]!.length;j++){
    assert.equal(panel.rows[i]![j]!.url,links.find(l=>l.label===APPROVED_POSTING_ROWS[i]![j])!.url);
@@ -105,7 +105,7 @@ test("invite button copies the existing shared Gate URL without redirecting to D
  const links=makeLinks(APPROVED_POSTING_ROWS).map(link=>
   link.label==="紹介/招待"?{...link,url,copy_text:{text:url}}:link);
  const panel=renderMenuPanel({type:"posting",board:"area_bbs",links,entryLinks:[]});
- assert.deepEqual(panel.rows.map(r=>r.length),[3,2,2,3]);
+ assert.deepEqual(panel.rows.map(r=>r.length),[3,2,2,3,1]);
  assert.deepEqual(panel.rows[3]![1]!.copy_text,{text:url});
  assert.equal(panel.rows[3]![1]!.text,"紹介/招待");
  assert.equal(panel.rows[1]![0]!.text,"プロフ作成");
