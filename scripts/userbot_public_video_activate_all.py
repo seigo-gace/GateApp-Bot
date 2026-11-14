@@ -109,7 +109,7 @@ def compose_updates(commit: str) -> dict[Path, bytes]:
         "from userbot_public_video_actions import joined_public_channels, channel_videos, download_video, channel_video_page",
         "IPC_IMPORT",
     )
-    anchor = '        if set(request) != required | {"channel_id", "message_id"}: raise ValueError("REQUEST_SHAPE_INVALID")'
+    anchor = '        if action == "list_channel_videos":'
     extension = (
         '        if action == "list_channel_video_page":\n'
         '            if set(request) not in (required | {"channel_id"}, required | {"channel_id", "before_message_id"}):\n'
