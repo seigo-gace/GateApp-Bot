@@ -2,6 +2,7 @@
 import { Markup } from "telegraf";
 import { APPROVED_POSTING_ROWS, postingButtonStyle } from "./menuPanelRenderer.js";
 import { BOARD_GROUP_CHAT_IDS } from "./topicRouting.js";
+import {commonGateUrl,gateInviteCopyButton} from "./commonGateInvite.js";
 
 export const STATIC_URL_LABELS = new Set([
   "クリエーター投稿",
@@ -103,14 +104,16 @@ export function navigationButton(label: string, verifiedUrl?: string) {
 
 /** Builds the authoritative 3/2/2/3 inline keyboard for bare /start in DM. */
 export async function bareStartPostingExtra(chatId: number) {
-  const [ready, urls] = await Promise.all([
+  const [ready, urls, inviteUrl] = await Promise.all([
     postingDmFeaturesReady(),
     loadPostingNavUrls(chatId),
+    commonGateUrl(),
   ]);
   const rows = APPROVED_POSTING_ROWS.map((row) =>
     row.map((label) => {
       const colorize=<T extends object>(button:T):T & {style:"primary"|"success"|"danger"}=>
         ({...button,style:postingButtonStyle(label)});
+      if(label==="紹介/招待")return colorize(gateInviteCopyButton(label,inviteUrl));
       if (STATIC_URL_LABELS.has(label)) {
         const url = label==="クリエーター投稿"
           ? "https://t.me/CreateVdobot?start=creator" : urls.get(label);
