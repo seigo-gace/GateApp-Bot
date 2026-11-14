@@ -132,6 +132,13 @@ async function main():Promise<void>{
  });
  bot.action(/^dm:blocked:(profile|announcement|room|link|search|help)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
+  // Already-sent posting menus may still carry this old callback_data.
+  // Opening the private profile editor must work without republishing menus.
+  if(ctx.match[1]==="profile"){
+   await ctx.answerCbQuery();
+   await startCompactProfileEditor(ctx);
+   return;
+  }
   await ctx.answerCbQuery(
    "この機能は現在準備中です。各掲示板の固定投稿メニューからお試しください。",
    { show_alert: true },
