@@ -62,6 +62,41 @@ async def channel_videos(client, channel_id, limit):
     return result
 
 
+async def channel_video_page(client, channel_id, before_message_id=None):
+    """Read a bounded scan page, including a cursor when no videos were found.
+
+    The per-request bounds protect IPC; they are not limits on archive totals.
+    """
+    if before_message_id is not None and (
+        type(before_message_id) is not int or before_message_id <= 0
+    ):
+        raise ValueError("CHANNEL_CURSOR_INVALID")
+    entity = await joined_channel(client, channel_id)
+    videos = []
+    last_scanned_id = None
+    scanned = 0
+    async for item in client.iter_messages(
+        entity, limit=500, offset_id=before_message_id or 0
+    ):
+        scanned += 1
+        last_scanned_id = int(item.id)
+        if item.video:
+            videos.append({
+                "messageId": int(item.id), "kind": "video",
+                "date": item.date.isoformat() if item.date else None,
+                "caption": (item.raw_text or "")[:4096],
+            })
+        if len(videos) == 50:
+            break
+    has_more = scanned == 500 or len(videos) == 50
+    next_before = last_scanned_id if has_more else None
+    if next_before is not None and before_message_id is not None:
+        if next_before >= before_message_id:
+            raise RuntimeError("PUBLIC_CHANNEL_CURSOR_NOT_ADVANCING")
+    return {"videos": videos, "nextBeforeMessageId": next_before,
+            "scanned": scanned}
+
+
 CHUNK_BYTES = 512 * 1024
 
 
