@@ -41,7 +41,21 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         raise ValueError("ACTION_NOT_ALLOWLISTED")
     if not await client.is_user_authorized():
         raise RuntimeError("RESIDENT_USERBOT_NOT_AUTHORIZED")
-    if action in {"list_joined_public_channels", "list_channel_videos", "download_channel_video"}:\n        from userbot_public_video_actions import joined_public_channels, channel_videos, download_video\n        required = {"request_id", "action"}\n        if action == "list_joined_public_channels":\n            if set(request) != required: raise ValueError("REQUEST_SHAPE_INVALID")\n            return {"request_id": request_id, "action": action, "status": "PASS",\n                    "channels": await joined_public_channels(client)}\n        if action == "list_channel_videos":\n            if set(request) != required | {"channel_id", "limit"}: raise ValueError("REQUEST_SHAPE_INVALID")\n            videos = await channel_videos(client, request["channel_id"], request["limit"])\n            return {"request_id": request_id, "action": action, "status": "PASS", "videos": videos}\n        if set(request) != required | {"channel_id", "message_id"}: raise ValueError("REQUEST_SHAPE_INVALID")\n        downloaded = await download_video(client, request["channel_id"], request["message_id"])\n        return {"request_id": request_id, "action": action, "status": "PASS", **downloaded}\n    if action == "health":
+    if action in {"list_joined_public_channels", "list_channel_videos", "download_channel_video"}:
+        from userbot_public_video_actions import joined_public_channels, channel_videos, download_video
+        required = {"request_id", "action"}
+        if action == "list_joined_public_channels":
+            if set(request) != required: raise ValueError("REQUEST_SHAPE_INVALID")
+            return {"request_id": request_id, "action": action, "status": "PASS",
+                    "channels": await joined_public_channels(client)}
+        if action == "list_channel_videos":
+            if set(request) != required | {"channel_id", "limit"}: raise ValueError("REQUEST_SHAPE_INVALID")
+            videos = await channel_videos(client, request["channel_id"], request["limit"])
+            return {"request_id": request_id, "action": action, "status": "PASS", "videos": videos}
+        if set(request) != required | {"channel_id", "message_id"}: raise ValueError("REQUEST_SHAPE_INVALID")
+        downloaded = await download_video(client, request["channel_id"], request["message_id"])
+        return {"request_id": request_id, "action": action, "status": "PASS", **downloaded}
+    if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
     if action == "room_private_smoke":
@@ -92,7 +106,8 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 raise ValueError("REQUEST_SIZE_INVALID")
             request = json.loads(data.decode("utf-8"))
             async with lock:
-                response = await asyncio.wait_for(process_request(client, request),\n                    timeout=900 if request.get("action") == "download_channel_video" else 60)
+                response = await asyncio.wait_for(process_request(client, request),
+                    timeout=900 if request.get("action") == "download_channel_video" else 60)
         except Exception as exc:
             response = {"status": "FAIL", "error": type(exc).__name__ + ":" +
                         (str(exc) if isinstance(exc, (ValueError, RuntimeError, PermissionError)) else "INTERNAL")}
