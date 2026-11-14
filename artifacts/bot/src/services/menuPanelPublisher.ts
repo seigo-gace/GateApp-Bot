@@ -48,7 +48,7 @@ async function buildLinks(panel:PanelRow):Promise<{
   label:"クリエーター投稿",url:String(row.destination_url),verified:true
  }));
  if(links.length!==staticLabels.length||
-    links.some(x=>!staticLabels.includes(x.label as typeof staticLabels[number]))||
+    links.some(x=>x.label!=="クリエーター投稿")||
     new Set(links.map(x=>x.label)).size!==staticLabels.length)
    throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
  links.push(
