@@ -69,7 +69,9 @@ async function loadPostingNavUrls(
   );
   const map = new Map<string, string>();
   for (const row of r.rows) {
-    map.set(String(row.label), String(row.destination_url));
+    const label=String(row.label)==="クリエーター有料ビデオ投稿"
+      ?"クリエーター投稿":String(row.label);
+    map.set(label, String(row.destination_url));
   }
   return map;
 }
