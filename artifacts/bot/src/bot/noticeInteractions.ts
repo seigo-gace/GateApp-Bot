@@ -8,7 +8,7 @@ import {submitApplication,decideApplication} from "../services/announcementAppli
 import {escapeProfileHtml} from "../services/profileCore.js";
 import {removeUserWizardInput,showWizardScreen} from "../services/dmWizardScreen.js";
 
-type NoticeEntry={id:number;owner:number;text:string;participation:"public"|"approved_only";
+type NoticeEntry={id:number;owner:number;text:string;participation:"none"|"public"|"approved_only";
  status:string;accept:boolean;deadline:Date|null};
 function validId(n:number):number{
  if(!Number.isSafeInteger(n)||n<=0)throw Error("NOTICE_ID_INVALID");
@@ -25,7 +25,7 @@ async function entry(token:string):Promise<NoticeEntry>{
      AND p.kind IN ('announcement','preview') AND p.room_id IS NULL`,[hash]);
  if(r.rows.length!==1)throw Error("NOTICE_LINK_UNAVAILABLE");
  const p=r.rows[0],mode=p.conditions?.participation;
- if(mode!=="public"&&mode!=="approved_only")throw Error("NOTICE_NOT_PARTICIPATORY");
+ if(mode!=="public"&&mode!=="approved_only"&&mode!=="none")throw Error("NOTICE_MODE_INVALID");
  return {id:validId(Number(p.announcement_id)),owner:validId(Number(p.owner_user_id)),
   text:String(p.text),participation:mode,status:p.status,accept:p.accept_applications===true,
   deadline:p.deadline_at?new Date(p.deadline_at):null};
@@ -54,7 +54,7 @@ export async function startNoticeApplication(ctx:Context,payload:string):Promise
     "notice:join:"+match[1])]]:[]),
    [Markup.button.callback("✉️ 主催者へ質問","notice:question:"+match[1])],
   ]);
-  await ctx.reply((p.participation==="public"?"👥 自由参加":"📝 承認制")+"｜告知/予告\n"+
+  await ctx.reply((p.participation==="public"?"👥 自由参加":p.participation==="approved_only"?"📝 承認制":"📢 受付なし")+"｜告知/予告\n"+
    p.text.slice(0,1200)+(joinOpen(p)?"":"\n受付終了"),keyboard);
  }catch{await ctx.reply("この告知の入口を確認できません。");}
 }
