@@ -8,7 +8,7 @@ test("bare /start posting menu uses Master 3/2/2/3 rows", () => {
   assert.deepEqual(rows, APPROVED_POSTING_ROWS.map((r) => [...r]));
   assert.equal(rows.flat().length, 10);
   assert.deepEqual(rows.map((r) => r.length), [3, 2, 2, 3]);
-  assert.deepEqual(rows[1], ["プロフ作成", "クリエーター有料ビデオ投稿"]);
+  assert.deepEqual(rows[1], ["プロフ作成", "クリエーター用投稿"]);
 });
 
 
