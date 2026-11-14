@@ -8,7 +8,8 @@ import {bareStartPostingExtra,defaultBareStartChatId,BARE_START_POSTING_TEXT}
  from "../services/dmBareStartPostingMenu.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
 import {currentTopicDmEntry} from "../services/topicDmEntry.js";
-import {getOnlineGateLinks,ONLINE_GROUPS} from "../services/onlineGateRoutes.js";
+import {ADMISSION_BOARD_CHAT_IDS} from "../modules/gaybbsApproval/contract.js";
+import {pool} from "../db/index.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
 
 export const TALK_TOPICS=[
@@ -35,41 +36,28 @@ export function copyInviteCell(label:string,url:string):CopyCell{
   throw new Error("INVITE_LINK_NOT_VERIFIED");
  return {text:label,copy_text:{text:url}};
 }
-export async function inviteCopyRows(
- membership:(chatId:number)=>Promise<boolean>,
- links:readonly {group:string;gateStartUrl:string;verified:boolean}[]
-):Promise<CopyCell[][]>{
- const names=["エリア’s BBS","ビデオChatの掲示板","ゲイのための掲示板♂"];
- const keys=["area_bbs","video_chat","gay_board"] as const;
- const rows:CopyCell[][]=[];
- for(let i=0;i<keys.length;i++){
-  const key=keys[i]!,group=ONLINE_GROUPS[key];
-  const joined=await membership(group.chatId);
-  const route=links.find(x=>x.group===key);
-  if(joined){
-   const groupId=String(group.chatId).slice(4);
-   rows.push([copyInviteCell("📋 "+names[i]+"のリンク", "https://t.me/c/"+groupId+"/1")]);
-  }else if(route?.verified===true){
-   rows.push([copyInviteCell("📋 "+names[i]+"の承認ゲート",route.gateStartUrl)]);
-  }else{
-   throw Error("INVITE_GATE_ROUTE_UNVERIFIED:"+key);
-  }
- }
- return rows;
+/** One shared questionnaire and post-approval three-group chooser. */
+export function commonInviteCopyRows(url:string):CopyCell[][]{
+ return [[copyInviteCell("📋 共通参加承認ゲートをコピー",url)]];
+}
+async function commonGateUrl():Promise<string>{
+ const r=await pool.query<{chat_id:string;gate_code:string}>(`
+ SELECT chat_id,gate_code FROM targets
+ WHERE target_type='entry_group' AND chat_id=ANY($1::bigint[])
+ ORDER BY chat_id`,[ADMISSION_BOARD_CHAT_IDS]);
+ if(r.rows.length!==3||new Set(r.rows.map(x=>String(x.chat_id))).size!==3 ||
+    r.rows.some(x=>!ADMISSION_BOARD_CHAT_IDS.includes(Number(x.chat_id))||
+      !/^[A-Za-z0-9_-]{1,48}$/.test(String(x.gate_code))))
+  throw new Error("COMMON_GATE_ROUTE_NOT_VERIFIED");
+ return "https://t.me/GayBBS_bot?start=gate_"+r.rows[0]!.gate_code;
 }
 async function showInvite(t:Telegram,id:number,screenId?:number):Promise<void>{
- const links=await getOnlineGateLinks();
- const rows=await inviteCopyRows(async chatId=>{
-  try{
-   const user=await t.getChatMember(chatId,id);
-   return user.status==="creator"||user.status==="administrator"||
-    user.status==="member"||(user.status==="restricted"&&user.is_member===true);
-  }catch{return false;}
- },links);
- const raw=[...rows,[{text:"↩ 戻る",callback_data:"dm:utility:home"}]];
+ const url=await commonGateUrl();
+ const raw=[...commonInviteCopyRows(url),
+  [{text:"↩ 戻る",callback_data:"dm:utility:home"}]];
  const keyboard=Markup.inlineKeyboard(raw as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
  await showWizardScreen(t,id,screenId,
-  "🔗 紹介/招待\nコピーするリンクを押してください。\n未参加のグループは承認ゲート、参加済みのグループは直接開くリンクをコピーします。",keyboard);
+  "🔗 紹介/招待\\n共通承認ゲートのリンクをコピーしてください。\\n承認質問は1回だけです。承認後に3グループから参加先を選択できます。",keyboard);
 }
 export async function startPostingMenuUtility(
  t:Telegram,id:number,kind:"talk"|"invite",screenId?:number
