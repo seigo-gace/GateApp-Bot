@@ -10,7 +10,7 @@ const makeLinks=(labels:readonly (readonly string[])[]) =>
   label,url:"https://t.me/c/3847210571/"+(i+100),verified:true
  }));
 
-test("Master-approved posting rows remain exactly 3/2/2/3, with profile creation and no filler",()=>{
+test("Master-approved posting rows remain exactly 3/2/2/3/1, with profile creation and no filler",()=>{
  const result=renderMenuPanel({type:"posting",board:"area_bbs",
   links:makeLinks(APPROVED_POSTING_ROWS),entryLinks:[]});
  assert.deepEqual(result.rows.map(r=>r.map(b=>b.text)),APPROVED_POSTING_ROWS.map(r=>[...r]));
@@ -58,9 +58,9 @@ test("area board retains search+filter and chat+back without placeholder",()=>{
  assert.deepEqual(result.rows.at(-2)?.map(x=>x.text),["検索","フィルター"]);
 });
 
-test("posting panel merges seven verified DM editors and three verified navigation URLs",()=>{
+test("posting panel merges seven verified DM editors and four verified navigation URLs",()=>{
  const staticLabels=["クリエーター投稿",
-  "雑談","紹介/招待"];
+  "雑談","紹介/招待","🐞 不具合を報告"];
  const links=staticLabels.map((label,i)=>({label,
   url:"https://t.me/c/3847210571/"+(500+i),verified:true}));
  const entryLinks=[
@@ -86,7 +86,7 @@ test("posting panel merges seven verified DM editors and three verified navigati
   entryLinks:[...entryLinks.slice(0,3),{...entryLinks[3],ready:false}]}),/NOT_VERIFIED/);
 });
 
-test("all ten posting buttons have native Telegram colors without changing destinations",()=>{
+test("all eleven posting buttons have native Telegram colors without changing destinations",()=>{
  const links=makeLinks(APPROVED_POSTING_ROWS);
  const panel=renderMenuPanel({type:"posting",board:"area_bbs",links,entryLinks:[]});
  assert.deepEqual(panel.rows.map(x=>x.length),[3,2,2,3,1]);
