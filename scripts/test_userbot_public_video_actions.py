@@ -13,7 +13,7 @@ class FakeClient:
         self.channel = SimpleNamespace(id=42, username="public_test_channel", title="Public", megagroup=False)
         self.group = SimpleNamespace(id=43, username="group_test", title="Group", megagroup=True)
         self.messages = [
-            SimpleNamespace(id=8, video=object(), raw_text="原文", date=datetime(2026, 11, 14, tzinfo=timezone.utc)),
+            SimpleNamespace(id=8, video=SimpleNamespace(size=11), file=SimpleNamespace(ext=".mp4"), media="video", raw_text="原文", date=datetime(2026, 11, 14, tzinfo=timezone.utc)),
             SimpleNamespace(id=7, video=None, raw_text="text", date=None),
         ]
 
