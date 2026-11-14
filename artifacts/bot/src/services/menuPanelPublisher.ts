@@ -55,7 +55,7 @@ async function buildLinks(panel:PanelRow):Promise<{
     links.some(x=>!staticLabels.includes(x.label as typeof staticLabels[number]))||
     new Set(links.map(x=>x.label)).size!==staticLabels.length)
    throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
- links.push({label:"クリエイター投稿",
+ links.push({label:"クリエーター投稿",
   url:"https://t.me/GayBBS_bot?start=creator",verified:true});
  const gates=await pool.query(
   `SELECT feature FROM gaybbs_feature_release_gates
