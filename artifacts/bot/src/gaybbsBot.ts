@@ -9,6 +9,7 @@ import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
 import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
 import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "./bot/recruitmentHandlers.js";
+import {registerPostingMenuUtilityHandlers,startPostingMenuUtility} from "./bot/postingMenuUtilityHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
 import { registerGeneralGuideHandlers } from "./bot/generalGuideHandlers.js";
 import { registerMenuPanelHandlers } from "./bot/menuPanelHandlers.js";
@@ -67,6 +68,14 @@ async function main():Promise<void>{
   }
   if(parseProfileViewerPayload(ctx.startPayload||"")){
    await startProfileViewer(ctx,ctx.startPayload);
+   return;
+  }
+  if(ctx.startPayload==="link"){
+   await startLinkEditor(ctx.telegram,ctx.from.id);
+   return;
+  }
+  if(ctx.startPayload==="talk"||ctx.startPayload==="invite"){
+   await startPostingMenuUtility(ctx.telegram,ctx.from.id,ctx.startPayload);
    return;
   }
   if(ctx.startPayload==="search"){
@@ -169,6 +178,7 @@ async function main():Promise<void>{
   else await startOperationHelp(ctx.telegram,ctx.from.id);
  });
  registerCompactRecruitmentHandlers(bot);
+ registerPostingMenuUtilityHandlers(bot);
  registerCompactProfileHandlers(bot);
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
