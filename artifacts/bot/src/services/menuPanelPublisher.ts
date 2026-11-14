@@ -39,19 +39,24 @@ async function buildLinks(panel:PanelRow):Promise<{
   const links=await loadGeneralGuideNavLinks(chatId);
   return {links,entries:[],tokenHashes:[]};
  }
- const staticLabels=["クリエーター有料ビデオ投稿",
-  "雑談","紹介/招待"] as const;
+ // Group-panel creator entry points to GayBBS DM, never directly to a sales bot.
+ // Preserve existing verified video destination in DB for the creator's
+ // follow-up choice; do not require an extra link registry row for the menu.
+ const staticLabels=["雑談","紹介/招待"] as const;
  const stored=await pool.query(
   `SELECT label,destination_url FROM board_posting_menu_links
    WHERE chat_id=$1 AND enabled=TRUE AND verified_by IS NOT NULL
      AND verified_at IS NOT NULL`,[chatId]);
- const links:NavLink[]=stored.rows.map(row=>({
+ const existing=stored.rows.filter(row=>staticLabels.includes(String(row.label) as typeof staticLabels[number]));
+ const links:NavLink[]=existing.map(row=>({
   label:String(row.label),url:String(row.destination_url),verified:true
  }));
  if(links.length!==staticLabels.length||
     links.some(x=>!staticLabels.includes(x.label as typeof staticLabels[number]))||
     new Set(links.map(x=>x.label)).size!==staticLabels.length)
    throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
+ links.push({label:"クリエーター用投稿",
+  url:"https://t.me/GayBBS_bot?start=creator",verified:true});
  const gates=await pool.query(
   `SELECT feature FROM gaybbs_feature_release_gates
    WHERE feature IN ('profile','announcement','room','link','search','help')
