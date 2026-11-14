@@ -165,7 +165,7 @@ export function registerNoticeInteractionHandlers(bot:Telegraf):void{
    "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);}
   catch{await ctx.reply("参加者一覧を確認できません。");}
  });
- bot.action(/^notice:owner:decide:(\\d+):(accepted|declined)$/,async ctx=>{
+ bot.action(/^notice:owner:decide:(\d+):(accepted|declined)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   await ctx.answerCbQuery();
   const appId=Number(ctx.match[1]);
