@@ -16,7 +16,7 @@ class ArchiveTests(unittest.IsolatedAsyncioTestCase):
                 ]}
             if action == "list_channel_videos":
                 return {"status": "PASS", "videos": [{"messageId": 3}, {"messageId": 2}]}
-            return {"status": "PASS", "storageKey": "/mnt/g/GserverStorage/a.mp4",
+            return {"status": "PASS", "completed": True, "storageKey": "/mnt/g/GserverStorage/a.mp4",
                     "alreadyPresent": kwargs["message_id"] == 2}
         result = await archive_channel(ipc, "examplePublic", 30, lambda state: progress.append(dict(state)))
         self.assertEqual(result["status"], "complete")
