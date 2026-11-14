@@ -15,17 +15,19 @@ import {currentTopicDmEntry} from "../services/topicDmEntry.js";
 import {bareStartPostingExtra,defaultBareStartChatId} from "../services/dmBareStartPostingMenu.js";
 import {DM_POSTING_MENU_SCREEN_TEXT} from "../services/dmPostingMenuRestore.js";
 const dm=(c:any)=>c.chat?.type==="private";
-const button=(text:string,data:string)=>Markup.button.callback(text,data);
+type ButtonStyle="primary"|"success"|"danger";
+const button=(text:string,data:string,style?:ButtonStyle)=>
+ ({...Markup.button.callback(text,data),...(style?{style}:{})});
 async function show(t:Telegram,id:number,s:SearchSession,text:string,rows:any[][]){
  const view=await showWizardScreen(t,id,s.screenMessageId??undefined,text,Markup.inlineKeyboard(rows));
  if(view.messageId!==s.screenMessageId)await bindSearchScreen(id,s.revision,view.messageId);
 }
 export function searchHomeRows(s:SearchSession){
  const r=s.revision;
- return [[button("🔍 キーワード検索",`search:keyword:${r}`),button("🎛 詳細フィルター",`search:filter:${r}`)],
- [button(s.filters.kind==="profile"?"✅ プロフ":"▫️ プロフ",`search:kind:${r}:profile`),
-  button(s.filters.kind==="recruitment"?"✅ 相手募集":"▫️ 相手募集",`search:kind:${r}:recruitment`)],
- [button("🔎 検索実行",`search:run:${r}`),button("条件クリア",`search:clear:${r}`)],
+ return [[button("🔍 キーワード検索",`search:keyword:${r}`,"primary"),button("🎛 詳細フィルター",`search:filter:${r}`,"primary")],
+ [button(s.filters.kind==="profile"?"✅ プロフ":"▫️ プロフ",`search:kind:${r}:profile`,s.filters.kind==="profile"?"success":undefined),
+  button(s.filters.kind==="recruitment"?"✅ 相手募集":"▫️ 相手募集",`search:kind:${r}:recruitment`,s.filters.kind==="recruitment"?"success":undefined)],
+ [button("🔎 検索実行",`search:run:${r}`,"primary"),button("条件クリア",`search:clear:${r}`,"danger")],
  [button("↩ 戻る",`search:back:${r}`)]];
 }
 function summary(s:SearchSession){
@@ -45,7 +47,7 @@ function options(s:SearchSession,key:SearchOptionKey){
  for(let i=0;i<items.length;i+=3){
   const group=items.slice(i,i+3).map((label,j)=>({label,index:i+j}));
   rows.push(...selectionRows([group.map(x=>x.label)],s.filters[key]?[s.filters[key]!]:[],
-    label=>`search:pick:${s.revision}:${key}:${items.indexOf(label as never)}`).map(r=>r.map(x=>Markup.button.callback(x.text,x.callback_data))));
+    label=>`search:pick:${s.revision}:${key}:${items.indexOf(label as never)}`).map(r=>r.map(x=>button(x.text,x.callback_data,x.text.startsWith("✅")?"success":undefined))));
  }
  rows.push([button("↩ 戻る",`search:filter:${s.revision}`)]);
  return rows;
@@ -53,17 +55,17 @@ function options(s:SearchSession,key:SearchOptionKey){
 export function searchFilterRows(s:SearchSession){
  const r=s.revision;
  const rows=s.filters.kind==="profile"?[
-  [button("📍 エリア",`search:panel:${r}:region`),button("年齢",`search:age:${r}`),
-   button("ポジション",`search:panel:${r}:position`)],
-  [button("体型",`search:panel:${r}:body`),button("髪型",`search:panel:${r}:hair`),
-   button("目的",`search:panel:${r}:purpose`)],
-  [button("#Like",`search:tag:${r}:like`),button("#Love",`search:tag:${r}:love`)],
+  [button("📍 エリア",`search:panel:${r}:region`,"primary"),button("年齢",`search:age:${r}`,"primary"),
+   button("ポジション",`search:panel:${r}:position`,"primary")],
+  [button("体型",`search:panel:${r}:body`,"primary"),button("髪型",`search:panel:${r}:hair`,"primary"),
+   button("目的",`search:panel:${r}:purpose`,"primary")],
+  [button("#Like",`search:tag:${r}:like`,"primary"),button("#Love",`search:tag:${r}:love`,"primary")],
  ]:[
-  [button("📍 エリア",`search:panel:${r}:region`),
-   button("ポジション",`search:panel:${r}:position`),
-   button("目的",`search:panel:${r}:purpose`)],
+  [button("📍 エリア",`search:panel:${r}:region`,"primary"),
+   button("ポジション",`search:panel:${r}:position`,"primary"),
+   button("目的",`search:panel:${r}:purpose`,"primary")],
  ];
- rows.push([button("🔎 検索実行",`search:run:${r}`),button("↩ 戻る",`search:back:${r}`)]);
+ rows.push([button("🔎 検索実行",`search:run:${r}`,"primary"),button("↩ 戻る",`search:back:${r}`)]);
  return rows;
 }
 async function filter(t:Telegram,id:number,s:SearchSession){
@@ -74,7 +76,7 @@ async function tagCategories(t:Telegram,id:number,s:SearchSession,kind:"like"|"l
  for(let i=0;i<LIKE_CATEGORIES.length;i+=3)
   rows.push(LIKE_CATEGORIES.slice(i,i+3).map((cat,j)=>
    button((s.filters[kind]?.category===cat.name?"✅ ":"▫️ ")+cat.name,
-    `search:tagpage:${s.revision}:${kind}:${i+j}:0`)));
+    `search:tagpage:${s.revision}:${kind}:${i+j}:0`,s.filters[kind]?.category===cat.name?"success":undefined)));
  rows.push([button("↩ 戻る",`search:filter:${s.revision}`)]);
  await show(t,id,s,summary(s)+"\n\n"+(kind==="like"?"#Like":"#Love")+"：分類を選択",rows);
 }
@@ -87,7 +89,8 @@ async function tagItems(t:Telegram,id:number,s:SearchSession,kind:"like"|"love",
  for(let i=0;i<items.length;i+=3)
   rows.push(items.slice(i,i+3).map((label,j)=>button(
    (s.filters[kind]?.category===cat.name&&s.filters[kind]?.tag===label?"✅ ":"▫️ ")+label,
-   `search:tagpick:${s.revision}:${kind}:${category}:${start+i+j}`)));
+   `search:tagpick:${s.revision}:${kind}:${category}:${start+i+j}`,
+   s.filters[kind]?.category===cat.name&&s.filters[kind]?.tag===label?"success":undefined)));
  const nav:any[]=[];
  if(page>0)nav.push(button("◀ 前へ",`search:tagpage:${s.revision}:${kind}:${category}:${page-1}`));
  if(start+LIKE_PAGE_SIZE<cat.items.length)nav.push(button("次へ ▶",`search:tagpage:${s.revision}:${kind}:${category}:${page+1}`));
@@ -105,7 +108,7 @@ async function results(t:Telegram,id:number,s:SearchSession,page:number){
  if(page>0)nav.push(button("◀ 前へ",`search:page:${s.revision}:${page-1}`));
  if(found.hasNext)nav.push(button("次へ ▶",`search:page:${s.revision}:${page+1}`));
  if(nav.length)rows.push(nav);
- rows.push([button("🎛 条件変更",`search:filter:${s.revision}`),button("↩ 戻る",`search:back:${s.revision}`)]);
+ rows.push([button("🎛 条件変更",`search:filter:${s.revision}`,"primary"),button("↩ 戻る",`search:back:${s.revision}`)]);
  const detail=found.hits.map((h,i)=>(offset+i+1)+". "+h.title+"｜"+h.description).join("\n");
  await show(t,id,s,summary(s)+"\n\n検索結果（参加済みグループ内）\n"+
   (detail||"該当する公開投稿はありません。"),rows);
