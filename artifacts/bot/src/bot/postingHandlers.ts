@@ -1537,6 +1537,18 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!await receiveNoticeMedia(ctx.telegram,ctx.from.id,ctx.chat.id,
     ctx.message.message_id,"video",ctx.message.video.file_id))return next();
  });
+ // Telegram may classify a short silent MP4 as animation or a video/* document.
+ // These fallbacks only accept the active private notice draft.
+ bot.on("animation",async(ctx,next)=>{
+  if(ctx.chat.type!=="private")return next();
+  if(!await receiveNoticeMedia(ctx.telegram,ctx.from.id,ctx.chat.id,
+    ctx.message.message_id,"video",ctx.message.animation.file_id))return next();
+ });
+ bot.on("document",async(ctx,next)=>{
+  if(ctx.chat.type!=="private"||!ctx.message.document.mime_type?.startsWith("video/"))return next();
+  if(!await receiveNoticeMedia(ctx.telegram,ctx.from.id,ctx.chat.id,
+    ctx.message.message_id,"video",ctx.message.document.file_id))return next();
+ });
  bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
