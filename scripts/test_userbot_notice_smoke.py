@@ -32,7 +32,7 @@ class NoticeSmokeContractTests(unittest.TestCase):
 
     def test_generated_photo_is_real_png_and_does_not_require_a_file(self):
         raw = png_image().read()
-        self.assertEqual(raw[:8], b"\\x89PNG\\r\\n\\x1a\\n")
+        self.assertEqual(raw[:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(struct.unpack(">II", raw[16:24]), (64, 64))
         self.assertIn(b"IDAT", raw)
         self.assertGreater(len(raw), 50)
