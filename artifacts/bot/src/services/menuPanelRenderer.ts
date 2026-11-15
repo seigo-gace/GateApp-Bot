@@ -80,6 +80,7 @@ function assertPublishedLink(link:NavLink|EntryLink):void{
 /** Master-approved top-level panels. Row identity is part of the design
  * contract: never pad rows, reorder labels, or expose broken destinations.
  */
+export const POSTING_MENU_SCREEN_TEXT = "📝 投稿メニュー\\nボタンを選択してください。";
 export const APPROVED_POSTING_ROWS = [
  ["相手募集","募集+Room","告知/予告"],
  ["プロフ作成","クリエーター投稿"],
@@ -168,7 +169,7 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
   if(allowed[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
   return {label:entry.label,url:entry.url,verified:entry.ready};
  });
- return {text:"📝 投稿メニュー\nボタンを選択してください。",
+ return {text:POSTING_MENU_SCREEN_TEXT,
    rows:renderApprovedLinks("posting",[...spec.links,...entries])};
 }
 
