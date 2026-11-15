@@ -38,11 +38,15 @@ async function main(): Promise<void> {
          WHERE state IN ('verified','published')
          ORDER BY chat_id,panel_type`,
   );
-  if (!panels.rows.length) throw new Error("NO_VERIFIED_PANELS");
+  const onlyChat = process.env.MENU_PUBLISH_CHAT_ID ? Number(process.env.MENU_PUBLISH_CHAT_ID) : null;
+  if (onlyChat !== null && ![-1003847210571,-1002373696859,-1003770334893].includes(onlyChat))
+    throw new Error("MENU_PUBLISH_CHAT_ID_NOT_ALLOWED");
+  const selected = onlyChat === null ? panels.rows : panels.rows.filter(row => Number(row.chat_id) === onlyChat);
+  if (!selected.length) throw new Error("NO_VERIFIED_PANELS");
   const AREA = -1003847210571;
   const VIDEO = -1002373696859;
   const GAY = -1003770334893;
-  for (const row of panels.rows) {
+  for (const row of selected) {
     if (
       row.panel_type === "general_guide" &&
       [AREA, VIDEO, GAY].includes(Number(row.chat_id))
