@@ -181,9 +181,15 @@ async def run(client: Any) -> dict[str, Any]:
         old_video_ids = {m.id for m in videos_before
                          if not m.out and getattr(m, "document", None)
                          and str(getattr(m.document, "mime_type", "")).startswith("video/")}
+        from telethon.tl.types import DocumentAttributeVideo
         fixture = video_fixture()
         clip = await client.send_file(bot, fixture, force_document=False,
-                                      supports_streaming=True)
+            supports_streaming=True,
+            attributes=[DocumentAttributeVideo(duration=1, w=64, h=64,
+                                               supports_streaming=True)])
+        if not any(isinstance(attr, DocumentAttributeVideo)
+                   for attr in getattr(getattr(clip, "document", None), "attributes", [])):
+            raise RuntimeError("NOTICE_VIDEO_CLASSIFICATION_INVALID")
         video_observed = False
         for _ in range(20):
             recent = await client.get_messages(bot, limit=60)
