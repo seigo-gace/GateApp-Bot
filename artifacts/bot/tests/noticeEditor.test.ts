@@ -58,8 +58,10 @@ test("approved notice preview shows only requested eight controls and correct ca
  assert.equal(rows.flat().find(x=>x.text==="投稿する")?.callback_data,"post:announce:publish:7");
  assert.ok(!rows.flat().some(x=>/プロフ連携|投稿先/.test(x.text)));
  const preview=announcementSummary(d);
- assert.match(preview,/［編集］タイトル：題名/);
- assert.match(preview,/［編集］説明：本文/);
+ assert.match(preview, /start=ne_t_7/);
+ assert.match(preview, /［編集］<\/a>タイトル：題名/);
+ assert.match(preview, /start=ne_b_7/);
+ assert.match(preview, /［編集］<\/a>説明：本文/);
  assert.match(preview,/開催日時：未設定/);
  assert.match(preview,/受付期限：未設定/);
  assert.match(preview,/参加方法：未設定/);
