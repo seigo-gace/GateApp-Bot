@@ -5,6 +5,7 @@
 import { createServer, type Server } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import type { Telegram } from "telegraf";
 import * as targetRepo from "../repositories/targetRepo.js";
 import { onlineMembership } from "./onlineGateAccess.js";
@@ -40,7 +41,9 @@ export function validateCmFooter(value:unknown):{text:string;url:string}[][] {
     throw new Error('BRIDGE_CM_INVALID');
   let url:URL;
   try{url=new URL(item.url);}catch{throw new Error('BRIDGE_CM_INVALID');}
-  if(url.protocol!=='https:'||!url.hostname||url.username||url.password||
+  if(url.protocol!=='https:'||!url.hostname||isIP(url.hostname)!==0||
+     url.hostname==='localhost'||url.hostname.endsWith('.localhost')||
+     url.hostname.endsWith('.local')||url.username||url.password||
      (url.port&&url.port!=='443')||/\s/.test(item.url))
     throw new Error('BRIDGE_CM_INVALID');
   return [{text:item.text,url:item.url}];
