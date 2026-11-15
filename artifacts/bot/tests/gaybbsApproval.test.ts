@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
-import {APPROVAL_QUESTIONS,ADMISSION_VERSION,hasAdoptedQuestions,isSafeDocUrl,
+import {APPROVAL_QUESTIONS,ADMISSION_VERSION,ADMISSION_BOARD_CHAT_IDS,hasAdoptedQuestions,isSafeDocUrl,
  acceptedStagesComplete} from "../src/modules/gaybbsApproval/contract.js";
 import {pool} from "../src/db/index.js";
 import {openAttempt,readAttempt,rememberScreen,transition,consentsComplete,
- saveIssuedInvite,currentIssuedInvite,getRequestEligibility,withAdmissionClient}
+ saveIssuedInvites,currentIssuedInvites,currentIssuedInvite,getRequestEligibility,withAdmissionClient}
  from "../src/modules/gaybbsApproval/store.js";
 
 test("adopted question pair requires exact text, yes-label and disabled third question",()=>{
@@ -29,14 +29,19 @@ test("durable admission has stage CAS, three consent receipts and user-bound inv
  const targetId=400000+Math.floor(Math.random()*100000);
  const userId=700000000+Math.floor(Math.random()*100000);
  const intruder=userId+1000000;
- const chatId=-1004000000000-targetId;
+ const boardIds=ADMISSION_BOARD_CHAT_IDS.map((chatId,i)=>({chatId,targetId:targetId+i}));
  const code=randomUUID().replaceAll("-","");
  const url="https://t.me/+test_"+code;
  let started=false;
  try{
   await pool.query(`INSERT INTO targets
    (target_id,owner_user_id,target_type,chat_id,title,gate_code)
-   VALUES($1,1,'entry_group',$2,'test gate',$3)`,[targetId,chatId,code]);
+   VALUES($1,1,'entry_group',$2,'test gate',$3),
+         ($4,1,'entry_group',$5,'test gate',$6),
+         ($7,1,'entry_group',$8,'test gate',$9)`,
+    [targetId,ADMISSION_BOARD_CHAT_IDS[0],code,
+     targetId+1,ADMISSION_BOARD_CHAT_IDS[1],code+"a",
+     targetId+2,ADMISSION_BOARD_CHAT_IDS[2],code+"b"]);
   started=true;
   const {attempt}=await openAttempt(userId,targetId,"aaaaaaaaaaaaaaaaaa");
   assert.equal(attempt.step,"q1");
@@ -67,18 +72,20 @@ test("durable admission has stage CAS, three consent receipts and user-bound inv
    newToken:"eeeeeeeeeeeeeeeeee"}),true);
   s=await readAttempt(userId);assert.ok(s);
   const expires=new Date(Date.now()+3600_000);
-  assert.equal(await saveIssuedInvite(s,url,expires),true);
+  const links=boardIds.map((b,i)=>({targetId:b.targetId,link:url+"_"+i,expires}));
+  assert.equal(await saveIssuedInvites(s,links),true);
   const approved=await readAttempt(userId);assert.ok(approved);
   assert.equal(approved.step,"approved");
-  assert.equal(await currentIssuedInvite(approved),url);
+  assert.equal(await currentIssuedInvite(approved),links[0]!.link);
+  assert.deepEqual(await currentIssuedInvites(approved),links.map(({targetId,link})=>({targetId,link})));
   await withAdmissionClient(async client=>{
    await client.query("BEGIN");
    try{
-    const legit=await getRequestEligibility(client,{targetId,userId,url});
-    const stolen=await getRequestEligibility(client,{targetId,userId:intruder,url});
+    const legit=await getRequestEligibility(client,{targetId,userId,url:links[0]!.link});
+    const stolen=await getRequestEligibility(client,{targetId,userId:intruder,url:links[0]!.link});
     assert.equal(legit.allowed,true);
     assert.equal(stolen.allowed,false);
-    assert.equal((await getRequestEligibility(client,{targetId,userId,url:url+"stolen"})).allowed,false);
+    assert.equal((await getRequestEligibility(client,{targetId,userId,url:links[0]!.link+"stolen"})).allowed,false);
    }finally{await client.query("ROLLBACK")}
   });
   const counts=await pool.query(`SELECT COUNT(*)::int AS n FROM gate_consents
@@ -87,11 +94,11 @@ test("durable admission has stage CAS, three consent receipts and user-bound inv
   assert.equal(counts.rows[0].n,3);
  }finally{
   if(started){
-   await pool.query("DELETE FROM invite_links WHERE target_id=$1",[targetId]);
+   await pool.query("DELETE FROM invite_links WHERE target_id=ANY($1::int[])",[boardIds.map(x=>x.targetId)]);
    await pool.query("DELETE FROM gate_consents WHERE target_id=$1",[targetId]);
    await pool.query("DELETE FROM gate_sessions WHERE target_id=$1",[targetId]);
-   await pool.query("DELETE FROM approvals WHERE target_id=$1",[targetId]);
-   await pool.query("DELETE FROM targets WHERE target_id=$1",[targetId]);
+   await pool.query("DELETE FROM approvals WHERE target_id=ANY($1::int[])",[boardIds.map(x=>x.targetId)]);
+   await pool.query("DELETE FROM targets WHERE target_id=ANY($1::int[])",[boardIds.map(x=>x.targetId)]);
   }
  }
 });
