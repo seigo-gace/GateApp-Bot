@@ -13,25 +13,6 @@ export const BARE_START_POSTING_TEXT =
   "📌 各掲示板の固定メニュー（総合案内・投稿メニュー）から利用を開始してください。\n" +
   "下の投稿メニュー（11ボタン）から機能を選べます。各掲示板の固定メニューから開くと投稿先の文脈が付きます。";
 
-async function loadPostingNavUrls(
-  chatId: number,
-): Promise<ReadonlyMap<string, string>> {
-  const { pool } = await import("../db/index.js");
-  const r = await pool.query<{ label: string; destination_url: string }>(
-    `SELECT label,destination_url FROM board_posting_menu_links
-     WHERE chat_id=$1 AND enabled=TRUE
-       AND verified_by IS NOT NULL AND verified_at IS NOT NULL`,
-    [chatId],
-  );
-  const map = new Map<string, string>();
-  for (const row of r.rows) {
-    const label=String(row.label)==="クリエーター有料ビデオ投稿"
-      ?"クリエーター投稿":String(row.label);
-    map.set(label, String(row.destination_url));
-  }
-  return map;
-}
-
 export function defaultBareStartChatId(menuOriginChatId?: number | null): number {
   if (
     menuOriginChatId !== null &&
@@ -58,10 +39,9 @@ export function navigationButton(label: string, verifiedUrl?: string) {
 }
 
 /** Builds the authoritative 3/2/2/3/1 inline keyboard for bare /start in DM. */
-export async function bareStartPostingExtra(chatId: number) {
-  const [ready, urls, inviteUrl] = await Promise.all([
-    loadPostingFeatureReadiness(),
-    loadPostingNavUrls(chatId),
+export async function bareStartPostingExtra(_chatId: number) {
+  const [ready, inviteUrl] = await Promise.all([
+    loadPostingFeatureReadiness().catch(()=>new Set<string>()),
     commonGateUrl().catch(()=>null),
   ]);
   const rows = APPROVED_POSTING_ROWS.map((row) =>
@@ -73,7 +53,7 @@ export async function bareStartPostingExtra(chatId: number) {
         : Markup.button.callback(label,"dm:nav-unavailable"));
       if (STATIC_URL_LABELS.has(label)) {
         const url = label==="クリエーター投稿"
-          ? POSTING_CREATOR_URL : urls.get(label);
+          ? POSTING_CREATOR_URL : undefined;
         // An unavailable link must never prevent the rest of the posting menu
         // (including a cancel -> menu return) from being rendered.
         return colorize(navigationButton(label, url));
