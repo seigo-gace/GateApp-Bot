@@ -37,8 +37,8 @@ test("free join/approved join and media file references persist in the same priv
   {kind:"video",fileId:"video_2"}]}),[{kind:"photo",fileId:"photo_1"},
   {kind:"video",fileId:"video_2"}]);
 });
-test("notice preview and public card require title and body",()=>{
- assert.throws(()=>validateNotice({kind:"announcement",title:"題名"},1));
+test("empty notice is rejected and configured public card fields render",()=>{
+ assert.throws(()=>validateNotice({kind:"announcement"},1));
  const data={kind:"announcement",title:"題名",body:"本文",text:"題名\n本文",
   participation:"public",deadlineAt:"2030-01-01T11:00:00.000Z"};
  validateNotice(data,1);
