@@ -21,6 +21,7 @@ export type TumblrBridgeInput = {
   operation_key?: string;
   message_id?: string;
   text?: string;
+  buttons?: unknown;
   cm_buttons?: unknown;
 };
 export type TumblrBridgeOutput = {
@@ -43,6 +44,29 @@ export function validateCmFooter(value:unknown):{text:string;url:string}[][] {
      (url.port&&url.port!=='443')||/\s/.test(item.url))
     throw new Error('BRIDGE_CM_INVALID');
   return [{text:item.text,url:item.url}];
+ });
+}
+export function validateOriginalButtons(value:unknown):{text:string;url:string}[][] {
+ if(value===undefined)return [];
+ if(!Array.isArray(value)||value.length>20)throw new Error("BRIDGE_BUTTONS_INVALID");
+ let count=0;
+ return value.map((row:unknown)=>{
+  if(!Array.isArray(row)||row.length<1||row.length>4)
+    throw new Error("BRIDGE_BUTTONS_INVALID");
+  return row.map((entry:unknown)=>{
+   count++;
+   if(count>50)throw new Error("BRIDGE_BUTTONS_INVALID");
+   const item=entry as Record<string,unknown>|null;
+   if(!item||typeof item.text!=="string"||!item.text.trim()||
+      item.text.length>64||typeof item.url!=="string"||item.url.length>2048)
+     throw new Error("BRIDGE_BUTTONS_INVALID");
+   let url:URL;
+   try{url=new URL(item.url);}catch{throw new Error("BRIDGE_BUTTONS_INVALID");}
+   if(url.protocol!=="https:"||!url.hostname||url.username||url.password||
+      (url.port&&url.port!=="443")||/\\s/.test(item.url))
+     throw new Error("BRIDGE_BUTTONS_INVALID");
+   return {text:item.text,url:item.url};
+  });
  });
 }
 export async function handleTumblrBridge(
@@ -100,7 +124,8 @@ export async function handleTumblrBridge(
    const result=await publishPost(telegram,{
      sourceType:"announcement",destinationPurpose:"announcement",
      sourceId:op,ownerId,revision:1,topicId,text:escapeProfileHtml(input.text),
-     buttons:validateCmFooter(input.cm_buttons),approved:true,
+     buttons:[...validateOriginalButtons(input.buttons),
+              ...validateCmFooter(input.cm_buttons)],approved:true,
    });
    return {verified:true,message_id:String(result.messageId)};
  }
