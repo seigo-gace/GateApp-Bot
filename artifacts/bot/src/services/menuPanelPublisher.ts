@@ -41,20 +41,10 @@ async function buildLinks(panel:PanelRow):Promise<{
   const links=await loadGeneralGuideNavLinks(chatId);
   return {links,entries:[],tokenHashes:[]};
  }
- const staticLabels=POSTING_PUBLIC_NAV_LABELS;
- const stored=await pool.query(
-  `SELECT label,destination_url FROM board_posting_menu_links
-   WHERE chat_id=$1 AND enabled=TRUE AND verified_by IS NOT NULL
-     AND verified_at IS NOT NULL`,[chatId]);
- // Preserve the verified legacy URL for CreateVdobot. The talk/invite
- // entries are now Bot-owned DM actions, not the old one-target URLs.
- if(stored.rows.length!==staticLabels.length||
-    stored.rows.some(row=>!staticLabels.includes(String(row.label) as typeof staticLabels[number]))||
-    new Set(stored.rows.map(row=>String(row.label))).size!==staticLabels.length)
-   throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
+ // These three destinations already have one adopted Owner/route each.
+ // Per-group legacy link rows must not change common menu functionality.
  const gateUrl=await commonGateUrl();
- const links:NavLink[]=stored.rows.map(row=>{
-  const label=String(row.label);
+ const links:NavLink[]=POSTING_PUBLIC_NAV_LABELS.map(label=>{
   if(label==="クリエーター有料ビデオ投稿")
    return {label:"クリエーター投稿",url:POSTING_CREATOR_URL,verified:true};
   if(label==="雑談")
