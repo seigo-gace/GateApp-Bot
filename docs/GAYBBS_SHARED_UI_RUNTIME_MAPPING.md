@@ -14,7 +14,7 @@
 | レイヤー | 正本ファイル | 呼出元 / 目的 |
 |---|---|---|
 | 表示配列・色・外装 | `artifacts/bot/src/services/menuPanelRenderer.ts` | `APPROVED_POSTING_ROWS`、`postingButtonStyle`、公開本文 |
-| 共通11ボタン接続定義・機能リリース判定 | `artifacts/bot/src/services/postingMenuRoutes.ts` | DM/公開メニューのラベル→機能→接続先、release-gate SQLを一本化 |
+| 共通11ボタン接続定義（純粋設定） | `artifacts/bot/src/services/postingMenuContract.ts` | ラベル→機能→callback/URLを一本化。描画/DBに依存しない |\n| 共通機能公開判定 | `artifacts/bot/src/services/postingMenuRoutes.ts` | DM/公開メニューで同一のrelease-gate SQL。契約を再エクスポート |
 | DMメニュー生成 | `artifacts/bot/src/services/dmBareStartPostingMenu.ts` | 共通の表示配列と接続定義を利用、DM callback |
 | DMメニュー復帰 | `artifacts/bot/src/services/dmPostingMenuRestore.ts` | ウィザードから既存メニューへ戻る |
 | DM画面表示/編集・入力削除 | `artifacts/bot/src/services/dmWizardScreen.ts` | edit→送信fallbackとprivate入力削除 |
@@ -54,11 +54,11 @@
 
 ## 確認で判明した共通化不足と保護方針
 
-1. 修正済み（Source段階）：DMと公開メニューで重複していた「Feature label ↔ release gate ↔ destination」の定義を `postingMenuRoutes.ts` に移動。**UI描画と公開状態管理は移動しない**。これで画面の行・色・本文・投稿処理は不変。
+1. 修正済み（Source段階）：DMと公開メニューで重複していた「Feature label ↔ destination」を `postingMenuContract.ts`、release gateを `postingMenuRoutes.ts` に分離。**UI描画と公開状態管理は移動しない**。これで画面の行・色・本文・投稿処理は不変。
 2. 修正済み（Source段階）：共通GATE URL取得失敗がDMメニュー全体を隠す問題を隔離。GATEが未検証のときは「紹介/招待」だけ既存の `dm:nav-unavailable` callbackにし、他10ボタンの描画・戻るを維持。架空リンクは作らない。GATEが正常なら既存 `copy_text` を維持。
-3. 残る検証：ゲイ掲示板の公開パネルだけTelegram edit結果が未確認。既存公開メッセージ/台帳の照合なしに `message_id` を破棄しない。
-4. 残る検証：プロフィール/Room/承認/エリア等を含む全回帰テスト、Botの報告DB→通知のE2E、各端末表示。本番稼働結果とSource/CIを混同しない。
-5. 他CUの進行中Sourceを勝手に統合・マージ・再配備しない。保護すべき外装差分があるときは必ず実版を比較する。
+3. 修正済み（Source段階）：グループごとに使われていなかった旧 `board_posting_menu_links` の3行必須チェックを除去。共通のCreator/Talk/GATE接続を採用し、UIやリンク先を変更しない。公開済みメッセージと台帳の編集権限は従来通り。\n4. 残る検証：ゲイ掲示板の公開パネルだけTelegram edit結果が未確認。既存公開メッセージ/台帳の照合なしに `message_id` を破棄しない。
+5. 残る検証：プロフィール/Room/承認/エリア等を含む全回帰テスト、Botの報告DB→通知のE2E、各端末表示。本番稼働結果とSource/CIを混同しない。
+6. 他CUの進行中Sourceを勝手に統合・マージ・再配備しない。保護すべき外装差分があるときは必ず実版を比較する。
 
 ## 再実行するべき検証
 - 11ボタンの配置 `[3,2,2,3,1]`、文言、色、URL/callback不変。
