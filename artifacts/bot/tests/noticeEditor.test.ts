@@ -47,7 +47,7 @@ test("notice preview and public card require title and body",()=>{
 });
 test("approved notice preview shows only requested eight controls and correct callback routes",()=>{
  const d={module:"announcement",step:"preview",revision:7,
-  data:{kind:"announcement",title:"題名",body:"本文",text:"題名\n本文",participation:"none"}};
+  data:{kind:"announcement",title:"題名",body:"本文",text:"題名\n本文",participation:"none"}} as const;
  const rows=announcementPanel(d).reply_markup.inline_keyboard;
  assert.deepEqual(rows.map(row=>row.map(x=>x.text)),[
   ["日時設定","期限設定","参加方法"],
