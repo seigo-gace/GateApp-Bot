@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
+import shutil
 import struct
+import subprocess
+import tempfile
 import zlib
 from typing import Any
 
@@ -35,6 +39,31 @@ def png_image() -> io.BytesIO:
     file = io.BytesIO(data)
     file.name = "notice_test.png"
     return file
+
+
+def video_fixture() -> io.BytesIO:
+    """Generate original short muted clip, never read someone else's video."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("NOTICE_VIDEO_FIXTURE_ENCODER_MISSING")
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as handle:
+            path = handle.name
+        subprocess.run([ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=5:d=0.4",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart", "-an", "-y", path],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=15, check=True)
+        video = io.BytesIO(open(path, "rb").read())
+        if video.getbuffer().nbytes < 500:
+            raise RuntimeError("NOTICE_VIDEO_FIXTURE_INVALID")
+        video.name = "notice_test.mp4"
+        return video
+    finally:
+        if path and os.path.exists(path):
+            os.unlink(path)
 
 
 def flat_labels(message: Any) -> list[str]:
@@ -149,6 +178,43 @@ async def run(client: Any) -> dict[str, Any]:
             raise RuntimeError("NOTICE_MEDIA_INPUT_NOT_DELETED")
         steps.append("actual_photo_preview")
         steps.append("media_input_deleted")
+
+        phase = "VIDEO"
+        videos_before = await client.get_messages(bot, limit=40)
+        old_video_ids = {m.id for m in videos_before
+                         if not m.out and getattr(m, "document", None)
+                         and str(getattr(m.document, "mime_type", "")).startswith("video/")}
+        fixture = video_fixture()
+        clip = await client.send_file(bot, fixture, force_document=False,
+                                      supports_streaming=True)
+        video_observed = False
+        for _ in range(20):
+            recent = await client.get_messages(bot, limit=60)
+            video_observed = any(not m.out and m.id not in old_video_ids
+                                 and getattr(m, "document", None)
+                                 and str(getattr(m.document, "mime_type", "")).startswith("video/")
+                                 for m in recent)
+            if video_observed:
+                break
+            await asyncio.sleep(0.4)
+        if not video_observed:
+            raise RuntimeError("NOTICE_ACTUAL_VIDEO_PREVIEW_MISSING")
+        preview = await wait_for_screen(client, bot, preview.id, before,
+            lambda m: TEST_TITLE in (m.raw_text or "") and rows(m) == PREVIEW_ROWS,
+            "NOTICE_VIDEO_PREVIEW_TEXT_MISSING")
+        screen = preview
+        if await client.get_messages(bot, ids=clip.id) is not None:
+            raise RuntimeError("NOTICE_VIDEO_INPUT_NOT_DELETED")
+        steps.append("actual_video_preview")
+        steps.append("video_input_deleted")
+
+        phase = "CLEANUP"
+        await preview.click(text="キャンセル")
+        await wait_for_screen(client, bot, preview.id, before,
+            lambda m: "告知/予告" in flat_labels(m),
+            "NOTICE_CANCEL_MENU_NOT_RESTORED")
+        entered = False
+        steps.append("cancel_menu_restored")
         return {"action": "notice_private_smoke", "status": "PASS",
                 "steps": steps, "published": False}
     except Exception as exc:
