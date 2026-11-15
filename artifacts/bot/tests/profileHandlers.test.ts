@@ -166,7 +166,7 @@ test("cancel is revision-bound: clears active draft only and returns directly to
   assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"),"cancel shows no explanation toast");
   assert.ok(f.sent.at(-1)[1].includes("投稿メニュー"));
   assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
-  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard.flat().length,10);
+  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard.flat().length,11);
   await f.action("pf:restart");
   assert.equal(f.draft.step,"awaiting_basic");
   await f.action(cancelAction,[previous]);
@@ -289,7 +289,7 @@ test("A cancel returns directly to the DM posting menu without deleting saved pr
  assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"));
  assert.match(result[1],/投稿メニュー/);
  assert.equal(result[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
- assert.deepEqual(result[2].reply_markup.inline_keyboard.map((row:any[])=>row.length),[3,2,2,3]);
+ assert.deepEqual(result[2].reply_markup.inline_keyboard.map((row:any[])=>row.length),[3,2,2,3,1]);
  assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
 });
 
@@ -302,7 +302,7 @@ test("A cancel with no verified origin still restores the menu and does not inve
  await f.action(overviewAction,[String(f.draft.revision),"cancel"]);
  const result=f.sent.at(-1);
  assert.match(result[1],/投稿メニュー/);
- assert.equal(result[2].reply_markup.inline_keyboard.flat().length,10);
+ assert.equal(result[2].reply_markup.inline_keyboard.flat().length,11);
  assert.equal(result[2].reply_markup.inline_keyboard[0][0].url,undefined);
 });
 
