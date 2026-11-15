@@ -7,7 +7,7 @@ import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/pr
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
-import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
+import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startNoticeInlineEdit, startLinkEditor } from "./bot/postingHandlers.js";
 import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "./bot/recruitmentHandlers.js";
 import {registerPostingMenuUtilityHandlers,startPostingMenuUtility} from "./bot/postingMenuUtilityHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
@@ -50,6 +50,12 @@ async function main():Promise<void>{
  await runMigrations();
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  const noticeEdit=ctx.startPayload?.match(/^ne_([tb])_(\d+)$/);
+  if(noticeEdit){
+   await startNoticeInlineEdit(ctx.telegram,ctx.from.id,Number(noticeEdit[2]),
+    noticeEdit[1]==="t"?"title":"body");
+   return;
+  }
   if(ctx.startPayload?.startsWith("p_")){
    try {
     const origin=await activateTopicDmEntry(ctx.from.id,ctx.startPayload,ctx.telegram);
