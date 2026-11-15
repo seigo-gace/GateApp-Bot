@@ -201,7 +201,9 @@ async def run(client: Any) -> dict[str, Any]:
                 break
             await asyncio.sleep(0.4)
         if not video_observed:
-            raise RuntimeError("NOTICE_ACTUAL_VIDEO_PREVIEW_MISSING")
+            input_still_visible = await client.get_messages(bot, ids=clip.id) is not None
+            raise RuntimeError("NOTICE_VIDEO_INPUT_NOT_CONSUMED" if input_still_visible
+                               else "NOTICE_VIDEO_PREVIEW_MISSING_AFTER_CONSUMED")
         preview = await wait_for_screen(client, bot, preview.id, before,
             lambda m: TEST_TITLE in (m.raw_text or "") and rows(m) == PREVIEW_ROWS,
             "NOTICE_VIDEO_PREVIEW_TEXT_MISSING")
