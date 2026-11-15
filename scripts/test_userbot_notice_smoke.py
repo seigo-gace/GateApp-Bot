@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import struct
 import unittest
 import zlib
 from types import SimpleNamespace
-from userbot_notice_smoke import PREVIEW_ROWS, png_image, run
+from userbot_notice_smoke import PREVIEW_ROWS, png_image, video_fixture, run
 from userbot_resident_ipc import ACTIONS
 
 
@@ -36,6 +37,13 @@ class NoticeSmokeContractTests(unittest.TestCase):
         self.assertEqual(struct.unpack(">II", raw[16:24]), (64, 64))
         self.assertIn(b"IDAT", raw)
         self.assertGreater(len(raw), 50)
+
+    def test_original_video_fixture_is_complete_without_ffmpeg(self):
+        data = video_fixture().read()
+        self.assertEqual(len(data), 1611)
+        self.assertEqual(data[4:8], b"ftyp")
+        self.assertEqual(hashlib.sha256(data).hexdigest(),
+                         "936db605d15e458c3f6bbd7c43c7fbbbedff99f5b827de9079d540f1b9d94e6a")
 
     def test_invalid_bot_stops_before_sending_any_message(self):
         out = asyncio.run(run(NotBot()))
