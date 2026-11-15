@@ -1502,7 +1502,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
    return true;
   }
-  const next=await updateDraft(userId,"announcement",d.revision,"preview",
+  const next=await updateDraft(userId,"announcement",d.revision,d.step==="awaiting_text"?"awaiting_text":"preview",
    {...d.data,media:[...media,{kind,fileId}]});
   await announcementScreen(telegram,userId,next);
   return true;
