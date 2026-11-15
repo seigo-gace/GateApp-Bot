@@ -509,8 +509,8 @@ export function announcementSummary(d:EditorDraft):string{
  const dt=(v:unknown)=>v?new Date(String(v)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}):"未設定";
  const join=noticeJoin(d.data);
  return ["📢 告知/予告",
-  title?"［編集］タイトル："+escapeProfileHtml(title):"タイトル：未設定",
-  body?"［編集］説明："+escapeProfileHtml(body):"説明：未設定",
+  title?`<a href="https://t.me/GayBBS_bot?start=ne_t_${d.revision}">［編集］</a>タイトル：`+escapeProfileHtml(title):"タイトル：未設定",
+  body?`<a href="https://t.me/GayBBS_bot?start=ne_b_${d.revision}">［編集］</a>説明：`+escapeProfileHtml(body):"説明：未設定",
   "開催日時："+dt(d.data.eventAt),
   "受付期限："+dt(d.data.deadlineAt),
   "参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"未設定")
@@ -563,7 +563,23 @@ async function announcementDestinationPicker(telegram:Telegram,userId:number,d:E
   Markup.inlineKeyboard([
    [Markup.button.callback("📍 検証済みTopicから選択",`post:announce:topics:${d.revision}`)],
    [Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]
-  ]));
+  ]),true);
+}
+/** Telegram HTML in-message edit links reopen only the owner's matching draft. */
+export async function startNoticeInlineEdit(
+ telegram:Telegram,userId:number,revision:number,field:"title"|"body",
+):Promise<void>{
+ const d=await getDraft(userId,"announcement");
+ if(!d||d.revision!==revision||!["preview","awaiting_text","awaiting_media"].includes(d.step)||
+    d.data.kind==="recruitment"){
+  await telegram.sendMessage(userId,"編集対象が古くなりました。告知/予告を開き直してください。");return;
+ }
+ const next=await updateDraft(userId,"announcement",d.revision,"awaiting_text",
+  {...d.data,editField:field,noticePickerStage:null});
+ await showPostScreen(telegram,userId,next,field==="title"?
+  "新しいタイトルを入力してください。":"新しい説明を入力してください。",
+  Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+   `post:announce:back:${next.revision}`)]]));
 }
 /** Announcement is selected by its menu, not by an extra mandatory kind page. */
 export async function startAnnouncementEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
