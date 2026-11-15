@@ -2,6 +2,7 @@
  * Never fabricate Telegram message IDs, topic IDs, Cloudflare Pages URLs,
  * missing functionality or links to a disabled document.
  */
+import {POSTING_FEATURE_BY_LABEL} from "./postingMenuContract.js";
 export type NavLink={label:string;url:string;verified:boolean;copy_text?:{text:string}};
 export type EntryLink={feature:"profile"|"announcement"|"room"|"link"|"search"|"help";label:string;url:string;ready:boolean};
 export type PanelSpec={
@@ -159,14 +160,8 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
  // Reuse the existing verified DM entries alongside verified URL destinations.
  // Labels and feature ownership must match the exact Master-approved layout.
- const allowed:Readonly<Record<string,EntryLink["feature"]>>={
-  "相手募集":"announcement","募集+Room":"room",
-  "プロフ作成":"profile",
-  "告知/予告":"announcement","🔗ボタン作成":"link",
-  "検索/フィルター":"search","操作説明":"help",
- };
  const entries=spec.entryLinks.map(entry=>{
-  if(allowed[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
+  if(POSTING_FEATURE_BY_LABEL[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
   return {label:entry.label,url:entry.url,verified:entry.ready};
  });
  return {text:POSTING_MENU_SCREEN_TEXT,
