@@ -34,10 +34,18 @@ export function createTelegramDispatcher(telegram:Telegram){
   async revise(t:TransportTarget,messageId:number,message:TransportMessage):Promise<void>{
    assertTarget(t);
    if(!Number.isSafeInteger(messageId)||messageId<=0)throw new Error("MPB_MESSAGE_ID_INVALID");
-   await telegram.editMessageText(t.chatId,messageId,undefined,message.text,{
-    ...(message.parseMode?{parse_mode:message.parseMode}:{}),
-    ...(markup(message.buttons)||{}),
-   });
+   try{
+    await telegram.editMessageText(t.chatId,messageId,undefined,message.text,{
+     ...(message.parseMode?{parse_mode:message.parseMode}:{}),
+     ...(markup(message.buttons)||{}),
+    });
+   }catch(error){
+    // Telegram returns 400 if the published text/keyboard already matches.
+    // This is an idempotent success: do not mark the original panel uncertain
+    // or create a replacement public message.
+    if(error instanceof Error&&/message is not modified/i.test(error.message))return;
+    throw error;
+   }
   },
   async cancel(t:TransportTarget,messageId:number):Promise<void>{
    assertTarget(t);
