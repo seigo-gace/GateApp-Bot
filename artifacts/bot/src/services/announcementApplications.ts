@@ -22,9 +22,9 @@ export async function submitApplication(
  try{
   await c.query("BEGIN");
   const post=await c.query(
-   `SELECT owner_user_id,kind,status,capacity,accept_applications,deadline_at
+   `SELECT owner_user_id,kind,status,capacity,accept_applications,deadline_at,conditions
     FROM announcement_posts WHERE announcement_id=$1 FOR UPDATE`,[announcementId]);
-  if(post.rows.length!==1||post.rows[0].kind!=="recruitment"||
+  if(post.rows.length!==1||!["recruitment","announcement","preview"].includes(post.rows[0].kind)||
     post.rows[0].status!=="published"||post.rows[0].accept_applications!==true)
    throw new Error("APPLICATIONS_CLOSED");
   const p=post.rows[0];
@@ -40,11 +40,12 @@ export async function submitApplication(
   }
   const insert=await c.query(
    `INSERT INTO announcement_applications
-     (announcement_id,applicant_user_id,consented_profile)
-    VALUES($1,$2,$3::jsonb)
+     (announcement_id,applicant_user_id,consented_profile,status)
+    VALUES($1,$2,$3::jsonb,$4)
     ON CONFLICT(announcement_id,applicant_user_id) DO NOTHING
     RETURNING application_id,status`,
-   [announcementId,applicantId,JSON.stringify(consentedProfile)]);
+   [announcementId,applicantId,JSON.stringify(consentedProfile),
+    p.kind!=="recruitment"&&p.conditions?.participation==="public"?"accepted":"submitted"]);
   const duplicate=insert.rows.length===0;
   const row=duplicate?(await c.query(
    `SELECT application_id,status FROM announcement_applications
@@ -91,12 +92,14 @@ export async function decideApplication(
  try{
   await c.query("BEGIN");
   const post=await c.query(
-   `SELECT owner_user_id,status,kind,capacity,accept_applications
+   `SELECT owner_user_id,status,kind,capacity,accept_applications,conditions
     FROM announcement_posts WHERE announcement_id=$1 FOR UPDATE`,[announcementId]);
   if(post.rows.length!==1||Number(post.rows[0].owner_user_id)!==ownerUserId)
    throw new Error("APPLICATION_OWNER_MISMATCH");
   const p=post.rows[0];
-  if(p.kind!=="recruitment"||p.status!=="published"||!p.accept_applications)
+  if(!["recruitment","announcement","preview"].includes(p.kind)||
+    (p.kind!=="recruitment"&&p.conditions?.participation!=="approved_only")||
+    p.status!=="published"||!p.accept_applications)
    throw new Error("APPLICATIONS_CLOSED");
   const app=await c.query(
    `SELECT applicant_user_id,status FROM announcement_applications

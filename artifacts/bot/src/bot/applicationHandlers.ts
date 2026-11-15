@@ -2,6 +2,7 @@
  * DM consent precedes profile snapshot transfer to the announcement owner.
  */
 import {Markup,type Telegraf,type Context} from "telegraf";
+import {startNoticeApplication,isNoticeApplicationLink} from "./noticeInteractions.js";
 import {roomRecruitmentSelectorRow} from "../services/recruitmentButtonLayout.js";
 import {inputInstructions} from "./recruitmentHandlers.js";
 import {styledInlineButton} from "../services/inlineButtonStyle.js";
@@ -27,6 +28,9 @@ import {LIKE_CATEGORIES,likePageIndex,toggleLike,validLikeTags,type ProfileTagPu
  */
 export async function startApplicationEditor(ctx:Context,payload:string):Promise<void>{
  if(ctx.chat?.type!=="private"||!ctx.from)return;
+ if(await isNoticeApplicationLink(payload)){
+  await startNoticeApplication(ctx,payload);return;
+ }
  const roomLink=await isRoomApplicationLink(payload);
  if(!roomLink){
   try{

@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "notice_private_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -79,6 +79,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                 "topics": results}
     if action == "room_private_smoke":
         from userbot_room_smoke import run
+        return {"request_id": request_id, **await run(client)}
+    if action == "notice_private_smoke":
+        from userbot_notice_smoke import run
         return {"request_id": request_id, **await run(client)}
     if action == "room_public_post_smoke":
         from userbot_room_public_smoke import run
@@ -189,7 +192,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=90 if request.get("action") == "room_public_post_smoke" else 30)
+                    timeout=90 if request.get("action") in {"room_public_post_smoke", "notice_private_smoke"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {

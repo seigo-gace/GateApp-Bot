@@ -5,7 +5,7 @@
 import type {Telegram} from "telegraf";
 import {Markup} from "telegraf";
 export type TransportTarget={chatId:number;threadId:number};
-export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";buttons?:readonly (readonly {text:string;url:string;copy_text?:{text:string};style?:"primary"|"success"|"danger"}[])[]};
+export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";media?:readonly {kind:"photo"|"video";fileId:string}[];buttons?:readonly (readonly {text:string;url:string;copy_text?:{text:string};style?:"primary"|"success"|"danger"}[])[]};
 function assertTarget(t:TransportTarget):void{
  if(!Number.isSafeInteger(t.chatId)||t.chatId>=0||
     !Number.isSafeInteger(t.threadId)||t.threadId<=0)
@@ -24,11 +24,34 @@ export function createTelegramDispatcher(telegram:Telegram){
  return {
   async publish(t:TransportTarget,message:TransportMessage):Promise<number>{
    assertTarget(t);
+   const media=message.media??[];
+   if(media.length>5)throw Error("ANNOUNCEMENT_MEDIA_LIMIT");
+   if(media.length===1&&message.text.length<=1024){
+    const one=media[0]!;
+    const opts={message_thread_id:t.threadId,
+     caption:message.text,...(message.parseMode?{parse_mode:message.parseMode}:{}),
+     ...(markup(message.buttons)||{})};
+    const sent=one.kind==="photo"?
+      await telegram.sendPhoto(t.chatId,one.fileId,opts):
+      await telegram.sendVideo(t.chatId,one.fileId,opts);
+    return sent.message_id;
+   }
+   // A Telegram album cannot carry reply_markup. Send the primary action
+   // message once; any partial/ambiguous album send is reconciled, not retried.
    const sent=await telegram.sendMessage(t.chatId,message.text,{
     message_thread_id:t.threadId,
     ...(message.parseMode?{parse_mode:message.parseMode}:{}),
     ...(markup(message.buttons)||{}),
    });
+   if(media.length===1){
+    const one=media[0]!;
+    if(one.kind==="photo")await telegram.sendPhoto(t.chatId,one.fileId,{message_thread_id:t.threadId});
+    else await telegram.sendVideo(t.chatId,one.fileId,{message_thread_id:t.threadId});
+   }else if(media.length>=2){
+    await telegram.sendMediaGroup(t.chatId,
+     media.map(x=>({type:x.kind,media:x.fileId})) as Parameters<typeof telegram.sendMediaGroup>[1],
+     {message_thread_id:t.threadId});
+   }
    return sent.message_id;
   },
   async revise(t:TransportTarget,messageId:number,message:TransportMessage):Promise<void>{
