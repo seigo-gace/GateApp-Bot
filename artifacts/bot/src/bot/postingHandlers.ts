@@ -519,8 +519,9 @@ export function announcementSummary(d:EditorDraft):string{
 async function showNoticeMedia(telegram:Telegram,userId:number,d:EditorDraft):Promise<EditorDraft>{
  const media=noticeMedia(d.data);
  const fingerprint=JSON.stringify(media);
- if(d.data.noticePreviewFingerprint===fingerprint)return d;
  const old=Array.isArray(d.data.noticePreviewIds)?d.data.noticePreviewIds as number[]:[];
+ if(!media.length&&!old.length)return d;
+ if(d.data.noticePreviewFingerprint===fingerprint)return d;
  for(const id of old){try{await telegram.deleteMessage(userId,id);}catch{/* already gone */}}
  const ids:number[]=[];
  for(const m of media){
@@ -1219,8 +1220,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(op==="publish"&&!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
      await ctx.answerCbQuery("文章または画像・動画を登録してください。");return;
     }
+    const current=op==="publish"&&d.step==="awaiting_text"?
+     await updateDraft(ctx.from.id,"announcement",rev,"preview",d.data):d;
     await ctx.answerCbQuery();
-    await announcementDestinationPicker(ctx.telegram,ctx.from.id,d);
+    await announcementDestinationPicker(ctx.telegram,ctx.from.id,current);
    }else if(op==="topics"){
     if(!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
      await ctx.answerCbQuery("文章または画像・動画を登録してください。");return;
