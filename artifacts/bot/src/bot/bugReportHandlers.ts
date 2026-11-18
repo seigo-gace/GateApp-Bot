@@ -40,10 +40,12 @@ function menuMessageId(ctx:any):number|undefined {
 const CANCEL=Markup.inlineKeyboard([
  [Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")],
 ]);
-const CONFIRM=Markup.inlineKeyboard([
- [Markup.button.callback("📨 報告をする","dm:bug:submit")],
- [Markup.button.callback("✏️ 書き直す","dm:bug:edit"),Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")],
-]);
+function confirmKeyboard(inputMessageId:number) {
+ return Markup.inlineKeyboard([
+  [Markup.button.callback("📨 報告をする","dm:bug:submit:"+inputMessageId)],
+  [Markup.button.callback("✏️ 書き直す","dm:bug:edit"),Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")],
+ ]);
+}
 export async function startBugReport(t:Telegram,userId:number,screenId?:number):Promise<void>{
  await pool.query(
   `INSERT INTO gaybbs_bug_reports(owner_user_id,state) VALUES($1,'pending')
@@ -116,14 +118,16 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
    "🐞 不具合を報告\n\nTelegramの入力欄から修正した内容を送信してください。\n送信後に［報告をする］で確定します。",CANCEL);
  });
- bot.action("dm:bug:submit",async ctx=>{
+ bot.action(/^dm:bug:submit:(\\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery();
   const pending=await pool.query<{body:string;source_message_id:number}>(
    "SELECT body,source_message_id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' AND body IS NOT NULL ORDER BY id DESC LIMIT 1",
    [ctx.from.id]);
   const current=pending.rows[0];
-  if(!current||!normalizeBugReport(current.body)){
+  const requestedInputId=Number(ctx.match[1]);
+  if(!current||!normalizeBugReport(current.body)||
+    !Number.isSafeInteger(requestedInputId)||current.source_message_id!==requestedInputId){
    await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
     "報告する内容がありません。Telegramの入力欄から不具合を記載してください。",CANCEL);
    return;
@@ -152,7 +156,7 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    "UPDATE gaybbs_bug_reports SET body=$2,source_message_id=$3,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
    [ctx.from.id,text,ctx.message.message_id]);
   const preview=bugReportPreview(text);
-  await showWizardScreen(ctx.telegram,ctx.from.id,undefined,preview,CONFIRM);
+  await showWizardScreen(ctx.telegram,ctx.from.id,undefined,preview,confirmKeyboard(ctx.message.message_id));
   try{await ctx.deleteMessage(ctx.message.message_id);}
   catch{await ctx.reply("入力メッセージを削除できませんでした。必要であれば手動で削除してください。");}
 
