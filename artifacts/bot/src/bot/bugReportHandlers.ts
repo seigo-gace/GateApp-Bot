@@ -118,7 +118,7 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
    "🐞 不具合を報告\n\nTelegramの入力欄から修正した内容を送信してください。\n送信後に［報告をする］で確定します。",CANCEL);
  });
- bot.action(/^dm:bug:submit:(\\d+)$/,async ctx=>{
+ bot.action(/^dm:bug:submit:(\d+)$/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery();
   const pending=await pool.query<{body:string;source_message_id:number}>(
@@ -127,12 +127,12 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   const current=pending.rows[0];
   const requestedInputId=Number(ctx.match[1]);
   if(!current||!normalizeBugReport(current.body)||
-    !Number.isSafeInteger(requestedInputId)||current.source_message_id!==requestedInputId){
+    !Number.isSafeInteger(requestedInputId)||Number(current.source_message_id)!==requestedInputId){
    await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
     "報告する内容がありません。Telegramの入力欄から不具合を記載してください。",CANCEL);
    return;
   }
-  const result=await submitReport(ctx.telegram,ctx.from.id,current.source_message_id,current.body,ctx.from.username);
+  const result=await submitReport(ctx.telegram,ctx.from.id,requestedInputId,current.body,ctx.from.username);
   const resultText=result==="delivered"?"✅ 不具合報告を運営宛に送信しました。ご協力ありがとうございます！":
    result==="queued"?"📝 報告内容を保存しました。運営宛の配送はまだ完了していません。":
    result==="uncertain"?"📝 報告内容を保存しました。送信結果を確認できないため、重複送信はしていません。":
