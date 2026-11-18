@@ -28,6 +28,10 @@ export function normalizeBugReport(value:string):string|null {
  const text=value.trim();
  return text.length>0&&text.length<=REPORT_LIMIT&&!text.startsWith("/")?text:null;
 }
+export function bugReportPreview(text:string):string {
+ return "🐞 不具合報告の確認\n\n報告先：運営（Userbotアカウント）\n\n【報告内容】\n"+text+
+  "\n\n内容を確認して［報告をする］を押してください。";
+}
 function menuMessageId(ctx:any):number|undefined {
  const msg=ctx.callbackQuery&&"message" in ctx.callbackQuery?
   ctx.callbackQuery.message:undefined;
@@ -147,8 +151,7 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   await pool.query(
    "UPDATE gaybbs_bug_reports SET body=$2,source_message_id=$3,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
    [ctx.from.id,text,ctx.message.message_id]);
-  const preview="🐞 不具合報告の確認\n\n報告先：運営（Userbotアカウント）\n\n【報告内容】\n"+text+
-   "\n\n内容を確認して［報告をする］を押してください。";
+  const preview=bugReportPreview(text);
   await showWizardScreen(ctx.telegram,ctx.from.id,undefined,preview,CONFIRM);
   try{await ctx.deleteMessage(ctx.message.message_id);}
   catch{await ctx.reply("入力メッセージを削除できませんでした。必要であれば手動で削除してください。");}
