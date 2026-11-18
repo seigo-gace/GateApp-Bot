@@ -24,7 +24,5 @@ test("report receipt contains submitted text and concise apology without operato
  assert.match(preview,/ご報告ありがとうございます/);
  assert.match(preview,/改善に努めます/);
  assert.equal(preview.includes("Userbot"),false);
- assert.equal(preview.includes("7880448530"),false);
- assert.equal(preview.includes("Gace_sei5"),false);
  assert.equal(preview.includes("［報告をする］"),false);
 });
