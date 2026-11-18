@@ -20,7 +20,7 @@ test("bug report normalizes text and blocks blank/oversize/command submissions",
 test("report text is previewed before the explicit submission callback",()=>{
  const preview=bugReportPreview("投稿を押しても反応しない");
  assert.match(preview,/報告先：運営（Userbotアカウント）/);
- assert.match(preview,/【報告内容】\\n投稿を押しても反応しない/);
+ assert.match(preview,/【報告内容】\n投稿を押しても反応しない/);
  assert.match(preview,/［報告をする］/);
  assert.equal(preview.includes("\\\\n"),false);
 });
