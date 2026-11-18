@@ -36,14 +36,18 @@ function menuMessageId(ctx:any):number|undefined {
 const CANCEL=Markup.inlineKeyboard([
  [Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")],
 ]);
+const CONFIRM=Markup.inlineKeyboard([
+ [Markup.button.callback("📨 報告をする","dm:bug:submit")],
+ [Markup.button.callback("✏️ 書き直す","dm:bug:edit"),Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")],
+]);
 export async function startBugReport(t:Telegram,userId:number,screenId?:number):Promise<void>{
  await pool.query(
   `INSERT INTO gaybbs_bug_reports(owner_user_id,state) VALUES($1,'pending')
    ON CONFLICT (owner_user_id) WHERE state='pending'
-   DO UPDATE SET updated_at=NOW()`,[userId]);
+   DO UPDATE SET body=NULL,source_message_id=NULL,updated_at=NOW()`,[userId]);
  await showWizardScreen(t,userId,screenId,
   "🐞 不具合を報告\n\nどのボタン・画面で何が起きたか、できるだけ具体的に入力してください。\n" +
-  "例：相手募集→投稿するを押しても反応しない\n\n送信した文章は運営にのみ届けます。",
+  "例：相手募集→投稿するを押しても反応しない\n\nTelegramの通常の入力欄から送信してください。\n入力後に確認画面が出ます。［報告をする］を押すまで運営には送信されません。\n報告先：運営（Userbotアカウント）",
   CANCEL);
 }
 async function returnMenu(t:Telegram,id:number,screenId?:number):Promise<void>{
@@ -58,6 +62,7 @@ async function submitReport(t:Telegram,userId:number,sourceId:number,body:string
   `UPDATE gaybbs_bug_reports SET state='forwarding',body=$2,source_message_id=$3,
      updated_at=NOW() WHERE id=(
       SELECT id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending'
+       AND body=$2 AND source_message_id=$3
       ORDER BY id DESC LIMIT 1
      ) AND state='pending' RETURNING id`,
   [userId,body,sourceId]);
@@ -98,6 +103,35 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    [ctx.from.id]);
   await returnMenu(ctx.telegram,ctx.from.id,menuMessageId(ctx));
  });
+ bot.action("dm:bug:edit",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery();
+  const pending=await pool.query(
+   "SELECT id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' LIMIT 1",[ctx.from.id]);
+  if(!pending.rows.length){await returnMenu(ctx.telegram,ctx.from.id,menuMessageId(ctx));return;}
+  await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
+   "🐞 不具合を報告\\n\\nTelegramの入力欄から修正した内容を送信してください。\\n送信後に［報告をする］で確定します。",CANCEL);
+ });
+ bot.action("dm:bug:submit",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery();
+  const pending=await pool.query<{body:string;source_message_id:number}>(
+   "SELECT body,source_message_id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' AND body IS NOT NULL ORDER BY id DESC LIMIT 1",
+   [ctx.from.id]);
+  const current=pending.rows[0];
+  if(!current||!normalizeBugReport(current.body)){
+   await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
+    "報告する内容がありません。Telegramの入力欄から不具合を記載してください。",CANCEL);
+   return;
+  }
+  const result=await submitReport(ctx.telegram,ctx.from.id,current.source_message_id,current.body,ctx.from.username);
+  const resultText=result==="delivered"?"✅ 不具合報告を運営宛に送信しました。ご協力ありがとうございます！":
+   result==="queued"?"📝 報告内容を保存しました。運営宛の配送はまだ完了していません。":
+   result==="uncertain"?"📝 報告内容を保存しました。送信結果を確認できないため、重複送信はしていません。":
+   "この報告はすでに処理されています。";
+  await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),resultText);
+  await returnMenu(ctx.telegram,ctx.from.id);
+ });
  // Register before generic DM input handlers. Non-report messages pass through.
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||!ctx.from||ctx.message.text.startsWith("/"))return next();
@@ -110,15 +144,15 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    await ctx.reply("報告内容を1〜2000文字で入力してください。");
    return;
   }
-  const result=await submitReport(ctx.telegram,ctx.from.id,ctx.message.message_id,text,ctx.from.username);
-  // A successful send is not a guarantee that the operator has read the report.
-  const resultText=result==="delivered"?"✅ 不具合報告を運営宛に送信しました。ご協力ありがとうございます！":
-   result==="queued"?"📝 報告内容を保存しました。運営宛の配送はまだ完了していません。":
-   result==="uncertain"?"📝 報告内容を保存しました。送信結果を確認できないため、重複送信はしていません。":
-   "この報告はすでに処理されています。";
-  await ctx.reply(resultText);
-  try{await ctx.deleteMessage(ctx.message.message_id);}catch{}
-  await returnMenu(ctx.telegram,ctx.from.id);
+  await pool.query(
+   "UPDATE gaybbs_bug_reports SET body=$2,source_message_id=$3,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
+   [ctx.from.id,text,ctx.message.message_id]);
+  const preview="🐞 不具合報告の確認\\n\\n報告先：運営（Userbotアカウント）\\n\\n【報告内容】\\n"+text+
+   "\\n\\n内容を確認して［報告をする］を押してください。";
+  await showWizardScreen(ctx.telegram,ctx.from.id,undefined,preview,CONFIRM);
+  try{await ctx.deleteMessage(ctx.message.message_id);}
+  catch{await ctx.reply("入力メッセージを削除できませんでした。必要であれば手動で削除してください。");}
+
  });
 }
 
