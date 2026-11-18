@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {normalizeBugReport} from "../src/bot/bugReportHandlers.js";
+import {normalizeBugReport,bugReportPreview} from "../src/bot/bugReportHandlers.js";
 import {APPROVED_POSTING_ROWS,postingButtonStyle} from "../src/services/menuPanelRenderer.js";
 
 test("bug report button is the sole last row; prior ten retain positions",()=>{
@@ -15,4 +15,12 @@ test("bug report normalizes text and blocks blank/oversize/command submissions",
  assert.equal(normalizeBugReport("/start"),null);
  assert.equal(normalizeBugReport("a".repeat(2000))?.length,2000);
  assert.equal(normalizeBugReport("a".repeat(2001)),null);
+});
+
+test("report text is previewed before the explicit submission callback",()=>{
+ const preview=bugReportPreview("投稿を押しても反応しない");
+ assert.match(preview,/報告先：運営（Userbotアカウント）/);
+ assert.match(preview,/【報告内容】\\n投稿を押しても反応しない/);
+ assert.match(preview,/［報告をする］/);
+ assert.equal(preview.includes("\\\\n"),false);
 });
