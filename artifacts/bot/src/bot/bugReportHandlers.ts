@@ -5,7 +5,7 @@
 import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {readFileSync} from "node:fs";
-import {bareStartPostingExtra,defaultBareStartChatId,BARE_START_POSTING_TEXT}
+import {bareStartPostingExtra,defaultBareStartChatId}
  from "../services/dmBareStartPostingMenu.js";
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
 import {currentTopicDmEntry} from "../services/topicDmEntry.js";
@@ -29,8 +29,8 @@ export function normalizeBugReport(value:string):string|null {
  return text.length>0&&text.length<=REPORT_LIMIT&&!text.startsWith("/")?text:null;
 }
 export function bugReportPreview(text:string):string {
- return "🐞 不具合報告を受け付けました。\\n\\n【報告内容】\\n"+text+
-  "\\n\\nご不便をおかけして申し訳ありません。ご報告ありがとうございます。"+
+ return "🐞 不具合報告を受け付けました。\n\n【報告内容】\n"+text+
+  "\n\nご不便をおかけして申し訳ありません。ご報告ありがとうございます。"+
   "内容を確認し、改善に努めます。対応までお時間をいただく場合があります。";
 }
 function menuMessageId(ctx:any):number|undefined {
@@ -47,17 +47,18 @@ export async function startBugReport(t:Telegram,userId:number,screenId?:number):
    ON CONFLICT (owner_user_id) WHERE state='pending'
    DO UPDATE SET body=NULL,source_message_id=NULL,updated_at=NOW()`,[userId]);
  await showWizardScreen(t,userId,screenId,
-  "🐞 不具合を報告\\n\\nTelegramの通常の入力欄に不具合の内容を記載し、送信してください。\\n"+
-  "どの画面・ボタンで何が起きたか、具体的に記載していただけると助かります。\\n"+
-  "入力した本文はBotが回収・削除を試み、確認メッセージをお送りします。\\n"+
-  "いただいた内容は運営が確認し、改善に活用します。",
+  "🐞 不具合を報告\n\n下の入力欄に不具合の内容を書いて、そのまま送信してください。\n"+
+  "コマンド入力や追加ボタンの操作は不要です。\n\n"+
+  "例：相手募集の投稿ボタンを押しても反応しない\n\n"+
+  "送信した内容はBotが保存し、入力メッセージの削除を試みます。\n"+
+  "報告内容と受付結果はこのDMに表示します。",
   CANCEL);
 }
 async function returnMenu(t:Telegram,id:number,screenId?:number):Promise<void>{
  const origin=await currentMenuOrigin(id);
  const topic=origin?null:await currentTopicDmEntry(id);
  const extra=await bareStartPostingExtra(defaultBareStartChatId(origin?.chatId??topic?.chatId));
- await showWizardScreen(t,id,screenId,BARE_START_POSTING_TEXT,extra);
+ await showWizardScreen(t,id,screenId,"📝 投稿メニュー\nボタンを選択してください。",extra);
 }
 async function submitReport(t:Telegram,userId:number,sourceId:number,body:string,
  username?:string):Promise<"delivered"|"queued"|"uncertain"|"missing">{
@@ -125,10 +126,10 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   try{await ctx.deleteMessage(ctx.message.message_id);}
   catch{await ctx.reply("入力メッセージを削除できませんでした。必要に応じて手動で削除してください。");}
   const result=await submitReport(ctx.telegram,ctx.from.id,ctx.message.message_id,text,ctx.from.username);
-  const status=result==="delivered"?"\\n\\n✅ 運営への通知が完了しました。":
-   result==="queued"?"\\n\\n報告は保存されました。運営への通知は処理待ちです。":
-   result==="uncertain"?"\\n\\n報告は保存されました。運営への通知結果は確認中です。":
-   "\\n\\n受付状態を確認できません。";
+  const status=result==="delivered"?"\n\n✅ 運営への通知が完了しました。":
+   result==="queued"?"\n\n報告は保存されました。運営への通知は処理待ちです。":
+   result==="uncertain"?"\n\n報告は保存されました。運営への通知結果は確認中です。":
+   "\n\n受付状態を確認できません。";
   await showWizardScreen(ctx.telegram,ctx.from.id,undefined,bugReportPreview(text)+status,
    Markup.inlineKeyboard([[Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")]]));
 
