@@ -17,10 +17,14 @@ test("bug report normalizes text and blocks blank/oversize/command submissions",
  assert.equal(normalizeBugReport("a".repeat(2001)),null);
 });
 
-test("report text is previewed before the explicit submission callback",()=>{
+test("report receipt contains submitted text and concise apology without operator identity",()=>{
  const preview=bugReportPreview("投稿を押しても反応しない");
- assert.match(preview,/報告先：運営（Userbotアカウント）/);
- assert.match(preview,/【報告内容】\n投稿を押しても反応しない/);
- assert.match(preview,/［報告をする］/);
- assert.equal(preview.includes("\\\\n"),false);
+ assert.match(preview,/【報告内容】\\n投稿を押しても反応しない/);
+ assert.match(preview,/申し訳ありません/);
+ assert.match(preview,/ご報告ありがとうございます/);
+ assert.match(preview,/改善に努めます/);
+ assert.equal(preview.includes("Userbot"),false);
+ assert.equal(preview.includes("7880448530"),false);
+ assert.equal(preview.includes("Gace_sei5"),false);
+ assert.equal(preview.includes("［報告をする］"),false);
 });
