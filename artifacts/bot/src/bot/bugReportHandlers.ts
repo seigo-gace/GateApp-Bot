@@ -29,8 +29,9 @@ export function normalizeBugReport(value:string):string|null {
  return text.length>0&&text.length<=REPORT_LIMIT&&!text.startsWith("/")?text:null;
 }
 export function bugReportPreview(text:string):string {
- return "🐞 不具合報告の確認\n\n報告先：運営（Userbotアカウント）\n\n【報告内容】\n"+text+
-  "\n\n内容を確認して［報告をする］を押してください。";
+ return "🐞 不具合報告を受け付けました。\\n\\n【報告内容】\\n"+text+
+  "\\n\\nご不便をおかけして申し訳ありません。ご報告ありがとうございます。"+
+  "内容を確認し、改善に努めます。対応までお時間をいただく場合があります。";
 }
 function menuMessageId(ctx:any):number|undefined {
  const msg=ctx.callbackQuery&&"message" in ctx.callbackQuery?
@@ -40,20 +41,16 @@ function menuMessageId(ctx:any):number|undefined {
 const CANCEL=Markup.inlineKeyboard([
  [Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")],
 ]);
-function confirmKeyboard(inputMessageId:number) {
- return Markup.inlineKeyboard([
-  [Markup.button.callback("📨 報告をする","dm:bug:submit:"+inputMessageId)],
-  [Markup.button.callback("✏️ 書き直す","dm:bug:edit"),Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")],
- ]);
-}
 export async function startBugReport(t:Telegram,userId:number,screenId?:number):Promise<void>{
  await pool.query(
   `INSERT INTO gaybbs_bug_reports(owner_user_id,state) VALUES($1,'pending')
    ON CONFLICT (owner_user_id) WHERE state='pending'
    DO UPDATE SET body=NULL,source_message_id=NULL,updated_at=NOW()`,[userId]);
  await showWizardScreen(t,userId,screenId,
-  "🐞 不具合を報告\n\nどのボタン・画面で何が起きたか、できるだけ具体的に入力してください。\n" +
-  "例：相手募集→投稿するを押しても反応しない\n\nTelegramの通常の入力欄から送信してください。\n入力後に確認画面が出ます。［報告をする］を押すまで運営には送信されません。\n報告先：運営（Userbotアカウント）",
+  "🐞 不具合を報告\\n\\nTelegramの通常の入力欄に不具合の内容を記載し、送信してください。\\n"+
+  "どの画面・ボタンで何が起きたか、具体的に記載していただけると助かります。\\n"+
+  "入力した本文はBotが回収・削除を試み、確認メッセージをお送りします。\\n"+
+  "いただいた内容は運営が確認し、改善に活用します。",
   CANCEL);
 }
 async function returnMenu(t:Telegram,id:number,screenId?:number):Promise<void>{
@@ -109,37 +106,6 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    [ctx.from.id]);
   await returnMenu(ctx.telegram,ctx.from.id,menuMessageId(ctx));
  });
- bot.action("dm:bug:edit",async ctx=>{
-  if(ctx.chat?.type!=="private"||!ctx.from)return;
-  await ctx.answerCbQuery();
-  const pending=await pool.query(
-   "SELECT id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' LIMIT 1",[ctx.from.id]);
-  if(!pending.rows.length){await returnMenu(ctx.telegram,ctx.from.id,menuMessageId(ctx));return;}
-  await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
-   "🐞 不具合を報告\n\nTelegramの入力欄から修正した内容を送信してください。\n送信後に［報告をする］で確定します。",CANCEL);
- });
- bot.action(/^dm:bug:submit:(\d+)$/,async ctx=>{
-  if(ctx.chat?.type!=="private"||!ctx.from)return;
-  await ctx.answerCbQuery();
-  const pending=await pool.query<{body:string;source_message_id:number}>(
-   "SELECT body,source_message_id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' AND body IS NOT NULL ORDER BY id DESC LIMIT 1",
-   [ctx.from.id]);
-  const current=pending.rows[0];
-  const requestedInputId=Number(ctx.match[1]);
-  if(!current||!normalizeBugReport(current.body)||
-    !Number.isSafeInteger(requestedInputId)||Number(current.source_message_id)!==requestedInputId){
-   await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),
-    "報告する内容がありません。Telegramの入力欄から不具合を記載してください。",CANCEL);
-   return;
-  }
-  const result=await submitReport(ctx.telegram,ctx.from.id,requestedInputId,current.body,ctx.from.username);
-  const resultText=result==="delivered"?"✅ 不具合報告を運営宛に送信しました。ご協力ありがとうございます！":
-   result==="queued"?"📝 報告内容を保存しました。運営宛の配送はまだ完了していません。":
-   result==="uncertain"?"📝 報告内容を保存しました。送信結果を確認できないため、重複送信はしていません。":
-   "この報告はすでに処理されています。";
-  await showWizardScreen(ctx.telegram,ctx.from.id,menuMessageId(ctx),resultText);
-  await returnMenu(ctx.telegram,ctx.from.id);
- });
  // Register before generic DM input handlers. Non-report messages pass through.
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||!ctx.from||ctx.message.text.startsWith("/"))return next();
@@ -152,13 +118,19 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    await ctx.reply("報告内容を1〜2000文字で入力してください。");
    return;
   }
+  // Save first; deletion must never destroy the only copy.
   await pool.query(
    "UPDATE gaybbs_bug_reports SET body=$2,source_message_id=$3,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
    [ctx.from.id,text,ctx.message.message_id]);
-  const preview=bugReportPreview(text);
-  await showWizardScreen(ctx.telegram,ctx.from.id,undefined,preview,confirmKeyboard(ctx.message.message_id));
   try{await ctx.deleteMessage(ctx.message.message_id);}
-  catch{await ctx.reply("入力メッセージを削除できませんでした。必要であれば手動で削除してください。");}
+  catch{await ctx.reply("入力メッセージを削除できませんでした。必要に応じて手動で削除してください。");}
+  const result=await submitReport(ctx.telegram,ctx.from.id,ctx.message.message_id,text,ctx.from.username);
+  const status=result==="delivered"?"\\n\\n✅ 運営への通知が完了しました。":
+   result==="queued"?"\\n\\n報告は保存されました。運営への通知は処理待ちです。":
+   result==="uncertain"?"\\n\\n報告は保存されました。運営への通知結果は確認中です。":
+   "\\n\\n受付状態を確認できません。";
+  await showWizardScreen(ctx.telegram,ctx.from.id,undefined,bugReportPreview(text)+status,
+   Markup.inlineKeyboard([[Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")]]));
 
  });
 }
