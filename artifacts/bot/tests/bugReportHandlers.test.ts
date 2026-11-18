@@ -19,10 +19,16 @@ test("bug report normalizes text and blocks blank/oversize/command submissions",
 
 test("report receipt contains submitted text and concise apology without operator identity",()=>{
  const preview=bugReportPreview("投稿を押しても反応しない");
- assert.match(preview,/【報告内容】\\n投稿を押しても反応しない/);
+ assert.match(preview,/【報告内容】\n投稿を押しても反応しない/);
  assert.match(preview,/申し訳ありません/);
  assert.match(preview,/ご報告ありがとうございます/);
  assert.match(preview,/改善に努めます/);
  assert.equal(preview.includes("Userbot"),false);
  assert.equal(preview.includes("［報告をする］"),false);
+});
+
+test("report preview renders actual line breaks, never literal escaped newlines",()=>{
+ const preview=bugReportPreview("送信できない");
+ assert.ok(preview.includes("\n\n【報告内容】\n"));
+ assert.equal(preview.includes(String.raw`\n`),false);
 });
