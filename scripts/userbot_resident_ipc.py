@@ -82,9 +82,8 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         return {"request_id": request_id, "action": action, "status": "PASS",
                 "provisioned": True, "identity_unchanged": True}
     if action == "profile_topics_by_id":
-        # Exact topic-ID readback is authoritative; Telegram text search can omit
-        # valid topics (different title, pagination, localization). The caller
-        # supplies IDs from the already verified posting_topics DB, not URL tails.
+        # Compare exact DB-verified topic IDs with Telegram's existing forum API.
+        # This Telethon runtime does not expose GetForumTopicsByIDRequest.
         ids = request["topic_ids"]
         if (type(ids) is not list or len(ids) != 3
                 or any(type(v) is not int or not 1 <= v <= 2147483647 for v in ids)):
@@ -101,12 +100,34 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
             entity = next((d.entity for d in dialogs if d.id == chat_id), None)
             if entity is None:
                 raise RuntimeError("PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS")
-            result = await client(functions.channels.GetForumTopicsByIDRequest(
-                channel=entity, topics=[topic_id]))
-            matching = [t for t in result.topics if type(t.id) is int and t.id == topic_id]
-            # A valid route must exist and still be a profile topic. No title or
-            # private group data leave this session-owner IPC.
-            found = len(matching) == 1 and "プロフ" in getattr(matching[0], "title", "")
+            offset_date, offset_id, offset_topic = 0, 0, 0
+            seen_offsets = set()
+            found = False
+            for page_no in range(20):
+                forum = await client(functions.messages.GetForumTopicsRequest(
+                    peer=entity, q="", offset_date=offset_date,
+                    offset_id=offset_id, offset_topic=offset_topic, limit=100))
+                topics = list(getattr(forum, "topics", []))
+                exact = [t for t in topics if type(t.id) is int and t.id == topic_id]
+                if exact:
+                    found = len(exact) == 1 and "プロフ" in getattr(exact[0], "title", "")
+                    break
+                if not topics or len(topics) < 100:
+                    break
+                last = topics[-1]
+                new_offset = (
+                    getattr(last, "date", None),
+                    getattr(last, "top_message", None),
+                    getattr(last, "id", None),
+                )
+                if (new_offset[0] is None or type(new_offset[1]) is not int
+                        or type(new_offset[2]) is not int
+                        or new_offset in seen_offsets):
+                    raise RuntimeError("PROFILE_TOPIC_SCAN_CURSOR_INVALID")
+                seen_offsets.add(new_offset)
+                offset_date, offset_id, offset_topic = new_offset
+            else:
+                raise RuntimeError("PROFILE_TOPIC_SCAN_LIMIT_REACHED")
             results.append({"board": board, "found": found})
         return {"request_id": request_id, "action": action, "status": "PASS",
                 "topics": results}
@@ -311,7 +332,8 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "ROOM_READ_CHAT_NOT_ALLOWLISTED", "ROOM_READ_MESSAGE_ID_INVALID",
                 "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE", "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH",
                 "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
-                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS", "PROFILE_TOPIC_IDS_INVALID",
+                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS", "PROFILE_TOPIC_IDS_INVALID", "PROFILE_TOPIC_SCAN_CURSOR_INVALID",
+                "PROFILE_TOPIC_SCAN_LIMIT_REACHED",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
                 "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
                 "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
