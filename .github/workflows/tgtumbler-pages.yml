@@ -44,7 +44,7 @@ jobs:
 
       - name: Verify output
         working-directory: docs/tgtumbler-pages
-        run: test -f dist/index.html && test -f dist/guidelines.html
+        run: test -f dist/index.html && test -f dist/guidelines.html && test -f dist/createvdobot-terms.html
 
       - name: Deploy to Cloudflare Pages (production branches only)
         if: github.event_name != 'pull_request'
