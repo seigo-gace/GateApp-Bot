@@ -44,6 +44,14 @@
 
 数値は静的スキャン時点の参考値で、ソースが更新された場合は再計測する。特に直接送信の理由、元画面ID、編集後の返却ID、入力エラー削除を手動で照合する。
 
+## Gserver本番公開ゲートとボタン接続の照合（2026-11-20）
+- Source `postingMenuContract.ts` はDMの10機能入口を既存コールバックと1件のクリエーターURLに対応。最後の不具合報告は `dm:bug:open`。UIは `APPROVED_POSTING_ROWS` 3/2/2/3/1の11ボタンで維持。
+- `dmBareStartPostingMenu.ts` は `gaybbs_feature_release_gates` の状態に応じて `dm:blocked:feature` に置換する経路を持つ。したがって、Sourceコードのアクション登録だけでは本番でのボタン使用可を保証しない。
+- Gserverの2026-11-19本番SQL読戻し `req_20261120011300000000d501` はHost EXIT0/PASS。非公開結果を既存Host結果台帳から分類した `req_20261120011800000000d502` は **EXIT100＝READY欠落ビットmask0** として6機能（announcement/help/link/profile/room/search）がREADYと判定された。EXIT100は分類スクリプトの意図的な非ゼロ終了であり、Bot実行失敗ではない。
+- この証拠で「公開ゲートがないため6機能すべてのボタンがブロックされている」という推測は否定される。ただし、押下→画面表示→入力→保存・投稿というE2Eとは別。公開メニューの実際のURLと古い固定メッセージは未照合。
+- `renderApprovedLinks` では紹介/招待がURLとcopy_text両値を運搬するが、`telegramDispatcher.markup` はcopy_textを優先し**実際のTelegramボタンには1アクションだけ**を書き出す。輸送形式の二重アクションではない。旧クライアントのcopy_text表示は別実機要件。
+- コピー先の本文表示、ボタン文言・行・色・数、固定メニューの構成を勝手に変更しない。
+
 ## 共通化方針と責務境界
 1. **Transport**：公開グループ→DMだけDeep Link。DM内の選択/戻る/取消は callback_query。標準の初回Start表示はクライアント制約として扱う。
 2. **OS互換**：Bot APIのcallback 1–64 UTF-8 bytes、copy_text 1–256文字相当のAPI制限、1ボタン1アクションを共通入力検証する。OS推定で条件分岐しない。古いTelegramへの個別救済はURLや通常テキスト等の採用済みUIに沿って設計し、ボタン配置は変えない。
