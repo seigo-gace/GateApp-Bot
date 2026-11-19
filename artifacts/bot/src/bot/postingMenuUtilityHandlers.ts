@@ -117,7 +117,7 @@ export function registerPostingMenuUtilityHandlers(bot:Telegraf):void{
   }
   // Reuse the ONE existing questionnaire and membership chooser.
   // Do not hand out topic URLs to unapproved or unverified members.
-  await startGayBbsAdmission(ctx,"gate_"+target.gateCode,index);
+  await startGayBbsAdmission(ctx,"gate_"+target.gateCode,index,menuScreenId(ctx));
  });
  bot.action("dm:utility:home",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
