@@ -6,25 +6,43 @@
 - iOS / iPadOS / Android / Windows / macOSを共通の受入対象とする。Bot API updateにはクライアントOS/版がないため、サーバーで推定OS分岐を作らない。
 - Telegram公式 `messages.startBot` Deep Linkは既存DMでもStartボタン表示があり得る。グループ公開URL入口とDM内 callback は異なる移送手段。
 
-## 既存実装と接続状態（静的Source確認）
-| 責務 | 正本/実装 | 確認 | 残る検証・懸念 |
+## 共通処理の呼出マッピング再監査（2026-11-20更新／SourceはPR #58）
+
+> 判定語：実装あり＝該当処理のSource存在、接続あり＝呼出経路あり、実機VERIFIED＝実際のTelegram更新と画面を確認。これらは同義ではない。対象ブランチ `chat/bug-report-userbot-20261115` のSourceだけを根拠にする。旧結論「雑談Gate未接続」は修正履歴であり現行状態ではない。
+
+| 入口／責務 | 既存Owner／呼出元 | Source確認 | 未立証・個別の検証要件 |
 |---|---|---|---|
-| 投稿11ボタン/色 | `menuPanelRenderer.ts`, `postingMenuContract.ts` | 共有定義あり | 3グループ現行公開物と照合未実施 |
-| DMボタン生成 | `dmBareStartPostingMenu.ts` | 共通11ボタン利用あり | 端末ごとの実押下は未検証 |
-| DM画面更新・旧画面削除 | `dmWizardScreen.ts` | 共通処理あり | 全呼び出し元で利用徹底は未完了。編集拒否の実機復旧も未検証 |
-| UIトランスポート/OS互換基準 | `telegramClientCompatibility.ts` | Bot API形式の共通ガードをDMウィザードへ接続 | 各OSの実機PASSは全て未検証 |
-| プロフィール | `profileCompactHandlers.ts` 他 | 共通画面利用箇所あり | 旧画面/公開資産/複数端末E2Eは別確認 |
-| 相手募集 | `recruitmentHandlers.ts`, `recruitmentRichPreview.ts` | 共通画面利用とRich編集API失敗時の通常InlineKeyboardフォールバックあり | Rich APIが受理されてもiOS等のクライアント表示・編集は別途実機検証。送信/編集/復帰も未検証 |
-| Room/募集 | `roomHandlers.ts`, `postingHandlers.ts` | 共通画面利用箇所あり | 状態同期とOS別実機照合は未検証 |
-| 告知・予告/リンク作成 | `postingHandlers.ts` | 一部共通処理利用 | 分岐すべての画面/通知/URL検証未完了 |
-| 検索・フィルター | `searchHandlers.ts` | 共通画面利用箇所あり | 実iOSでの検索/戻りは未確認 |
-| 操作説明 | `operationHelpHandlers.ts` | 共通画面利用箇所あり | OS別確認未完了 |
-| 不具合報告 | `bugReportHandlers.ts` | 運営/Userbot独立配送、入力削除・謝罪文・メニュー復帰コードあり | 同一アカウントに管理通知が届く見え方、管理者宛分離と全利用者E2Eは要再確認 |
-| 雑談 | `postingMenuUtilityHandlers.ts` | 3トピックの直接URL | `admissionRouting.ts` の共通Gateを経由しておらず未接続 |
-| 紹介/招待 | `commonGateInvite.ts`, `postingMenuUtilityHandlers.ts` | 共通GateのコピーUIあり | `copy_text` 未対応クライアントの復帰/実機確認なし |
-| 初回DM起動 | `gaybbsBot.ts`, `menuPanelPublisher.ts` | 多数の `?start=` と内部callbackが併存 | `/start` を不要にできると断定不可。公開ボタン入口の整理が必要 |
-| 承認/既参加経路 | `gaybbsApproval/admissionRouting.ts`, `onlineGateAccess.ts` | 共通の承認・参加状態検査あり | 雑談・既存Topic入口への全適用は未実装 |
-| 公開メニュー送信 | `menuPanelPublisher.ts`→`telegramDispatcher.ts` | URL / copy_text の送信時選択あり | 端末別URL/copy表示は実機未検証 |
+| 投稿11ボタン（3/2/2/3/1） | `menuPanelRenderer.ts` → `dmBareStartPostingMenu.ts` | 実装・共通配列あり。公開4行＋報告1行で旧10ボタンを維持 | 本番3グループの固定パネル現物とURL照合は未確認 |
+| 公開メニュー配信 | `menuPanelPublisher.ts` → `telegramDispatcher.ts` | 共通描画・配信が接続済み | Topicごとの固定message_id／権限・端末別開き方は未検証 |
+| DM開始／既存Deep Link | `gaybbsBot.ts` → 機能別 startXXX | `?start=` とDM callbackが並存。初回Telegram Startの完全抑止は不可 | 既利用者にStartを再要求しない内部遷移の全経路検査 |
+| DMウィザード | `dmWizardScreen.ts` | edit→送信フォールバック→旧画面削除の共通Ownerあり | 全呼出し箇所が正しいメッセージIDを渡すこと／削除失敗・回復／重複操作 |
+| DMボタン形式 | `telegramClientCompatibility.ts` → `dmWizardScreen.ts`／`telegramDispatcher.ts` | callback長、行、copy_textの形式チェック接続済み | 正常なBot API出力だけではOS別描画・押下を証明できない |
+| プロフ | `gaybbsBot.ts`→`profileCompactHandlers.ts`, `profileHandlers.ts` | 共通画面あり。コンパクト・従来公開処理が併存 | 同一画面／本人／下書きrevision／実投稿受入は分岐ごとに未確認 |
+| 相手募集 | `gaybbsBot.ts`→`recruitmentHandlers.ts`, `recruitmentRichPreview.ts` | 共通画面＋Rich失敗時通常InlineKeyboard代替が存在 | iOSでRich成功応答でも描画できるか／取消・投稿・下書き復帰 |
+| 募集＋Room・告知 | `gaybbsBot.ts`→`postingHandlers.ts`, `roomHandlers.ts` | 一部は共通画面を利用。多分岐・専用DB/配信あり | すべてのstepでID、入力回収、同一カード更新、LIVE/終了同期 |
+| 🔗ボタン作成 | `gaybbsBot.ts`→`postingHandlers.ts` | メニュー押下IDの引継ぎあり | URL構成・プレビュー・編集・キャンセルの全状態テスト |
+| 検索/フィルター | `gaybbsBot.ts`→`searchHandlers.ts` | メニュー押下ID引継ぎ＋共通画面利用あり | 対象切替・戻る・端末別入力操作 |
+| 操作説明 | `gaybbsBot.ts`→`operationHelpHandlers.ts` | 押されたIDをセッションへ保存。空keyboard発行も防止 | メニューへの復帰・旧セッションの競合・全説明内容と既存仕様の一致 |
+| 不具合報告 | `gaybbsBot.ts`→`bugReportHandlers.ts` | 報告・旧画面回収・個別通知・単独メニュー。無効入力時の削除と同画面再表示も追加 | 送信失敗/端末別、同一アカウントで本人・管理通知が重なる場合の区別 |
+| 雑談 | `postingMenuUtilityHandlers.ts` → `gaybbsApproval/handlers.ts` → `admissionRouting.ts` | 元の3Topic保持・共通資格照会・未承認のGate接続あり。選択Indexは既存`gate_sessions`へ永続化 | 承認前・承認後・一部加入・再入室の実Telegram確認、元Topic遷移 |
+| 紹介・招待 | `postingMenuUtilityHandlers.ts` → `commonGateInvite.ts` | 共通ゲートcopy_textのボタンあり | 旧Telegram iOSのcopy_text非対応時のユーザー向け案内と実機 |
+| 入力削除全般 | `removeUserWizardInput`／各機能の削除 | 共通Ownerはあるが機能別経路に直接API呼出も残る | 成功・無効入力・削除失敗の全分岐検査が必要 |
+| 権限・Gate | `gaybbsApproval/contract.ts`, `store.ts`, `admissionRouting.ts`, `onlineGateAccess.ts` | 3グループの共有資格／発行記録／加入確認あり。restrictedはis_member=trueだけ加入扱い | 参加申請、承諾、失効、拒否、重複・一部加入の本番実証 |
+
+### コードの経路数（2026-11-20 静的確認）
+この数字は完了率ではなく調査の範囲を示す。直接の `sendMessage/reply` が存在しても、その用途が受付・公開・実行エラー等である場合があるため、一律に共通画面へ置換してはならない。
+
+| 主なOwner | Source行数 | showWizardScreen 呼出記述数 | 直接sendMessage/reply 記述数 | bot.action 記述数 |
+|---|---:|---:|---:|---:|
+| `profileCompactHandlers.ts` | 510 | 1 | 4 | 8 |
+| `recruitmentHandlers.ts` | 843 | 1 | 0 | 22 |
+| `postingHandlers.ts` | 1749 | 2 | 5 | 26 |
+| `searchHandlers.ts` | 264 | 2 | 0 | 10 |
+| `operationHelpHandlers.ts` | 130 | 2 | 0 | 2 |
+| `postingMenuUtilityHandlers.ts` | 132 | 4 | 2 | 3 |
+| `bugReportHandlers.ts` | 259 | 3 | 4 | 2 |
+
+数値は静的スキャン時点の参考値で、ソースが更新された場合は再計測する。特に直接送信の理由、元画面ID、編集後の返却ID、入力エラー削除を手動で照合する。
 
 ## 共通化方針と責務境界
 1. **Transport**：公開グループ→DMだけDeep Link。DM内の選択/戻る/取消は callback_query。標準の初回Start表示はクライアント制約として扱う。
@@ -48,10 +66,15 @@
 
 各OSで「未承認／承認済未参加／承認済参加済」「Bot未開始／既開始」「新規入力／保存済下書き／通信障害後の再開」を交差して確認する。CI PASSを実機PASSへ昇格させない。
 
-## 修正の進捗
-- 2026-11-19 Source: 共通 `telegramClientCompatibility.ts` でインラインボタンのTransport検証を追加、既存DM共通 `showWizardScreen` に接続、単体テストを追加。
-- 残るGap: 雑談へのGate接続、公開メニューからのOS別起動、コピー非対応時の救済、各機能から共通画面へ完全接続、端末別実機受入、Gserver本番再配備。
-- この監査は差分が確認された範囲のSource事実のみ。全機能・全OS完成という主張ではない。
+## 修正の進捗と正確な証拠境界
+- 2026-11-19：`telegramClientCompatibility.ts` を共通DM／公開配信へ接続（Source・CI・Hostで検証）。
+- 2026-11-19：雑談は3Topicの採用ラベル／順序を維持し共通Gateへ接続。選択Topicは既存gate_sessionsに永続化。画面IDも共通Gateへ引継ぎ（Source・CI・Hostで検証）。
+- 2026-11-19：DMメニュー入口からの画面ID引継ぎ、restrictedの加入判定を修正（Source・CI・Hostで検証）。
+- 2026-11-20：再監査で不具合報告の無効入力時、削除せず新規返信を重ねる不整合を発見。原文削除を試み元画面を再利用し、失敗なら利用者向け警告を同画面へ表示する変更と単体テストを追加（本更新についてSource／CIとHostは結果を別途照合）。
+- 既存業務コード・本番3グループ固定投稿・全端末のE2Eについて、上記の部分検証だけで完了と判断しない。
+- 出力の保持：Master確定のボタン名／行／色／位置／各機能と本人下書き・公開済資産を変更しない。
+- 未検証：OS別実機、Gate全状態の実操作、iOS古いTelegram版のcopy_text、各画面の入力削除/差替/復旧、動画・Starsなど本要求に関連しない業務owner全体の品質保証。
+- 最重要：旧監査の「雑談Gate未接続」「Gserver再配備未実施」は当時の履歴であり現行状態とは異なる。新しい実行結果をSource/CI/Hostの各レイヤーで証明する。
 
 ## 一次資料
 - Telegram公式 Deep links: https://core.telegram.org/api/links
