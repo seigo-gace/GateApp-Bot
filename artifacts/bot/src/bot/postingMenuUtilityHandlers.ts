@@ -10,23 +10,15 @@ import {currentMenuOrigin} from "../services/menuOriginRepository.js";
 import {currentTopicDmEntry} from "../services/topicDmEntry.js";
 import {commonGateUrl,gateInviteCopyButton} from "../services/commonGateInvite.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
-import {BOARD_GROUP_CHAT_IDS} from "../services/topicRouting.js";
+import {TALK_TOPICS} from "../services/talkDestinationContract.js";
 import {onlineMembership,type OnlineMember} from "../services/onlineGateAccess.js";
 import {commonGayBbsApproval,startGayBbsAdmission} from "../modules/gaybbsApproval/handlers.js";
 import * as blacklistRepo from "../repositories/blacklistRepo.js";
 import {pool} from "../db/index.js";
 
-export const TALK_TOPICS=[
- {label:"エリア’s BBS",url:"https://t.me/c/3847210571/44"},
- {label:"ビデオChatの掲示板",url:"https://t.me/c/2373696859/4291"},
- {label:"ゲイのための掲示板♂",url:"https://t.me/c/3770334893/789"},
-] as const;
+export {TALK_TOPICS} from "../services/talkDestinationContract.js";
 
-const TALK_GROUP_IDS=[
- BOARD_GROUP_CHAT_IDS.area_bbs,
- BOARD_GROUP_CHAT_IDS.video_chat,
- BOARD_GROUP_CHAT_IDS.gay_board,
-] as const;
+const TALK_GROUP_IDS=TALK_TOPICS.map(x=>x.chatId);
 export function canDirectTalkTopic(approved:boolean,member:OnlineMember):boolean{
  return approved===true&&member==="member";
 }
@@ -125,7 +117,7 @@ export function registerPostingMenuUtilityHandlers(bot:Telegraf):void{
   }
   // Reuse the ONE existing questionnaire and membership chooser.
   // Do not hand out topic URLs to unapproved or unverified members.
-  await startGayBbsAdmission(ctx,"gate_"+target.gateCode);
+  await startGayBbsAdmission(ctx,"gate_"+target.gateCode,index);
  });
  bot.action("dm:utility:home",async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
