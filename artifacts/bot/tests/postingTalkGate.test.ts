@@ -29,3 +29,12 @@ test("the requested topic is stable through an existing admission attempt",()=>{
  assert.equal(talkDestination(3),null);
  assert.equal(talkDestination(undefined),null);
 });
+
+test("blacklisted users cannot receive direct talk URLs even with approval and membership",()=>{
+ for(const member of ["member","not_member","unknown"] as const){
+  for(const approved of [true,false]){
+   assert.equal(canDirectTalkTopic(approved,member,true),false);
+  }
+ }
+ assert.equal(canDirectTalkTopic(true,"member",false),true);
+});
