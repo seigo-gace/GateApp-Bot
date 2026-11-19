@@ -132,7 +132,23 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   if(!pending.rows.length)return next();
   const text=normalizeBugReport(ctx.message.text);
   if(!text){
-   await ctx.reply("報告内容を1〜2000文字で入力してください。");
+   // The shared DM contract requires removing even invalid user input.
+   // Reuse the existing report screen rather than stacking a separate reply.
+   let inputDeleted=true;
+   try{await ctx.deleteMessage(ctx.message.message_id);}
+   catch{inputDeleted=false;}
+   const promptId=Number(pending.rows[0]?.prompt_message_id);
+   const warning="報告内容を1〜2000文字で入力してください。"+
+    (inputDeleted?"":"\n※元の入力メッセージを削除できませんでした。手動で削除してください。");
+   const prompt=await showWizardScreen(ctx.telegram,ctx.from.id,
+    Number.isSafeInteger(promptId)&&promptId>0?promptId:undefined,
+    "🐞 不具合を報告\n\n下の入力欄に不具合の内容を書いて、そのまま送信してください。\n"+
+    "コマンド入力や追加ボタンの操作は不要です。\n\n"+
+    "例：相手募集の投稿ボタンを押しても反応しない\n\n"+
+    "送信した内容はBotが保存し、入力メッセージの削除を試みます。\n"+
+    "報告内容と受付結果はこのDMに表示します。\n\n"+warning,CANCEL);
+   await pool.query("UPDATE gaybbs_bug_reports SET prompt_message_id=$2,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
+    [ctx.from.id,prompt.messageId]);
    return;
   }
   // Save first; deletion must never destroy the only copy.
