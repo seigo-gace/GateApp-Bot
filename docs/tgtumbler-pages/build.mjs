@@ -130,7 +130,7 @@ function pageShell({ title, body, canonical, notionUrl }) {
 <body>
 <header>
   <nav><a href="/">索引</a></nav>
-  <p class="meta">出典Notion: <a href="${escapeHtml(notionUrl)}" rel="noopener noreferrer">${escapeHtml(notionUrl)}</a></p>
+${notionUrl && notionUrl !== "#" ? `  <p class="meta">出典Notion: <a href="${escapeHtml(notionUrl)}" rel="noopener noreferrer">${escapeHtml(notionUrl)}</a></p>` : ""}
 </header>
 <main>
 ${body}
