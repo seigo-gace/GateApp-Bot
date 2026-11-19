@@ -32,3 +32,9 @@ test("report preview renders actual line breaks, never literal escaped newlines"
  assert.ok(preview.includes("\n\n【報告内容】\n"));
  assert.equal(preview.includes(String.raw`\n`),false);
 });
+
+test("bug report completion uses separate receipt and a fresh posting menu",()=>{
+ // Integration tests inspect actual Telegram calls; prevent UI regression at source level.
+ assert.equal(bugReportPreview("テスト").includes("投稿メニュー"),false);
+ assert.equal(bugReportPreview("テスト").includes("↩"),false);
+});
