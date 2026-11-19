@@ -4,6 +4,7 @@
  */
 import type {Telegram} from "telegraf";
 import {Markup} from "telegraf";
+import {assertTelegramInlineKeyboard} from "./telegramClientCompatibility.js";
 export type TransportTarget={chatId:number;threadId:number};
 export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";buttons?:readonly (readonly {text:string;url:string;copy_text?:{text:string};style?:"primary"|"success"|"danger"}[])[]};
 function assertTarget(t:TransportTarget):void{
@@ -18,7 +19,9 @@ function markup(buttons:TransportMessage["buttons"]){
   ...(x.copy_text?{copy_text:x.copy_text}:{url:x.url}),
   ...(x.style?{style:x.style}:{})
  })));
- return Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
+ const keyboard=Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
+ assertTelegramInlineKeyboard(keyboard);
+ return keyboard;
 }
 export function createTelegramDispatcher(telegram:Telegram){
  return {
