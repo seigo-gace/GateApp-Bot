@@ -41,7 +41,7 @@ export function validateCmFooter(value:unknown):{text:string;url:string}[][] {
     throw new Error('BRIDGE_CM_INVALID');
   let url:URL;
   try{url=new URL(item.url);}catch{throw new Error('BRIDGE_CM_INVALID');}
-  if(url.protocol!=='https:'||!url.hostname||isIP(url.hostname)!==0||
+  if(url.protocol!=='https:'||!url.hostname||isIP(url.hostname.startsWith("[")?url.hostname.slice(1,-1):url.hostname)!==0||
      url.hostname==='localhost'||url.hostname.endsWith('.localhost')||
      url.hostname.endsWith('.local')||url.username||url.password||
      (url.port&&url.port!=='443')||/\s/.test(item.url))
@@ -65,7 +65,7 @@ export function validateOriginalButtons(value:unknown):{text:string;url:string}[
      throw new Error("BRIDGE_BUTTONS_INVALID");
    let url:URL;
    try{url=new URL(item.url);}catch{throw new Error("BRIDGE_BUTTONS_INVALID");}
-   if(url.protocol!=="https:"||!url.hostname||isIP(url.hostname)!==0||
+   if(url.protocol!=="https:"||!url.hostname||isIP(url.hostname.startsWith("[")?url.hostname.slice(1,-1):url.hostname)!==0||
       url.hostname==="localhost"||url.hostname.endsWith(".localhost")||
       url.hostname.endsWith(".local")||url.username||url.password||
       (url.port&&url.port!=="443")||/\s/.test(item.url))
