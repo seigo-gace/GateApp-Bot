@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "bug_report_inbox_provision"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -50,6 +50,35 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "bug_report_inbox_provision":
+        # Provision the Bot API inbox without exposing the Userbot account ID.
+        import stat
+        me = await client.get_me()
+        if me is None or getattr(me, "bot", False) or not isinstance(me.id, int):
+            raise RuntimeError("USERBOT_ACCOUNT_ID_UNAVAILABLE")
+        target = SECRETS / "bug_report_userbot_account.txt"
+        if target.is_symlink():
+            raise RuntimeError("USERBOT_REPORT_TARGET_UNSAFE")
+        if target.exists():
+            if not target.is_file() or target.stat().st_mode & 0o077:
+                raise RuntimeError("USERBOT_REPORT_TARGET_UNSAFE")
+            current = target.read_text(encoding="ascii").strip()
+            if current != str(me.id):
+                raise RuntimeError("USERBOT_REPORT_IDENTITY_CONFLICT")
+            return {"request_id": request_id, "action": action, "status": "PASS",
+                    "provisioned": True, "identity_unchanged": True}
+        # Exclusive create, owner-only mode; no session or credential modifications.
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(descriptor, "w", encoding="ascii") as outfile:
+                outfile.write(str(me.id) + "\\n")
+                outfile.flush()
+                os.fsync(outfile.fileno())
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "provisioned": True, "identity_unchanged": True}
     if action == "profile_topics_readback":
         # Telegram's USER API returns real forum topic IDs, not t.me/c message
         # suffixes. Only inspect the three already-approved boards, read-only.
@@ -199,7 +228,8 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
                 "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
-                "REQUEST_SIZE_INVALID",
+                "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
+                "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
             }
             code = str(exc) if str(exc) in safe_codes else "INTERNAL"
             response = {"status": "FAIL", "error": code}
