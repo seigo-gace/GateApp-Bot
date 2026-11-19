@@ -222,7 +222,7 @@ export async function commonGayBbsApproval(
  );
  return !!route.attempt;
 }
-export async function startGayBbsAdmission(ctx:Context,payload:string,requestedTalkIndex?:number):Promise<void>{
+export async function startGayBbsAdmission(ctx:Context,payload:string,requestedTalkIndex?:number,sourceScreenId?:number):Promise<void>{
  if(ctx.chat?.type!=="private"||!ctx.from)return;
  const gateCode=payload.startsWith("gate_")?payload.slice(5):"";
  if(!/^[a-zA-Z0-9_-]{1,48}$/.test(gateCode)){
@@ -259,7 +259,7 @@ export async function startGayBbsAdmission(ctx:Context,payload:string,requestedT
   })),route,requestedTalk
    ? cfg.boards.find(b=>b.target.chat_id===requestedTalk.chatId)!.target.target_id
    : cfg.target.target_id,
-   requestedTalk?.url);
+   requestedTalk?.url,sourceScreenId);
   return;
  }
  if(route.kind==="approved_join"&&route.attempt){
@@ -267,7 +267,14 @@ export async function startGayBbsAdmission(ctx:Context,payload:string,requestedT
   await refreshJoinInvitesIfNeeded(ctx.telegram,route.attempt,
     cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id})));
   const latest=await readAttempt(ctx.from.id);
-  if(latest)await show(ctx.telegram,latest,cfg);
+  if(latest){
+   if(sourceScreenId){
+    const saved=await rememberScreen(latest,sourceScreenId);
+    if(!saved)throw new Error("GATE_SCREEN_HANDOFF_FAILED");
+    latest.last_message_id=sourceScreenId;
+   }
+   await show(ctx.telegram,latest,cfg);
+  }
   return;
  }
  try{
@@ -277,6 +284,11 @@ export async function startGayBbsAdmission(ctx:Context,payload:string,requestedT
    isPremium:(ctx.from as {is_premium?:boolean}).is_premium??false,
   },cfg.documentVersion);
   await saveTalkRequest();
+  if(sourceScreenId){
+   const saved=await rememberScreen(result.attempt,sourceScreenId);
+   if(!saved)throw new Error("GATE_SCREEN_HANDOFF_FAILED");
+   result.attempt.last_message_id=sourceScreenId;
+  }
   if(result.attempt.step==="issuing"){
    await issueInvite(ctx.telegram,result.attempt,cfg);return;
   }
