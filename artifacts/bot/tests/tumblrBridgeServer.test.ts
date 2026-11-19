@@ -29,6 +29,8 @@ test("CM footer accepts up to three PR HTTPS URL rows without changing other but
   [[{text:"悪意のリンク",url:"https://example.org"}]],
   [[{text:"PR / URL",url:"http://example.org"}]],
   [[{text:"PR / URL",url:"https://user:pass@example.org"}]],
+  [[{text:"PR / URL",url:"https://[::1]/"}]],
+  [[{text:"PR / URL",url:"https://127.0.0.1/"}]],
   Array.from({length:4},()=>[{text:"PR / URL",url:"https://example.org"}]),
   [[{text:"PR / A",url:"https://example.org"},{text:"PR / B",url:"https://example.org"}]],
  ]){
