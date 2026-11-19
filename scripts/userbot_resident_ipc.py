@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -38,7 +38,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         raise ValueError("REQUEST_SHAPE_INVALID")
     action = request.get("action")
     expected = ({"request_id", "action", "chat_id", "message_id"}
-                if action == "room_public_readback" else {"request_id", "action"})
+                if action == "room_public_readback" else
+                {"request_id", "action", "topic_ids"}
+                if action == "profile_topics_by_id" else {"request_id", "action"})
     if set(request) != expected:
         raise ValueError("REQUEST_SHAPE_INVALID")
     request_id = request["request_id"]
@@ -79,6 +81,35 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
             raise
         return {"request_id": request_id, "action": action, "status": "PASS",
                 "provisioned": True, "identity_unchanged": True}
+    if action == "profile_topics_by_id":
+        # Exact topic-ID readback is authoritative; Telegram text search can omit
+        # valid topics (different title, pagination, localization). The caller
+        # supplies IDs from the already verified posting_topics DB, not URL tails.
+        ids = request["topic_ids"]
+        if (type(ids) is not list or len(ids) != 3
+                or any(type(v) is not int or not 1 <= v <= 2147483647 for v in ids)):
+            raise ValueError("PROFILE_TOPIC_IDS_INVALID")
+        from telethon import functions
+        dialogs = await client.get_dialogs(limit=500)
+        boards = (
+            ("area_bbs", -1003847210571),
+            ("video_chat", -1002373696859),
+            ("gay_board", -1003770334893),
+        )
+        results = []
+        for (board, chat_id), topic_id in zip(boards, ids):
+            entity = next((d.entity for d in dialogs if d.id == chat_id), None)
+            if entity is None:
+                raise RuntimeError("PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS")
+            result = await client(functions.channels.GetForumTopicsByIDRequest(
+                channel=entity, topics=[topic_id]))
+            matching = [t for t in result.topics if type(t.id) is int and t.id == topic_id]
+            # A valid route must exist and still be a profile topic. No title or
+            # private group data leave this session-owner IPC.
+            found = len(matching) == 1 and "プロフ" in getattr(matching[0], "title", "")
+            results.append({"board": board, "found": found})
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "topics": results}
     if action == "profile_topics_readback":
         # Telegram's USER API returns real forum topic IDs, not t.me/c message
         # suffixes. Only inspect the three already-approved boards, read-only.
@@ -280,7 +311,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "ROOM_READ_CHAT_NOT_ALLOWLISTED", "ROOM_READ_MESSAGE_ID_INVALID",
                 "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE", "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH",
                 "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
-                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS",
+                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS", "PROFILE_TOPIC_IDS_INVALID",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
                 "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
                 "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
