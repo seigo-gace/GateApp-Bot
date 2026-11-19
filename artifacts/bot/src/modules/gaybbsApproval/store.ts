@@ -10,6 +10,7 @@ import {ADMISSION_VERSION, ADMISSION_BOARD_CHAT_IDS, allThreeBoardsApproved, can
 export type GateAttempt = {
  tg_user_id:string; target_id:number; step:string; step_token:string|null;
  challenge_fails:number; challenge_data:unknown; last_message_id:number|null;
+ requested_talk_index:number|null;
  attempt_id:string; document_version:string; last_attempt:Date|null;
  updated_at:Date;
 };

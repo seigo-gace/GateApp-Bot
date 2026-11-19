@@ -6,6 +6,7 @@ import type { Telegram } from "telegraf";
 import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
 import {commonGateUrl} from "./commonGateInvite.js";
+import {POSTING_EDITOR_SPECS,POSTING_PUBLIC_NAV_LABELS,POSTING_FEATURES,POSTING_CREATOR_URL,POSTING_TALK_URL,POSTING_BUG_REPORT_URL,loadPostingFeatureReadiness} from "./postingMenuRoutes.js";
 import {newMenuToken,tokenHash} from "./menuOrigin.js";
 import {loadGeneralGuideNavLinks} from "./generalGuideNavLinks.js";
 import {renderMenuPanel,type ButtonSpec,type EntryLink,type NavLink} from "./menuPanelRenderer.js";
@@ -40,50 +41,23 @@ async function buildLinks(panel:PanelRow):Promise<{
   const links=await loadGeneralGuideNavLinks(chatId);
   return {links,entries:[],tokenHashes:[]};
  }
- const staticLabels=["クリエーター有料ビデオ投稿",
-  "雑談","紹介/招待"] as const;
- const stored=await pool.query(
-  `SELECT label,destination_url FROM board_posting_menu_links
-   WHERE chat_id=$1 AND enabled=TRUE AND verified_by IS NOT NULL
-     AND verified_at IS NOT NULL`,[chatId]);
- // Preserve the verified legacy URL for CreateVdobot. The talk/invite
- // entries are now Bot-owned DM actions, not the old one-target URLs.
- if(stored.rows.length!==staticLabels.length||
-    stored.rows.some(row=>!staticLabels.includes(String(row.label) as typeof staticLabels[number]))||
-    new Set(stored.rows.map(row=>String(row.label))).size!==staticLabels.length)
-   throw new Error("POSTING_NAV_LINKS_NOT_VERIFIED");
+ // These three destinations already have one adopted Owner/route each.
+ // Per-group legacy link rows must not change common menu functionality.
  const gateUrl=await commonGateUrl();
- const links:NavLink[]=stored.rows.map(row=>{
-  const label=String(row.label);
+ const links:NavLink[]=POSTING_PUBLIC_NAV_LABELS.map(label=>{
   if(label==="クリエーター有料ビデオ投稿")
-   return {label:"クリエーター投稿",url:"https://t.me/CreateVdobot?start=creator",verified:true};
+   return {label:"クリエーター投稿",url:POSTING_CREATOR_URL,verified:true};
   if(label==="雑談")
-   return {label:"雑談",url:"https://t.me/GayBBS_bot?start=talk",verified:true};
+   return {label:"雑談",url:POSTING_TALK_URL,verified:true};
   return {label:"紹介/招待",url:gateUrl,copy_text:{text:gateUrl},verified:true};
  });
- const gates=await pool.query(
-  `SELECT feature FROM gaybbs_feature_release_gates
-   WHERE feature IN ('profile','announcement','room','link','search','help')
-     AND enabled=TRUE AND length(source_commit)=40
-     AND length(trim(ci_evidence))>0
-     AND length(trim(gserver_runtime_evidence))>0
-     AND length(trim(COALESCE(telegram_dm_e2e_evidence,telegram_e2e_evidence)))>0
-     AND approved_by IS NOT NULL`);
- const ready=new Set(gates.rows.map(x=>String(x.feature)));
- if(!["profile","announcement","room","link","search","help"].every(x=>ready.has(x)))
+ const ready=await loadPostingFeatureReadiness();
+ if(!POSTING_FEATURES.every(x=>ready.has(x)))
   throw new Error("POSTING_DM_FEATURES_NOT_RELEASED");
- const entrySpecs=[
-  {label:"相手募集",feature:"announcement",prefix:"r_"},
-  {label:"募集+Room",feature:"room",prefix:"m_"},
-  {label:"告知/予告",feature:"announcement",prefix:"m_"},
-  {label:"プロフ作成",feature:"profile",prefix:"m_"},
-  {label:"🔗ボタン作成",feature:"link",prefix:"m_"},
-  {label:"検索/フィルター",feature:"search",prefix:"m_"},
-  {label:"操作説明",feature:"help",prefix:"m_"},
- ] as const;
+ links.push({label:"🐞 不具合を報告",url:POSTING_BUG_REPORT_URL,verified:true});
  const entries:EntryLink[]=[];
  const tokenHashes:string[]=[];
- for(const entry of entrySpecs){
+ for(const entry of POSTING_EDITOR_SPECS){
   const token=newMenuToken();
   const hash=tokenHash(token);
   tokenHashes.push(hash);
@@ -95,7 +69,7 @@ async function buildLinks(panel:PanelRow):Promise<{
   `INSERT INTO board_menu_entry_tokens(token_hash,panel_id,feature,expires_at,enabled)
    SELECT token_hash,$1,feature,NOW()+INTERVAL '365 days',TRUE
    FROM UNNEST($2::text[],$3::text[]) AS candidate(token_hash,feature)`,
-  [panel.panel_id,tokenHashes,entrySpecs.map(x=>x.feature)]);
+  [panel.panel_id,tokenHashes,POSTING_EDITOR_SPECS.map(x=>x.feature)]);
  return {links,entries,tokenHashes};
 }
 async function markUnknown(id:string,messageId:number|null):Promise<void>{

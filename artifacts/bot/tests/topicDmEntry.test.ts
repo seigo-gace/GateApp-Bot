@@ -6,8 +6,8 @@ import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 test("a forum topic has one DM doorway, not a group-side editor keyboard",()=>{
  assert.ok(TOPIC_ENTRY_TEXT.includes("BotのDM"));
  assert.equal(TOPIC_ENTRY_BUTTON,"📝 投稿メニューを開く");
- assert.deepEqual(APPROVED_POSTING_ROWS.map(row=>row.length),[3,2,2,3]);
- assert.equal(APPROVED_POSTING_ROWS.flat().length,10);
+ assert.deepEqual(APPROVED_POSTING_ROWS.map(row=>row.length),[3,2,2,3,1]);
+ assert.equal(APPROVED_POSTING_ROWS.flat().length,11);
 });
 
 test("entry links use opaque p_ token; raw group and topic IDs never accepted",()=>{

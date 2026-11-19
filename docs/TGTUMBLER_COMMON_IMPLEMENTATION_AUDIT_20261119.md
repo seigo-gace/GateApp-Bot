@@ -1,0 +1,137 @@
+# TGtumbler / GayBBS 共通実装・OS互換性監査（2026-11-19）
+
+## 目的・保護条件
+- 既存の全ての確定レイアウト、ボタン名、色、行、文字列と、3グループ、公開済み投稿、Room、保存済みデータを不変とする。
+- 現行の参照元は GitHub Issue #7、`docs/TGTUMBLER_COMMON_UI_CONTRACT.md`、PR #58 と Runtime。Source / CI / Host / Telegram端末の状態を混同しない。
+- iOS / iPadOS / Android / Windows / macOSを共通の受入対象とする。Bot API updateにはクライアントOS/版がないため、サーバーで推定OS分岐を作らない。
+- Telegram公式 `messages.startBot` Deep Linkは既存DMでもStartボタン表示があり得る。グループ公開URL入口とDM内 callback は異なる移送手段。
+
+## 共通処理の呼出マッピング再監査（2026-11-20更新／SourceはPR #58）
+
+> 判定語：実装あり＝該当処理のSource存在、接続あり＝呼出経路あり、実機VERIFIED＝実際のTelegram更新と画面を確認。これらは同義ではない。対象ブランチ `chat/bug-report-userbot-20261115` のSourceだけを根拠にする。旧結論「雑談Gate未接続」は修正履歴であり現行状態ではない。
+
+| 入口／責務 | 既存Owner／呼出元 | Source確認 | 未立証・個別の検証要件 |
+|---|---|---|---|
+| 投稿11ボタン（3/2/2/3/1） | `menuPanelRenderer.ts` → `dmBareStartPostingMenu.ts` | 実装・共通配列あり。公開4行＋報告1行で旧10ボタンを維持 | 本番3グループの固定パネル現物とURL照合は未確認 |
+| 公開メニュー配信 | `menuPanelPublisher.ts` → `telegramDispatcher.ts` | 共通描画・配信が接続済み | Topicごとの固定message_id／権限・端末別開き方は未検証 |
+| DM開始／既存Deep Link | `gaybbsBot.ts` → 機能別 startXXX | `?start=` とDM callbackが並存。初回Telegram Startの完全抑止は不可 | 既利用者にStartを再要求しない内部遷移の全経路検査 |
+| DMウィザード | `dmWizardScreen.ts` | edit→送信フォールバック→旧画面削除の共通Ownerあり | 全呼出し箇所が正しいメッセージIDを渡すこと／削除失敗・回復／重複操作 |
+| DMボタン形式 | `telegramClientCompatibility.ts` → `dmWizardScreen.ts`／`telegramDispatcher.ts` | callback長、行、copy_textの形式チェック接続済み | 正常なBot API出力だけではOS別描画・押下を証明できない |
+| プロフ | `gaybbsBot.ts`→`profileCompactHandlers.ts`, `profileHandlers.ts` | 共通画面あり。コンパクト・従来公開処理が併存 | 同一画面／本人／下書きrevision／実投稿受入は分岐ごとに未確認 |
+| 相手募集 | `gaybbsBot.ts`→`recruitmentHandlers.ts`, `recruitmentRichPreview.ts` | 共通画面＋Rich失敗時通常InlineKeyboard代替が存在 | iOSでRich成功応答でも描画できるか／取消・投稿・下書き復帰 |
+| 募集＋Room・告知 | `gaybbsBot.ts`→`postingHandlers.ts`, `roomHandlers.ts` | 一部は共通画面を利用。多分岐・専用DB/配信あり | すべてのstepでID、入力回収、同一カード更新、LIVE/終了同期 |
+| 🔗ボタン作成 | `gaybbsBot.ts`→`postingHandlers.ts` | メニュー押下IDの引継ぎあり | URL構成・プレビュー・編集・キャンセルの全状態テスト |
+| 検索/フィルター | `gaybbsBot.ts`→`searchHandlers.ts` | メニュー押下ID引継ぎ＋共通画面利用あり | 対象切替・戻る・端末別入力操作 |
+| 操作説明 | `gaybbsBot.ts`→`operationHelpHandlers.ts` | 押されたIDをセッションへ保存。空keyboard発行も防止 | メニューへの復帰・旧セッションの競合・全説明内容と既存仕様の一致 |
+| 不具合報告 | `gaybbsBot.ts`→`bugReportHandlers.ts` | 報告・旧画面回収・個別通知・単独メニュー。無効入力時の削除と同画面再表示も追加 | 送信失敗/端末別、同一アカウントで本人・管理通知が重なる場合の区別 |
+| 雑談 | `postingMenuUtilityHandlers.ts` → `gaybbsApproval/handlers.ts` → `admissionRouting.ts` | 元の3Topic保持・共通資格照会・未承認のGate接続あり。選択Indexは既存`gate_sessions`へ永続化 | 承認前・承認後・一部加入・再入室の実Telegram確認、元Topic遷移 |
+| 紹介・招待 | `postingMenuUtilityHandlers.ts` → `commonGateInvite.ts` | 共通ゲートcopy_textのボタンあり | 旧Telegram iOSのcopy_text非対応時のユーザー向け案内と実機 |
+| 入力削除全般 | `removeUserWizardInput`／各機能の削除 | 共通Ownerはあるが機能別経路に直接API呼出も残る | 成功・無効入力・削除失敗の全分岐検査が必要 |
+| 権限・Gate | `gaybbsApproval/contract.ts`, `store.ts`, `admissionRouting.ts`, `onlineGateAccess.ts` | 3グループの共有資格／発行記録／加入確認あり。restrictedはis_member=trueだけ加入扱い | 参加申請、承諾、失効、拒否、重複・一部加入の本番実証 |
+
+### コードの経路数（2026-11-20 静的確認）
+この数字は完了率ではなく調査の範囲を示す。直接の `sendMessage/reply` が存在しても、その用途が受付・公開・実行エラー等である場合があるため、一律に共通画面へ置換してはならない。
+
+| 主なOwner | Source行数 | showWizardScreen 呼出記述数 | 直接sendMessage/reply 記述数 | bot.action 記述数 |
+|---|---:|---:|---:|---:|
+| `profileCompactHandlers.ts` | 510 | 1 | 4 | 8 |
+| `recruitmentHandlers.ts` | 843 | 1 | 0 | 22 |
+| `postingHandlers.ts` | 1749 | 2 | 5 | 26 |
+| `searchHandlers.ts` | 264 | 2 | 0 | 10 |
+| `operationHelpHandlers.ts` | 130 | 2 | 0 | 2 |
+| `postingMenuUtilityHandlers.ts` | 132 | 4 | 2 | 3 |
+| `bugReportHandlers.ts` | 259 | 3 | 4 | 2 |
+
+数値は静的スキャン時点の参考値で、ソースが更新された場合は再計測する。特に直接送信の理由、元画面ID、編集後の返却ID、入力エラー削除を手動で照合する。
+
+## Gserver本番公開ゲートとボタン接続の照合（2026-11-20）
+- Source `postingMenuContract.ts` はDMの10機能入口を既存コールバックと1件のクリエーターURLに対応。最後の不具合報告は `dm:bug:open`。UIは `APPROVED_POSTING_ROWS` 3/2/2/3/1の11ボタンで維持。
+- `dmBareStartPostingMenu.ts` は `gaybbs_feature_release_gates` の状態に応じて `dm:blocked:feature` に置換する経路を持つ。したがって、Sourceコードのアクション登録だけでは本番でのボタン使用可を保証しない。
+- Gserverの2026-11-19本番SQL読戻し `req_20261120011300000000d501` はHost EXIT0/PASS。非公開結果を既存Host結果台帳から分類した `req_20261120011800000000d502` は **EXIT100＝READY欠落ビットmask0** として6機能（announcement/help/link/profile/room/search）がREADYと判定された。EXIT100は分類スクリプトの意図的な非ゼロ終了であり、Bot実行失敗ではない。
+- この証拠で「公開ゲートがないため6機能すべてのボタンがブロックされている」という推測は否定される。ただし、押下→画面表示→入力→保存・投稿というE2Eとは別。公開メニューの実際のURLと古い固定メッセージは未照合。
+- `renderApprovedLinks` では紹介/招待がURLとcopy_text両値を運搬するが、`telegramDispatcher.markup` はcopy_textを優先し**実際のTelegramボタンには1アクションだけ**を書き出す。輸送形式の二重アクションではない。旧クライアントのcopy_text表示は別実機要件。
+- コピー先の本文表示、ボタン文言・行・色・数、固定メニューの構成を勝手に変更しない。
+
+## 正本・採用レイアウトの衝突を検知した箇所（自動変更禁止）
+- 2026-11-05の既存 `TGTUMBLER_COMMON_UI_CONTRACT.md` には投稿メニュー10ボタン(3/2/2/3)と総合案内2×6が記載される。一方、2026-11-19時点のMaster追加指示および現行 `menuPanelRenderer.ts` では **投稿メニュー11ボタン(3/2/2/3/1)**。11番目「🐞 不具合を報告」を削除して古い10ボタンに戻すことは禁止。
+- 同じSourceの `APPROVED_GUIDE_ROWS` は現時点では 3/3/3/4 の4行であり、古い共通契約の総合案内2×6とは一致しない。この差を古い文書の記載だけで「バグ」と確定して再配置すると、Masterの**現行レイアウト絶対維持**に反する。変更は保留し、現物と最新決定の採用関係を確認する。
+- 一覧の古いBotラベル、公開機能のReady判定、OS互換の形式テストが通ることを、現行全画面の仕様合致と混同しない。
+- 今回の修正はボタン配置・色・文言の意味を変えない通信/画面ライフサイクルに限定する。
+
+## 共通化方針と責務境界
+1. **Transport**：公開グループ→DMだけDeep Link。DM内の選択/戻る/取消は callback_query。標準の初回Start表示はクライアント制約として扱う。
+2. **OS互換**：Bot APIのcallback 1–64 UTF-8 bytes、copy_text 1–256文字相当のAPI制限、1ボタン1アクションを共通入力検証する。OS推定で条件分岐しない。古いTelegramへの個別救済はURLや通常テキスト等の採用済みUIに沿って設計し、ボタン配置は変えない。
+3. **画面管理**：成功後の旧ボタン・旧入力の回収、編集失敗時の代替/削除、callback重複/古さの拒否。DMのUIと完了時に保持する領収メッセージを区別。
+4. **Gate**：各機能は既存の共通承認/参加状態判定を再利用。未承認→1回質問Gate、承認済み未参加→既存の参加導線、承認済み参加済み→元の選択トピック。目的トピックIDを推測しない。
+5. **業務機能**：プロフィール/募集/Room/リンク/検索/不具合報告の保存・投稿・通知は機能オーナーが管理。共通画面ライブラリが勝手に業務データを消さない。
+
+## 履歴照合によるOS例外の再確認
+- Notionの既存UI変更議事録には、相手募集の `sendRichMessage` / 本文横 `📝編集` が非対応だった場合、通常InlineKeyboardへ戻す既決方式が記録されている。現行 `recruitmentHandlers.ts` にも失敗時のフォールバックが存在する。ただし **API成功でも端末表示失敗** はServer側で自動検知できない。
+- 端末版差に起因する `copy_text` 非対応・Deep Link再Startは、Bot APIにOS識別子がないため、実機観測と標準の代替導線の採用確認が必要。実機対応済みと表現しない。
+
+## OS別・状態別受入基準（現時点全て NOT_VERIFIED）
+| OS | 初回グループ入口 | DM内11ボタン/戻る | Gate/雑談Topic | copy_text | 入力回収/復帰 |
+|---|---|---|---|---|---|
+| iOS | 未検証 | 未検証 | 未検証 | 未検証 | 未検証 |
+| iPadOS | 未検証 | 未検証 | 未検証 | 未検証 | 未検証 |
+| Android | 未検証 | 未検証 | 未検証 | 未検証 | 未検証 |
+| Windows | 未検証 | 未検証 | 未検証 | 未検証 | 未検証 |
+| macOS | 未検証 | 未検証 | 未検証 | 未検証 | 未検証 |
+
+各OSで「未承認／承認済未参加／承認済参加済」「Bot未開始／既開始」「新規入力／保存済下書き／通信障害後の再開」を交差して確認する。CI PASSを実機PASSへ昇格させない。
+
+## 修正の進捗と正確な証拠境界
+- 2026-11-19：`telegramClientCompatibility.ts` を共通DM／公開配信へ接続（Source・CI・Hostで検証）。
+- 2026-11-19：雑談は3Topicの採用ラベル／順序を維持し共通Gateへ接続。選択Topicは既存gate_sessionsに永続化。画面IDも共通Gateへ引継ぎ（Source・CI・Hostで検証）。
+- 2026-11-19：DMメニュー入口からの画面ID引継ぎ、restrictedの加入判定を修正（Source・CI・Hostで検証）。
+- 2026-11-20：再監査で不具合報告の無効入力時、削除せず新規返信を重ねる不整合を発見。原文削除を試み元画面を再利用し、失敗なら利用者向け警告を同画面へ表示する変更と単体テストを追加（当該Sourceを含むCI／Gserverの検証証拠は下記最終受入境界に記録）。
+- 2026-11-20：`dmWizardScreen.ts` が従前あらゆる編集エラーで新規画面を送ることを確認。結果不明のタイムアウトでは既存画面に編集が届いた可能性があるため代替画面を作らず、Telegramが編集拒否を明示した場合だけフォールバックする。静的テストにタイムアウト→二重送信禁止、400拒否→代替、not-modified→同一IDを追加。
+- 2026-11-20：`dmPostingMenuRestore.ts` が共通Wizardを使わず直接 `ctx.editMessageText` を呼んでいたため、同じガード付き共通画面ライフサイクルに接続。元メニューIDを引継ぎ、11ボタンを維持。
+- 2026-11-20：`postingMenuUtilityHandlers.ts` の紹介/招待案内は `\\n` を本文へ文字列として出す経路だった。既存文言・ボタン配列を維持し、意図した実改行に修正。
+- 2026-11-20：`postingHandlers.ts` のRoom応募者一覧の画面更新に、編集エラー一律catch→新規送信の独自経路を発見。承認/拒否・ページング・HTML本文を維持し `showWizardScreen(...,"HTML")` に統一。通信結果不明時の重複画面作成を防ぐ。
+- 2026-11-20：`profileHandlers.test.ts` の3件の旧 `ctx.editMessageText` 呼出前提を、共通 `telegram.editMessageText(chatId,messageId,...)` の実引数検査へ置換。失敗ログを読んで原因を確認しており、既存テストの削除・スキップはしていない。対応ソースの受入と回帰テストは分離。
+
+
+- 既存業務コード・本番3グループ固定投稿・全端末のE2Eについて、上記の部分検証だけで完了と判断しない。
+- 出力の保持：Master確定のボタン名／行／色／位置／各機能と本人下書き・公開済資産を変更しない。
+- 未検証：OS別実機、Gate全状態の実操作、iOS古いTelegram版のcopy_text、各画面の入力削除/差替/復旧、動画・Starsなど本要求に関連しない業務owner全体の品質保証。
+- 最重要：旧監査の「雑談Gate未接続」「Gserver再配備未実施」は当時の履歴であり現行状態とは異なる。新しい実行結果をSource/CI/Hostの各レイヤーで証明する。
+
+## 2026-11-20 実行証拠の読戻し（最終のSource/CI/Host境界）
+- 現行PR #58 HEAD `21085c18a66175b3be53d7fc16aa89b30b24063b`。実際に本番へ配備したコードのstage SHAは `afb725a5f23844e1d2fcc53ffada231d8ee9faba`。両者のGitHub比較差分は **本マッピングの索引文書1ファイルだけ**、アプリSource差分なし。
+- CIは現行PR HEADで4件 SUCCESS：Profile A05 #44564528881、GayBBS Docker #44564528586、CM #44564528546、Tumblr bridge #44564529000。
+- Gserverの隔離Dockerビルド `req_20261120015400000000d504`：HOST EXIT0/PASS。
+- 本番GayBBSイメージを旧版drift確認後、既存Composeで対象Botだけ切替 `req_20261120020000000000d505`：HOST EXIT0/PASS。旧イメージ退避 `pre-reaudit-20261120`。
+- 本番の実イメージ一致、Bot ID、Telegram getMyCommands(default/private)空、対象3グループでBot管理者権限、Userbot常駐をAPI/readback確認 `req_20261120020500000000d506`：HOST EXIT0/PASS。
+- 6機能公開ゲートのSQL分類は `req_20261120011300000000d501` HOST PASS と `req_20261120011800000000d502` の意図的分類EXIT100(ビットmask0：全6 READY)。本番ボタンの利用者実押下証拠ではない。
+- Notion UI正本議事録の補記は書込成功と個別コメントID `41dcdcf1-28e4-81be-991f-001d098a8fe4` の読戻しで確認。
+- **この監査の完了と全OS/全機能の最終E2E完了は別**：実iOS/iPadOS/Android/Windows/macOS端末、既存ユーザー・新規ユーザー・未承認/承認済みの組合せ、通信遮断回復と実固定パネルの表示を未検証のままPASSへ昇格させない。PR #58はopen、44ファイルの横断差分を十分に審査せず自動mergeしない。
+
+## 2026-11-20 追加継続｜実Userbotと認可例外の追跡
+- `req_20261120020100000000e601`: 常駐Userbot IPCを通じたhealthと11ボタンDMメニュー検証はHost EXIT0/PASS。サービスactive/enabledの前後確認あり。CLI内部の `bot_start_menu` はテスト用のTelegram `/start` を送るため、これは「ノーコマンド操作の全経路」証拠にはならない。
+- `req_20261120020700000000e602`: 常駐IPCによる `bug_report_delivery_smoke` 実Telegram E2E **FAIL(Host EXIT74)**。非公開結果を分類した `req_20261120021200000000e604` は EXIT31＝既存テストの `USERBOT_BUG_REPORT_SCREEN_NOT_OPENED`。受付・通知・入力削除を全成功と主張できない。
+- テスト側Source `scripts/userbot_resident_ipc.py` は元メッセージIDだけで説明画面を探す条件を改め、直近Bot応答全体を検査、別メッセージに出た場合は元メニューが残っていないことを必須とする（commit 9e6659188f5d67f436bb83d532417a882d8db78a）。Source CI 4件SUCCESS。だがHost上の常駐実行用スクリプトは採用前Sourceとのbyte一致を満たさず `req_20261120022000000000e606` EXIT76、さらにGit HEAD側に対応ファイルが存在しない状態 `req_20261120022800000000e608` EXIT52。**実サービスを上書き・再起動していない**。Userbot既存認証/セッションを優先保護。
+- `req_20261120023500000000e610` は当該E2Eの時刻範囲のBotログを安全に分類し、`req_20261120024300000000e613` EXIT40＝ `[GAYBBS_ERROR] callback_query` は観測なし。これはBot成功の証明ではなく、例外の記録がなかったという限定的な事実。
+- `req_20261120023900000000e611` のGserver本番DB読み取りはHOST PASS。結果の非公開分類 `req_20261120024100000000e612` EXIT100(mask0)により、3グループ×2種類のパネル計6件が全てpublished・pinned・message_id保持・needs_reconcile無しと照合。Telegramでのボタン全押下や端末別表示とは別。
+- 追加のSource欠陥：雑談3トピックの直URLはcallbackを経由しないため、表示時の `talkEligible` がブラックリスト確認を省くと、ブラックリスト対象でも過去の承認＋加入状態だけで直リンクが現れる。既存の拒否方針を同じ表示時判定へ追加し、`canDirectTalkTopic` のブラックリスト拒否テストを拡張（コミット `8e0cad32f8a843afee4ce933b2dfb5a4f1903d6f`）。ラベル、行、色、元Topic URLは変更なし。Source CI4件SUCCESS、Gserver隔離ビルドと本番反映は別判定。
+- 上記Source SHAのGitHub CI4件すべてSUCCESS（Profile 44575044677、GayBBS Docker 44575044737、CM 44575044724、Tumblr bridge 44575044562）。Gserver隔離ビルド `req_20261120025000000000e614` HOST PASS、本番GayBBSのみdrift検査と旧イメージ退避を実施 `req_20261120025500000000e615` HOST PASS（READYログ、実イメージ一致、Userbot active）。これはブラックリスト対象本人の実端末操作PASSではない。
+
+
+## 2026-11-20 追加｜プロフィールTopic実在検査とDB台帳の区別
+- Gserver Userbotの常駐IPC読み取り専用 `profile_topics_readback` は `req_20261120030000000000e616` HOST PASS。独立した結果分類 `req_20261120030300000000e617` EXIT106(mask6)により、現在の `GetForumTopicsRequest(q="みんなのプロフ",limit=100)` の検索条件では area_bbs のみ検出、video_chat / gay_board は未検出。これだけでTopicが存在しないとは断定しない。
+- Gserverの `posting_topics` 正本DBの検証済みprofile行は `req_20261120030700000000e618` HOST PASS。非公開分類 `req_20261120031000000000e619` EXIT100(mask0)＝area_bbs / video_chat / gay_board の全3グループに、enabled、verified_at、verified_by、正のthread IDを満たす登録が各1件以上ある。DBで「検証済み」とすることと、現在のTelegram検索クエリで名称検出できることは別。
+- Source未解消：Userbot検索のfalse-negative原因（検索文字列、APIの取得範囲、Topic名、移動/削除状態）は未分類。登録済みDBのIDをメッセージURL末尾で置換したり、未発見の2群へ推測IDで投稿することはしない。既存Userbot常駐ファイルはGitHub基準版との差があるため、照合なしに一括上書き・再起動しない。
+
+## 2026-11-20 追加｜プロフィールTopic実機照合の再開
+- Userbot常駐IPCの `profile_topics_readback` はグループのTopicタイトル検索 `q="みんなのプロフ"` を使う。既存IPC実測 `req_20261120030000000000e616` Host PASS の結果を `req_20261120030300000000e617` に分類し、EXIT106（エリアのみ見つかりビデオ掲示板・ゲイ掲示板は検索未一致）を確認。検索未一致をTopic不存在と断定しない。
+- Gserver PostgreSQL `posting_topics` の既存`purpose='profile'` を確認。取得 `req_20261120032200000000f701` Host PASS、分類 `req_20261120032500000000f702` EXIT100（3グループすべて有効・名称に「プロフ」を含む登録レコードあり）。DBを推測Topic IDで更新しない。
+- テキスト検索の曖昧さを除くため、既存3グループとDB検証済みの3つのTopic IDだけを指定できる `profile_topics_by_id` を常駐Userbot IPCへSource追加。入力形状と範囲を拒否し、Title・ユーザー情報をIPC応答へ出さない。Sourceユニットテスト、CI4件とGserver隔離テスト `req_20261120033200000000f703` PASS。
+- 初版の直接ID API `channels.GetForumTopicsByIDRequest` は現行Gserver Telethonには存在しなかった（`req_20261120041400000000f710` EXIT41）。この版の実検証 `req_20261120035600000000f706` はFAILであり、Telegram Topic不存在の証拠ではない。
+- Source修正版 `2a57653896161eed36b0c97d598a3ee9670259a5` は**現行の `messages.GetForumTopicsRequest` を用い、空検索・最大20ページの限定走査と登録済みID照合**に変更。CI4件SUCCESS、隔離Unit `req_20261120042200000000f711` PASS。既存Userbotコード全体は上書きせず、既設の許可済みセッション所有者・3グループ境界を維持。
+- Hostでのコード専用適用 `req_20261120035100000000f705` PASS。API互換の追加差分は実行中の既存検査ロジックを保護して単一ブロック更新する。再更新・常駐サービス反映・全3Topic実Telegram再読戻しは、それぞれ実際のHost証拠が取れるまで未完了。
+- OS実機の受入、プロフィールの投稿そのもの、Topicの無断作成/移動/削除、Userbot認証再登録は実施していない。
+
+## 一次資料
+- Telegram公式 Deep links: https://core.telegram.org/api/links
+- Telegram公式 Bot API / InlineKeyboardButton: https://core.telegram.org/bots/api
+- Source: `artifacts/bot/src/gaybbsBot.ts`, `services/menuPanelPublisher.ts`, `services/menuPanelRenderer.ts`, `services/dmBareStartPostingMenu.ts`, `services/dmWizardScreen.ts`, `services/commonGateInvite.ts`, `bot/postingMenuUtilityHandlers.ts`, `modules/gaybbsApproval/admissionRouting.ts`, `services/onlineGateAccess.ts`, `bot/bugReportHandlers.ts`。

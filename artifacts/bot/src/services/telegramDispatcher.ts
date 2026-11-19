@@ -4,6 +4,7 @@
  */
 import type {Telegram} from "telegraf";
 import {Markup} from "telegraf";
+import {assertTelegramInlineKeyboard} from "./telegramClientCompatibility.js";
 export type TransportTarget={chatId:number;threadId:number};
 export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";buttons?:readonly (readonly {text:string;url:string;copy_text?:{text:string};style?:"primary"|"success"|"danger"}[])[]};
 function assertTarget(t:TransportTarget):void{
@@ -18,7 +19,9 @@ function markup(buttons:TransportMessage["buttons"]){
   ...(x.copy_text?{copy_text:x.copy_text}:{url:x.url}),
   ...(x.style?{style:x.style}:{})
  })));
- return Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
+ const keyboard=Markup.inlineKeyboard(rows as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
+ assertTelegramInlineKeyboard(keyboard);
+ return keyboard;
 }
 export function createTelegramDispatcher(telegram:Telegram){
  return {
@@ -34,10 +37,18 @@ export function createTelegramDispatcher(telegram:Telegram){
   async revise(t:TransportTarget,messageId:number,message:TransportMessage):Promise<void>{
    assertTarget(t);
    if(!Number.isSafeInteger(messageId)||messageId<=0)throw new Error("MPB_MESSAGE_ID_INVALID");
-   await telegram.editMessageText(t.chatId,messageId,undefined,message.text,{
-    ...(message.parseMode?{parse_mode:message.parseMode}:{}),
-    ...(markup(message.buttons)||{}),
-   });
+   try{
+    await telegram.editMessageText(t.chatId,messageId,undefined,message.text,{
+     ...(message.parseMode?{parse_mode:message.parseMode}:{}),
+     ...(markup(message.buttons)||{}),
+    });
+   }catch(error){
+    // Telegram returns 400 if the published text/keyboard already matches.
+    // This is an idempotent success: do not mark the original panel uncertain
+    // or create a replacement public message.
+    if(error instanceof Error&&/message is not modified/i.test(error.message))return;
+    throw error;
+   }
   },
   async cancel(t:TransportTarget,messageId:number):Promise<void>{
    assertTarget(t);

@@ -10,13 +10,15 @@ const base:RoomPublication={
  visibility:"public",scheduledAt:null,ownerJoinUrl:"https://meet.jit.si/example",
  destinations:[],
 };
-test("host Room start action is paired with LIVE room entry, and finish removes join",()=>{
+test("host Room start action retains the LIVE owner management buttons without exposing join URL",()=>{
  const scheduled=roomPublicationEditor(base);
  const start=scheduled.keyboard.reply_markup.inline_keyboard.flat();
  assert(start.some(b=>"callback_data" in b&&String(b.callback_data).includes(":start:")));
  assert(!start.some(b=>"url" in b&&b.url===base.ownerJoinUrl));
  const live=roomPublicationEditor({...base,status:"live"});
  assert(live.keyboard.reply_markup.inline_keyboard.flat().some(b=>
+  "callback_data" in b&&String(b.callback_data).includes(":finish:")));
+ assert(!live.keyboard.reply_markup.inline_keyboard.flat().some(b=>
   "url" in b&&b.url===base.ownerJoinUrl));
  const finished=roomPublicationEditor({...base,status:"finished"});
  assert.match(finished.text,/✅ 終了/);

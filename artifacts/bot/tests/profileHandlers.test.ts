@@ -164,9 +164,13 @@ test("cancel is revision-bound: clears active draft only and returns directly to
   assert.equal(f.draft,null);
   assert.equal(f.discards,1);
   assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"),"cancel shows no explanation toast");
-  assert.ok(f.sent.at(-1)[1].includes("投稿メニュー"));
-  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
-  assert.equal(f.sent.at(-1)[2].reply_markup.inline_keyboard.flat().length,10);
+  const restored=f.sent.at(-1);
+  assert.equal(restored[0],"screen-edit");
+  assert.equal(restored[1],4321);
+  assert.equal(restored[2],99);
+  assert.match(restored[4],/投稿メニュー/);
+  assert.equal(restored[5].reply_markup.inline_keyboard[0][0].text,"相手募集");
+  assert.equal(restored[5].reply_markup.inline_keyboard.flat().length,11);
   await f.action("pf:restart");
   assert.equal(f.draft.step,"awaiting_basic");
   await f.action(cancelAction,[previous]);
@@ -285,11 +289,13 @@ test("A cancel returns directly to the DM posting menu without deleting saved pr
  await f.action(overviewAction,[String(f.draft.revision),"cancel"]);
  assert.equal(f.draft,null);
  const result=f.sent.at(-1);
- assert.equal(result[0],"edit");
+ assert.equal(result[0],"screen-edit");
+ assert.equal(result[1],4321);
+ assert.equal(result[2],99);
  assert.ok(!f.sent.some((entry:any[])=>entry[0]==="answer"&&entry[1]==="キャンセルしました"));
- assert.match(result[1],/投稿メニュー/);
- assert.equal(result[2].reply_markup.inline_keyboard[0][0].text,"相手募集");
- assert.deepEqual(result[2].reply_markup.inline_keyboard.map((row:any[])=>row.length),[3,2,2,3]);
+ assert.match(result[4],/投稿メニュー/);
+ assert.equal(result[5].reply_markup.inline_keyboard[0][0].text,"相手募集");
+ assert.deepEqual(result[5].reply_markup.inline_keyboard.map((row:any[])=>row.length),[3,2,2,3,1]);
  assert.equal(f.sent.filter(x=>x[0]==="reply").length,1);
 });
 
@@ -301,9 +307,12 @@ test("A cancel with no verified origin still restores the menu and does not inve
  await f.action(positionAction,[String(f.draft.revision),"2"]);
  await f.action(overviewAction,[String(f.draft.revision),"cancel"]);
  const result=f.sent.at(-1);
- assert.match(result[1],/投稿メニュー/);
- assert.equal(result[2].reply_markup.inline_keyboard.flat().length,10);
- assert.equal(result[2].reply_markup.inline_keyboard[0][0].url,undefined);
+ assert.equal(result[0],"screen-edit");
+ assert.equal(result[1],4321);
+ assert.equal(result[2],99);
+ assert.match(result[4],/投稿メニュー/);
+ assert.equal(result[5].reply_markup.inline_keyboard.flat().length,11);
+ assert.equal(result[5].reply_markup.inline_keyboard[0][0].url,undefined);
 });
 
 test("A old navigation and saved old callbacks cannot corrupt new draft",async()=>{

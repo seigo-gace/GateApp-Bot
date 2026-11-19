@@ -4,6 +4,32 @@ export async function runMigrations(): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query(`
+      CREATE TABLE IF NOT EXISTS gaybbs_bug_reports (
+        id BIGSERIAL PRIMARY KEY,
+        owner_user_id BIGINT NOT NULL CHECK(owner_user_id > 0),
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','forwarding','delivered','queued','uncertain','cancelled')),
+        body TEXT,
+        source_message_id BIGINT,
+        prompt_message_id BIGINT,
+        destination_message_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE gaybbs_bug_reports ADD COLUMN IF NOT EXISTS prompt_message_id BIGINT;
+      CREATE UNIQUE INDEX IF NOT EXISTS gaybbs_bug_report_one_pending
+        ON gaybbs_bug_reports(owner_user_id) WHERE state='pending';
+      CREATE INDEX IF NOT EXISTS gaybbs_bug_report_delivery_idx
+        ON gaybbs_bug_reports(state,created_at);
+      CREATE TABLE IF NOT EXISTS gaybbs_bug_report_userbot_delivery (
+        report_id BIGINT PRIMARY KEY REFERENCES gaybbs_bug_reports(id) ON DELETE CASCADE,
+        state TEXT NOT NULL DEFAULT 'queued'
+          CHECK(state IN ('queued','forwarding','delivered','uncertain')),
+        destination_message_id BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS gaybbs_bug_report_userbot_delivery_state_idx
+        ON gaybbs_bug_report_userbot_delivery(state,report_id);
       CREATE TABLE IF NOT EXISTS profiles (
         owner_user_id BIGINT PRIMARY KEY,
         nickname TEXT,
@@ -608,6 +634,7 @@ export async function runMigrations(): Promise<void> {
 
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS requested_talk_index SMALLINT CHECK(requested_talk_index BETWEEN 0 AND 2);
       -- @GayBBS_bot approval: extend existing GATE data instead of a parallel DB.
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS attempt_id TEXT;
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS document_version TEXT;

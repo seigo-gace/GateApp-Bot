@@ -2,6 +2,7 @@
  * Never fabricate Telegram message IDs, topic IDs, Cloudflare Pages URLs,
  * missing functionality or links to a disabled document.
  */
+import {POSTING_FEATURE_BY_LABEL} from "./postingMenuContract.js";
 export type NavLink={label:string;url:string;verified:boolean;copy_text?:{text:string}};
 export type EntryLink={feature:"profile"|"announcement"|"room"|"link"|"search"|"help";label:string;url:string;ready:boolean};
 export type PanelSpec={
@@ -80,11 +81,13 @@ function assertPublishedLink(link:NavLink|EntryLink):void{
 /** Master-approved top-level panels. Row identity is part of the design
  * contract: never pad rows, reorder labels, or expose broken destinations.
  */
+export const POSTING_MENU_SCREEN_TEXT = "📝 投稿メニュー\nボタンを選択してください。";
 export const APPROVED_POSTING_ROWS = [
  ["相手募集","募集+Room","告知/予告"],
  ["プロフ作成","クリエーター投稿"],
  ["🔗ボタン作成","検索/フィルター"],
  ["雑談","紹介/招待","操作説明"],
+ ["🐞 不具合を報告"],
 ] as const;
 /** Cloudflare Pages — L0 row 4 only (not Telegram doc posts). */
 export const GUIDE_PAGES_URLS = {
@@ -122,6 +125,7 @@ export function postingButtonStyle(label:string):ButtonStyle{
     label==="プロフ作成"||label==="クリエーター投稿")return "success";
  if(label==="🔗ボタン作成"||label==="検索/フィルター"||
     label==="雑談"||label==="紹介/招待"||label==="操作説明")return "primary";
+ if(label==="🐞 不具合を報告")return "danger";
  throw new Error("POSTING_BUTTON_STYLE_UNKNOWN:"+label);
 }
 export function renderApprovedLinks(kind:ApprovedPanel,
@@ -156,17 +160,11 @@ export function renderMenuPanel(spec:PanelSpec):RenderedPanel{
  if(spec.type!=="posting")throw new Error("PANEL_TYPE_INVALID");
  // Reuse the existing verified DM entries alongside verified URL destinations.
  // Labels and feature ownership must match the exact Master-approved layout.
- const allowed:Readonly<Record<string,EntryLink["feature"]>>={
-  "相手募集":"announcement","募集+Room":"room",
-  "プロフ作成":"profile",
-  "告知/予告":"announcement","🔗ボタン作成":"link",
-  "検索/フィルター":"search","操作説明":"help",
- };
  const entries=spec.entryLinks.map(entry=>{
-  if(allowed[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
+  if(POSTING_FEATURE_BY_LABEL[entry.label]!==entry.feature)throw new Error("POSTING_ENTRY_NOT_APPROVED");
   return {label:entry.label,url:entry.url,verified:entry.ready};
  });
- return {text:"📝 投稿メニュー\nボタンを選択してください。",
+ return {text:POSTING_MENU_SCREEN_TEXT,
    rows:renderApprovedLinks("posting",[...spec.links,...entries])};
 }
 

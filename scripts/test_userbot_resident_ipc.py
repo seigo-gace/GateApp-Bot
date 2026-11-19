@@ -2,6 +2,9 @@
 """No Telegram network, secrets, session or worker lifecycle used in these tests."""
 import asyncio
 import unittest
+import pathlib
+import tempfile
+from unittest.mock import patch
 from types import SimpleNamespace
 
 from userbot_resident_ipc import EXPECTED_MENU, process_request
@@ -44,7 +47,7 @@ class ResidentSafetyTests(unittest.TestCase):
         c = MockClient()
         out = asyncio.run(process_request(c, {"request_id": "menu-1", "action": "bot_start_menu"}))
         self.assertEqual(out["status"], "PASS")
-        self.assertEqual(out["row_sizes"], [3, 2, 2, 3])
+        self.assertEqual(out["row_sizes"], [3, 2, 2, 3, 1])
         self.assertEqual(c.sent, ["/start"])
 
     def test_wrong_menu_not_pass(self):
@@ -70,6 +73,128 @@ class ResidentSafetyTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             asyncio.run(process_request(c, {"request_id": "x", "action": "health"}))
         self.assertEqual(c.sent, [])
+
+
+class ExactProfileTopicReadbackTests(unittest.TestCase):
+    """Exact DB-bound topic IDs, no Telegram session, group join or credentials."""
+    def test_rejects_wrong_shape_before_any_telegram_read(self):
+        c = MockClient()
+        for ids in (None, [], [4, 5], [4, 5, True], ["4", 5, 6],
+                    [4, 5, 0], [4, 5, 2147483648]):
+            with self.assertRaises(ValueError):
+                asyncio.run(process_request(c, {
+                    "request_id": "topic-reject", "action": "profile_topics_by_id",
+                    "topic_ids": ids
+                }))
+        self.assertEqual(c.sent, [])
+
+    def test_uses_exact_ids_and_existing_dialogs_without_revealing_titles(self):
+        import sys
+        ids = [77, 88, 99]
+        class TopicClient:
+            def __init__(self, mismatch=False):
+                self.mismatch = mismatch
+                self.calls = []
+            async def is_user_authorized(self):
+                return True
+            async def get_dialogs(self, limit=500):
+                self.calls.append(("dialogs", limit))
+                return [
+                    SimpleNamespace(id=chat, entity=SimpleNamespace(id=abs(chat)))
+                    for chat in (-1003847210571, -1002373696859, -1003770334893)
+                ]
+            async def __call__(self, request):
+                wanted = {1003847210571: 77, 1002373696859: 88,
+                          1003770334893: 99}[request.peer.id]
+                self.calls.append(("topic", wanted))
+                title = "雑談" if self.mismatch and wanted == 88 else "みんなのプロフ"
+                return SimpleNamespace(topics=[SimpleNamespace(id=wanted, title=title)])
+        messages = SimpleNamespace(GetForumTopicsRequest=lambda **kwargs:
+                                   SimpleNamespace(**kwargs))
+        with patch.dict(sys.modules, {"telethon": SimpleNamespace(
+                functions=SimpleNamespace(messages=messages))}):
+            client = TopicClient()
+            result = asyncio.run(process_request(client, {
+                "request_id": "profile-exact", "action": "profile_topics_by_id",
+                "topic_ids": ids
+            }))
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual([x["found"] for x in result["topics"]], [True]*3)
+            self.assertEqual(client.calls, [("dialogs", 500),
+                                            ("topic", 77), ("topic", 88), ("topic", 99)])
+            self.assertNotIn("みんなのプロフ", repr(result))
+            bad = asyncio.run(process_request(TopicClient(mismatch=True), {
+                "request_id": "profile-mismatch", "action": "profile_topics_by_id",
+                "topic_ids": ids
+            }))
+            self.assertEqual([x["found"] for x in bad["topics"]], [True, False, True])
+
+    def test_page_two_exact_id_still_found_without_title_query(self):
+        import sys
+        class PagingClient:
+            def __init__(self):
+                self.page2 = False
+            async def is_user_authorized(self):
+                return True
+            async def get_dialogs(self, limit=500):
+                return [SimpleNamespace(id=k, entity=SimpleNamespace(id=abs(k)))
+                        for k in (-1003847210571,-1002373696859,-1003770334893)]
+            async def __call__(self, request):
+                self.assertable_query = request.q
+                wanted={1003847210571:777,1002373696859:888,
+                        1003770334893:999}[request.peer.id]
+                if wanted == 777 and request.offset_topic == 0:
+                    return SimpleNamespace(topics=[
+                        SimpleNamespace(id=i,title="雑談",date=1,top_message=i)
+                        for i in range(1,101)])
+                return SimpleNamespace(topics=[
+                    SimpleNamespace(id=wanted,title="みんなのプロフ")])
+        messages = SimpleNamespace(GetForumTopicsRequest=lambda **kwargs:
+                                   SimpleNamespace(**kwargs))
+        with patch.dict(sys.modules, {"telethon": SimpleNamespace(
+                functions=SimpleNamespace(messages=messages))}):
+            client=PagingClient()
+            result=asyncio.run(process_request(client,{
+                "request_id":"topic-page2","action":"profile_topics_by_id",
+                "topic_ids":[777,888,999]}))
+            self.assertEqual([x["found"] for x in result["topics"]],[True,True,True])
+            self.assertEqual(client.assertable_query,"")
+
+
+class UserbotInboxProvisionTests(unittest.TestCase):
+    def test_secure_setup_idempotent_and_no_identity_in_response(self):
+        client = MockClient()
+        async def get_me():
+            return SimpleNamespace(id=123456789, bot=False)
+        client.get_me = get_me
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("userbot_resident_ipc.SECRETS", pathlib.Path(tmp)):
+                request = {"request_id": "inbox-1", "action": "bug_report_inbox_provision"}
+                first = asyncio.run(process_request(client, request))
+                second = asyncio.run(process_request(client, request))
+                target = pathlib.Path(tmp) / "bug_report_userbot_account.txt"
+                self.assertEqual(target.read_text(encoding="ascii"), "123456789\n")
+                self.assertEqual(target.stat().st_mode & 0o077, 0)
+                self.assertTrue(first["provisioned"])
+                self.assertTrue(second["identity_unchanged"])
+                self.assertNotIn("123456789", repr(first))
+                self.assertEqual(client.sent, [])
+
+    def test_setup_refuses_conflicting_existing_identity(self):
+        client = MockClient()
+        async def get_me():
+            return SimpleNamespace(id=123456789, bot=False)
+        client.get_me = get_me
+        with tempfile.TemporaryDirectory() as tmp:
+            target = pathlib.Path(tmp) / "bug_report_userbot_account.txt"
+            target.write_text("987654321\n", encoding="ascii")
+            target.chmod(0o600)
+            with patch("userbot_resident_ipc.SECRETS", pathlib.Path(tmp)):
+                with self.assertRaisesRegex(RuntimeError, "USERBOT_REPORT_IDENTITY_CONFLICT"):
+                    asyncio.run(process_request(client, {
+                        "request_id": "inbox-2", "action": "bug_report_inbox_provision"
+                    }))
+            self.assertEqual(target.read_text(encoding="ascii"), "987654321\n")
 
 
 class RoomMessage:

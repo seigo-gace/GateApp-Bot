@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -29,6 +29,7 @@ EXPECTED_MENU = [
     ["プロフ作成", "クリエーター有料ビデオ投稿"],
     ["🔗ボタン作成", "検索/フィルター"],
     ["雑談", "紹介/招待", "操作説明"],
+    ["🐞 不具合を報告"],
 ]
 
 
@@ -37,7 +38,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         raise ValueError("REQUEST_SHAPE_INVALID")
     action = request.get("action")
     expected = ({"request_id", "action", "chat_id", "message_id"}
-                if action == "room_public_readback" else {"request_id", "action"})
+                if action == "room_public_readback" else
+                {"request_id", "action", "topic_ids"}
+                if action == "profile_topics_by_id" else {"request_id", "action"})
     if set(request) != expected:
         raise ValueError("REQUEST_SHAPE_INVALID")
     request_id = request["request_id"]
@@ -50,6 +53,84 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "bug_report_inbox_provision":
+        # Provision the Bot API inbox without exposing the Userbot account ID.
+        me = await client.get_me()
+        if me is None or getattr(me, "bot", False) or not isinstance(me.id, int):
+            raise RuntimeError("USERBOT_ACCOUNT_ID_UNAVAILABLE")
+        target = SECRETS / "bug_report_userbot_account.txt"
+        if target.is_symlink():
+            raise RuntimeError("USERBOT_REPORT_TARGET_UNSAFE")
+        if target.exists():
+            if not target.is_file() or target.stat().st_mode & 0o077:
+                raise RuntimeError("USERBOT_REPORT_TARGET_UNSAFE")
+            current = target.read_text(encoding="ascii").strip()
+            if current != str(me.id):
+                raise RuntimeError("USERBOT_REPORT_IDENTITY_CONFLICT")
+            return {"request_id": request_id, "action": action, "status": "PASS",
+                    "provisioned": True, "identity_unchanged": True}
+        # Exclusive create, owner-only mode; no session or credential modifications.
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(descriptor, "w", encoding="ascii") as outfile:
+                outfile.write(str(me.id) + "\n")
+                outfile.flush()
+                os.fsync(outfile.fileno())
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "provisioned": True, "identity_unchanged": True}
+    if action == "profile_topics_by_id":
+        # Compare exact DB-verified topic IDs with Telegram's existing forum API.
+        # This Telethon runtime does not expose GetForumTopicsByIDRequest.
+        ids = request["topic_ids"]
+        if (type(ids) is not list or len(ids) != 3
+                or any(type(v) is not int or not 1 <= v <= 2147483647 for v in ids)):
+            raise ValueError("PROFILE_TOPIC_IDS_INVALID")
+        from telethon import functions
+        dialogs = await client.get_dialogs(limit=500)
+        boards = (
+            ("area_bbs", -1003847210571),
+            ("video_chat", -1002373696859),
+            ("gay_board", -1003770334893),
+        )
+        results = []
+        for (board, chat_id), topic_id in zip(boards, ids):
+            entity = next((d.entity for d in dialogs if d.id == chat_id), None)
+            if entity is None:
+                raise RuntimeError("PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS")
+            offset_date, offset_id, offset_topic = 0, 0, 0
+            seen_offsets = set()
+            found = False
+            for page_no in range(20):
+                forum = await client(functions.messages.GetForumTopicsRequest(
+                    peer=entity, q="", offset_date=offset_date,
+                    offset_id=offset_id, offset_topic=offset_topic, limit=100))
+                topics = list(getattr(forum, "topics", []))
+                exact = [t for t in topics if type(t.id) is int and t.id == topic_id]
+                if exact:
+                    found = len(exact) == 1 and "プロフ" in getattr(exact[0], "title", "")
+                    break
+                if not topics or len(topics) < 100:
+                    break
+                last = topics[-1]
+                new_offset = (
+                    getattr(last, "date", None),
+                    getattr(last, "top_message", None),
+                    getattr(last, "id", None),
+                )
+                if (new_offset[0] is None or type(new_offset[1]) is not int
+                        or type(new_offset[2]) is not int
+                        or new_offset in seen_offsets):
+                    raise RuntimeError("PROFILE_TOPIC_SCAN_CURSOR_INVALID")
+                seen_offsets.add(new_offset)
+                offset_date, offset_id, offset_topic = new_offset
+            else:
+                raise RuntimeError("PROFILE_TOPIC_SCAN_LIMIT_REACHED")
+            results.append({"board": board, "found": found})
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "topics": results}
     if action == "profile_topics_readback":
         # Telegram's USER API returns real forum topic IDs, not t.me/c message
         # suffixes. Only inspect the three already-approved boards, read-only.
@@ -77,6 +158,60 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                             "found": len(matches) == 1})
         return {"request_id": request_id, "action": action, "status": "PASS",
                 "topics": results}
+    if action == "bug_report_delivery_smoke":
+        # Exercise the actual no-command DM button and same Userbot account inbox.
+        bot = await client.get_entity("GayBBS_bot")
+        if not bot.bot:
+            raise RuntimeError("TARGET_NOT_BOT")
+        dialogs = await client.get_messages(bot, limit=80)
+        menu = next((message for message in dialogs
+                     if not message.out and any(
+                         getattr(button, "text", "") == "🐞 不具合を報告"
+                         for row in (message.buttons or []) for button in row)), None)
+        if menu is None:
+            raise RuntimeError("USERBOT_BUG_REPORT_MENU_NOT_VISIBLE")
+        from datetime import datetime, timezone, timedelta
+        clicked_at = datetime.now(timezone.utc)
+        await menu.click(text="🐞 不具合を報告")
+        for _ in range(12):
+            recent = await client.get_messages(bot, limit=80)
+            prompts = [m for m in recent
+                       if not m.out and "下の入力欄" in (m.raw_text or "")
+                       and (m.edit_date or m.date) is not None
+                       and (m.edit_date or m.date) >= clicked_at - timedelta(seconds=2)]
+            if prompts:
+                prompt = max(prompts, key=lambda m: m.id)
+                if prompt.id != menu.id:
+                    old_menu = await client.get_messages(bot, ids=menu.id)
+                    if old_menu is not None:
+                        raise RuntimeError("USERBOT_BUG_REPORT_STALE_MENU_REMAINS")
+                break
+            await asyncio.sleep(1)
+        else:
+            raise RuntimeError("USERBOT_BUG_REPORT_SCREEN_NOT_OPENED")
+        marker = "Userbot配送接続テスト_" + request_id
+        original = await client.send_message(bot, marker)
+        confirmation = False
+        delivered_to_userbot = False
+        input_removed = False
+        for _ in range(40):
+            messages = await client.get_messages(bot, limit=80)
+            for message in messages:
+                if message.out or marker not in (message.raw_text or ""):
+                    continue
+                body = message.raw_text or ""
+                if "不具合報告を受け付けました" in body:
+                    confirmation = True
+                if "報告ID:" in body and "報告内容:" in body:
+                    delivered_to_userbot = True
+            if confirmation and delivered_to_userbot:
+                input_removed = await client.get_messages(bot, ids=original.id) is None
+                if input_removed:
+                    return {"request_id": request_id, "action": action,
+                            "status": "PASS", "userbot_inbox_received": True,
+                            "receipt_visible": True, "input_deleted": True}
+            await asyncio.sleep(2)
+        raise RuntimeError("USERBOT_REPORT_E2E_INCOMPLETE")
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}
@@ -189,7 +324,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=90 if request.get("action") == "room_public_post_smoke" else 30)
+                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
@@ -197,9 +332,13 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "ROOM_READ_CHAT_NOT_ALLOWLISTED", "ROOM_READ_MESSAGE_ID_INVALID",
                 "ROOM_PUBLIC_MESSAGE_NOT_VISIBLE", "ROOM_PUBLIC_MESSAGE_OWNER_MISMATCH",
                 "ROOM_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "RESIDENT_USERBOT_NOT_AUTHORIZED",
-                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS",
+                "PROFILE_READ_GROUP_NOT_IN_EXISTING_DIALOGS", "PROFILE_READ_MULTIPLE_TOPICS", "PROFILE_TOPIC_IDS_INVALID", "PROFILE_TOPIC_SCAN_CURSOR_INVALID",
+                "PROFILE_TOPIC_SCAN_LIMIT_REACHED",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
-                "REQUEST_SIZE_INVALID",
+                "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
+                "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
+                "USERBOT_BUG_REPORT_MENU_NOT_VISIBLE", "USERBOT_BUG_REPORT_SCREEN_NOT_OPENED",
+                "USERBOT_REPORT_E2E_INCOMPLETE", "USERBOT_BUG_REPORT_STALE_MENU_REMAINS",
             }
             code = str(exc) if str(exc) in safe_codes else "INTERNAL"
             response = {"status": "FAIL", "error": code}

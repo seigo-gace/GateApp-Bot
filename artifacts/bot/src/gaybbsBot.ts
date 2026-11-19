@@ -28,6 +28,7 @@ import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
  suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
 import {pool} from "./db/index.js";
+import {registerBugReportHandlers,startBugReport,startBugReportDeliveryWorker} from "./bot/bugReportHandlers.js";
 import {startTumblrBridge} from "./services/tumblrBridgeServer.js";
 import {
   BARE_START_POSTING_TEXT,
@@ -47,6 +48,7 @@ async function main():Promise<void>{
  if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
  await runMigrations();
+ registerBugReportHandlers(bot);
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
   if(ctx.startPayload?.startsWith("p_")){
@@ -68,6 +70,10 @@ async function main():Promise<void>{
   }
   if(parseProfileViewerPayload(ctx.startPayload||"")){
    await startProfileViewer(ctx,ctx.startPayload);
+   return;
+  }
+  if(ctx.startPayload==="bugreport"){
+   await startBugReport(ctx.telegram,ctx.from.id);
    return;
   }
   if(ctx.startPayload==="link"){
@@ -170,12 +176,16 @@ async function main():Promise<void>{
   const kind=ctx.match[1];
   if(kind==="profile"){await openProfileFromMenu(ctx);return;}
   await ctx.answerCbQuery();
-  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
-  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
-  else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
-  else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
-  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
-  else await startOperationHelp(ctx.telegram,ctx.from.id);
+  // All selected editors must replace the exact tapped DM menu rather than
+  // append below it or silently modify a stale screen elsewhere.
+  const tappedId=("message" in ctx.callbackQuery
+   ?ctx.callbackQuery.message?.message_id:undefined);
+  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id,tappedId);
+  else await startOperationHelp(ctx.telegram,ctx.from.id,tappedId);
  });
  registerCompactRecruitmentHandlers(bot);
  registerPostingMenuUtilityHandlers(bot);
@@ -247,8 +257,10 @@ async function main():Promise<void>{
     error instanceof Error?error.name:"unknown");
  });
  let stopWorkers:(()=>void)|undefined;
+ let stopReports:(()=>void)|undefined;
  let tumblrBridge:ReturnType<typeof startTumblrBridge>=null;
  const stop=async(signal:string)=>{
+  stopReports?.();
   stopWorkers?.();
   if(tumblrBridge)await new Promise<void>(resolve=>tumblrBridge!.close(()=>resolve()));
   bot.stop(signal);
@@ -262,6 +274,7 @@ async function main():Promise<void>{
  },()=>{
   console.log("GAYBBS_BOT_READY bot_id="+me.id);
   stopWorkers=startGayBbsWorkers(bot.telegram);
+  stopReports=startBugReportDeliveryWorker(bot.telegram);
   try {
    tumblrBridge=startTumblrBridge(bot.telegram);
   } catch(error) {
