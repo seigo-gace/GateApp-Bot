@@ -77,7 +77,7 @@ async function showInvite(t:Telegram,id:number,screenId?:number):Promise<void>{
   [{text:"↩ 戻る",callback_data:"dm:utility:home"}]];
  const keyboard=Markup.inlineKeyboard(raw as unknown as Parameters<typeof Markup.inlineKeyboard>[0]);
  await showWizardScreen(t,id,screenId,
-  "🔗 紹介/招待\\n共通承認ゲートのリンクをコピーしてください。\\n承認質問は1回だけです。承認後に3グループから参加先を選択できます。",keyboard);
+  "🔗 紹介/招待\n共通承認ゲートのリンクをコピーしてください。\n承認質問は1回だけです。承認後に3グループから参加先を選択できます。",keyboard);
 }
 export async function startPostingMenuUtility(
  t:Telegram,id:number,kind:"talk"|"invite",screenId?:number
