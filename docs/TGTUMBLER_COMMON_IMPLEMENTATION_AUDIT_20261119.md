@@ -84,7 +84,7 @@
 - 2026-11-19：`telegramClientCompatibility.ts` を共通DM／公開配信へ接続（Source・CI・Hostで検証）。
 - 2026-11-19：雑談は3Topicの採用ラベル／順序を維持し共通Gateへ接続。選択Topicは既存gate_sessionsに永続化。画面IDも共通Gateへ引継ぎ（Source・CI・Hostで検証）。
 - 2026-11-19：DMメニュー入口からの画面ID引継ぎ、restrictedの加入判定を修正（Source・CI・Hostで検証）。
-- 2026-11-20：再監査で不具合報告の無効入力時、削除せず新規返信を重ねる不整合を発見。原文削除を試み元画面を再利用し、失敗なら利用者向け警告を同画面へ表示する変更と単体テストを追加（本更新についてSource／CIとHostは結果を別途照合）。
+- 2026-11-20：再監査で不具合報告の無効入力時、削除せず新規返信を重ねる不整合を発見。原文削除を試み元画面を再利用し、失敗なら利用者向け警告を同画面へ表示する変更と単体テストを追加（当該Sourceを含むCI／Gserverの検証証拠は下記最終受入境界に記録）。
 - 2026-11-20：`dmWizardScreen.ts` が従前あらゆる編集エラーで新規画面を送ることを確認。結果不明のタイムアウトでは既存画面に編集が届いた可能性があるため代替画面を作らず、Telegramが編集拒否を明示した場合だけフォールバックする。静的テストにタイムアウト→二重送信禁止、400拒否→代替、not-modified→同一IDを追加。
 - 2026-11-20：`dmPostingMenuRestore.ts` が共通Wizardを使わず直接 `ctx.editMessageText` を呼んでいたため、同じガード付き共通画面ライフサイクルに接続。元メニューIDを引継ぎ、11ボタンを維持。
 - 2026-11-20：`postingMenuUtilityHandlers.ts` の紹介/招待案内は `\\n` を本文へ文字列として出す経路だった。既存文言・ボタン配列を維持し、意図した実改行に修正。
@@ -96,6 +96,16 @@
 - 出力の保持：Master確定のボタン名／行／色／位置／各機能と本人下書き・公開済資産を変更しない。
 - 未検証：OS別実機、Gate全状態の実操作、iOS古いTelegram版のcopy_text、各画面の入力削除/差替/復旧、動画・Starsなど本要求に関連しない業務owner全体の品質保証。
 - 最重要：旧監査の「雑談Gate未接続」「Gserver再配備未実施」は当時の履歴であり現行状態とは異なる。新しい実行結果をSource/CI/Hostの各レイヤーで証明する。
+
+## 2026-11-20 実行証拠の読戻し（最終のSource/CI/Host境界）
+- 現行PR #58 HEAD `21085c18a66175b3be53d7fc16aa89b30b24063b`。実際に本番へ配備したコードのstage SHAは `afb725a5f23844e1d2fcc53ffada231d8ee9faba`。両者のGitHub比較差分は **本マッピングの索引文書1ファイルだけ**、アプリSource差分なし。
+- CIは現行PR HEADで4件 SUCCESS：Profile A05 #44564528881、GayBBS Docker #44564528586、CM #44564528546、Tumblr bridge #44564529000。
+- Gserverの隔離Dockerビルド `req_20261120015400000000d504`：HOST EXIT0/PASS。
+- 本番GayBBSイメージを旧版drift確認後、既存Composeで対象Botだけ切替 `req_20261120020000000000d505`：HOST EXIT0/PASS。旧イメージ退避 `pre-reaudit-20261120`。
+- 本番の実イメージ一致、Bot ID、Telegram getMyCommands(default/private)空、対象3グループでBot管理者権限、Userbot常駐をAPI/readback確認 `req_20261120020500000000d506`：HOST EXIT0/PASS。
+- 6機能公開ゲートのSQL分類は `req_20261120011300000000d501` HOST PASS と `req_20261120011800000000d502` の意図的分類EXIT100(ビットmask0：全6 READY)。本番ボタンの利用者実押下証拠ではない。
+- Notion UI正本議事録の補記は書込成功と個別コメントID `41dcdcf1-28e4-81be-991f-001d098a8fe4` の読戻しで確認。
+- **この監査の完了と全OS/全機能の最終E2E完了は別**：実iOS/iPadOS/Android/Windows/macOS端末、既存ユーザー・新規ユーザー・未承認/承認済みの組合せ、通信遮断回復と実固定パネルの表示を未検証のままPASSへ昇格させない。PR #58はopen、44ファイルの横断差分を十分に審査せず自動mergeしない。
 
 ## 一次資料
 - Telegram公式 Deep links: https://core.telegram.org/api/links
