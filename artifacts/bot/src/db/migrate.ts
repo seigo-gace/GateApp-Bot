@@ -11,10 +11,12 @@ export async function runMigrations(): Promise<void> {
           CHECK(state IN ('pending','forwarding','delivered','queued','uncertain','cancelled')),
         body TEXT,
         source_message_id BIGINT,
+        prompt_message_id BIGINT,
         destination_message_id BIGINT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE gaybbs_bug_reports ADD COLUMN IF NOT EXISTS prompt_message_id BIGINT;
       CREATE UNIQUE INDEX IF NOT EXISTS gaybbs_bug_report_one_pending
         ON gaybbs_bug_reports(owner_user_id) WHERE state='pending';
       CREATE INDEX IF NOT EXISTS gaybbs_bug_report_delivery_idx
