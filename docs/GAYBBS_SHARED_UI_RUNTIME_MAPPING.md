@@ -2,6 +2,16 @@
 
 対象：既存3掲示板と `@GayBBS_bot`。2026-11-15。実装の配置と責務を説明する**索引**であり、表示・動作・正本を再定義する文書ではない。採用済UIの正本は `docs/TGTUMBLER_COMMON_UI_CONTRACT.md`（`chat/tgtumbler-profile-a05-20261104`）。この文書とコードが衝突すれば正本とMaster最新指示を優先する。
 
+## 2026-11-20 現行Source再監査・正本照合（前記索引の更新）
+- **対応表の詳細・実コード照合は [TGTUMBLER_COMMON_IMPLEMENTATION_AUDIT_20261119.md](TGTUMBLER_COMMON_IMPLEMENTATION_AUDIT_20261119.md)** に集約。古い「残る検証」は2026-11-15時点の履歴であり、現行実装判定の代用にしない。
+- 11ボタンと3掲示板の外装・色・順序・ラベルを維持。DMは `APPROVED_POSTING_ROWS`、`POSTING_DM_CALLBACKS` を使用する。Sourceの公開ゲート6件は本番SQLと結果分類の照合時点ですべて READY（Gserver req_20261120011300000000d501・d502）。表示から押下・送信までのE2Eの完成証拠ではない。
+- `dmWizardScreen.ts` と `dmPostingMenuRestore.ts` でTelegramの編集結果が不明なときに重複画面を作らず、確定的な編集拒否時のみ代替。採用元画面のメッセージIDを受け渡す。
+- `postingMenuUtilityHandlers.ts` は3雑談トピックの現行IDを `talkDestinationContract.ts` から取得し、既存共通Gateと参加状態を照会。Gate選択は `gate_sessions.requested_talk_index` に永続化。直接加入リンクは承認・加入判定を要する。
+- `bugReportHandlers.ts` は無効入力でも元メッセージを削除試行し同じ説明画面へ案内。受付確認と単独の投稿メニューは別送。運営/Userbotの通知配送は別台帳。
+- Room応募者一覧も `postingHandlers.ts` で共通Wizard更新に接続し、応募者ボタン・ページング・HTML本文はそのまま維持。
+- iOS/iPadOS/Android/Windows/macOSの実機受入は未検証。Bot APIのリクエスト形式が正しいことと、クライアントがボタン表示・押下に対応していることは別。copy_text旧クライアントの自動OS判定によるフォールバックは不可能。
+- PR #58はOpen・44ファイル変更を含む。移行・統合にあたって既存Userbotスクリプト等への副作用を照合せず自動mergeしない。
+
 ## 不変条件
 - 投稿メニューの表示は11ボタン `3/2/2/3/1`、文言・順序・色・URL・callbackを維持。既存10ボタンに戻さない。
 - エリア’s BBS、ビデオChatの掲示板、ゲイのための掲示板♂は**同じ機能**を使う。差は検証済みchat/thread/message IDとトークンの発行・状態だけ。
@@ -14,7 +24,8 @@
 | レイヤー | 正本ファイル | 呼出元 / 目的 |
 |---|---|---|
 | 表示配列・色・外装 | `artifacts/bot/src/services/menuPanelRenderer.ts` | `APPROVED_POSTING_ROWS`、`postingButtonStyle`、公開本文 |
-| 共通11ボタン接続定義（純粋設定） | `artifacts/bot/src/services/postingMenuContract.ts` | ラベル→機能→callback/URLを一本化。描画/DBに依存しない |\n| 共通機能公開判定 | `artifacts/bot/src/services/postingMenuRoutes.ts` | DM/公開メニューで同一のrelease-gate SQL。契約を再エクスポート |
+| 共通11ボタン接続定義（純粋設定） | `artifacts/bot/src/services/postingMenuContract.ts` | ラベル→機能→callback/URLを一本化。描画/DBに依存しない |
+| 共通機能公開判定 | `artifacts/bot/src/services/postingMenuRoutes.ts` | DM/公開メニューで同一のrelease-gate SQL。契約を再エクスポート |
 | DMメニュー生成 | `artifacts/bot/src/services/dmBareStartPostingMenu.ts` | 共通の表示配列と接続定義を利用、DM callback |
 | DMメニュー復帰 | `artifacts/bot/src/services/dmPostingMenuRestore.ts` | ウィザードから既存メニューへ戻る |
 | DM画面表示/編集・入力削除 | `artifacts/bot/src/services/dmWizardScreen.ts` | edit→送信fallbackとprivate入力削除 |
@@ -56,7 +67,8 @@
 
 1. 修正済み（Source段階）：DMと公開メニューで重複していた「Feature label ↔ destination」を `postingMenuContract.ts`、release gateを `postingMenuRoutes.ts` に分離。**UI描画と公開状態管理は移動しない**。これで画面の行・色・本文・投稿処理は不変。
 2. 修正済み（Source段階）：共通GATE URL取得失敗がDMメニュー全体を隠す問題を隔離。GATEが未検証のときは「紹介/招待」だけ既存の `dm:nav-unavailable` callbackにし、他10ボタンの描画・戻るを維持。架空リンクは作らない。GATEが正常なら既存 `copy_text` を維持。
-3. 修正済み（Source段階）：グループごとに使われていなかった旧 `board_posting_menu_links` の3行必須チェックを除去。共通のCreator/Talk/GATE接続を採用し、UIやリンク先を変更しない。公開済みメッセージと台帳の編集権限は従来通り。\n4. 残る検証：ゲイ掲示板の公開パネルだけTelegram edit結果が未確認。既存公開メッセージ/台帳の照合なしに `message_id` を破棄しない。
+3. 修正済み（Source段階）：グループごとに使われていなかった旧 `board_posting_menu_links` の3行必須チェックを除去。共通のCreator/Talk/GATE接続を採用し、UIやリンク先を変更しない。公開済みメッセージと台帳の編集権限は従来通り。
+4. 残る検証：ゲイ掲示板の公開パネルだけTelegram edit結果が未確認。既存公開メッセージ/台帳の照合なしに `message_id` を破棄しない。
 5. 残る検証：プロフィール/Room/承認/エリア等を含む全回帰テスト、Botの報告DB→通知のE2E、各端末表示。本番稼働結果とSource/CIを混同しない。
 6. 他CUの進行中Sourceを勝手に統合・マージ・再配備しない。保護すべき外装差分があるときは必ず実版を比較する。
 
