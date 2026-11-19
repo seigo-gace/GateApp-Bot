@@ -19,6 +19,15 @@ export async function runMigrations(): Promise<void> {
         ON gaybbs_bug_reports(owner_user_id) WHERE state='pending';
       CREATE INDEX IF NOT EXISTS gaybbs_bug_report_delivery_idx
         ON gaybbs_bug_reports(state,created_at);
+      CREATE TABLE IF NOT EXISTS gaybbs_bug_report_userbot_delivery (
+        report_id BIGINT PRIMARY KEY REFERENCES gaybbs_bug_reports(id) ON DELETE CASCADE,
+        state TEXT NOT NULL DEFAULT 'queued'
+          CHECK(state IN ('queued','forwarding','delivered','uncertain')),
+        destination_message_id BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS gaybbs_bug_report_userbot_delivery_state_idx
+        ON gaybbs_bug_report_userbot_delivery(state,report_id);
       CREATE TABLE IF NOT EXISTS profiles (
         owner_user_id BIGINT PRIMARY KEY,
         nickname TEXT,
