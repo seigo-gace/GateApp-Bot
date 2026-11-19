@@ -134,6 +134,7 @@ export async function showMemberDirectLinks(
   membership: { joined: number[]; pending: number[] },
   destinationTargetId: number,
   destinationTopicUrl?: string,
+  sourceScreenId?:number,
 ): Promise<void> {
   // Preserve the link's originally selected target. Never reopen a three-board
   // chooser for an already-approved member.
@@ -147,7 +148,7 @@ export async function showMemberDirectLinks(
   const out = await showWizardScreen(
     telegram,
     userId,
-    attempt?.last_message_id ?? undefined,
+    sourceScreenId??attempt?.last_message_id??undefined,
     text,
     Markup.inlineKeyboard([[Markup.button.url("🔗 移動先を開く", url)]]),
   );
