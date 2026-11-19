@@ -13,7 +13,7 @@ import uuid
 from userbot_resident_ipc import SOCKET_PATH, ACTIONS
 
 
-async def invoke(action: str, chat_id: int | None = None, message_id: int | None = None) -> dict:
+async def invoke(action: str, chat_id: int | None = None, message_id: int | None = None, topic_ids: list[int] | None = None) -> dict:
     if not SOCKET_PATH.exists() or not SOCKET_PATH.is_socket():
         raise RuntimeError("RESIDENT_USERBOT_IPC_NOT_AVAILABLE")
     sockstat = SOCKET_PATH.stat()
@@ -24,10 +24,16 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
         request_id = uuid.uuid4().hex
         request = {"request_id": request_id, "action": action}
         if action == "room_public_readback":
-            if chat_id is None or message_id is None:
+            if chat_id is None or message_id is None or topic_ids is not None:
                 raise ValueError("ROOM_READ_TARGET_REQUIRED")
             request.update({"chat_id": chat_id, "message_id": message_id})
-        elif chat_id is not None or message_id is not None:
+        elif action == "profile_topics_by_id":
+            if (chat_id is not None or message_id is not None
+                    or type(topic_ids) is not list or len(topic_ids) != 3
+                    or any(type(v) is not int or not 1 <= v <= 2147483647 for v in topic_ids)):
+                raise ValueError("PROFILE_TOPIC_IDS_INVALID")
+            request["topic_ids"] = topic_ids
+        elif chat_id is not None or message_id is not None or topic_ids is not None:
             raise ValueError("ROOM_READ_TARGET_ONLY_FOR_READBACK")
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
@@ -46,9 +52,16 @@ def main() -> int:
     parser.add_argument("action", choices=sorted(ACTIONS))
     parser.add_argument("--chat-id", type=int)
     parser.add_argument("--message-id", type=int)
+    parser.add_argument("--topic-ids", help="three validated DB thread IDs, area/video/gay order")
     args = parser.parse_args()
     try:
-        result = asyncio.run(invoke(args.action, args.chat_id, args.message_id))
+        topic_ids = None
+        if args.topic_ids is not None:
+            parts = args.topic_ids.split(",")
+            if len(parts) != 3 or any(not re.fullmatch(r"[1-9][0-9]*", v) for v in parts):
+                raise ValueError("PROFILE_TOPIC_IDS_INVALID")
+            topic_ids = [int(v) for v in parts]
+        result = asyncio.run(invoke(args.action, args.chat_id, args.message_id, topic_ids))
         if result.get("status") != "PASS":
             print("USERBOT_TEST_RESULT=FAIL")
             print("USERBOT_TEST_ERROR=" + re.sub(r"[^A-Z0-9_]", "_", str(result.get("error", "CONTRACT_MISMATCH")).upper())[:128])
@@ -66,6 +79,15 @@ def main() -> int:
             if result.get("profile_editor_opened") is not True:
                 raise RuntimeError("PROFILE_BUTTON_SCREEN_NOT_OPENED")
             print("USERBOT_PROFILE_BUTTON=PASS")
+        if args.action == "profile_topics_by_id":
+            topics = result.get("topics")
+            if (type(topics) is not list or len(topics) != 3
+                    or [x.get("board") for x in topics if type(x) is dict]
+                    != ["area_bbs", "video_chat", "gay_board"]
+                    or any(type(x) is not dict or x.get("found") is not True
+                           for x in topics)):
+                raise RuntimeError("VERIFIED_PROFILE_TOPIC_MISMATCH")
+            print("USERBOT_PROFILE_TOPIC_IDS=ALL_THREE_CONFIRMED")
         if args.action == "profile_topics_readback":
             topics = result.get("topics")
             if (not isinstance(topics, list) or len(topics) != 3
