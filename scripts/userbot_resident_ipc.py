@@ -118,10 +118,21 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                          for row in (message.buttons or []) for button in row)), None)
         if menu is None:
             raise RuntimeError("USERBOT_BUG_REPORT_MENU_NOT_VISIBLE")
+        from datetime import datetime, timezone, timedelta
+        clicked_at = datetime.now(timezone.utc)
         await menu.click(text="🐞 不具合を報告")
-        for _ in range(8):
-            screens = await client.get_messages(bot, ids=menu.id)
-            if screens is not None and "下の入力欄" in (screens.raw_text or ""):
+        for _ in range(12):
+            recent = await client.get_messages(bot, limit=80)
+            prompts = [m for m in recent
+                       if not m.out and "下の入力欄" in (m.raw_text or "")
+                       and (m.edit_date or m.date) is not None
+                       and (m.edit_date or m.date) >= clicked_at - timedelta(seconds=2)]
+            if prompts:
+                prompt = max(prompts, key=lambda m: m.id)
+                if prompt.id != menu.id:
+                    old_menu = await client.get_messages(bot, ids=menu.id)
+                    if old_menu is not None:
+                        raise RuntimeError("USERBOT_BUG_REPORT_STALE_MENU_REMAINS")
                 break
             await asyncio.sleep(1)
         else:
@@ -274,7 +285,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
                 "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
                 "USERBOT_BUG_REPORT_MENU_NOT_VISIBLE", "USERBOT_BUG_REPORT_SCREEN_NOT_OPENED",
-                "USERBOT_REPORT_E2E_INCOMPLETE",
+                "USERBOT_REPORT_E2E_INCOMPLETE", "USERBOT_BUG_REPORT_STALE_MENU_REMAINS",
             }
             code = str(exc) if str(exc) in safe_codes else "INTERNAL"
             response = {"status": "FAIL", "error": code}
