@@ -107,6 +107,14 @@
 - Notion UI正本議事録の補記は書込成功と個別コメントID `41dcdcf1-28e4-81be-991f-001d098a8fe4` の読戻しで確認。
 - **この監査の完了と全OS/全機能の最終E2E完了は別**：実iOS/iPadOS/Android/Windows/macOS端末、既存ユーザー・新規ユーザー・未承認/承認済みの組合せ、通信遮断回復と実固定パネルの表示を未検証のままPASSへ昇格させない。PR #58はopen、44ファイルの横断差分を十分に審査せず自動mergeしない。
 
+## 2026-11-20 追加継続｜実Userbotと認可例外の追跡
+- `req_20261120020100000000e601`: 常駐Userbot IPCを通じたhealthと11ボタンDMメニュー検証はHost EXIT0/PASS。サービスactive/enabledの前後確認あり。CLI内部の `bot_start_menu` はテスト用のTelegram `/start` を送るため、これは「ノーコマンド操作の全経路」証拠にはならない。
+- `req_20261120020700000000e602`: 常駐IPCによる `bug_report_delivery_smoke` 実Telegram E2E **FAIL(Host EXIT74)**。非公開結果を分類した `req_20261120021200000000e604` は EXIT31＝既存テストの `USERBOT_BUG_REPORT_SCREEN_NOT_OPENED`。受付・通知・入力削除を全成功と主張できない。
+- テスト側Source `scripts/userbot_resident_ipc.py` は元メッセージIDだけで説明画面を探す条件を改め、直近Bot応答全体を検査、別メッセージに出た場合は元メニューが残っていないことを必須とする（commit 9e6659188f5d67f436bb83d532417a882d8db78a）。Source CI 4件SUCCESS。だがHost上の常駐実行用スクリプトは採用前Sourceとのbyte一致を満たさず `req_20261120022000000000e606` EXIT76、さらにGit HEAD側に対応ファイルが存在しない状態 `req_20261120022800000000e608` EXIT52。**実サービスを上書き・再起動していない**。Userbot既存認証/セッションを優先保護。
+- `req_20261120023500000000e610` は当該E2Eの時刻範囲のBotログを安全に分類し、`req_20261120024300000000e613` EXIT40＝ `[GAYBBS_ERROR] callback_query` は観測なし。これはBot成功の証明ではなく、例外の記録がなかったという限定的な事実。
+- `req_20261120023900000000e611` のGserver本番DB読み取りはHOST PASS。結果の非公開分類 `req_20261120024100000000e612` EXIT100(mask0)により、3グループ×2種類のパネル計6件が全てpublished・pinned・message_id保持・needs_reconcile無しと照合。Telegramでのボタン全押下や端末別表示とは別。
+- 追加のSource欠陥：雑談3トピックの直URLはcallbackを経由しないため、表示時の `talkEligible` がブラックリスト確認を省くと、ブラックリスト対象でも過去の承認＋加入状態だけで直リンクが現れる。既存の拒否方針を同じ表示時判定へ追加し、`canDirectTalkTopic` のブラックリスト拒否テストを拡張（コミット `8e0cad32f8a843afee4ce933b2dfb5a4f1903d6f`）。ラベル、行、色、元Topic URLは変更なし。Source CI4件SUCCESS、Gserver隔離ビルドと本番反映は別判定。
+
 ## 一次資料
 - Telegram公式 Deep links: https://core.telegram.org/api/links
 - Telegram公式 Bot API / InlineKeyboardButton: https://core.telegram.org/bots/api
