@@ -89,7 +89,6 @@ class ExactProfileTopicReadbackTests(unittest.TestCase):
         self.assertEqual(c.sent, [])
 
     def test_uses_exact_ids_and_existing_dialogs_without_revealing_titles(self):
-        from unittest.mock import patch
         import sys
         ids = [77, 88, 99]
         class TopicClient:
@@ -105,14 +104,15 @@ class ExactProfileTopicReadbackTests(unittest.TestCase):
                     for chat in (-1003847210571, -1002373696859, -1003770334893)
                 ]
             async def __call__(self, request):
-                self.calls.append(("topic", request.topics[0]))
-                title = "雑談" if self.mismatch and request.topics == [88] else "みんなのプロフ"
-                return SimpleNamespace(topics=[SimpleNamespace(
-                    id=request.topics[0], title=title)])
-        channel = SimpleNamespace(GetForumTopicsByIDRequest=lambda channel, topics:
-                                  SimpleNamespace(channel=channel, topics=topics))
+                wanted = {1003847210571: 77, 1002373696859: 88,
+                          1003770334893: 99}[request.peer.id]
+                self.calls.append(("topic", wanted))
+                title = "雑談" if self.mismatch and wanted == 88 else "みんなのプロフ"
+                return SimpleNamespace(topics=[SimpleNamespace(id=wanted, title=title)])
+        messages = SimpleNamespace(GetForumTopicsRequest=lambda **kwargs:
+                                   SimpleNamespace(**kwargs))
         with patch.dict(sys.modules, {"telethon": SimpleNamespace(
-                functions=SimpleNamespace(channels=channel))}):
+                functions=SimpleNamespace(messages=messages))}):
             client = TopicClient()
             result = asyncio.run(process_request(client, {
                 "request_id": "profile-exact", "action": "profile_topics_by_id",
@@ -128,6 +128,37 @@ class ExactProfileTopicReadbackTests(unittest.TestCase):
                 "topic_ids": ids
             }))
             self.assertEqual([x["found"] for x in bad["topics"]], [True, False, True])
+
+    def test_page_two_exact_id_still_found_without_title_query(self):
+        import sys
+        class PagingClient:
+            def __init__(self):
+                self.page2 = False
+            async def is_user_authorized(self):
+                return True
+            async def get_dialogs(self, limit=500):
+                return [SimpleNamespace(id=k, entity=SimpleNamespace(id=abs(k)))
+                        for k in (-1003847210571,-1002373696859,-1003770334893)]
+            async def __call__(self, request):
+                self.assertable_query = request.q
+                wanted={1003847210571:777,1002373696859:888,
+                        1003770334893:999}[request.peer.id]
+                if wanted == 777 and request.offset_topic == 0:
+                    return SimpleNamespace(topics=[
+                        SimpleNamespace(id=i,title="雑談",date=1,top_message=i)
+                        for i in range(1,101)])
+                return SimpleNamespace(topics=[
+                    SimpleNamespace(id=wanted,title="みんなのプロフ")])
+        messages = SimpleNamespace(GetForumTopicsRequest=lambda **kwargs:
+                                   SimpleNamespace(**kwargs))
+        with patch.dict(sys.modules, {"telethon": SimpleNamespace(
+                functions=SimpleNamespace(messages=messages))}):
+            client=PagingClient()
+            result=asyncio.run(process_request(client,{
+                "request_id":"topic-page2","action":"profile_topics_by_id",
+                "topic_ids":[777,888,999]}))
+            self.assertEqual([x["found"] for x in result["topics"]],[True,True,True])
+            self.assertEqual(client.assertable_query,"")
 
 
 class UserbotInboxProvisionTests(unittest.TestCase):
