@@ -980,14 +980,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
    const text="👥 応募者一覧\n"+escapeProfileHtml(String(source.rows[0].title))+
     "\n応募件数："+total+
     (blocks.length?"\n\n"+blocks.join("\n\n"):"\nまだ応募はありません。");
-   const keyboard={parse_mode:"HTML" as const,...Markup.inlineKeyboard(buttons)};
+   const keyboard=Markup.inlineKeyboard(buttons);
    await ctx.answerCbQuery().catch(()=>undefined);
-   try{
-    await ctx.editMessageText(text,keyboard);
-   }catch{
-    // Old Telegram DM message may no longer be editable. Keep the list usable.
-    await ctx.telegram.sendMessage(ctx.from.id,text,keyboard);
-   }
+   const tapped=ctx.callbackQuery&&"message" in ctx.callbackQuery
+    ?ctx.callbackQuery.message?.message_id:undefined;
+   // One shared DM screen lifecycle: only an explicit Telegram edit rejection
+   // creates a fallback; network ambiguity must not duplicate applicant lists.
+   await showWizardScreen(ctx.telegram,ctx.from.id,tapped,text,keyboard,"HTML");
   }catch(err){
    const category=err instanceof Error?err.name:"unknown";
    console.warn("[ROOM_APPLICANTS_OWNER_VIEW_FAILED]",category);
