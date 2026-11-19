@@ -47,6 +47,7 @@ services:
       DATABASE_URL: postgresql://gace:devlocalpass123@127.0.0.1:55432/gaybbs
       BOT_TOKEN_FILE: /run/secrets/bot_token
       GAYBBS_USERBOT_REPORT_CHAT_ID_FILE: /run/secrets/bug_report_recipient
+      GAYBBS_USERBOT_ACCOUNT_CHAT_ID_FILE: /run/secrets/bug_report_userbot_account
       PROFILE_PR_STORAGE_DIR: /app/profile-pr
       TUMBLR_BRIDGE_KEY_FILE: /run/secrets/tumblr_bridge_key
       GAYBBS_PUBLIC_MENU_RELEASE: enabled
@@ -61,6 +62,7 @@ services:
       - bot_token
       - tumblr_bridge_key
       - bug_report_recipient
+      - bug_report_userbot_account
     volumes:
       - ${HOME}/.local/share/tgtumbler/profile-pr:/app/profile-pr
     restart: unless-stopped
@@ -90,5 +92,7 @@ secrets:
     file: ./secrets/bot_token.txt
   bug_report_recipient:
     file: ./secrets/bug_report_recipient.txt
+  bug_report_userbot_account:
+    file: ./secrets/bug_report_userbot_account.txt
   tumblr_bridge_key:
     file: ${HOME}/.config/tgtumbler/bridge/owner-token
