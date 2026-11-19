@@ -19,10 +19,9 @@ const REPORT_PROMPT="🐞 不具合を報告\n\n下の入力欄に不具合の�
   "送信した内容はBotが保存し、入力メッセージの削除を試みます。\n"+
   "報告内容と受付結果はこのDMに表示します。";
 export function bugReportInputErrorText(deleted:boolean):string{
- return REPORT_PROMPT+"\\n\\n報告内容を1〜2000文字で入力してください。"+
- (deleted?"":"\\n※元の入力メッセージを削除できませんでした。手動で削除してください。");
+ return REPORT_PROMPT+"\n\n報告内容を1〜2000文字で入力してください。"+
+ (deleted?"":"\n※元の入力メッセージを削除できませんでした。手動で削除してください。");
 }
-
 
 function recipientId():number|null {
  let raw=process.env.GAYBBS_USERBOT_REPORT_CHAT_ID;
