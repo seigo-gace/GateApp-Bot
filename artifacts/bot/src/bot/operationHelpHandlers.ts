@@ -44,11 +44,14 @@ async function load(id:number):Promise<Session|null>{
  const x=r.rows[0];return {revision:Number(x.revision),section:x.section,
   screenMessageId:x.screen_message_id===null?null:Number(x.screen_message_id)};
 }
-async function begin(id:number):Promise<Session>{
- const r=await pool.query(`INSERT INTO gaybbs_help_sessions(owner_user_id)
-  VALUES($1) ON CONFLICT(owner_user_id) DO UPDATE SET
-   section='home',revision=gaybbs_help_sessions.revision+1,updated_at=NOW()
-   RETURNING revision,section,screen_message_id`,[id]);
+async function begin(id:number,sourceScreenId?:number):Promise<Session>{
+ const screenId=Number.isSafeInteger(sourceScreenId)&&Number(sourceScreenId)>0?sourceScreenId:null;
+ const r=await pool.query(`INSERT INTO gaybbs_help_sessions(owner_user_id,screen_message_id)
+  VALUES($1,$2) ON CONFLICT(owner_user_id) DO UPDATE SET
+   section='home',revision=gaybbs_help_sessions.revision+1,
+   screen_message_id=COALESCE(EXCLUDED.screen_message_id,gaybbs_help_sessions.screen_message_id),
+   updated_at=NOW()
+   RETURNING revision,section,screen_message_id`,[id,screenId]);
  const x=r.rows[0];return {revision:Number(x.revision),section:x.section,
   screenMessageId:x.screen_message_id===null?null:Number(x.screen_message_id)};
 }
@@ -72,8 +75,8 @@ async function show(t:Telegram,id:number,s:Session){
   if(updated.rows.length!==1)throw Error("HELP_SCREEN_STALE");
  }
 }
-export async function startOperationHelp(t:Telegram,id:number):Promise<void>{
- const s=await begin(id);
+export async function startOperationHelp(t:Telegram,id:number,sourceScreenId?:number):Promise<void>{
+ const s=await begin(id,sourceScreenId);
  await show(t,id,s);
 }
 export function registerOperationHelpHandlers(bot:Telegraf):void{
