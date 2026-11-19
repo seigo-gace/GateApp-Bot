@@ -24,6 +24,19 @@ function recipientId():number|null {
  const id=Number(raw);
  return Number.isSafeInteger(id)?id:null;
 }
+/** Distinct user-account inbox; never silently reuse the operator's DM ID. */
+function userbotRecipientId():number|null {
+ let raw=process.env.GAYBBS_USERBOT_ACCOUNT_CHAT_ID;
+ if(!raw&&process.env.GAYBBS_USERBOT_ACCOUNT_CHAT_ID_FILE){
+  try{raw=readFileSync(process.env.GAYBBS_USERBOT_ACCOUNT_CHAT_ID_FILE,"utf8").trim();}
+  catch{return null;}
+ }
+ if(!raw||!/^[1-9]\\d{4,18}$/.test(raw))return null;
+ const id=Number(raw);
+ if(!Number.isSafeInteger(id)||id===recipientId())return null;
+ return id;
+}
+
 export function normalizeBugReport(value:string):string|null {
  const text=value.trim();
  return text.length>0&&text.length<=REPORT_LIMIT&&!text.startsWith("/")?text:null;
@@ -123,6 +136,12 @@ export function registerBugReportHandlers(bot:Telegraf):void{
   await pool.query(
    "UPDATE gaybbs_bug_reports SET body=$2,source_message_id=$3,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
    [ctx.from.id,text,ctx.message.message_id]);
+  // Queue the independent Userbot inbox before attempting operator delivery.
+  await pool.query(
+   `INSERT INTO gaybbs_bug_report_userbot_delivery(report_id,state)
+    SELECT id,'queued' FROM gaybbs_bug_reports
+    WHERE owner_user_id=$1 AND state='pending' AND source_message_id=$2
+    ON CONFLICT (report_id) DO NOTHING`,[ctx.from.id,ctx.message.message_id]);
   try{await ctx.deleteMessage(ctx.message.message_id);}
   catch{await ctx.reply("入力メッセージを削除できませんでした。必要に応じて手動で削除してください。");}
   const result=await submitReport(ctx.telegram,ctx.from.id,ctx.message.message_id,text,ctx.from.username);
@@ -143,12 +162,11 @@ export function registerBugReportHandlers(bot:Telegraf):void{
 export function startBugReportDeliveryWorker(t:Telegram):()=>void {
  let busy=false;
  const tick=async()=>{
-  if(busy||!recipientId())return;
+  if(busy)return;
   busy=true;
   try{
    const recipient=recipientId();
-   if(!recipient)return;
-   for(let n=0;n<5;n++){
+   if(recipient)for(let n=0;n<5;n++){
     const claimed=await pool.query<{id:string;owner_user_id:string;body:string}>(
      `UPDATE gaybbs_bug_reports SET state='forwarding',updated_at=NOW()
        WHERE id=(SELECT id FROM gaybbs_bug_reports WHERE state='queued'
@@ -168,6 +186,37 @@ export function startBugReportDeliveryWorker(t:Telegram):()=>void {
       "UPDATE gaybbs_bug_reports SET state='uncertain',updated_at=NOW() WHERE id=$1",
       [row.id]);
      break;
+    }
+   }
+   // Send the same report to the independent resident Userbot account.
+   // A separate delivery record prevents operator success from implying Userbot success.
+   const userbotId=userbotRecipientId();
+   if(userbotId){
+    for(let n=0;n<5;n++){
+     const claimed=await pool.query<{report_id:string;owner_user_id:string;body:string}>(
+      `UPDATE gaybbs_bug_report_userbot_delivery d
+       SET state='forwarding',updated_at=NOW()
+       FROM gaybbs_bug_reports r
+       WHERE d.report_id=(
+        SELECT report_id FROM gaybbs_bug_report_userbot_delivery
+        WHERE state='queued' ORDER BY report_id ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+       ) AND r.id=d.report_id AND r.body IS NOT NULL
+       RETURNING d.report_id,r.owner_user_id,r.body`);
+     if(!claimed.rows.length)break;
+     const row=claimed.rows[0]!;
+     try{
+      const msg=await t.sendMessage(userbotId,
+       REPORT_LABEL+"\\n報告ID: "+row.report_id+"\\nユーザー: "+row.owner_user_id+
+       "\\n報告内容:\\n"+row.body);
+      await pool.query(
+       "UPDATE gaybbs_bug_report_userbot_delivery SET state='delivered',destination_message_id=$2,updated_at=NOW() WHERE report_id=$1",
+       [row.report_id,msg.message_id]);
+     }catch{
+      await pool.query(
+       "UPDATE gaybbs_bug_report_userbot_delivery SET state='uncertain',updated_at=NOW() WHERE report_id=$1",
+       [row.report_id]);
+      break;
+     }
     }
    }
   }catch(error){
