@@ -52,7 +52,6 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                 "connected": bool(client.is_connected()), "status": "PASS"}
     if action == "bug_report_inbox_provision":
         # Provision the Bot API inbox without exposing the Userbot account ID.
-        import stat
         me = await client.get_me()
         if me is None or getattr(me, "bot", False) or not isinstance(me.id, int):
             raise RuntimeError("USERBOT_ACCOUNT_ID_UNAVAILABLE")
@@ -71,7 +70,7 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         try:
             with os.fdopen(descriptor, "w", encoding="ascii") as outfile:
-                outfile.write(str(me.id) + "\\n")
+                outfile.write(str(me.id) + "\n")
                 outfile.flush()
                 os.fsync(outfile.fileno())
         except Exception:
