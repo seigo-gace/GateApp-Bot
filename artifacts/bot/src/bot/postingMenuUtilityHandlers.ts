@@ -19,8 +19,8 @@ import {pool} from "../db/index.js";
 export {TALK_TOPICS} from "../services/talkDestinationContract.js";
 
 const TALK_GROUP_IDS=TALK_TOPICS.map(x=>x.chatId);
-export function canDirectTalkTopic(approved:boolean,member:OnlineMember):boolean{
- return approved===true&&member==="member";
+export function canDirectTalkTopic(approved:boolean,member:OnlineMember,blocked=false):boolean{
+ return !blocked&&approved===true&&member==="member";
 }
 async function talkTarget(index:number):Promise<{targetId:number;gateCode:string}|null>{
  const chatId=TALK_GROUP_IDS[index];
@@ -39,7 +39,7 @@ async function talkEligible(t:Telegram,id:number,index:number):Promise<boolean>{
   // The direct URL button bypasses callback authorization. Enforce the same
   // blacklist rule when rendering it, not only when processing a Gate click.
   const denied=await blacklistRepo.getBlacklisted(id);
-  if(denied?.status==="blocked")return false;
+  if(denied?.status==="blocked")return canDirectTalkTopic(false,"unknown",true);
   const target=await talkTarget(index);
   if(!target)return false;
   const member=await onlineMembership(t,TALK_GROUP_IDS[index]!,id);
