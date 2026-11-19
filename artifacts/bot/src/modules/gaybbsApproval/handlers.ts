@@ -14,6 +14,7 @@ import {sendLog} from "../../services/loggingService.js";
 import {generateChallenge, type ChallengeQuestion} from "../../services/challengeService.js";
 import {showWizardScreen} from "../../services/dmWizardScreen.js";
 import {pool} from "../../db/index.js";
+import {TALK_TOPICS,talkDestination} from "../../services/talkDestinationContract.js";
 import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
  GROUP_RULES_INTRO,GROUP_RULES_POLICY,RULES_CONSENT_QUESTION,
  hasAdoptedQuestions,isSafeDocUrl,
@@ -94,7 +95,9 @@ async function show(telegram:Telegram,a:GateAttempt,cfg:GateConfig):Promise<void
   const remaining=cfg.boards.flatMap((board,i)=>{
    const found=links.find(link=>link.targetId===board.target.target_id);
    if(members.joined.includes(board.target.chat_id)){
-    return [Markup.button.url(`${i+1}．${board.target.title}（参加済）`,groupDeepLink(board.target.chat_id))];
+    const requested=talkDestination(a.requested_talk_index);
+    const url=requested?.chatId===board.target.chat_id?requested.url:groupDeepLink(board.target.chat_id);
+    return [Markup.button.url(`${i+1}．${board.target.title}（参加済）`,url)];
    }
    return found?[Markup.button.url(`${i+1}．${board.target.title}`,found.link)]:[];
   });
@@ -219,7 +222,7 @@ export async function commonGayBbsApproval(
  );
  return !!route.attempt;
 }
-export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<void>{
+export async function startGayBbsAdmission(ctx:Context,payload:string,requestedTalkIndex?:number):Promise<void>{
  if(ctx.chat?.type!=="private"||!ctx.from)return;
  const gateCode=payload.startsWith("gate_")?payload.slice(5):"";
  if(!/^[a-zA-Z0-9_-]{1,48}$/.test(gateCode)){
@@ -236,6 +239,15 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
  if(bl?.status==="blocked"){
   await ctx.reply("参加できません。");return;
  }
+ const requestedTalk=requestedTalkIndex===undefined?null:talkDestination(requestedTalkIndex);
+ if(requestedTalkIndex!==undefined && (!requestedTalk ||
+  !cfg.boards.some(b=>b.target.chat_id===requestedTalk.chatId))){
+  await ctx.reply("参加先を確認できません。");return;
+ }
+ const saveTalkRequest=async()=>{
+  await pool.query("UPDATE gate_sessions SET requested_talk_index=$2 WHERE tg_user_id=$1",
+   [ctx.from!.id,requestedTalkIndex??null]);
+ };
  const route=await resolveGateEntry(
    ctx.telegram,ctx.from.id,cfg.documentVersion,
    cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title})),
@@ -244,10 +256,14 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
  if(route.kind==="member_direct"){
   await showMemberDirectLinks(ctx.telegram,ctx.from.id,cfg.boards.map(b=>({
     targetId:b.target.target_id,chatId:b.target.chat_id,title:b.target.title,
-  })),route,cfg.target.target_id);
+  })),route,requestedTalk
+   ? cfg.boards.find(b=>b.target.chat_id===requestedTalk.chatId)!.target.target_id
+   : cfg.target.target_id,
+   requestedTalk?.url);
   return;
  }
  if(route.kind==="approved_join"&&route.attempt){
+  await saveTalkRequest();
   await refreshJoinInvitesIfNeeded(ctx.telegram,route.attempt,
     cfg.boards.map(b=>({targetId:b.target.target_id,chatId:b.target.chat_id})));
   const latest=await readAttempt(ctx.from.id);
@@ -260,6 +276,7 @@ export async function startGayBbsAdmission(ctx:Context,payload:string):Promise<v
    displayName:[ctx.from.first_name,ctx.from.last_name].filter(Boolean).join(" "),
    isPremium:(ctx.from as {is_premium?:boolean}).is_premium??false,
   },cfg.documentVersion);
+  await saveTalkRequest();
   if(result.attempt.step==="issuing"){
    await issueInvite(ctx.telegram,result.attempt,cfg);return;
   }
