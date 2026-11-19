@@ -634,6 +634,7 @@ export async function runMigrations(): Promise<void> {
 
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS challenge_data JSONB;
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS last_message_id INTEGER;
+      ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS requested_talk_index SMALLINT CHECK(requested_talk_index BETWEEN 0 AND 2);
       -- @GayBBS_bot approval: extend existing GATE data instead of a parallel DB.
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS attempt_id TEXT;
       ALTER TABLE gate_sessions ADD COLUMN IF NOT EXISTS document_version TEXT;
