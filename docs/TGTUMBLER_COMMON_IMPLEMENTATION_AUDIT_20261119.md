@@ -117,6 +117,11 @@
 - 上記Source SHAのGitHub CI4件すべてSUCCESS（Profile 44575044677、GayBBS Docker 44575044737、CM 44575044724、Tumblr bridge 44575044562）。Gserver隔離ビルド `req_20261120025000000000e614` HOST PASS、本番GayBBSのみdrift検査と旧イメージ退避を実施 `req_20261120025500000000e615` HOST PASS（READYログ、実イメージ一致、Userbot active）。これはブラックリスト対象本人の実端末操作PASSではない。
 
 
+## 2026-11-20 追加｜プロフィールTopic実在検査とDB台帳の区別
+- Gserver Userbotの常駐IPC読み取り専用 `profile_topics_readback` は `req_20261120030000000000e616` HOST PASS。独立した結果分類 `req_20261120030300000000e617` EXIT106(mask6)により、現在の `GetForumTopicsRequest(q="みんなのプロフ",limit=100)` の検索条件では area_bbs のみ検出、video_chat / gay_board は未検出。これだけでTopicが存在しないとは断定しない。
+- Gserverの `posting_topics` 正本DBの検証済みprofile行は `req_20261120030700000000e618` HOST PASS。非公開分類 `req_20261120031000000000e619` EXIT100(mask0)＝area_bbs / video_chat / gay_board の全3グループに、enabled、verified_at、verified_by、正のthread IDを満たす登録が各1件以上ある。DBで「検証済み」とすることと、現在のTelegram検索クエリで名称検出できることは別。
+- Source未解消：Userbot検索のfalse-negative原因（検索文字列、APIの取得範囲、Topic名、移動/削除状態）は未分類。登録済みDBのIDをメッセージURL末尾で置換したり、未発見の2群へ推測IDで投稿することはしない。既存Userbot常駐ファイルはGitHub基準版との差があるため、照合なしに一括上書き・再起動しない。
+
 ## 一次資料
 - Telegram公式 Deep links: https://core.telegram.org/api/links
 - Telegram公式 Bot API / InlineKeyboardButton: https://core.telegram.org/bots/api
