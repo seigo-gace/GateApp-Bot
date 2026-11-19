@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {normalizeBugReport,bugReportPreview,bugReportInputErrorText} from "../src/bot/bugReportHandlers.js";
+import {normalizeBugReport,bugReportPreview,bugReportInputErrorText,registerBugReportHandlers} from "../src/bot/bugReportHandlers.js";
 import {APPROVED_POSTING_ROWS,postingButtonStyle} from "../src/services/menuPanelRenderer.js";
+import {pool} from "../src/db/index.js";
 
 test("bug report button is the sole last row; prior ten retain positions",()=>{
  assert.deepEqual(APPROVED_POSTING_ROWS.map(row=>row.length),[3,2,2,3,1]);
@@ -47,4 +48,42 @@ test("invalid report input reuses the pending wizard with real line breaks and d
  assert.equal(deleted.includes("手動で削除してください。"),false);
  assert.ok(failed.includes("手動で削除してください。"));
  assert.equal(failed.includes(String.raw`\n`),false);
+});
+
+test("invalid live-like DM input deletes original, edits the SAME report screen, never appends reply",async()=>{
+ let handleText:((ctx:any,next:()=>Promise<void>)=>Promise<void>)|null=null;
+ const bot={
+  action:()=>undefined,
+  on:(kind:string,fn:(ctx:any,next:()=>Promise<void>)=>Promise<void>)=>{
+   if(kind==="text")handleText=fn;
+  },
+ };
+ registerBugReportHandlers(bot as any);
+ assert.ok(handleText);
+ const db=pool as unknown as {query:(sql:string,args:any[])=>Promise<{rows:any[]}>};
+ const original=db.query;
+ const calls:string[]=[];
+ db.query=async(sql:string,args:any[])=>{
+  calls.push("sql:"+String(sql).slice(0,16));
+  if(String(sql).startsWith("SELECT id,prompt_message_id"))
+   return {rows:[{id:"9",prompt_message_id:77}]};
+  return {rows:[]};
+ };
+ const ctx={
+  chat:{type:"private"},from:{id:12345},message:{message_id:88,text:"    "},
+  deleteMessage:async(id:number)=>{assert.equal(id,88);calls.push("delete-original");},
+  telegram:{
+   editMessageText:async(chatId:number,msgId:number,_inline:unknown,text:string)=>{
+    assert.equal(chatId,12345);assert.equal(msgId,77);
+    assert.match(text,/報告内容を1〜2000文字/);calls.push("edit-prompt");
+   },
+   sendMessage:async()=>{throw Error("UNEXPECTED_NEW_SCREEN");}
+  },
+  reply:async()=>{throw Error("UNEXPECTED_EXTRA_REPLY");}
+ };
+ try{
+  await handleText!(ctx,async()=>{throw Error("UNEXPECTED_FORWARD");});
+  assert.equal(calls.filter(x=>x==="delete-original").length,1);
+  assert.equal(calls.filter(x=>x==="edit-prompt").length,1);
+ }finally{db.query=original;}
 });
