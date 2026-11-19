@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {showWizardScreen,removeUserWizardInput} from "../src/services/dmWizardScreen.js";
+import {showWizardScreen,removeUserWizardInput,wizardEditFailureKind} from "../src/services/dmWizardScreen.js";
 
 function telegramFixture() {
  const calls:Array<{kind:string;chatId:number;messageId?:number;text?:string}>=[];
@@ -8,7 +8,7 @@ function telegramFixture() {
  const telegram={
   editMessageText:async (chatId:number,messageId:number,_inline:undefined,text:string)=>{
    calls.push({kind:"edit",chatId,messageId,text});
-   if(failEdit)throw Error("MESSAGE_EDIT_REJECTED");
+   if(failEdit)throw Error("400: Bad Request: message cannot be edited");
    return true;
   },
   sendMessage:async (chatId:number,text:string)=>{
@@ -55,4 +55,18 @@ test("new screen does not delete anything without a confirmed previous ID",async
  const r=await showWizardScreen(f.telegram,12345,undefined,"first");
  assert.equal(r.messageId,200);
  assert.deepEqual(f.calls.map(x=>x.kind),["send"]);
+});
+
+test("uncertain edit error does not produce an extra DM screen",async()=>{
+ const calls:string[]=[];
+ const telegram={
+  editMessageText:async()=>{calls.push("edit");throw Error("ETIMEDOUT");},
+  sendMessage:async()=>{calls.push("send");return {message_id:201};},
+  deleteMessage:async()=>{calls.push("delete");return true;},
+ };
+ await assert.rejects(showWizardScreen(telegram as any,12345,99,"next"),/ETIMEDOUT/);
+ assert.deepEqual(calls,["edit"]);
+ assert.equal(wizardEditFailureKind(new Error("socket hang up")),"uncertain");
+ assert.equal(wizardEditFailureKind(Error("400: Bad Request: message cannot be edited")),"rejected");
+ assert.equal(wizardEditFailureKind(Error("400: Bad Request: message is not modified")),"unchanged");
 });
