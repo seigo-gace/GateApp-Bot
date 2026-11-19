@@ -56,7 +56,7 @@ test("existing HTTPS URL rows remain in order and invalid rows fail closed",()=>
    [[{text:"応募",url:"https://service.local/path"}]],
    [[{text:"応募",url:"https://127.0.0.1/path"}]],
    [[{text:"応募",url:"https://[::1]/path"}]],
-   [[{text:"応募",url:"https://example.org/with\\nnewline"}]],
+   [[{text:"応募",url:"https://example.org/with\nnewline"}]],
    Array.from({length:21},()=>[{text:"応募",url:"https://example.org"}]),
    [[{text:"",url:"https://example.org"}]]
  ])assert.throws(()=>validateOriginalButtons(invalid),/BRIDGE_BUTTONS_INVALID/);
