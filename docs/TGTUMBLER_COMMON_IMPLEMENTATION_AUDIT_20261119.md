@@ -122,6 +122,15 @@
 - Gserverの `posting_topics` 正本DBの検証済みprofile行は `req_20261120030700000000e618` HOST PASS。非公開分類 `req_20261120031000000000e619` EXIT100(mask0)＝area_bbs / video_chat / gay_board の全3グループに、enabled、verified_at、verified_by、正のthread IDを満たす登録が各1件以上ある。DBで「検証済み」とすることと、現在のTelegram検索クエリで名称検出できることは別。
 - Source未解消：Userbot検索のfalse-negative原因（検索文字列、APIの取得範囲、Topic名、移動/削除状態）は未分類。登録済みDBのIDをメッセージURL末尾で置換したり、未発見の2群へ推測IDで投稿することはしない。既存Userbot常駐ファイルはGitHub基準版との差があるため、照合なしに一括上書き・再起動しない。
 
+## 2026-11-20 追加｜プロフィールTopic実機照合の再開
+- Userbot常駐IPCの `profile_topics_readback` はグループのTopicタイトル検索 `q="みんなのプロフ"` を使う。既存IPC実測 `req_20261120030000000000e616` Host PASS の結果を `req_20261120030300000000e617` に分類し、EXIT106（エリアのみ見つかりビデオ掲示板・ゲイ掲示板は検索未一致）を確認。検索未一致をTopic不存在と断定しない。
+- Gserver PostgreSQL `posting_topics` の既存`purpose='profile'` を確認。取得 `req_20261120032200000000f701` Host PASS、分類 `req_20261120032500000000f702` EXIT100（3グループすべて有効・名称に「プロフ」を含む登録レコードあり）。DBを推測Topic IDで更新しない。
+- テキスト検索の曖昧さを除くため、既存3グループとDB検証済みの3つのTopic IDだけを指定できる `profile_topics_by_id` を常駐Userbot IPCへSource追加。入力形状と範囲を拒否し、Title・ユーザー情報をIPC応答へ出さない。Sourceユニットテスト、CI4件とGserver隔離テスト `req_20261120033200000000f703` PASS。
+- 初版の直接ID API `channels.GetForumTopicsByIDRequest` は現行Gserver Telethonには存在しなかった（`req_20261120041400000000f710` EXIT41）。この版の実検証 `req_20261120035600000000f706` はFAILであり、Telegram Topic不存在の証拠ではない。
+- Source修正版 `2a57653896161eed36b0c97d598a3ee9670259a5` は**現行の `messages.GetForumTopicsRequest` を用い、空検索・最大20ページの限定走査と登録済みID照合**に変更。CI4件SUCCESS、隔離Unit `req_20261120042200000000f711` PASS。既存Userbotコード全体は上書きせず、既設の許可済みセッション所有者・3グループ境界を維持。
+- Hostでのコード専用適用 `req_20261120035100000000f705` PASS。API互換の追加差分は実行中の既存検査ロジックを保護して単一ブロック更新する。再更新・常駐サービス反映・全3Topic実Telegram再読戻しは、それぞれ実際のHost証拠が取れるまで未完了。
+- OS実機の受入、プロフィールの投稿そのもの、Topicの無断作成/移動/削除、Userbot認証再登録は実施していない。
+
 ## 一次資料
 - Telegram公式 Deep links: https://core.telegram.org/api/links
 - Telegram公式 Bot API / InlineKeyboardButton: https://core.telegram.org/bots/api
