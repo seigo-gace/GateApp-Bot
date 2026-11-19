@@ -4,6 +4,7 @@ import { bareStartPostingExtra, defaultBareStartChatId } from "./dmBareStartPost
 import {POSTING_MENU_SCREEN_TEXT} from "./menuPanelRenderer.js";
 import { currentMenuOrigin } from "./menuOriginRepository.js";
 import { currentTopicDmEntry } from "./topicDmEntry.js";
+import { showWizardScreen } from "./dmWizardScreen.js";
 
 export const DM_POSTING_MENU_SCREEN_TEXT = POSTING_MENU_SCREEN_TEXT;
 
@@ -15,5 +16,8 @@ export async function editMessageToDmPostingMenu(
   const origin = await currentMenuOrigin(userId);
   const chatId = defaultBareStartChatId(topic?.chatId ?? origin?.chatId ?? null);
   const keyboard = await bareStartPostingExtra(chatId);
-  await ctx.editMessageText(DM_POSTING_MENU_SCREEN_TEXT, keyboard);
+  const callback=ctx.callbackQuery;
+  const previous=callback&&"message" in callback?callback.message?.message_id:undefined;
+  await showWizardScreen(ctx.telegram,userId,previous,
+   DM_POSTING_MENU_SCREEN_TEXT,keyboard);
 }
