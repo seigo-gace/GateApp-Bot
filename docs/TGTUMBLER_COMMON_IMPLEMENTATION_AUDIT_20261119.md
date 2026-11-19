@@ -14,7 +14,7 @@
 | DM画面更新・旧画面削除 | `dmWizardScreen.ts` | 共通処理あり | 全呼び出し元で利用徹底は未完了。編集拒否の実機復旧も未検証 |
 | UIトランスポート/OS互換基準 | `telegramClientCompatibility.ts` | Bot API形式の共通ガードをDMウィザードへ接続 | 各OSの実機PASSは全て未検証 |
 | プロフィール | `profileCompactHandlers.ts` 他 | 共通画面利用箇所あり | 旧画面/公開資産/複数端末E2Eは別確認 |
-| 相手募集 | `recruitmentHandlers.ts` | 共通画面利用箇所あり | 送信/編集/復帰のOS別実機照合は未検証 |
+| 相手募集 | `recruitmentHandlers.ts`, `recruitmentRichPreview.ts` | 共通画面利用とRich編集API失敗時の通常InlineKeyboardフォールバックあり | Rich APIが受理されてもiOS等のクライアント表示・編集は別途実機検証。送信/編集/復帰も未検証 |
 | Room/募集 | `roomHandlers.ts`, `postingHandlers.ts` | 共通画面利用箇所あり | 状態同期とOS別実機照合は未検証 |
 | 告知・予告/リンク作成 | `postingHandlers.ts` | 一部共通処理利用 | 分岐すべての画面/通知/URL検証未完了 |
 | 検索・フィルター | `searchHandlers.ts` | 共通画面利用箇所あり | 実iOSでの検索/戻りは未確認 |
@@ -32,6 +32,10 @@
 3. **画面管理**：成功後の旧ボタン・旧入力の回収、編集失敗時の代替/削除、callback重複/古さの拒否。DMのUIと完了時に保持する領収メッセージを区別。
 4. **Gate**：各機能は既存の共通承認/参加状態判定を再利用。未承認→1回質問Gate、承認済み未参加→既存の参加導線、承認済み参加済み→元の選択トピック。目的トピックIDを推測しない。
 5. **業務機能**：プロフィール/募集/Room/リンク/検索/不具合報告の保存・投稿・通知は機能オーナーが管理。共通画面ライブラリが勝手に業務データを消さない。
+
+## 履歴照合によるOS例外の再確認
+- Notionの既存UI変更議事録には、相手募集の `sendRichMessage` / 本文横 `📝編集` が非対応だった場合、通常InlineKeyboardへ戻す既決方式が記録されている。現行 `recruitmentHandlers.ts` にも失敗時のフォールバックが存在する。ただし **API成功でも端末表示失敗** はServer側で自動検知できない。
+- 端末版差に起因する `copy_text` 非対応・Deep Link再Startは、Bot APIにOS識別子がないため、実機観測と標準の代替導線の採用確認が必要。実機対応済みと表現しない。
 
 ## OS別・状態別受入基準（現時点全て NOT_VERIFIED）
 | OS | 初回グループ入口 | DM内11ボタン/戻る | Gate/雑談Topic | copy_text | 入力回収/復帰 |
