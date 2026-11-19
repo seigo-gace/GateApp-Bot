@@ -120,7 +120,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   const message=url?
    "📚 操作説明を終了しました。\n元の投稿メニューへ戻れます。":
    "📚 操作説明を終了しました。\n元の投稿メニューが確認できないため、リンクを作成しません。";
-  const keyboard=Markup.inlineKeyboard(url?[[Markup.button.url("↩ 投稿メニュー",url)]]:[]);
+  const keyboard=url?Markup.inlineKeyboard([[Markup.button.url("↩ 投稿メニュー",url)]]):undefined;
   const view=await showWizardScreen(ctx.telegram,ctx.from.id,next.screenMessageId??undefined,message,keyboard);
   if(view.messageId!==next.screenMessageId)
    await pool.query("UPDATE gaybbs_help_sessions SET screen_message_id=$3 WHERE owner_user_id=$1 AND revision=$2",
