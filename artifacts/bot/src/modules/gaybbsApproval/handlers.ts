@@ -14,7 +14,7 @@ import {sendLog} from "../../services/loggingService.js";
 import {generateChallenge, type ChallengeQuestion} from "../../services/challengeService.js";
 import {showWizardScreen} from "../../services/dmWizardScreen.js";
 import {pool} from "../../db/index.js";
-import {TALK_TOPICS,talkDestination} from "../../services/talkDestinationContract.js";
+import {talkDestination} from "../../services/talkDestinationContract.js";
 import {APPROVAL_DOC_KEYS, APPROVAL_QUESTIONS,
  GROUP_RULES_INTRO,GROUP_RULES_POLICY,RULES_CONSENT_QUESTION,
  hasAdoptedQuestions,isSafeDocUrl,
