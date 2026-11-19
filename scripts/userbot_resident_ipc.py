@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "bug_report_inbox_provision"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -106,6 +106,49 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                             "found": len(matches) == 1})
         return {"request_id": request_id, "action": action, "status": "PASS",
                 "topics": results}
+    if action == "bug_report_delivery_smoke":
+        # Exercise the actual no-command DM button and same Userbot account inbox.
+        bot = await client.get_entity("GayBBS_bot")
+        if not bot.bot:
+            raise RuntimeError("TARGET_NOT_BOT")
+        dialogs = await client.get_messages(bot, limit=80)
+        menu = next((message for message in dialogs
+                     if not message.out and any(
+                         getattr(button, "text", "") == "🐞 不具合を報告"
+                         for row in (message.buttons or []) for button in row)), None)
+        if menu is None:
+            raise RuntimeError("USERBOT_BUG_REPORT_MENU_NOT_VISIBLE")
+        await menu.click(text="🐞 不具合を報告")
+        for _ in range(8):
+            screens = await client.get_messages(bot, ids=menu.id)
+            if screens is not None and "下の入力欄" in (screens.raw_text or ""):
+                break
+            await asyncio.sleep(1)
+        else:
+            raise RuntimeError("USERBOT_BUG_REPORT_SCREEN_NOT_OPENED")
+        marker = "Userbot配送接続テスト_" + request_id
+        original = await client.send_message(bot, marker)
+        confirmation = False
+        delivered_to_userbot = False
+        input_removed = False
+        for _ in range(40):
+            messages = await client.get_messages(bot, limit=80)
+            for message in messages:
+                if message.out or marker not in (message.raw_text or ""):
+                    continue
+                body = message.raw_text or ""
+                if "不具合報告を受け付けました" in body:
+                    confirmation = True
+                if "報告ID:" in body and "報告内容:" in body:
+                    delivered_to_userbot = True
+            if confirmation and delivered_to_userbot:
+                input_removed = await client.get_messages(bot, ids=original.id) is None
+                if input_removed:
+                    return {"request_id": request_id, "action": action,
+                            "status": "PASS", "userbot_inbox_received": True,
+                            "receipt_visible": True, "input_deleted": True}
+            await asyncio.sleep(2)
+        raise RuntimeError("USERBOT_REPORT_E2E_INCOMPLETE")
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}
@@ -218,7 +261,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=90 if request.get("action") == "room_public_post_smoke" else 30)
+                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
@@ -230,6 +273,8 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
                 "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
                 "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
+                "USERBOT_BUG_REPORT_MENU_NOT_VISIBLE", "USERBOT_BUG_REPORT_SCREEN_NOT_OPENED",
+                "USERBOT_REPORT_E2E_INCOMPLETE",
             }
             code = str(exc) if str(exc) in safe_codes else "INTERNAL"
             response = {"status": "FAIL", "error": code}
