@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {normalizeBugReport,bugReportPreview} from "../src/bot/bugReportHandlers.js";
+import {normalizeBugReport,bugReportPreview,bugReportInputErrorText} from "../src/bot/bugReportHandlers.js";
 import {APPROVED_POSTING_ROWS,postingButtonStyle} from "../src/services/menuPanelRenderer.js";
 
 test("bug report button is the sole last row; prior ten retain positions",()=>{
@@ -37,4 +37,14 @@ test("bug report completion uses separate receipt and a fresh posting menu",()=>
  // Integration tests inspect actual Telegram calls; prevent UI regression at source level.
  assert.equal(bugReportPreview("テスト").includes("投稿メニュー"),false);
  assert.equal(bugReportPreview("テスト").includes("↩"),false);
+});
+
+test("invalid report input reuses the pending wizard with real line breaks and deletion failure advice",()=>{
+ const deleted=bugReportInputErrorText(true);
+ const failed=bugReportInputErrorText(false);
+ assert.ok(deleted.includes("🐞 不具合を報告\n\n下の入力欄"));
+ assert.ok(deleted.includes("\n\n報告内容を1〜2000文字で入力してください。"));
+ assert.equal(deleted.includes("手動で削除してください。"),false);
+ assert.ok(failed.includes("手動で削除してください。"));
+ assert.equal(failed.includes(String.raw`\n`),false);
 });
