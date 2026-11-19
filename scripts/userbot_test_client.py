@@ -31,7 +31,7 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
             raise ValueError("ROOM_READ_TARGET_ONLY_FOR_READBACK")
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
-        reply = await asyncio.wait_for(reader.readline(), 100 if action == "room_public_post_smoke" else 40)
+        reply = await asyncio.wait_for(reader.readline(), 110 if action in {"room_public_post_smoke", "bug_report_delivery_smoke"} else 40)
         result = json.loads(reply)
         if result.get("request_id") not in {request_id, None}:
             raise RuntimeError("USERBOT_IPC_REQUEST_ID_MISMATCH")
@@ -55,6 +55,13 @@ def main() -> int:
             return 1
         print("USERBOT_TEST_RESULT=PASS")
         print("USERBOT_TEST_ACTION=" + args.action)
+        if args.action == "bug_report_delivery_smoke":
+            if not all(result.get(key) is True for key in (
+                    "userbot_inbox_received", "receipt_visible", "input_deleted")):
+                raise RuntimeError("USERBOT_REPORT_E2E_RESULT_INCOMPLETE")
+            print("USERBOT_REPORT_INBOX=PASS")
+            print("USERBOT_REPORT_RECEIPT=PASS")
+            print("USERBOT_REPORT_INPUT_DELETE=PASS")
         if args.action == "profile_button_smoke":
             if result.get("profile_editor_opened") is not True:
                 raise RuntimeError("PROFILE_BUTTON_SCREEN_NOT_OPENED")
