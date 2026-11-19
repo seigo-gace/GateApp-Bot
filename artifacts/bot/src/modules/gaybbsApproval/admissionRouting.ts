@@ -22,7 +22,16 @@ export type GateEntryRoute = {
   pending: number[];
 };
 
-const JOINED = new Set(["creator", "administrator", "member", "restricted"]);
+/** A restricted member is joined only when Telegram explicitly says is_member.
+ * Never infer approval or board access from a restricted status alone.
+ */
+export function hasJoinedBoard(value:unknown):boolean{
+ if(!value || typeof value!=="object" || !("status" in value))return false;
+ const m=value as {status?:unknown;is_member?:unknown};
+ if(["creator","administrator","member"].includes(String(m.status)))return true;
+ if(m.status==="restricted")return m.is_member===true;
+ return false;
+}
 
 export function groupDeepLink(chatId: number): string {
   const tail = String(chatId).replace(/^-100/, "");
@@ -39,7 +48,7 @@ export async function membershipForBoards(
   for (const b of boards) {
     try {
       const m = await telegram.getChatMember(b.chatId, userId);
-      if (JOINED.has(m.status)) joined.push(b.chatId);
+      if (hasJoinedBoard(m)) joined.push(b.chatId);
       else pending.push(b.chatId);
     } catch {
       pending.push(b.chatId);
