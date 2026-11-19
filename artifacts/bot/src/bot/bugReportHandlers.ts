@@ -13,6 +13,16 @@ import {showWizardScreen} from "../services/dmWizardScreen.js";
 
 const REPORT_LIMIT=2000;
 const REPORT_LABEL="🐞 不具合を報告";
+const REPORT_PROMPT="🐞 不具合を報告\n\n下の入力欄に不具合の内容を書いて、そのまま送信してください。\n"+
+  "コマンド入力や追加ボタンの操作は不要です。\n\n"+
+  "例：相手募集の投稿ボタンを押しても反応しない\n\n"+
+  "送信した内容はBotが保存し、入力メッセージの削除を試みます。\n"+
+  "報告内容と受付結果はこのDMに表示します。";
+export function bugReportInputErrorText(deleted:boolean):string{
+ return REPORT_PROMPT+"\\n\\n報告内容を1〜2000文字で入力してください。"+
+ (deleted?"":"\\n※元の入力メッセージを削除できませんでした。手動で削除してください。");
+}
+
 
 function recipientId():number|null {
  let raw=process.env.GAYBBS_USERBOT_REPORT_CHAT_ID;
@@ -59,13 +69,7 @@ export async function startBugReport(t:Telegram,userId:number,screenId?:number):
   `INSERT INTO gaybbs_bug_reports(owner_user_id,state) VALUES($1,'pending')
    ON CONFLICT (owner_user_id) WHERE state='pending'
    DO UPDATE SET body=NULL,source_message_id=NULL,prompt_message_id=NULL,updated_at=NOW()`,[userId]);
- const prompt=await showWizardScreen(t,userId,screenId,
-  "🐞 不具合を報告\n\n下の入力欄に不具合の内容を書いて、そのまま送信してください。\n"+
-  "コマンド入力や追加ボタンの操作は不要です。\n\n"+
-  "例：相手募集の投稿ボタンを押しても反応しない\n\n"+
-  "送信した内容はBotが保存し、入力メッセージの削除を試みます。\n"+
-  "報告内容と受付結果はこのDMに表示します。",
-  CANCEL);
+ const prompt=await showWizardScreen(t,userId,screenId,REPORT_PROMPT,CANCEL);
  await pool.query(
   "UPDATE gaybbs_bug_reports SET prompt_message_id=$2,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
   [userId,prompt.messageId]);
@@ -138,15 +142,9 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    try{await ctx.deleteMessage(ctx.message.message_id);}
    catch{inputDeleted=false;}
    const promptId=Number(pending.rows[0]?.prompt_message_id);
-   const warning="報告内容を1〜2000文字で入力してください。"+
-    (inputDeleted?"":"\n※元の入力メッセージを削除できませんでした。手動で削除してください。");
    const prompt=await showWizardScreen(ctx.telegram,ctx.from.id,
     Number.isSafeInteger(promptId)&&promptId>0?promptId:undefined,
-    "🐞 不具合を報告\n\n下の入力欄に不具合の内容を書いて、そのまま送信してください。\n"+
-    "コマンド入力や追加ボタンの操作は不要です。\n\n"+
-    "例：相手募集の投稿ボタンを押しても反応しない\n\n"+
-    "送信した内容はBotが保存し、入力メッセージの削除を試みます。\n"+
-    "報告内容と受付結果はこのDMに表示します。\n\n"+warning,CANCEL);
+    bugReportInputErrorText(inputDeleted),CANCEL);
    await pool.query("UPDATE gaybbs_bug_reports SET prompt_message_id=$2,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
     [ctx.from.id,prompt.messageId]);
    return;
