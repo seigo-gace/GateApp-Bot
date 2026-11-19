@@ -47,7 +47,7 @@ class ResidentSafetyTests(unittest.TestCase):
         c = MockClient()
         out = asyncio.run(process_request(c, {"request_id": "menu-1", "action": "bot_start_menu"}))
         self.assertEqual(out["status"], "PASS")
-        self.assertEqual(out["row_sizes"], [3, 2, 2, 3])
+        self.assertEqual(out["row_sizes"], [3, 2, 2, 3, 1])
         self.assertEqual(c.sent, ["/start"])
 
     def test_wrong_menu_not_pass(self):
