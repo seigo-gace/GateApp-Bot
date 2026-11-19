@@ -29,5 +29,7 @@ test("cross-client callback payload has Telegram 64 UTF-8 byte limit",()=>{
 test("buttons cannot combine URL and callbacks or have an empty copy payload",()=>{
  assert.throws(()=>assertTelegramInlineButton({text:"移動",url:"https://t.me/test",callback_data:"x"}),/ACTION_AMBIGUOUS/);
  assert.throws(()=>assertTelegramInlineButton({text:"コピー",copy_text:{text:""}}),/COPY_TEXT_INVALID/);
+ assert.doesNotThrow(()=>assertTelegramInlineButton({text:"コピー",copy_text:{text:"あ".repeat(256)}}));
+ assert.throws(()=>assertTelegramInlineButton({text:"コピー",copy_text:{text:"あ".repeat(257)}}),/COPY_TEXT_INVALID/);
  assert.throws(()=>assertTelegramInlineKeyboard({reply_markup:{inline_keyboard:[[]]}}),/EMPTY_ROW/);
 });
