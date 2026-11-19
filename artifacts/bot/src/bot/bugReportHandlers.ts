@@ -31,7 +31,7 @@ function userbotRecipientId():number|null {
   try{raw=readFileSync(process.env.GAYBBS_USERBOT_ACCOUNT_CHAT_ID_FILE,"utf8").trim();}
   catch{return null;}
  }
- if(!raw||!/^[1-9]\\d{4,18}$/.test(raw))return null;
+ if(!raw||!/^[1-9]\d{4,18}$/.test(raw))return null;
  const id=Number(raw);
  if(!Number.isSafeInteger(id)||id===recipientId())return null;
  return id;
@@ -206,8 +206,8 @@ export function startBugReportDeliveryWorker(t:Telegram):()=>void {
      const row=claimed.rows[0]!;
      try{
       const msg=await t.sendMessage(userbotId,
-       REPORT_LABEL+"\\n報告ID: "+row.report_id+"\\nユーザー: "+row.owner_user_id+
-       "\\n報告内容:\\n"+row.body);
+       REPORT_LABEL+"\n報告ID: "+row.report_id+"\nユーザー: "+row.owner_user_id+
+       "\n報告内容:\n"+row.body);
       await pool.query(
        "UPDATE gaybbs_bug_report_userbot_delivery SET state='delivered',destination_message_id=$2,updated_at=NOW() WHERE report_id=$1",
        [row.report_id,msg.message_id]);
