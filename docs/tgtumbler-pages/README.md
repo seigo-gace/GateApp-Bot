@@ -1,6 +1,6 @@
 # TGtumbler 文書サイト（Cloudflare Pages）
 
-5文書の原文・要約索引を静的 HTML としてビルドし、Cloudflare Pages で配信するための **Git 管理用** ミニサイトです。
+既存5文書の原文・要約索引と、独立したCreateVdobot利用規約・販売約款を静的 HTML としてビルドし、Cloudflare Pages で配信するための **Git 管理用** ミニサイトです。
 
 ## 構成
 
@@ -26,9 +26,11 @@ node build.mjs
 
 ダッシュボードの「Connect to Git」だけに統一する場合は **DEPLOY.md の「参考」**に従い、**Wrangler 用ワークフローの deploy ジョブと併用しない**（二重ビルド防止）。
 
-## 公開ゲート（Privacy Policy）
+## 公開ゲート（Privacy Policy／CreateVdobotの区分）
 
-Notion 記載どおり、管理主体・問い合わせ先・保持期間等が未確定の間は **対外公開・本番ドメイン紐付けをしない**。プレビュー環境での確認に留める。
+**CreateVdobot規約v1.0のみ**、既存のCloudflare Pages `https://tgtumbler-docs.pages.dev/createvdobot-terms.html` で公開中。GitHub Actions `tgtumbler-pages` は本文の自己責任・Stars/管理費30%/計算上70%・同意文言を実HTTP読戻しする。URLの存在はBot本番接続やStars販売が完成した根拠ではない。
+
+それ以外のTGtumbler共通文書にはNotion上で管理主体・問い合わせ先・保持期間等の未確定項目があり、**本番ドメイン紐付け・共通文書を正式な完成版として運用する判断は保留**する。CreateVdobot規約の個別公開を、これらの文書全体の受入に拡大しない。
 
 ## 全文データの欠落について
 
