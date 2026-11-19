@@ -155,12 +155,12 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    catch{promptDeleted=false;}
   }else{promptDeleted=false;}
   const result=await submitReport(ctx.telegram,ctx.from.id,ctx.message.message_id,text,ctx.from.username);
-  const status=result==="delivered"?"\\n\\n✅ 運営への通知が完了しました。":
-   result==="queued"?"\\n\\n報告は保存されました。運営への通知は処理待ちです。":
-   result==="uncertain"?"\\n\\n報告は保存されました。運営への通知結果は確認中です。":
-   "\\n\\n受付状態を確認できません。";
+  const status=result==="delivered"?"\n\n✅ 運営への通知が完了しました。":
+   result==="queued"?"\n\n報告は保存されました。運営への通知は処理待ちです。":
+   result==="uncertain"?"\n\n報告は保存されました。運営への通知結果は確認中です。":
+   "\n\n受付状態を確認できません。";
   const deletionNote=!inputDeleted||!promptDeleted
-   ?"\\n\\n※削除できなかった以前のメッセージは必要に応じて手動で削除してください。":"";
+   ?"\n\n※削除できなかった以前のメッセージは必要に応じて手動で削除してください。":"";
   // Receipt remains as a separate, readable confirmation. No buttons on it.
   await ctx.telegram.sendMessage(ctx.from.id,bugReportPreview(text)+status+deletionNote);
   // The only actionable keyboard is a fresh posting menu below the receipt.
