@@ -58,14 +58,17 @@ export async function startBugReport(t:Telegram,userId:number,screenId?:number):
  await pool.query(
   `INSERT INTO gaybbs_bug_reports(owner_user_id,state) VALUES($1,'pending')
    ON CONFLICT (owner_user_id) WHERE state='pending'
-   DO UPDATE SET body=NULL,source_message_id=NULL,updated_at=NOW()`,[userId]);
- await showWizardScreen(t,userId,screenId,
+   DO UPDATE SET body=NULL,source_message_id=NULL,prompt_message_id=NULL,updated_at=NOW()`,[userId]);
+ const prompt=await showWizardScreen(t,userId,screenId,
   "🐞 不具合を報告\n\n下の入力欄に不具合の内容を書いて、そのまま送信してください。\n"+
   "コマンド入力や追加ボタンの操作は不要です。\n\n"+
   "例：相手募集の投稿ボタンを押しても反応しない\n\n"+
   "送信した内容はBotが保存し、入力メッセージの削除を試みます。\n"+
   "報告内容と受付結果はこのDMに表示します。",
   CANCEL);
+ await pool.query(
+  "UPDATE gaybbs_bug_reports SET prompt_message_id=$2,updated_at=NOW() WHERE owner_user_id=$1 AND state='pending'",
+  [userId,prompt.messageId]);
 }
 async function returnMenu(t:Telegram,id:number,screenId?:number):Promise<void>{
  const origin=await currentMenuOrigin(id);
@@ -124,7 +127,7 @@ export function registerBugReportHandlers(bot:Telegraf):void{
  bot.on("text",async(ctx,next)=>{
   if(ctx.chat.type!=="private"||!ctx.from||ctx.message.text.startsWith("/"))return next();
   const pending=await pool.query(
-   "SELECT id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' LIMIT 1",
+   "SELECT id,prompt_message_id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' LIMIT 1",
    [ctx.from.id]);
   if(!pending.rows.length)return next();
   const text=normalizeBugReport(ctx.message.text);
@@ -142,15 +145,27 @@ export function registerBugReportHandlers(bot:Telegraf):void{
     SELECT id,'queued' FROM gaybbs_bug_reports
     WHERE owner_user_id=$1 AND state='pending' AND source_message_id=$2
     ON CONFLICT (report_id) DO NOTHING`,[ctx.from.id,ctx.message.message_id]);
+  let inputDeleted=true;
   try{await ctx.deleteMessage(ctx.message.message_id);}
-  catch{await ctx.reply("入力メッセージを削除できませんでした。必要に応じて手動で削除してください。");}
+  catch{inputDeleted=false;}
+  const promptId=Number(pending.rows[0]?.prompt_message_id);
+  let promptDeleted=true;
+  if(Number.isSafeInteger(promptId)&&promptId>0){
+   try{await ctx.telegram.deleteMessage(ctx.from.id,promptId);}
+   catch{promptDeleted=false;}
+  }else{promptDeleted=false;}
   const result=await submitReport(ctx.telegram,ctx.from.id,ctx.message.message_id,text,ctx.from.username);
-  const status=result==="delivered"?"\n\n✅ 運営への通知が完了しました。":
-   result==="queued"?"\n\n報告は保存されました。運営への通知は処理待ちです。":
-   result==="uncertain"?"\n\n報告は保存されました。運営への通知結果は確認中です。":
-   "\n\n受付状態を確認できません。";
-  await showWizardScreen(ctx.telegram,ctx.from.id,undefined,bugReportPreview(text)+status,
-   Markup.inlineKeyboard([[Markup.button.callback("↩ 投稿メニューへ戻る","dm:bug:cancel")]]));
+  const status=result==="delivered"?"\\n\\n✅ 運営への通知が完了しました。":
+   result==="queued"?"\\n\\n報告は保存されました。運営への通知は処理待ちです。":
+   result==="uncertain"?"\\n\\n報告は保存されました。運営への通知結果は確認中です。":
+   "\\n\\n受付状態を確認できません。";
+  const deletionNote=!inputDeleted||!promptDeleted
+   ?"\\n\\n※削除できなかった以前のメッセージは必要に応じて手動で削除してください。":"";
+  // Receipt remains as a separate, readable confirmation. No buttons on it.
+  await ctx.telegram.sendMessage(ctx.from.id,bugReportPreview(text)+status+deletionNote);
+  // The only actionable keyboard is a fresh posting menu below the receipt.
+  await returnMenu(ctx.telegram,ctx.from.id);
+
 
  });
 }
