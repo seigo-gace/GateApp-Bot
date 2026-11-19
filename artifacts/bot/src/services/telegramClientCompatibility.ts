@@ -41,7 +41,7 @@ export function assertTelegramInlineButton(button:unknown):void{
    throw new Error("INLINE_LINK_INVALID");
  }else if(key==="copy_text"){
   const value=b.copy_text as {text?:unknown}|null;
-  if(!value||typeof value.text!=="string"||utf8Bytes(value.text)<1||utf8Bytes(value.text)>256)
+  if(!value||typeof value.text!=="string"||[...value.text].length<1||[...value.text].length>256)
    throw new Error("INLINE_COPY_TEXT_INVALID");
  }
 }
