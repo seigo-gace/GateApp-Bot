@@ -75,6 +75,61 @@ class ResidentSafetyTests(unittest.TestCase):
         self.assertEqual(c.sent, [])
 
 
+class ExactProfileTopicReadbackTests(unittest.TestCase):
+    """Exact DB-bound topic IDs, no Telegram session, group join or credentials."""
+    def test_rejects_wrong_shape_before_any_telegram_read(self):
+        c = MockClient()
+        for ids in (None, [], [4, 5], [4, 5, True], ["4", 5, 6],
+                    [4, 5, 0], [4, 5, 2147483648]):
+            with self.assertRaises(ValueError):
+                asyncio.run(process_request(c, {
+                    "request_id": "topic-reject", "action": "profile_topics_by_id",
+                    "topic_ids": ids
+                }))
+        self.assertEqual(c.sent, [])
+
+    def test_uses_exact_ids_and_existing_dialogs_without_revealing_titles(self):
+        from unittest.mock import patch
+        import sys
+        ids = [77, 88, 99]
+        class TopicClient:
+            def __init__(self, mismatch=False):
+                self.mismatch = mismatch
+                self.calls = []
+            async def is_user_authorized(self):
+                return True
+            async def get_dialogs(self, limit=500):
+                self.calls.append(("dialogs", limit))
+                return [
+                    SimpleNamespace(id=chat, entity=SimpleNamespace(id=abs(chat)))
+                    for chat in (-1003847210571, -1002373696859, -1003770334893)
+                ]
+            async def __call__(self, request):
+                self.calls.append(("topic", request.topics[0]))
+                title = "雑談" if self.mismatch and request.topics == [88] else "みんなのプロフ"
+                return SimpleNamespace(topics=[SimpleNamespace(
+                    id=request.topics[0], title=title)])
+        channel = SimpleNamespace(GetForumTopicsByIDRequest=lambda channel, topics:
+                                  SimpleNamespace(channel=channel, topics=topics))
+        with patch.dict(sys.modules, {"telethon": SimpleNamespace(
+                functions=SimpleNamespace(channels=channel))}):
+            client = TopicClient()
+            result = asyncio.run(process_request(client, {
+                "request_id": "profile-exact", "action": "profile_topics_by_id",
+                "topic_ids": ids
+            }))
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual([x["found"] for x in result["topics"]], [True]*3)
+            self.assertEqual(client.calls, [("dialogs", 500),
+                                            ("topic", 77), ("topic", 88), ("topic", 99)])
+            self.assertNotIn("みんなのプロフ", repr(result))
+            bad = asyncio.run(process_request(TopicClient(mismatch=True), {
+                "request_id": "profile-mismatch", "action": "profile_topics_by_id",
+                "topic_ids": ids
+            }))
+            self.assertEqual([x["found"] for x in bad["topics"]], [True, False, True])
+
+
 class UserbotInboxProvisionTests(unittest.TestCase):
     def test_secure_setup_idempotent_and_no_identity_in_response(self):
         client = MockClient()
