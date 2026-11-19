@@ -38,13 +38,13 @@ async function talkEligible(t:Telegram,id:number,index:number):Promise<boolean>{
  try{
   // The direct URL button bypasses callback authorization. Enforce the same
   // blacklist rule when rendering it, not only when processing a Gate click.
-  const denied=await blacklistRepo.getBlacklisted(id);
-  if(denied?.status==="blocked")return canDirectTalkTopic(false,"unknown",true);
+  const blocked=(await blacklistRepo.getBlacklisted(id))?.status==="blocked";
+  if(blocked)return false;
   const target=await talkTarget(index);
   if(!target)return false;
   const member=await onlineMembership(t,TALK_GROUP_IDS[index]!,id);
   if(member!=="member")return false;
-  return canDirectTalkTopic(await commonGayBbsApproval(t,id,target.targetId),member);
+  return canDirectTalkTopic(await commonGayBbsApproval(t,id,target.targetId),member,blocked);
  }catch{return false;}
 }
 
