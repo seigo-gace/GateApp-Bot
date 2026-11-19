@@ -114,6 +114,8 @@
 - `req_20261120023500000000e610` は当該E2Eの時刻範囲のBotログを安全に分類し、`req_20261120024300000000e613` EXIT40＝ `[GAYBBS_ERROR] callback_query` は観測なし。これはBot成功の証明ではなく、例外の記録がなかったという限定的な事実。
 - `req_20261120023900000000e611` のGserver本番DB読み取りはHOST PASS。結果の非公開分類 `req_20261120024100000000e612` EXIT100(mask0)により、3グループ×2種類のパネル計6件が全てpublished・pinned・message_id保持・needs_reconcile無しと照合。Telegramでのボタン全押下や端末別表示とは別。
 - 追加のSource欠陥：雑談3トピックの直URLはcallbackを経由しないため、表示時の `talkEligible` がブラックリスト確認を省くと、ブラックリスト対象でも過去の承認＋加入状態だけで直リンクが現れる。既存の拒否方針を同じ表示時判定へ追加し、`canDirectTalkTopic` のブラックリスト拒否テストを拡張（コミット `8e0cad32f8a843afee4ce933b2dfb5a4f1903d6f`）。ラベル、行、色、元Topic URLは変更なし。Source CI4件SUCCESS、Gserver隔離ビルドと本番反映は別判定。
+- 上記Source SHAのGitHub CI4件すべてSUCCESS（Profile 44575044677、GayBBS Docker 44575044737、CM 44575044724、Tumblr bridge 44575044562）。Gserver隔離ビルド `req_20261120025000000000e614` HOST PASS、本番GayBBSのみdrift検査と旧イメージ退避を実施 `req_20261120025500000000e615` HOST PASS（READYログ、実イメージ一致、Userbot active）。これはブラックリスト対象本人の実端末操作PASSではない。
+
 
 ## 一次資料
 - Telegram公式 Deep links: https://core.telegram.org/api/links
