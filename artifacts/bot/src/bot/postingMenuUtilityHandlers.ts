@@ -36,6 +36,10 @@ async function talkTarget(index:number):Promise<{targetId:number;gateCode:string
 }
 async function talkEligible(t:Telegram,id:number,index:number):Promise<boolean>{
  try{
+  // The direct URL button bypasses callback authorization. Enforce the same
+  // blacklist rule when rendering it, not only when processing a Gate click.
+  const denied=await blacklistRepo.getBlacklisted(id);
+  if(denied?.status==="blocked")return false;
   const target=await talkTarget(index);
   if(!target)return false;
   const member=await onlineMembership(t,TALK_GROUP_IDS[index]!,id);
