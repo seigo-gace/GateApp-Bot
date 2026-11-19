@@ -3,6 +3,7 @@
  * Persist the returned screen ID in the owning draft repository.
  */
 import {Markup, type Telegram} from "telegraf";
+import {assertTelegramInlineKeyboard} from "./telegramClientCompatibility.js";
 
 export type WizardKeyboard = ReturnType<typeof Markup.inlineKeyboard>;
 export async function showWizardScreen(
@@ -10,6 +11,7 @@ export async function showWizardScreen(
  text:string, keyboard?:WizardKeyboard, parseMode?:"HTML",
 ):Promise<{messageId:number;replaced:boolean}>{
  if(!Number.isSafeInteger(chatId)||chatId<=0)throw new Error("WIZARD_PRIVATE_CHAT_REQUIRED");
+ if(keyboard)assertTelegramInlineKeyboard(keyboard);
  const display=parseMode?{...keyboard,parse_mode:parseMode}:keyboard;
  const oldId=Number.isSafeInteger(previousMessageId)&&Number(previousMessageId)>0?previousMessageId:undefined;
  if(oldId){
