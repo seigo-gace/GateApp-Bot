@@ -87,7 +87,7 @@ class UserbotInboxProvisionTests(unittest.TestCase):
                 first = asyncio.run(process_request(client, request))
                 second = asyncio.run(process_request(client, request))
                 target = pathlib.Path(tmp) / "bug_report_userbot_account.txt"
-                self.assertEqual(target.read_text(encoding="ascii"), "123456789\\n")
+                self.assertEqual(target.read_text(encoding="ascii"), "123456789\n")
                 self.assertEqual(target.stat().st_mode & 0o077, 0)
                 self.assertTrue(first["provisioned"])
                 self.assertTrue(second["identity_unchanged"])
@@ -101,14 +101,14 @@ class UserbotInboxProvisionTests(unittest.TestCase):
         client.get_me = get_me
         with tempfile.TemporaryDirectory() as tmp:
             target = pathlib.Path(tmp) / "bug_report_userbot_account.txt"
-            target.write_text("987654321\\n", encoding="ascii")
+            target.write_text("987654321\n", encoding="ascii")
             target.chmod(0o600)
             with patch("userbot_resident_ipc.SECRETS", pathlib.Path(tmp)):
                 with self.assertRaisesRegex(RuntimeError, "USERBOT_REPORT_IDENTITY_CONFLICT"):
                     asyncio.run(process_request(client, {
                         "request_id": "inbox-2", "action": "bug_report_inbox_provision"
                     }))
-            self.assertEqual(target.read_text(encoding="ascii"), "987654321\\n")
+            self.assertEqual(target.read_text(encoding="ascii"), "987654321\n")
 
 
 class RoomMessage:
