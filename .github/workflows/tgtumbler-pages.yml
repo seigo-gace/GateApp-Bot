@@ -72,3 +72,17 @@ jobs:
             npx wrangler pages project create "$PROJECT_NAME" --production-branch="$PROD_BRANCH"
           fi
           npx wrangler pages deploy dist --project-name="$PROJECT_NAME" --commit-dirty=true
+
+      - name: Verify published CreateVdobot terms (production only)
+        if: github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+        run: |
+          set -euo pipefail
+          PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT_NAME:-tgtumbler-docs}"
+          URL="https://${PROJECT_NAME}.pages.dev/createvdobot-terms.html"
+          curl --fail --silent --show-error --location --retry 6 --retry-all-errors --retry-delay 3 --connect-timeout 10 --max-time 35 "$URL" -o /tmp/createvdobot-terms-live.html
+          grep -Fq 'CreateVdobot' /tmp/createvdobot-terms-live.html
+          grep -Fq '投稿者' /tmp/createvdobot-terms-live.html
+          printf 'CREATOR_TERMS_LIVE_GET=PASS; PUBLIC_URL=%s\\n' "$URL"
+
