@@ -176,12 +176,16 @@ async function main():Promise<void>{
   const kind=ctx.match[1];
   if(kind==="profile"){await openProfileFromMenu(ctx);return;}
   await ctx.answerCbQuery();
-  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
-  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
-  else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id);
-  else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id);
-  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id,("message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined));
-  else await startOperationHelp(ctx.telegram,ctx.from.id);
+  // All selected editors must replace the exact tapped DM menu rather than
+  // append below it or silently modify a stale screen elsewhere.
+  const tappedId=("message" in ctx.callbackQuery
+   ?ctx.callbackQuery.message?.message_id:undefined);
+  if(kind==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="room")await startRoomEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="announcement")await startAnnouncementEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="link")await startLinkEditor(ctx.telegram,ctx.from.id,tappedId);
+  else if(kind==="search")await startSearchEditor(ctx.telegram,ctx.from.id,tappedId);
+  else await startOperationHelp(ctx.telegram,ctx.from.id,tappedId);
  });
  registerCompactRecruitmentHandlers(bot);
  registerPostingMenuUtilityHandlers(bot);
