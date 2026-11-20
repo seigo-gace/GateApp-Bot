@@ -339,7 +339,13 @@ export async function runMigrations(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-      CREATE TABLE IF NOT EXISTS room_posts (
+      ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_kind TEXT;
+       ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_file_id TEXT;
+       ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS caption_above BOOLEAN NOT NULL DEFAULT FALSE;
+       ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS share_code TEXT;
+       CREATE UNIQUE INDEX IF NOT EXISTS link_button_posts_share_code_unique
+         ON link_button_posts(share_code) WHERE share_code IS NOT NULL;
+       CREATE TABLE IF NOT EXISTS room_posts (
         room_id BIGSERIAL PRIMARY KEY,
         request_key TEXT NOT NULL UNIQUE,
         owner_user_id BIGINT NOT NULL,
