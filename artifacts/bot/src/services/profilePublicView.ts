@@ -109,7 +109,7 @@ export async function existingPublishedProfileUrl(ownerId:number):Promise<string
 /** Bind group callbacks to their actual published source message. */
 export async function resolvePublishedProfilePanel(token:string,chatId:number,messageId:number):Promise<SavedProfile|null>{
  if(!VIEW_TOKEN_PATTERN.test(token)||!Number.isSafeInteger(chatId)||!Number.isSafeInteger(messageId)||messageId<=0)return null;
- const r=await pool.query(`SELECT 1 FROM profile_view_links l
+ const r=await pool.query(`SELECT l.owner_user_id FROM profile_view_links l
  JOIN posting_topics t ON t.topic_id=l.topic_id AND t.purpose='profile'
    AND t.enabled=TRUE AND t.verified_at IS NOT NULL AND t.verified_by IS NOT NULL
  JOIN profile_publications pub ON pub.owner_user_id=l.owner_user_id
@@ -117,5 +117,10 @@ export async function resolvePublishedProfilePanel(token:string,chatId:number,me
    AND pub.status='published' AND pub.synced_revision=l.profile_revision
    AND pub.message_id=$3 AND pub.public_snapshot IS NOT NULL
  WHERE l.token=$1 AND l.enabled=TRUE AND t.chat_id=$2`,[token,chatId,messageId]);
- return r.rows.length===1?resolvePublishedProfileView(token):null;
+ if(r.rows.length!==1)return null;
+ const profile=await resolvePublishedProfileView(token);
+ if(!profile)return null;
+ const owner=await pool.query("SELECT username FROM profiles WHERE owner_user_id=$1",[Number(r.rows[0].owner_user_id)]);
+ const name=owner.rows[0]?.username;
+ return {...profile,username:typeof name==="string"?name:null};
 }
