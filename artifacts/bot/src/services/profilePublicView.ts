@@ -29,8 +29,7 @@ function assertId(value:number):void{
  if(!Number.isSafeInteger(value)||value<=0)throw new Error("PROFILE_VIEW_ID_INVALID");
 }
 export async function makeProfileViewerButtons(
- ownerId:number,revision:number,topicId:number,
-,username:string|null=null):Promise<PublicProfileButton[][]>{
+ ownerId:number,revision:number,topicId:number,username:string|null=null):Promise<PublicProfileButton[][]>{
  assertId(ownerId);assertId(revision);assertId(topicId);
  // New token created only on first (owner,revision,topic). A repeated
  // publish operation receives exactly the same URLs.
