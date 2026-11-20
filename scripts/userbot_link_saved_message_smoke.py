@@ -65,6 +65,12 @@ async def _run(client,code,trace):
         labels={str(getattr(button,"text","")) for row in rows for button in row}
         if labels.intersection(forbidden):
             raise RuntimeError("LINK_INLINE_POST_EDITOR_BUTTONS_LEAKED")
+        if "動画付きのリンク" in labels:
+            trace["stage"]="video_media"
+            if not any("video" in type(block).__name__.lower() for block in blocks):
+                raise RuntimeError("LINK_SAVED_VIDEO_BLOCK_MISSING")
+            if "動画の補足" not in str(rich):
+                raise RuntimeError("LINK_SAVED_VIDEO_CAPTION_MISSING")
         if "写真付きのリンク" in labels:
             trace["stage"]="photo_media"
             if not any("photo" in type(block).__name__.lower() for block in blocks):
