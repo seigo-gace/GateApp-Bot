@@ -114,7 +114,7 @@ try{
   const buttons=await makeProfileViewerButtons(id,current.revision,topicId);
   const again=await makeProfileViewerButtons(id,current.revision,topicId);
   assert.deepEqual(again,buttons,"publication retry must reuse stable URLs");
-  const token=buttons[0][0].url.split("pv_")[1];
+  const token=buttons[0][0].callback_data?.split(":")[2];
   assert.match(token,/^[A-Za-z0-9_-]{32}$/);
   assert.equal(await resolvePublishedProfileView(token),null,"private profile must not be viewable");
   await pool.query(
@@ -128,7 +128,7 @@ try{
   assert.equal(updated.status,"published");
   assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
   const nextLinks=await makeProfileViewerButtons(id,updated.revision,topicId);
-  const nextToken=nextLinks[0][0].url.split("pv_")[1];
+  const nextToken=nextLinks[0][0].callback_data?.split(":")[2];
   assert.equal(await resolvePublishedProfileView(nextToken),null,"unconfirmed edit not public");
   // Test-only gate in ephemeral PostgreSQL; not real Telegram E2E evidence.
   await pool.query(
@@ -142,7 +142,8 @@ try{
    async editMessageText(chat:number,msg:number,_inline:unknown,text:string,opts:any){
     assert.equal(chat,-1009876543210);assert.equal(msg,777);
     assert.match(text,/改訂テスト/);
-    assert.equal(opts.reply_markup.inline_keyboard[0].length,3);
+    assert.equal(opts.reply_markup.inline_keyboard[0].length,5);
+     assert.equal(opts.reply_markup.inline_keyboard[1][0].text,"連絡する");
     revisions++;return true;
    },
   } as any;
