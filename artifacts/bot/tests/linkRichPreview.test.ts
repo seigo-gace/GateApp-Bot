@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {linkRichPreview,linkRichPublication,linkRichPlacement,linkRichContentEditor} from "../src/services/linkRichPreview.js";
+import {linkRichPreview,linkRichPublication,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows} from "../src/services/linkRichPreview.js";
 import {linkInlineResult,type LinkInlinePost} from "../src/services/linkInlineShare.js";
 import {insertLinkButton,buttonGrid,parseLinkButtonPair,type LinkDraft} from "../src/services/linkButtonDomain.js";
 
@@ -21,8 +21,9 @@ test("③ real URL buttons and exactly two in-body edit entrances, no register/c
  assert.equal((text.match(/post:link:(?:panel|content):21/g)||[]).length,2);
  assert.doesNotMatch(text,/post:link:register/);
  assert.doesNotMatch(text,/post:link:cancel/);
- assert.match(text,/https:\/\/example\.com\//);
- assert.match(text,/"style":"primary"/);
+ assert.doesNotMatch(text,/https:\/\/example\.com\//);
+ assert.deepEqual(linkUrlKeyboardRows(draft).map(r=>r.map(b=>b.text)),[["サイト１","サイト２"],["サイト３"]]);
+ assert.match(serialized(linkUrlKeyboardRows(draft)),/"style":"primary"/);
  assert.match(text,/"type":"photo"/);
 });
 test("④ right and down row positions, in-body delete controls",()=>{
@@ -42,6 +43,14 @@ test("④ right and down row positions, in-body delete controls",()=>{
   ["サイト１","サイト２"],["サイト３"],["新規"],
  ]);
 });
+test("arbitrary URL layout length is not capped at four by application code",()=>{
+ let all:LinkDraft={...draft,buttons:[{label:"A",url:"https://example.org/",rowStart:true}]};
+ for(let i=0;i<6;i++)all={...all,buttons:insertLinkButton(all,
+  {label:"B"+i,url:"https://example.org/"},{kind:"right",rowIndex:0})};
+ assert.equal(buttonGrid(all)[0]?.length,7);
+ assert.equal(linkUrlKeyboardRows(all)[0]?.length,7);
+});
+
 test("⑤ selected target only, keeps other field and buttons",()=>{
  const before=JSON.stringify(draft);
  const rich=serialized(linkRichContentEditor(draft,77,"b1"));
@@ -58,12 +67,14 @@ test("registered code is selectable text without unsupported Rich copy_text",()=
  assert.doesNotMatch(text,/post:link:copy/);
 });
 
-test("public Rich post and preview use exactly the same material and URL button blocks",()=>{
+test("public Rich post and preview share media body, real URL rows live in reply markup",()=>{
  const result=linkInlineResult({ownerId:42,sourceId:"10",draft} as LinkInlinePost);
  assert.equal(result.type,"article");
  const embedded=(result.input_message_content as {rich_message:ReturnType<typeof linkRichPublication>}).rich_message;
  const publicBlocks=linkRichPublication(draft).blocks;
  assert.deepEqual(embedded.blocks,publicBlocks);
+ assert.deepEqual((result.reply_markup as {inline_keyboard:unknown}).inline_keyboard,linkUrlKeyboardRows(draft));
+ assert.equal(publicBlocks.some(block=>block.type==="buttons"),false);
  const privateBlocks=linkRichPreview(draft,9).blocks;
  assert.deepEqual(privateBlocks.slice(0,publicBlocks.length),publicBlocks);
  assert.equal(JSON.stringify(publicBlocks).includes("post:link:panel"),false);
