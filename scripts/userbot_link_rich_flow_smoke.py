@@ -22,6 +22,17 @@ async def _run(client, trace):
         if d is None:
             d=getattr(getattr(b,"button",None),"data",None)
         return d
+    def revision(msg):
+        for row in (msg.buttons or []):
+            for button in row:
+                value=cb_data(button) or b""
+                match=re.fullmatch(
+                    rb"post:link:(?:register|back|restart|change|cancel):(\\d+)",
+                    value)
+                if match:
+                    return int(match.group(1))
+        raise RuntimeError("LINK_RICH_REVISION_UNAVAILABLE")
+
     async def latest(predicate,mark,attempts=15):
         for _ in range(attempts):
             messages=await client.get_messages(bot,limit=65)
@@ -62,41 +73,46 @@ async def _run(client, trace):
     mark=mk();await client.send_message(bot,"一番目\nhttps://example.org/")
     preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),mark)
 
-    rev=None
-    for row in (preview.buttons or []):
-        for b in row:
-            match=re.fullmatch(rb"post:link:register:(\d+)",cb_data(b) or b"")
-            if match:rev=int(match.group(1))
-    if not rev:raise RuntimeError("LINK_RICH_REVISION_UNAVAILABLE")
+    rev=revision(preview)
 
     trace["stage"]="panel"
     mark=mk();await callback(preview,f"post:link:panel:{rev}")
     placement=await latest(lambda m:"戻る" in labels(m) and "キャンセル" in labels(m)
                            and "登録" not in labels(m),mark)
     trace["stage"]="add"
+    rev=revision(placement)
     mark=mk();await callback(placement,f"post:link:add:{rev}")
-    await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
+    input_screen=await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
                  and any("標準" in label for label in labels(m)),mark)
+    rev=revision(input_screen)
     trace["stage"]="second_link"
     mark=mk();await client.send_message(bot,"二番目\nhttps://example.com/")
     placement=await latest(lambda m:"戻る" in labels(m)
                            and "キャンセル" in labels(m)
                            and "登録" not in labels(m),mark)
     trace["stage"]="delete"
+    rev=revision(placement)
+    mark=mk()
     answer=await callback(placement,f"post:link:delete:{rev}:1")
     if "削除" not in answer:
         raise RuntimeError("LINK_RICH_DELETE_NOT_ACKNOWLEDGED")
 
+    placement=await latest(lambda m:"戻る" in labels(m) and "キャンセル" in labels(m)
+                           and "登録" not in labels(m),mark)
     trace["stage"]="back"
+    rev=revision(placement)
     mark=mk();await callback(placement,f"post:link:back:{rev}")
     preview=await latest(lambda m:"登録" in labels(m),mark)
     trace["stage"]="content"
+    rev=revision(preview)
     mark=mk();await callback(preview,f"post:link:content:{rev}")
     content=await latest(lambda m:"変更" in labels(m) and "戻る" in labels(m),mark)
     trace["stage"]="field"
+    rev=revision(content)
     mark=mk();await callback(content,f"post:link:field:{rev}:text")
     selected=await latest(lambda m:"変更" in labels(m),mark)
     trace["stage"]="change"
+    rev=revision(selected)
     mark=mk();await selected.click(text="変更")
     await latest(lambda m:"新しい文章をDMで送信" in (m.raw_text or ""),mark)
     trace["stage"]="save_edit"
