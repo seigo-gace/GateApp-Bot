@@ -77,8 +77,11 @@ export async function resolvePublishedProfileView(token:string):Promise<SavedPro
    WHERE l.token=$1 AND l.enabled=TRUE`,
   [token]);
  if(rows.rows.length!==1)return null;
- return restorePublishedSnapshot(Number(rows.rows[0].owner_user_id),
+ const ownerId=Number(rows.rows[0].owner_user_id);
+ const restored=await restorePublishedSnapshot(ownerId,
    rows.rows[0].public_snapshot as PublicProfileSnapshot,Number(rows.rows[0].profile_revision));
+ const u=await pool.query("SELECT username FROM profiles WHERE owner_user_id=$1",[ownerId]);
+ return {...restored,username:typeof u.rows[0]?.username==="string"?u.rows[0].username:null};
 }
 
 /** ROOM only links to an already published, permission-checked profile card.
