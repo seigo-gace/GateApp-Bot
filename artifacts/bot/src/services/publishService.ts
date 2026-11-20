@@ -34,6 +34,9 @@ export type PublishRequest = {
 /** Shared MPB-facing Telegram adapter. No business state is owned here. */
 export async function publishPost(telegram:Telegram, req:PublishRequest):
   Promise<{messageId:number;chatId:number;threadId:number}> {
+  if((req.sourceType as string)==="video_sale" ||
+     (req.destinationPurpose as string)==="video_sale")
+    throw new Error("VIDEO_SALE_REQUIRES_VERIFIED_PAID_MEDIA_PUBLISHER");
   if(req.approved!==true)throw new Error("PUBLISH_CONSENT_REQUIRED");
   if(!req.sourceId||req.sourceId.length>120||!req.text.trim()||req.text.length>4096)
     throw new Error("PUBLISH_INPUT_INVALID");
