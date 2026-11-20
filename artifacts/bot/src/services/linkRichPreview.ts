@@ -24,7 +24,7 @@ export function linkRichPreview(draft:LinkDraft,revision:number,shareCode?:strin
  if(shareCode){
   const code="@GayBBS_bot "+shareCode;
   blocks.push(paragraph("投稿コード："+code));
-  blocks.push(paragraph(richAction("［投稿コードをコピー］","post:link:copy:"+revision)));
+  blocks.push(paragraph({type:"button",button:{text:"［投稿コードをコピー］",copy_text:{text:code}}}));
  }
  if(draft.media&&draft.captionAbove&&draft.text.trim())blocks.push(paragraph(draft.text));
  if(draft.media){
@@ -71,14 +71,14 @@ export function linkRichPlacement(draft:LinkDraft,revision:number){
 /** ⑤ Existing paid-video style: pick one field, then change that field only.
  * Missing media entries are omitted; existing fields are never cleared here.
  */
-export function linkRichContentEditor(draft:LinkDraft,revision:number){
+export function linkRichContentEditor(draft:LinkDraft,revision:number,selectedField?:string){
  validateLinkDraft(draft);
  const blocks:RichBlock[]=[paragraph("📝 内容の編集"),paragraph("編集したい項目の［編集］をタップしてください。")];
- if(draft.text.trim())blocks.push(paragraph([richAction("［編集］","post:link:edittext:"+revision),"テキスト："+draft.text]));
- if(draft.media)blocks.push(paragraph([richAction("［編集］","post:link:editmedia:"+revision),draft.media.type==="photo"?"画像":"動画"]));
+ if(draft.text.trim())blocks.push(paragraph([richAction("［編集］","post:link:field:"+revision+":text"),selectedField==="text"?"✅ ":"", "テキスト："+draft.text]));
+ if(draft.media)blocks.push(paragraph([richAction("［編集］","post:link:field:"+revision+":media"),selectedField==="media"?"✅ ":"", draft.media.type==="photo"?"画像":"動画"]));
  draft.buttons.forEach((b,i)=>blocks.push(paragraph([
-  richAction("［編集］","post:link:edit:"+revision+":"+i),
-  "ボタンタイトル"+(i+1)+"："+b.label,
+  richAction("［編集］","post:link:field:"+revision+":b"+i),
+  selectedField==="b"+i?"✅ ":"", "ボタンタイトル"+(i+1)+"："+b.label,
  ])));
  return {blocks};
 }
