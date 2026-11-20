@@ -78,3 +78,18 @@
 - DM `/start`・固定リンク・キャンセル復帰・古いボタン・未検証URL・期限切れtokenの処理。
 - プロフィール、相手募集、Room、告知、検索、リンク、雑談、GATE、不具合報告の回帰。
 - Test/CI PASSと、実Telegram/DB/Userbotの本番PASSを区別。
+
+
+## 2026-11-20｜🔗ボタン作成 最新採用UIと共通責務（Master決定）
+
+設計決定本文の正本は既存Notion「TGtumbler｜Bot DM画面・操作UIの設計変更履歴」2026-11-20節。旧リンクUI案は履歴であり、このセクションを優先する。**Source変更・CI・本番反映の有無は別管理する。**
+
+1. **①素材受信**：投稿形式5択は表示しない。Bot DMの通常入力欄からテキスト・画像・動画・ステッカー等を受け、キャプションも回収。Botが自動判別し既存の本人下書きへ保存。画面下部［キャンセル］→投稿メニュー。
+2. **②最初のURLボタン**：1行目にボタン名、2行目にHTTPSのリンク先を1通で受信。色は「標準・青・緑・赤」の必須単一選択。標準がデフォルト✅、別色を押したら✅移動。［戻る］→①やり直し、［キャンセル］→投稿メニュー。
+3. **③実物プレビュー**：投稿コードで実際に共有するときと同じ媒体・テキスト・キャプション・URLボタン列/色を表示。メッセージ**本文内**にタップ可能な［ボタンの追加］・［内容の編集］。**下部InlineKeyboardは［登録］［キャンセル］のみ**。旧案の［編集］をInlineKeyboardへ戻さない。Telegram Bot APIのRichTextButton / RichMessageButtonで構成、互換性は実機検証する。非対応時に無許可のUI代替・完成報告禁止。
+4. **④ボタン追加**：既存ボタン各々の［削除］、行末［▶］、末尾［▼］を本文内で選択。▶＝当該行の右横、▼＝下段新規行。追加先選択後、②と同じ2行一括入力・色選択・戻る／キャンセル。既存の行構造と他ボタンを保つ。
+5. **⑤内容編集**：本文中に［編集］テキスト／画像／動画／ボタン名１〜N。［戻る］［変更］［キャンセル］、選択対象だけを既存有料ビデオ投稿式の入力・部分変更へ渡す。未編集データを保持、戻る→③。
+6. **共通実装**：既存 `postingHandlers.ts` と `publicPostRepository.ts` のowner/revision/draft、`dmWizardScreen.ts` のmessage edit+入力メッセージ削除、`inlineSelection.ts` の✅状態、`linkButtonDomain.ts` のURL検証・rowStart配置、`linkInlineShare.ts` の共有コード、`linkRichPreview.ts` のRich本文操作・描画、`telegramDispatcher.ts` の実配送を再利用。DMと公開Menuの `postingMenuContract.ts` / `postingMenuRoutes.ts` を変更・複製しない。
+7. **実機受入**：3グループ共通リンク入口→DM①→素材自動回収→②→③→④/⑤→登録・コード共有のE2Eを検証。旧DM `dm:blocked:link` 互換も確認。iOS/AndroidのRich操作を検証。Source/CI/DB記録だけで完成にしない。
+
+**従前契約との関係**：旧共通UI契約には「本文内の見せかけボタンを描かない」条件がある。今回はMasterがリンク作成の①〜⑤に限り本文内の**実際にタップ可能なRichボタン**を承認した限定例外であり、テキストだけの非機能ダミーを許可したものではない。他機能のInlineKeyboard原則は維持。
