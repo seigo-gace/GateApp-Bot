@@ -9,6 +9,17 @@ import {restorePublishedSnapshot,type PublicProfileSnapshot} from "./profilePubl
 
 export const VIEW_TOKEN_PATTERN=/^[A-Za-z0-9_-]{32}$/;
 export type ViewerPurpose="profile"|"media"|"tags";
+export type PublicProfileButton={text:string;url?:string;callback_data?:string};
+export type ProfilePanel="profile"|"photo"|"video"|"like"|"love";
+export const PROFILE_PANEL_ICONS=["🪪","🖼️","🎞️","💖","💘"] as const;
+export function profilePanelRows(token:string,username:string|null):PublicProfileButton[][]{
+ if(!VIEW_TOKEN_PATTERN.test(token))throw new Error("PROFILE_VIEW_TOKEN_INVALID");
+ const modes:ProfilePanel[]=["profile","photo","video","like","love"];
+ const row=modes.map((mode,i)=>({text:PROFILE_PANEL_ICONS[i]!,callback_data:`pfv:show:${token}:${mode}`}));
+ const valid=typeof username==="string"&&/^[A-Za-z0-9_]{5,32}$/.test(username);
+ return [row,valid?[{text:"連絡する",url:`https://t.me/${username}`}]:[{text:"連絡する",callback_data:`pfv:contact:${token}`}]];
+}
+
 const prefixes:Record<ViewerPurpose,string>={profile:"pv",media:"pm",tags:"pt"};
 export function profileViewerUrl(purpose:ViewerPurpose,token:string):string{
  if(!VIEW_TOKEN_PATTERN.test(token))throw new Error("PROFILE_VIEW_TOKEN_INVALID");
@@ -19,7 +30,7 @@ function assertId(value:number):void{
 }
 export async function makeProfileViewerButtons(
  ownerId:number,revision:number,topicId:number,
-):Promise<{text:string;url:string}[][]>{
+,username:string|null=null):Promise<PublicProfileButton[][]>{
  assertId(ownerId);assertId(revision);assertId(topicId);
  // New token created only on first (owner,revision,topic). A repeated
  // publish operation receives exactly the same URLs.
@@ -38,11 +49,7 @@ export async function makeProfileViewerButtons(
  if(row.rows.length!==1||row.rows[0].enabled!==true)
   throw Error("PROFILE_VIEW_SOURCE_NOT_ELIGIBLE");
  const token=String(row.rows[0].token);
- return [[
-  {text:"🪪プロフ",url:profileViewerUrl("profile",token)},
-  {text:"画像/動画",url:profileViewerUrl("media",token)},
-  {text:"#Love & Like",url:profileViewerUrl("tags",token)},
- ]];
+ return profilePanelRows(token,username);
 }
 export function parseProfileViewerPayload(payload:string):
  {purpose:ViewerPurpose;token:string}|null{
@@ -97,4 +104,18 @@ export async function existingPublishedProfileUrl(ownerId:number):Promise<string
     WHERE l.owner_user_id=$1 AND l.enabled=TRUE
     ORDER BY l.profile_revision DESC LIMIT 1`,[ownerId]);
  return r.rows.length===1?profileViewerUrl("profile",String(r.rows[0].token)):null;
+}
+
+/** Bind group callbacks to their actual published source message. */
+export async function resolvePublishedProfilePanel(token:string,chatId:number,messageId:number):Promise<SavedProfile|null>{
+ if(!VIEW_TOKEN_PATTERN.test(token)||!Number.isSafeInteger(chatId)||!Number.isSafeInteger(messageId)||messageId<=0)return null;
+ const r=await pool.query(`SELECT 1 FROM profile_view_links l
+ JOIN posting_topics t ON t.topic_id=l.topic_id AND t.purpose='profile'
+   AND t.enabled=TRUE AND t.verified_at IS NOT NULL AND t.verified_by IS NOT NULL
+ JOIN profile_publications pub ON pub.owner_user_id=l.owner_user_id
+   AND pub.chat_id=t.chat_id AND pub.thread_id=t.message_thread_id
+   AND pub.status='published' AND pub.synced_revision=l.profile_revision
+   AND pub.message_id=$3 AND pub.public_snapshot IS NOT NULL
+ WHERE l.token=$1 AND l.enabled=TRUE AND t.chat_id=$2`,[token,chatId,messageId]);
+ return r.rows.length===1?resolvePublishedProfileView(token):null;
 }

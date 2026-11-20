@@ -734,7 +734,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    let sourceId:string;let text:string;
    let hostJoinUrl:string|null=null;
    let isScheduledRoom=false;
-   let buttons:ReadonlyArray<ReadonlyArray<{text:string;url:string}>>|undefined;
+   let buttons:ReadonlyArray<ReadonlyArray<{text:string;url?:string;callback_data?:string}>>|undefined;
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
     if(!p||p.revision!==revision)throw new Error("プロフィールが更新されています。");
@@ -747,7 +747,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
      return;
     }
     sourceId=String(ctx.from.id);text=renderPublicProfile(p);
-    buttons=await makeProfileViewerButtons(ctx.from.id,revision,topicId);
+    buttons=await makeProfileViewerButtons(ctx.from.id,revision,topicId,p.username);
    }else{
     const draft=await getDraft(ctx.from.id,module);
     if(!draft||draft.step!=="preview"||draft.revision!==revision)
