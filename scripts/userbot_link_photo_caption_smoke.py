@@ -69,7 +69,7 @@ async def run(client):
     preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
     t=mark()
     await preview.click(text="登録")
-    await latest(lambda m:any("投稿コードをコピー" in b for b in labels(m)),t)
+    await latest(lambda m:any("登録コードをコピー" in b for b in labels(m)),t)
     return {"status":"PASS","photo_received":True,
             "caption_input_sent":True,"preview_ready":True,
             "photo_registration_receipt":True}
