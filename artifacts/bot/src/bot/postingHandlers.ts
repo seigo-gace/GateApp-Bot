@@ -1730,7 +1730,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    return;
   }
   if(op==="add"||op==="beside"||op==="edit"){
-   if(d.step!=="preview"||d.data.linkEditorView!==true||
+   if(d.step!=="preview"||(op==="edit"?d.data.linkEditorView!=="content":d.data.linkEditorView!==true)||
      typeof d.data.shareCode==="string"){
     await ctx.answerCbQuery("編集画面を開いてください。");return;
    }
@@ -1747,21 +1747,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
     {...d.data,linkEditMode:op==="edit"?"replace":"add",
      linkPlacement:op==="beside"?"beside":"nextRow",
      linkTargetRow:op==="beside"?targetRow:null,
-     linkEditIndex:op==="edit"?targetRow:null});
+     linkEditIndex:op==="edit"?targetRow:null,linkStage:"button",
+     linkSelectedStyle:op==="edit"?String((d.data.buttons as LinkDraft["buttons"])[targetRow!]!.style||"standard"):"standard"});
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    (op==="edit"?"📝 "+String(targetRow!+1)+"番のボタンを編集":op==="beside"?
-     "➔ "+String(targetRow!+1)+"列目の右横に追加":"＋↓ 新しい列にボタンを追加")+
-    "\n1行目：ボタン名\n2行目：https://URL\n2行をまとめて1回送信してください。",
-    Markup.inlineKeyboard([
-     ...(op==="edit"?[
-      ["青","緑","赤","標準"].map((label,i)=>Markup.button.callback(label,
-       "post:link:color:"+next.revision+":"+targetRow+":"+i)),
-      [Markup.button.callback("🗑 削除","post:link:delete:"+next.revision+":"+targetRow)]
-     ]:[]),
-     [Markup.button.callback("↩ ボタン編集に戻る","post:link:back:"+next.revision)],
-     [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]
-   ]));
+    (op==="edit"?"📝 ボタンタイトル"+String(targetRow!+1)+"を編集":op==="beside"?
+     "▶ 右横にボタンを追加":"▼ 次の段にボタンを追加")+
+    "\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",linkColorKeyboard(next));
    return;
   }
   if(op==="destination"){
@@ -1785,12 +1777,12 @@ export function registerPostingHandlers(bot:Telegraf):void{
   else await showLinkRichPreview(ctx.telegram,ctx.from.id,next);
  });
 
- bot.action(/^post:link:(color|delete):(\d+):(\d+)(?::([0-3]))?$/,async ctx=>{
+ bot.action(/^post:link:(delete):(\d+):(\d+)(?::([0-3]))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],revision=Number(ctx.match[2]);
   const index=Number(ctx.match[3]);
   const d=await getDraft(ctx.from.id,"link");
-  if(!d||d.revision!==revision||d.data.linkEditorView!==true||
+  if(!d||d.revision!==revision||d.step!=="preview"||d.data.linkEditorView!==true||
     typeof d.data.shareCode==="string"){
    await ctx.answerCbQuery("編集画面の状態が変わりました。");return;
   }
@@ -1798,32 +1790,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!Number.isInteger(index)||index<0||index>=buttons.length){
    await ctx.answerCbQuery("ボタンが見つかりません。");return;
   }
-  if(op==="color"){
-   const colorIndex=Number(ctx.match[4]);
-   if(d.step!=="awaiting_text"||Number(d.data.linkEditIndex)!==index||
-      !Number.isInteger(colorIndex)||colorIndex<0||colorIndex>3){
-    await ctx.answerCbQuery("ボタン編集画面から色を指定してください。");return;
-   }
-   const styles=["primary","success","danger",undefined] as const;
-   const updated=await updateDraft(ctx.from.id,"link",revision,"awaiting_text",{
-    ...d.data,buttons:buttons.map((b,i)=>i===index?{
-     ...b,style:styles[colorIndex]}:b),
-   });
-   await ctx.answerCbQuery("色を変更しました");
-   await showPostScreen(ctx.telegram,ctx.from.id,updated,
-    "📝 "+String(index+1)+"番のボタンを編集\n"+
-    "色の変更を保持しました。タイトルとURLの変更は2行でDMへ送信してください。",
-    Markup.inlineKeyboard([
-     ["青","緑","赤","標準"].map((label,i)=>Markup.button.callback(
-      (i===colorIndex?"✅ ":"")+label,
-      "post:link:color:"+updated.revision+":"+index+":"+i)),
-     [Markup.button.callback("↩ ボタン編集に戻る","post:link:back:"+updated.revision)],
-     [Markup.button.callback("キャンセル","post:link:cancel:"+updated.revision)],
-    ]));
-   return;
-  }
-  if(d.step!=="awaiting_text"||Number(d.data.linkEditIndex)!==index||
-      buttons.length<=1){
+  if(buttons.length<=1){
    await ctx.answerCbQuery("最後のボタンは削除できません。");return;
   }
   const rows=buttonGrid(d.data as LinkDraft);
