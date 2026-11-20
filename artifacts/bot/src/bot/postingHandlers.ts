@@ -1509,40 +1509,60 @@ export function registerPostingHandlers(bot:Telegraf):void{
  const receiveLinkMedia=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video")=>{
   if(ctx.chat?.type!=="private"||!ctx.from){await next();return;}
   if(await currentDmTextOwner(ctx.from.id)!=="link"){await next();return;}
-  const draft=await getWaitingDraft(ctx.from.id);
-  if(!draft||draft.module!=="link"||
-    !["content","editmedia"].includes(String(draft.data.linkStage))){await next();return;}
+  const original=await getWaitingDraft(ctx.from.id);
+  if(!original||original.module!=="link"||
+     !["content","button","editmedia"].includes(String(original.data.linkStage))){await next();return;}
   const msg=ctx.message;
   if(!msg){await next();return;}
   const file=kind==="photo"&&"photo" in msg?msg.photo.at(-1):
-    kind==="video"&&"video" in msg?msg.video:undefined;
+   kind==="video"&&"video" in msg?msg.video:undefined;
   if(!file?.file_id){await next();return;}
   const caption="caption" in msg&&typeof msg.caption==="string"?msg.caption:"";
-  const replaced=draft.data.linkStage==="editmedia";
-  const oldText=String(draft.data.text||"");
-  const text=caption|| (replaced?oldText:"");
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,msg.message_id);
-  const notice=deleted?"":"\n⚠️ 送信した媒体メッセージを削除できません。手動で削除してください。";
+  const notice=deleted?"":"\\n⚠️ 送信した素材メッセージを削除できません。手動で削除してください。";
   try{
-   if(text.length>1024)throw Error("LINK_BODY_INVALID");
-   const updated=await updateDraft(ctx.from.id,"link",draft.revision,
-    replaced?"preview":"awaiting_text",{
-     ...draft.data,text,
-     media:{type:kind,fileId:file.file_id},
-     captionAbove:draft.data.captionAbove===true,
-     linkStage:replaced?"ready":"button",linkEditorView:false});
-   if(replaced)await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   // Extra album messages may arrive after Step ② is displayed. Preserve
+   // caption and append in the same draft rather than asking for a format menu.
+   let updated:EditorDraft|undefined;
+   for(let attempt=0;attempt<3;attempt++){
+    const d=attempt===0?original:await getWaitingDraft(ctx.from.id);
+    if(!d||d.module!=="link")throw Error("LINK_DRAFT_NOT_WAITING");
+    const stage=String(d.data.linkStage||"content");
+    if(!["content","button","editmedia"].includes(stage))throw Error("LINK_MEDIA_STAGE_CHANGED");
+    const replacing=stage==="editmedia";
+    const hasPrimary=Boolean(d.data.media);
+    const oldText=String(d.data.text||"");
+    const text=oldText||caption;
+    if(text.length>1024||caption.length>1024)throw Error("LINK_BODY_INVALID");
+    const extras=Array.isArray(d.data.mediaExtras)?d.data.mediaExtras as LinkDraft["mediaExtras"]:[];
+    const appended=stage==="button"&&hasPrimary;
+    const newMedia={type:kind,fileId:file.file_id,...(appended&&caption?{caption}:{})};
+    const media=appended?d.data.media:newMedia;
+    const mediaExtras=appended?[...(extras||[]),newMedia]:extras||[];
+    if(mediaExtras.length>=50)throw Error("LINK_MEDIA_ALBUM_LIMIT");
+    const data={...d.data,text,media,mediaExtras,
+     captionAbove:d.data.captionAbove===true,
+     linkStage:replacing?"ready":"button",linkEditorView:false};
+    try{
+     updated=await updateDraft(ctx.from.id,"link",d.revision,
+      replacing?"preview":"awaiting_text",data);
+     break;
+    }catch(error){
+     if(!(error instanceof Error&&error.message==="POST_DRAFT_STALE")||attempt===2)throw error;
+    }
+   }
+   if(!updated)throw Error("LINK_MEDIA_UPDATE_NOT_CONFIRMED");
+   if(updated.step==="preview")await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
    else await showPostScreen(ctx.telegram,ctx.from.id,updated,
     "✅ "+(kind==="photo"?"画像":"動画")+"を受け取りました。"+notice+
-    "\n\n次の2行をまとめて1回送信してください。\n1行目：ボタン名\n2行目：https://URL",
-    Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
-     "post:link:cancel:"+updated.revision)]]));
+    "\\n\\n次の2行をまとめて1回送信してください。\\n1行目：ボタンのタイトル\\n2行目：ボタンにしたいURL",
+    linkColorKeyboard(updated));
   }catch(error){
    const reason=error instanceof Error?error.message:"登録失敗";
-   await showPostScreen(ctx.telegram,ctx.from.id,draft,
-    "⚠️ 媒体を登録できませんでした："+reason+notice,
+   await showPostScreen(ctx.telegram,ctx.from.id,original,
+    "⚠️ 素材を登録できませんでした："+reason+notice,
     Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
-     "post:link:cancel:"+draft.revision)]]));
+     "post:link:cancel:"+original.revision)]]));
   }
  };
  bot.on("photo",async(ctx,next)=>receiveLinkMedia(ctx,next,"photo"));
