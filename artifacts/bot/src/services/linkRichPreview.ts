@@ -27,7 +27,9 @@ export function linkRichPublication(draft:LinkDraft){
   const caption=media.caption?{caption:{text:media.caption}}:{};
   blocks.push(media.type==="photo"
    ?{type:"photo",photo:{type:"photo",media:media.fileId},...caption}
-   :{type:"video",video:{type:"video",media:media.fileId},...caption});
+   :media.type==="video"
+   ?{type:"video",video:{type:"video",media:media.fileId},...caption}
+   :{type:"document",document:{type:"document",media:media.fileId},...caption});
  }
  if(draft.text.trim()&&(!draft.media||!draft.captionAbove))blocks.push(paragraph(draft.text));
  // URL buttons are placed in Telegram's reply_markup, not the Rich body.
@@ -107,7 +109,7 @@ export function linkRichContentEditor(draft:LinkDraft,revision:number,selectedFi
  validateLinkDraft(draft);
  const blocks:RichBlock[]=[paragraph("📝 内容の編集"),paragraph("編集したい項目の［編集］をタップしてください。")];
  if(draft.text.trim())blocks.push(paragraph([richAction("［編集］","post:link:field:"+revision+":text"),selectedField==="text"?"✅ ":"", "テキスト："+draft.text]));
- if(draft.media)blocks.push(paragraph([richAction("［編集］","post:link:field:"+revision+":media"),selectedField==="media"?"✅ ":"", draft.media.type==="photo"?"画像":"動画"]));
+ if(draft.media)blocks.push(paragraph([richAction("［編集］","post:link:field:"+revision+":media"),selectedField==="media"?"✅ ":"", draft.media.type==="photo"?"画像":draft.media.type==="document"?"動画ファイル":"動画"]));
  draft.buttons.forEach((b,i)=>blocks.push(paragraph([
   richAction("［編集］","post:link:field:"+revision+":b"+i),
   selectedField==="b"+i?"✅ ":"", "ボタンタイトル"+(i+1)+"："+b.label,
