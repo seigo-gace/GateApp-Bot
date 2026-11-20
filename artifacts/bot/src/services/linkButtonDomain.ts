@@ -26,9 +26,13 @@ export function validateLinkDestination(raw:string):string{
 export function validateLinkDraft(d:LinkDraft):LinkDraft{
  if((!d.text.trim()&&!d.media)||d.text.length>(d.media?1024:3500))
   throw new Error("LINK_BODY_INVALID");
+ // Validate the stored JSON shape before iteration: malformed older drafts must
+ // fail as a controlled validation error instead of crashing the DM handler.
+ if(d.mediaExtras!==undefined&&!Array.isArray(d.mediaExtras))
+  throw new Error("LINK_MEDIA_ALBUM_INVALID");
  const mediaItems=[...(d.media?[d.media]:[]),...(d.mediaExtras??[])];
- if(!Array.isArray(d.mediaExtras??[])||mediaItems.length>50||
-    (d.mediaExtras?.length&&!d.media))throw new Error("LINK_MEDIA_ALBUM_INVALID");
+ if(mediaItems.length>50||(d.mediaExtras?.length&&!d.media))
+  throw new Error("LINK_MEDIA_ALBUM_INVALID");
  for(const media of mediaItems){
   if(!["photo","video","document"].includes(media.type)||!media.fileId||media.fileId.length>512||
      (media.caption!==undefined&&(typeof media.caption!=="string"||media.caption.length>1024)))
