@@ -501,14 +501,14 @@ async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft)
 
 
 async function showLinkRichEditor(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
- const rich=d.data.linkEditorView==="content"?linkRichContentEditor(d.data as LinkDraft,d.revision):
+ const rich=d.data.linkEditorView==="content"?linkRichContentEditor(d.data as LinkDraft,d.revision,String(d.data.linkSelectedField||'')):
    linkRichPlacement(d.data as LinkDraft,d.revision);
  const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
  const old=Number(d.data.screenMessageId);
  if(Number.isSafeInteger(old)&&old>0){
   try{
    await raw.callApi("editMessageText",{chat_id:owner,message_id:old,
-    rich_message:rich,reply_markup:{inline_keyboard:[]}});
+    rich_message:rich,reply_markup:keyboard.reply_markup});
    return;
   }catch(error){
    const reason=error instanceof Error?error.message:"";
@@ -517,7 +517,7 @@ async function showLinkRichEditor(telegram:Telegram,owner:number,d:EditorDraft):
     throw error;
   }
  }
- const sent=await raw.callApi("sendRichMessage",{chat_id:owner,rich_message:rich});
+ const sent=await raw.callApi("sendRichMessage",{chat_id:owner,rich_message:rich,reply_markup:keyboard.reply_markup});
  if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
   throw Error("LINK_EDITOR_SCREEN_UNCONFIRMED");
  await bindDraftScreen(owner,"link",d.revision,sent.message_id);
@@ -1413,10 +1413,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
       {...current.data,text:input,linkStage:editing?"ready":"button",
        linkEditorView:false});
      if(editing)await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
-     else await render(updated,"🔗 ボタンを作成\n\n"+
-      "次の2行をまとめて1回送信してください。\n1行目：ボタン名\n2行目：https://URL",
-      Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
-       "post:link:cancel:"+updated.revision)]]));
+     else await render(updated,
+      "🔗 ボタンを作成\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
+      linkColorKeyboard(updated));
      return;
     }
     const button=parseLinkButtonPair(input);
@@ -1435,7 +1434,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
       Number(current.data.columns) as 1|2|3:1,
      ...(current.data.media?{media:current.data.media as LinkDraft["media"]}:{})};
     const buttons=replacing?previous.map((item,i)=>i===editIndex?
-      {...button,rowStart:item.rowStart,style:item.style}:item):
+      {...button,rowStart:item.rowStart}:item):
       previous.length===0?[{...button,rowStart:true}]:
       insertLinkButton(existing,button,
        current.data.linkPlacement==="beside"?
@@ -1444,7 +1443,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const editorView=previous.length>0&&current.data.linkEditorView===true;
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
       {...current.data,buttons,linkStage:"ready",linkEditMode:null,linkEditIndex:null,
-       linkPlacement:null,linkTargetRow:null,linkEditorView:editorView,
+       linkPlacement:null,linkTargetRow:null,linkSelectedStyle:"standard",linkEditorView:editorView,
        columns:existing.columns});
     if(editorView)await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
     else await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
