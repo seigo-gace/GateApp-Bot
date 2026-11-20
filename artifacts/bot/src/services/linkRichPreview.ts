@@ -30,11 +30,18 @@ export function linkRichPublication(draft:LinkDraft){
    :{type:"video",video:{type:"video",media:media.fileId},...caption});
  }
  if(draft.text.trim()&&(!draft.media||!draft.captionAbove))blocks.push(paragraph(draft.text));
- for(const row of buttonGrid(draft)){
-  if(row.length>4)throw new Error("LINK_RICH_ROW_TOO_WIDE");
-  blocks.push({type:"buttons",buttons:row.map(b=>richLink(b.label,b.url,b.style))});
- }
+ // URL buttons are placed in Telegram's reply_markup, not the Rich body.
+ // This keeps their real click targets and rows identical in DM preview and publication.
  return {blocks};
+}
+
+/** The real clickable URL rows, shared by preview and published inline result.
+ * Rich text editing controls remain in the body; these links belong below it.
+ * Telegram's own actual UI constraints are evaluated independently of layout intent.
+ */
+export function linkUrlKeyboardRows(draft:LinkDraft):Array<Array<Record<string,unknown>>>{
+ validateLinkDraft(draft);
+ return buttonGrid(draft).map(row=>row.map(button=>richLink(button.label,button.url,button.style)));
 }
 
 /** Private preview: exactly the public body, followed by two tappable edit links. */
