@@ -105,7 +105,7 @@ export async function existingPublishedProfileUrl(ownerId:number):Promise<string
     ORDER BY l.profile_revision DESC LIMIT 1`,[ownerId]);
  if(r.rows.length!==1)return null;
  const chatId=String(r.rows[0].chat_id),messageId=Number(r.rows[0].message_id);
- if(!/^-100[1-9]\\d+$/.test(chatId)||!Number.isSafeInteger(messageId)||messageId<=0)return null;
+ if(!/^-100[1-9]\d+$/.test(chatId)||!Number.isSafeInteger(messageId)||messageId<=0)return null;
  return "https://t.me/c/"+chatId.slice(4)+"/"+messageId;
 }
 
