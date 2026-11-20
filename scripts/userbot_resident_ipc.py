@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -272,6 +272,25 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         if options:
             latest = max(options, key=lambda m: m.id)
             labels = [[b.text for b in row] for row in latest.buttons]
+            if action == "link_button_smoke":
+                # Bounded in-DM click verification. No public post, edit or session copy.
+                from datetime import datetime, timezone, timedelta
+                if labels != EXPECTED_MENU:
+                    raise RuntimeError("LINK_MENU_LAYOUT_INVALID")
+                clicked_at = datetime.now(timezone.utc)
+                await latest.click(text="🔗ボタン作成")
+                for _ in range(12):
+                    recent = await client.get_messages(bot, limit=80)
+                    for screen in recent:
+                        if screen.out or "🔗ボタンを作成する上で一緒に投稿" not in (
+                                screen.raw_text or ""):
+                            continue
+                        updated_at = screen.edit_date or screen.date
+                        if updated_at and updated_at >= clicked_at - timedelta(seconds=2):
+                            return {"request_id": request_id, "action": action,
+                                    "status": "PASS", "link_editor_opened": True}
+                    await asyncio.sleep(1)
+                raise RuntimeError("LINK_BUTTON_SCREEN_NOT_OPENED")
             if action == "profile_button_smoke":
                 from datetime import datetime, timezone, timedelta
                 if labels != EXPECTED_MENU:
