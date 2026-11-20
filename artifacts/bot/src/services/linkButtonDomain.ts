@@ -95,6 +95,7 @@ export function insertLinkButton(d:LinkDraft,button:LinkButton,location:
  else {
   if(!Number.isInteger(location.rowIndex)||location.rowIndex<0||location.rowIndex>=rows.length)
    throw new Error("LINK_ROW_INVALID");
+  if(rows[location.rowIndex]!.length>=4)throw new Error("LINK_ROW_MAX_FOUR");
   rows[location.rowIndex]!.push({...button,rowStart:false});
  }
  if(rows.flat().length>100)throw new Error("LINK_BUTTON_COUNT_INVALID");
