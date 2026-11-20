@@ -215,7 +215,7 @@ export async function runMigrations(): Promise<void> {
       CREATE TABLE IF NOT EXISTS posting_topics (
         topic_id BIGSERIAL PRIMARY KEY,
         board_key TEXT NOT NULL CHECK (board_key IN ('area_bbs','video_chat','gay_board')),
-        purpose TEXT NOT NULL CHECK (purpose IN ('profile','room','announcement','link')),
+        purpose TEXT NOT NULL CHECK (purpose IN ('profile','room','announcement','link','video_sale')),
         chat_id BIGINT NOT NULL CHECK (chat_id < 0),
         message_thread_id BIGINT NOT NULL CHECK (message_thread_id > 0),
         title TEXT NOT NULL,
@@ -225,6 +225,13 @@ export async function runMigrations(): Promise<void> {
         UNIQUE (board_key,purpose,chat_id,message_thread_id),
         CHECK (NOT enabled OR (verified_at IS NOT NULL AND verified_by IS NOT NULL))
       );
+      -- Upgrade existing Topic registry without replacing any existing Topic or route.
+      ALTER TABLE posting_topics DROP CONSTRAINT IF EXISTS posting_topics_purpose_check;
+      ALTER TABLE posting_topics ADD CONSTRAINT posting_topics_purpose_check
+        CHECK (purpose IN ('profile','room','announcement','link','video_sale'));
+      ALTER TABLE posting_topics DROP CONSTRAINT IF EXISTS posting_topics_video_sale_board_check;
+      ALTER TABLE posting_topics ADD CONSTRAINT posting_topics_video_sale_board_check
+        CHECK (purpose <> 'video_sale' OR board_key = 'video_chat');
       CREATE TABLE IF NOT EXISTS posting_deliveries (
         delivery_id BIGSERIAL PRIMARY KEY,
         source_type TEXT NOT NULL CHECK (source_type IN ('profile','room','announcement','link')),
