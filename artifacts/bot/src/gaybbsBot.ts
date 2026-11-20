@@ -279,7 +279,7 @@ async function main():Promise<void>{
  process.once("SIGTERM",()=>{void stop("SIGTERM")});
  await bot.launch({
   dropPendingUpdates:false,
-  allowedUpdates:["message","callback_query","chat_join_request"],
+  allowedUpdates:["message","callback_query","chat_join_request","inline_query"],
  },()=>{
   console.log("GAYBBS_BOT_READY bot_id="+me.id);
   stopWorkers=startGayBbsWorkers(bot.telegram);
