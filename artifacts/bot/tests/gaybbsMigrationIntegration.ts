@@ -15,6 +15,7 @@ import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
 import {announcementPanel,announcementSummary,registerPostingHandlers,startRoomEditor,startAnnouncementEditor} from "../src/bot/postingHandlers.js";
 import {makeApplicationLink} from "../src/services/applicationLinks.js";
 import {publishPost} from "../src/services/publishService.js";
+import {getVerifiedVideoSaleTopic} from "../src/services/postingDelivery.js";
 import {publishExistingMenuPanel} from "../src/services/menuPanelPublisher.js";
 import {markPostSourcePublished} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
@@ -43,6 +44,21 @@ try{
   const found=await pool.query("SELECT to_regclass($1)::text AS reg",[table]);
   assert.ok(found.rows[0]?.reg,table);
  }
+ // The existing verified Topic ledger is the only VideoBot route source.
+ await assert.rejects(()=>getVerifiedVideoSaleTopic(),/VIDEO_SALE_TOPIC_NOT_UNIQUELY_VERIFIED/);
+ await assert.rejects(()=>pool.query(
+  "INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled) VALUES('gay_board','video_sale',-1003770334893,2123,'forbidden',111001,NOW(),TRUE)"
+  ),/posting_topics_video_sale_board_check/);
+ const videoRoute=await pool.query(
+  "INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled) VALUES('video_chat','video_sale',-1002373696859,2123,'CI-only sale Topic',111001,NOW(),TRUE) RETURNING topic_id");
+ const verifiedSale=await getVerifiedVideoSaleTopic();
+ assert.equal(verifiedSale.id,Number(videoRoute.rows[0].topic_id));
+ assert.equal(verifiedSale.threadId,2123);
+ await pool.query(
+  "INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled) VALUES('video_chat','video_sale',-1002373696859,2124,'duplicate',111001,NOW(),TRUE)");
+ await assert.rejects(()=>getVerifiedVideoSaleTopic(),/VIDEO_SALE_TOPIC_NOT_UNIQUELY_VERIFIED/);
+ await pool.query("DELETE FROM posting_topics WHERE purpose='video_sale'");
+ console.log("VIDEO_SALE_VERIFIED_TOPIC_DB_CONTRACT=PASS");
  // A06: field data and consented profile summary belong to one announcement
  // source; no new profile record or redundant database is created.
  const manual=await createAnnouncement(811001,11,"recruitment","本文1行\n本文2行",
