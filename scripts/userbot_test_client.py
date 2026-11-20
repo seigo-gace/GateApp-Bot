@@ -75,6 +75,10 @@ def main() -> int:
             print("USERBOT_REPORT_INBOX=PASS")
             print("USERBOT_REPORT_RECEIPT=PASS")
             print("USERBOT_REPORT_INPUT_DELETE=PASS")
+        if args.action == "link_button_smoke":
+            if result.get("link_editor_opened") is not True:
+                raise RuntimeError("LINK_BUTTON_SCREEN_NOT_OPENED")
+            print("USERBOT_LINK_BUTTON=PASS")
         if args.action == "profile_button_smoke":
             if result.get("profile_editor_opened") is not True:
                 raise RuntimeError("PROFILE_BUTTON_SCREEN_NOT_OPENED")
