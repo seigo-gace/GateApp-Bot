@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {linkRichPreview,linkRichPublication,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows,linkRichRegisteredReceipt} from "../src/services/linkRichPreview.js";
 import {linkInlineResult,type LinkInlinePost} from "../src/services/linkInlineShare.js";
-import {insertLinkButton,buttonGrid,parseLinkButtonPair,type LinkDraft} from "../src/services/linkButtonDomain.js";
+import {insertLinkButton,buttonGrid,parseLinkButtonPair,validateLinkDraft,type LinkDraft} from "../src/services/linkButtonDomain.js";
 
 const draft:LinkDraft={
  text:"キャプションのテスト",columns:1,buttons:[
@@ -160,4 +160,13 @@ test("first photo caption remains a media caption and not a duplicate body parag
   JSON.stringify(b).includes("画像の補足")),false);
  const result=linkInlineResult({ownerId:3,sourceId:"caption-1",draft:withCaption});
  assert.deepEqual((result.input_message_content as {rich_message:typeof published}).rich_message,published);
+});
+
+
+test("malformed persisted media arrays fail safely before Rich rendering",()=>{
+ const malformed={...draft,mediaExtras:{bad:"not-an-array"}} as unknown as LinkDraft;
+ assert.throws(()=>validateLinkDraft(malformed),/LINK_MEDIA_ALBUM_INVALID/);
+ assert.throws(()=>linkRichPublication(malformed),/LINK_MEDIA_ALBUM_INVALID/);
+ const detached={...draft,media:undefined,mediaExtras:[{type:"photo",fileId:"x"}]} as LinkDraft;
+ assert.throws(()=>validateLinkDraft(detached),/LINK_MEDIA_ALBUM_INVALID/);
 });
