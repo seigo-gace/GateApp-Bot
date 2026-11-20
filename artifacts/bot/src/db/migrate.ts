@@ -180,7 +180,7 @@ export async function runMigrations(): Promise<void> {
         UNIQUE(chat_id,message_thread_id,panel_type)
       );
       CREATE TABLE IF NOT EXISTS gaybbs_feature_release_gates (
-        feature TEXT PRIMARY KEY CHECK(feature IN ('profile','announcement','room','link','search','help')),
+        feature TEXT PRIMARY KEY CHECK(feature IN ('profile','announcement','room','link','search','help','video_sale')),
         source_commit TEXT NOT NULL CHECK(length(source_commit)=40),
         ci_evidence TEXT NOT NULL,
         gserver_runtime_evidence TEXT NOT NULL,
@@ -200,7 +200,7 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE gaybbs_feature_release_gates
         DROP CONSTRAINT IF EXISTS gaybbs_feature_release_gates_feature_check;
       ALTER TABLE gaybbs_feature_release_gates ADD CONSTRAINT gaybbs_feature_release_gates_feature_check
-        CHECK(feature IN ('profile','announcement','room','link','search','help'));
+        CHECK(feature IN ('profile','announcement','room','link','search','help','video_sale'));
       ALTER TABLE board_menu_entry_tokens
         DROP CONSTRAINT IF EXISTS board_menu_entry_tokens_feature_check;
       ALTER TABLE board_menu_entry_tokens ADD CONSTRAINT board_menu_entry_tokens_feature_check
