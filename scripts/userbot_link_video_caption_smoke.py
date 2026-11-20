@@ -83,6 +83,8 @@ async def run(client):
         return await _run(client,trace)
     except Exception as exc:
         code=str(exc)
-        if code not in VIDEO_SAFE_ERRORS:
+        if code=="LINK_VIDEO_SCREEN_NOT_FOUND":
+            code="LINK_VIDEO_SCREEN_NOT_FOUND_"+trace["stage"].upper()
+        elif code not in VIDEO_SAFE_ERRORS:
             code="LINK_VIDEO_UNCLASSIFIED_"+trace["stage"].upper()
         return {"status":"FAIL","error":code}
