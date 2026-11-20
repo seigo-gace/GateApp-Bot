@@ -9,7 +9,7 @@ import asyncio
 import re
 from datetime import datetime, timezone, timedelta
 
-async def run(client):
+async def _run(client, trace):
     from telethon import functions
     bot=await client.get_entity("GayBBS_bot")
     if not getattr(bot,"bot",False):
@@ -38,6 +38,7 @@ async def run(client):
         return str(getattr(result,"message","") or "")
     def mk():return datetime.now(timezone.utc)
 
+    trace["stage"]="menu"
     before=await client.get_messages(bot,limit=1)
     cursor=before[0].id if before else 0
     await client.send_message(bot,"/start")
@@ -50,11 +51,14 @@ async def run(client):
         await asyncio.sleep(1)
     if not menu:raise RuntimeError("LINK_RICH_MENU_NOT_FOUND")
 
+    trace["stage"]="open_link"
     mark=mk();await menu.click(text="🔗ボタン作成")
     await latest(lambda m:"🔗ボタンを作成する上で一緒に投稿" in (m.raw_text or ""),mark)
+    trace["stage"]="material"
     mark=mk();await client.send_message(bot,"Rich編集の安全テスト")
     await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
                  and any("標準" in label for label in labels(m)),mark)
+    trace["stage"]="first_link"
     mark=mk();await client.send_message(bot,"一番目\nhttps://example.org/")
     preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),mark)
 
@@ -65,30 +69,49 @@ async def run(client):
             if match:rev=int(match.group(1))
     if not rev:raise RuntimeError("LINK_RICH_REVISION_UNAVAILABLE")
 
+    trace["stage"]="panel"
     mark=mk();await callback(preview,f"post:link:panel:{rev}")
     placement=await latest(lambda m:"戻る" in labels(m) and "キャンセル" in labels(m)
                            and "登録" not in labels(m),mark)
+    trace["stage"]="add"
     mark=mk();await callback(placement,f"post:link:add:{rev}")
     await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
                  and any("標準" in label for label in labels(m)),mark)
+    trace["stage"]="second_link"
     mark=mk();await client.send_message(bot,"二番目\nhttps://example.com/")
     placement=await latest(lambda m:"戻る" in labels(m)
                            and "キャンセル" in labels(m)
                            and "登録" not in labels(m),mark)
+    trace["stage"]="delete"
     answer=await callback(placement,f"post:link:delete:{rev}:1")
     if "削除" not in answer:
         raise RuntimeError("LINK_RICH_DELETE_NOT_ACKNOWLEDGED")
 
+    trace["stage"]="back"
     mark=mk();await callback(placement,f"post:link:back:{rev}")
     preview=await latest(lambda m:"登録" in labels(m),mark)
+    trace["stage"]="content"
     mark=mk();await callback(preview,f"post:link:content:{rev}")
     content=await latest(lambda m:"変更" in labels(m) and "戻る" in labels(m),mark)
+    trace["stage"]="field"
     mark=mk();await callback(content,f"post:link:field:{rev}:text")
     selected=await latest(lambda m:"変更" in labels(m),mark)
+    trace["stage"]="change"
     mark=mk();await selected.click(text="変更")
     await latest(lambda m:"新しい文章をDMで送信" in (m.raw_text or ""),mark)
+    trace["stage"]="save_edit"
     mark=mk();await client.send_message(bot,"個別編集済みの安全テスト")
     await latest(lambda m:"登録" in labels(m),mark)
     return {"status":"PASS","rich_add":True,"rich_delete":True,
             "rich_field_select":True,"rich_text_change":True,
             "no_public_post":True}
+
+
+async def run(client):
+    # Only a bounded phase code leaves the resident process; no Telegram
+    # text, identity or raw exception is returned in failure responses.
+    trace={"stage":"setup"}
+    try:
+        return await _run(client,trace)
+    except Exception:
+        return {"status":"FAIL","stage":trace["stage"]}
