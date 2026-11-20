@@ -73,6 +73,18 @@ class ResidentSafetyTests(unittest.TestCase):
         self.assertTrue(out["link_editor_opened"])
         self.assertEqual(c.sent,["/start"])
 
+    def test_link_registration_uses_only_resident_allowlisted_action(self):
+        from unittest.mock import AsyncMock
+        c=MockClient()
+        with patch("userbot_link_flow_smoke.run", new=AsyncMock(return_value={
+            "status":"PASS", "registration_receipt":True})) as run:
+            out=asyncio.run(process_request(c,{
+                "request_id":"link-registration-1", "action":"link_registration_smoke"}))
+        self.assertEqual(out["status"],"PASS")
+        self.assertTrue(out["registration_receipt"])
+        run.assert_awaited_once_with(c)
+        self.assertEqual(c.sent,[])
+
     def test_wrong_menu_not_pass(self):
         c = MockClient(menu=[["wrong"]])
         out = asyncio.run(process_request(c, {"request_id": "menu-2", "action": "bot_start_menu"}))
