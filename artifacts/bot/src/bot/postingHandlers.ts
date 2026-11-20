@@ -1507,6 +1507,24 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
   }catch(e){
    if(e instanceof Error&&e.message==="POST_DRAFT_STALE")throw e;
+   if(current.module==="link"){
+    // Media-rich preview can fail AFTER the revision was persisted. Never render
+    // an obsolete revision (its buttons cannot work); preserve the actual draft.
+    const latest=await getDraft(ctx.from.id,"link");
+    if(latest?.step==="preview"&&Array.isArray(latest.data.buttons)&&
+       latest.data.buttons.length>0){
+     console.warn("[LINK_PREVIEW_RENDER_FAILED] media="+
+      (latest.data.media?"PRESENT":"ABSENT"));
+     await render(latest,"⚠️ プレビューを表示できませんでした。下書きは保存されています。"+
+      "\n素材を変更するか、プレビュー表示をもう一度お試しください。",
+      Markup.inlineKeyboard([
+       [Markup.button.callback("素材変更","post:link:editmedia:"+latest.revision),
+        Markup.button.callback("再表示","post:link:back:"+latest.revision)],
+       [Markup.button.callback("キャンセル","post:link:cancel:"+latest.revision)],
+      ]));
+     return;
+    }
+   }
    const errorText=(e instanceof Error?e.message:"入力内容を確認してください。")+
      "\n内容を修正して、もう一度送信してください。";
    await render(current,errorText,current.module==="room"?
