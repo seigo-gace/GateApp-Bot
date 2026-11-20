@@ -1596,7 +1596,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(text.length>1024||caption.length>1024)throw Error("LINK_BODY_INVALID");
     const extras=Array.isArray(d.data.mediaExtras)?d.data.mediaExtras as LinkDraft["mediaExtras"]:[];
     const appended=stage==="button"&&hasPrimary;
-    const newMedia={type:kind==="videoDocument"?"video":kind,fileId:file.file_id,...(caption?{caption}:{})};
+    const newMedia={type:kind==="videoDocument"?"document":kind,fileId:file.file_id,...(caption?{caption}:{})};
     const media=appended?d.data.media:newMedia;
     const mediaExtras=appended?[...(extras||[]),newMedia]:extras||[];
     if(mediaExtras.length>=50)throw Error("LINK_MEDIA_ALBUM_LIMIT");
