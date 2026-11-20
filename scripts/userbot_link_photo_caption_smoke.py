@@ -18,7 +18,7 @@ def png():
     raw=b"".join(b"\x00"+b"\x32\x98\xde"*w for _ in range(h))
     return b"\x89PNG\r\n\x1a\n"+chunk(b"IHDR",struct.pack(">IIBBBBB",w,h,8,2,0,0,0))+chunk(b"IDAT",zlib.compress(raw))+chunk(b"IEND",b"")
 
-async def run(client):
+async def _run(client):
     bot=await client.get_entity("GayBBS_bot")
     if not getattr(bot,"bot",False):
         raise RuntimeError("LINK_PHOTO_BOT_INVALID")
@@ -85,3 +85,20 @@ async def run(client):
             "caption_input_sent":True,"preview_ready":True,
             "photo_registration_receipt":True,
             "registered_edit_preview":True,"registered_code_preserved":True}
+
+# Return only fixed diagnostic codes; never expose Telegram message bodies or IDs.
+PHOTO_SAFE_ERRORS=frozenset({
+    "LINK_PHOTO_BOT_INVALID","LINK_PHOTO_SCREEN_NOT_FOUND",
+    "LINK_PHOTO_MENU_NOT_FOUND","LINK_PHOTO_EXISTING_DRAFT_BLOCKED",
+    "LINK_PHOTO_REAL_URL_BUTTON_MISSING","LINK_PHOTO_REGISTERED_CODE_MISSING",
+    "LINK_PHOTO_EDIT_PREVIEW_URL_MISSING","LINK_PHOTO_EDIT_CODE_CHANGED",
+})
+
+async def run(client):
+    try:
+        return await _run(client)
+    except Exception as exc:
+        code=str(exc)
+        if code not in PHOTO_SAFE_ERRORS:
+            code="LINK_PHOTO_UNCLASSIFIED_FAILURE"
+        return {"status":"FAIL","error":code}
