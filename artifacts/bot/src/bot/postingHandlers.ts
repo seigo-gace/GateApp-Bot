@@ -1539,6 +1539,41 @@ export function registerPostingHandlers(bot:Telegraf):void{
  };
  bot.on("photo",async(ctx,next)=>receiveLinkMedia(ctx,next,"photo"));
  bot.on("video",async(ctx,next)=>receiveLinkMedia(ctx,next,"video"));
+ bot.action(/^post:link:selectcolor:(\d+):(standard|primary|success|danger)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const revision=Number(ctx.match[1]),color=ctx.match[2];
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==revision||d.step!=="awaiting_text"||d.data.linkStage!=="button"){
+   await ctx.answerCbQuery("古い色選択です。");return;
+  }
+  const updated=await updateDraft(ctx.from.id,"link",revision,"awaiting_text",
+   {...d.data,linkSelectedStyle:color});
+  await ctx.answerCbQuery();
+  await showPostScreen(ctx.telegram,ctx.from.id,updated,
+   "🔗 ボタンを作成\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
+   linkColorKeyboard(updated));
+ });
+ bot.action(/^post:link:restart:(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]),d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==rev||d.step!=="awaiting_text"){
+   await ctx.answerCbQuery("古い操作です。");return;
+  }
+  if(d.data.linkEditMode){
+   const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...d.data,linkEditMode:null,linkEditIndex:null,linkSelectedStyle:"standard",
+     linkEditorView:true,linkStage:"ready"});
+   await ctx.answerCbQuery();await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
+   return;
+  }
+  const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+   {...d.data,text:"",media:null,captionAbove:false,buttons:[],columns:1,
+    linkStage:"content",linkSelectedStyle:"standard",linkEditorView:false});
+  await ctx.answerCbQuery();
+  await showPostScreen(ctx.telegram,ctx.from.id,updated,
+   "🔗ボタンを作成する上で一緒に投稿したテキスト、動画、画像、ステッカーなどを投稿してください。動画や画像に説明を補足した場合はキャプションにテキストを入力してください。",
+   Markup.inlineKeyboard([[Markup.button.callback("キャンセル","post:link:cancel:"+rev)]]));
+ });
  bot.action(/^post:link:(register|edittext|editmedia|mediareplace|mediadelete|captiontop|captionbottom|panel|add|beside|edit|cancel|back|destination):(\d+)(?::(\d+))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
