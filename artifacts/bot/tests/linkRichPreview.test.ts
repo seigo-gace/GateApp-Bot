@@ -51,9 +51,9 @@ test("⑤ selected target only, keeps other field and buttons",()=>{
  assert.match(rich,/✅/);
  assert.equal(JSON.stringify(draft),before);
 });
-test("registered code has native copy_text in Rich body and no dead callback",()=>{
+test("registered code is selectable text without unsupported Rich copy_text",()=>{
  const text=serialized(linkRichPreview(draft,101,"abc123"));
- assert.match(text,/"copy_text":/);
+ assert.doesNotMatch(text,/"copy_text":/);
  assert.match(text,/@GayBBS_bot abc123/);
  assert.doesNotMatch(text,/post:link:copy/);
 });
