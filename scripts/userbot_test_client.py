@@ -42,7 +42,7 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
             raise ValueError("ROOM_READ_TARGET_ONLY_FOR_READBACK")
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
-        reply = await asyncio.wait_for(reader.readline(), 110 if action in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke"} else 40)
+        reply = await asyncio.wait_for(reader.readline(), 110 if action in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke"} else 40)
         result = json.loads(reply)
         if result.get("request_id") not in {request_id, None}:
             raise RuntimeError("USERBOT_IPC_REQUEST_ID_MISMATCH")
