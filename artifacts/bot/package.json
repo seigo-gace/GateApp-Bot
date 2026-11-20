@@ -9,7 +9,9 @@
     "build": "tsx build.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:push": "drizzle-kit push --config ./drizzle.config.ts",
-    "db:push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "db:push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "build:gaybbs": "tsx build-gaybbs.ts",
+    "start:gaybbs": "node dist/gaybbs.mjs"
   },
   "dependencies": {
     "telegraf": "^4.16.3",

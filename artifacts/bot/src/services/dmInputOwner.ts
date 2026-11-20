@@ -1,0 +1,29 @@
+/** One active Telegram DM text flow across Profile, Announcement, Link,
+ * ROOM creation, ROOM host scheduling and the existing search DM session.
+ * Only screens actively awaiting text/media claim plain DM messages.\n * Drafts at preview/selection remain resumable but never steal input.
+ */
+import {pool} from "../db/index.js";
+export type DmTextOwner="profile"|"room"|"announcement"|"link"|"room_host"|"search";
+export async function currentDmTextOwner(userId:number):Promise<DmTextOwner|null>{
+ if(!Number.isSafeInteger(userId)||userId<=0)throw new Error("DM_USER_INVALID");
+ const result=await pool.query(
+  `SELECT module FROM (
+     SELECT 'profile'::text AS module,updated_at,1 AS priority
+       FROM profile_drafts WHERE owner_user_id=$1
+         AND step IN ('awaiting_basic','awaiting_position','media')
+     UNION ALL
+     SELECT module,updated_at,2 AS priority
+       FROM public_post_drafts WHERE owner_user_id=$1
+         AND step IN ('awaiting_text','awaiting_datetime',
+                      'awaiting_room_url','awaiting_recruitment_edit')
+     UNION ALL
+     SELECT 'room_host'::text AS module,updated_at,3 AS priority
+       FROM room_host_sessions
+       WHERE owner_user_id=$1 AND expires_at>NOW()
+     UNION ALL
+     SELECT 'search'::text AS module,updated_at,4 AS priority
+       FROM gaybbs_search_sessions
+       WHERE owner_user_id=$1 AND step IN ('keyword','age')
+   ) candidates ORDER BY updated_at DESC,priority DESC LIMIT 1`,[userId]);
+ return result.rows.length?result.rows[0].module as DmTextOwner:null;
+}

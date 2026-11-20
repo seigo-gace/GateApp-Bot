@@ -596,7 +596,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     const targetId = parseInt((ctx.match as RegExpMatchArray)[1]!);
     const target = await targetRepo.getTargetById(targetId);
     if (!target?.log_chat_id) {
-      await ctx.answerCbQuery("先にログ用グループを設定してください", true);
+      await ctx.answerCbQuery("先にログ用グループを設定してください", {show_alert:true});
       return;
     }
     const lg = await logGroupRepo.getLogGroupByChatId(Number(target.log_chat_id));
@@ -997,7 +997,7 @@ export function registerMenuHandlers(bot: Telegraf) {
     // 最後の管理者は削除不可
     const admins = await ownerRepo.getAllOwners();
     if (admins.length === 1) {
-      await ctx.answerCbQuery("最後の管理者は削除できません", true);
+      await ctx.answerCbQuery("最後の管理者は削除できません", {show_alert:true});
       return;
     }
 

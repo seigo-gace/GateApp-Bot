@@ -1,0 +1,48 @@
+name: TGtumbler Profile A05 Source and DM Tests
+on:
+  pull_request:
+  push:
+    branches: ['chat/tgtumbler-profile-a05-20261104']
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: gaybbs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d gaybbs_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/gaybbs_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check new Bot Token enrollment script syntax
+        run: python3 -m py_compile scripts/register_gaybbs_bot_token.py scripts/gaybbs_runtime_preflight.py
+      - name: Typecheck existing Bot plus profile
+        run: pnpm --dir artifacts/bot run typecheck
+      - name: Verify isolated PostgreSQL migration and application concurrency
+        run: pnpm --dir artifacts/bot exec tsx tests/gaybbsMigrationIntegration.ts
+      - name: Validate legacy PR migration in dry-run mode
+        run: pnpm --dir artifacts/bot exec tsx scripts/migrateLegacyProfilePr.ts --dry-run
+      - name: Verify profile external PR and numbered media SQL roundtrip
+        run: pnpm --dir artifacts/bot exec tsx tests/profilePersistenceIntegration.ts
+      - name: Build GayBBS dedicated bot
+        run: pnpm --dir artifacts/bot run build:gaybbs
+      - name: Test profile parsing and private DM registration
+        run: pnpm --dir artifacts/bot exec tsx --test tests/*.test.ts
