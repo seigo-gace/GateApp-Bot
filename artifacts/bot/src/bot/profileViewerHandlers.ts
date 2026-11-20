@@ -106,9 +106,38 @@ export function registerProfileViewerHandlers(bot:Telegraf):void{
  });
 }
 
-/** Public group callbacks: text sections edit the existing card in place.
- * Telegram media cannot be converted back into a text message with editMessageText;
- * reveal media as a reply to the original post, never in a Bot DM. */
+/** Telegram Bot API 10.3 ephemeral rich panels.
+ * No group card edits and no Bot DM. Every viewer receives their own in-place
+ * replacement of the original message, then edits only that viewer's panel.
+ */
+export function profilePanelRich(profile:SavedProfile,mode:"profile"|"photo"|"video"|"like"|"love"){
+ const esc=(s:string)=>escapeProfileHtml(s);
+ if(mode==="profile")return {html:renderPublicProfile(profile).replace(/\n/g,"<br/>")};
+ if(mode==="like"||mode==="love"){
+  const tags=mode==="like"?profile.likeTags??[]:profile.loveTags??[];
+  const heading=mode==="like"?"💖 #Like｜自分について":"💘 #Love｜相手に求めること";
+  return {html:esc(heading)+"<br/>"+LIKE_CATEGORIES.map(c=>
+   esc(c.name)+"："+tags.filter(t=>t.category===c.name).map(t=>"#"+esc(t.tag)).join(" ")
+  ).join("<br/>")};
+ }
+ const items=availableMedia(profile).filter(x=>x.type===(mode==="photo"?"photo":"video")).slice(0,5);
+ const heading=mode==="photo"?"🖼️ 画像":"🎞️ 動画";
+ if(!items.length)return {html:heading+"<br/>登録されていません。"};
+ const media=items.map((m,i)=>({
+  id:"media"+i,
+  media:{type:m.type,media:m.fileId},
+ }));
+ const tags=items.map((m,i)=>m.type==="photo"?
+  '<img src="tg://photo?id=media'+i+'"/>':
+  '<video src="tg://video?id=media'+i+'"></video>');
+ return {html:heading+"<br/>"+tags.join(""),media};
+}
+function profilePanelKeyboard(token:string,username:string|null){
+ return Markup.inlineKeyboard(profilePanelRows(token,username).map(row=>row.map(b=>
+  b.url?Markup.button.url(b.text,b.url):Markup.button.callback(b.text,b.callback_data!)
+ ))).reply_markup;
+}
+type BotApiCaller={callApi:(method:string,params:Record<string,unknown>)=>Promise<unknown>};
 export function registerPublicProfilePanelHandlers(bot:Telegraf):void{
  bot.action(/^pfv:contact:([A-Za-z0-9_-]{32})$/,async ctx=>{
   await ctx.answerCbQuery("投稿者にTelegram usernameが設定されていません。",{show_alert:true});
@@ -118,25 +147,34 @@ export function registerPublicProfilePanelHandlers(bot:Telegraf):void{
   if(!msg||!ctx.chat||ctx.chat.type!=="supergroup"){
    await ctx.answerCbQuery("公開プロフィールから操作してください");return;
   }
-  const token=ctx.match[1]!,mode=ctx.match[2]!;
-  const profile=await resolvePublishedProfilePanel(token,ctx.chat.id,msg.message_id);
+  const token=ctx.match[1]!,mode=ctx.match[2] as "profile"|"photo"|"video"|"like"|"love";
+  const ephemeralId=(msg as typeof msg & {ephemeral_message_id?:number}).ephemeral_message_id;
+  const profile=ephemeralId?
+   await resolvePublishedProfileView(token):
+   await resolvePublishedProfilePanel(token,ctx.chat.id,msg.message_id);
   if(!profile){await ctx.answerCbQuery("公開状態を確認できません");return;}
-  if(mode==="photo"||mode==="video"){
-   const selected=availableMedia(profile).filter(x=>x.type===(mode==="photo"?"photo":"video"));
-   if(!selected.length){await ctx.answerCbQuery("登録されたメディアはありません");return;}
-   await ctx.answerCbQuery();
-   // The media is attached to the public group post and never sent to a Bot DM.
-   for(const item of selected.slice(0,5)){
-    if(item.type==="photo")await ctx.telegram.sendPhoto(ctx.chat.id,item.fileId,{reply_parameters:{message_id:msg.message_id}});
-    else await ctx.telegram.sendVideo(ctx.chat.id,item.fileId,{reply_parameters:{message_id:msg.message_id}});
+  const rich_message=profilePanelRich(profile,mode);
+  const reply_markup=profilePanelKeyboard(token,profile.username);
+  const api=ctx.telegram as unknown as BotApiCaller;
+  try{
+   if(ephemeralId){
+    if(!Number.isSafeInteger(ephemeralId)||ephemeralId<=0)throw Error("EPHEMERAL_ID_INVALID");
+    await api.callApi("editEphemeralMessageText",{
+     chat_id:ctx.chat.id,receiver_user_id:ctx.from.id,
+     ephemeral_message_id:ephemeralId,rich_message,reply_markup,
+    });
+   }else{
+    await api.callApi("sendRichMessage",{
+     chat_id:ctx.chat.id,rich_message,reply_markup,
+     ephemeral_message_parameters:{
+      callback_query_id:ctx.callbackQuery.id,replace_callback_query_message:true,
+     },
+    });
    }
-   return;
+   await ctx.answerCbQuery();
+  }catch{
+   // Never replace or broadcast-edit the shared group post as a fallback.
+   await ctx.answerCbQuery("表示できません。Telegramの更新状態をご確認ください。",{show_alert:true});
   }
-  const text=mode==="profile"?renderPublicProfile(profile):mode==="like"?
-   "💖 #Like｜自分について\n"+LIKE_CATEGORIES.map(c=>c.name+"："+(profile.likeTags??[]).filter(t=>t.category===c.name).map(t=>"#"+t.tag).join(" ")).join("\n"):
-   "💘 #Love｜相手に求めること\n"+LIKE_CATEGORIES.map(c=>c.name+"："+(profile.loveTags??[]).filter(t=>t.category===c.name).map(t=>"#"+t.tag).join(" ")).join("\n");
-  await ctx.answerCbQuery();
-  // Group messages are shared: an edit is visible to every member.
-  await ctx.editMessageText(text,{parse_mode:"HTML",...Markup.inlineKeyboard(profilePanelRows(token,profile.username).map(row=>row.map(b=>b.url?Markup.button.url(b.text,b.url):Markup.button.callback(b.text,b.callback_data!))))});
  });
 }
