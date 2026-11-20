@@ -18,14 +18,10 @@ const richLink=(label:string,url:string,style?:"primary"|"success"|"danger")=>({
  * tappable text actions in the content. Register/Cancel belong to keyboard.
  * When shareCode is provided, its copy action lives in the body too.
  */
-export function linkRichPreview(draft:LinkDraft,revision:number,shareCode?:string){
+/** One canonical public appearance for the editor preview and inline post code. */
+export function linkRichPublication(draft:LinkDraft){
  validateLinkDraft(draft);
  const blocks:RichBlock[]=[];
- if(shareCode){
-  const code="@GayBBS_bot "+shareCode;
-  blocks.push(paragraph("投稿コード："+code));
-  blocks.push(paragraph({type:"button",button:{text:"［投稿コードをコピー］",copy_text:{text:code}}}));
- }
  if(draft.media&&draft.captionAbove&&draft.text.trim())blocks.push(paragraph(draft.text));
  if(draft.media){
   blocks.push(draft.media.type==="photo"
@@ -37,10 +33,24 @@ export function linkRichPreview(draft:LinkDraft,revision:number,shareCode?:strin
   if(row.length>4)throw new Error("LINK_RICH_ROW_TOO_WIDE");
   blocks.push({type:"buttons",buttons:row.map(b=>richLink(b.label,b.url,b.style))});
  }
- blocks.push({type:"divider"});
- blocks.push(paragraph("変更したい内容をタップしてください。"));
- blocks.push(paragraph(richAction("［ボタンの追加］","post:link:panel:"+revision)));
- blocks.push(paragraph(richAction("［内容の編集］","post:link:content:"+revision)));
+ return {blocks};
+}
+
+/** Private preview: exactly the public body, followed by two tappable edit links. */
+export function linkRichPreview(draft:LinkDraft,revision:number,shareCode?:string){
+ const blocks:RichBlock[]=[];
+ if(shareCode){
+  const code="@GayBBS_bot "+shareCode;
+  blocks.push(paragraph("投稿コード："+code));
+  blocks.push(paragraph({type:"button",button:{text:"［投稿コードをコピー］",copy_text:{text:code}}}));
+ }
+ blocks.push(...linkRichPublication(draft).blocks);
+ if(!shareCode){
+  blocks.push({type:"divider"});
+  blocks.push(paragraph("変更したい内容をタップしてください。"));
+  blocks.push(paragraph(richAction("［ボタンの追加］","post:link:panel:"+revision)));
+  blocks.push(paragraph(richAction("［内容の編集］","post:link:content:"+revision)));
+ }
  return {blocks};
 }
 
