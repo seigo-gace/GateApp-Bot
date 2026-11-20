@@ -493,7 +493,13 @@ async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft)
   }catch(error){
    const reason=error instanceof Error?error.message:"";
    if(/message is not modified/i.test(reason))return;
-   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason))
+   // Telegram may reject editing a plain-text DM message into a media-rich
+   // message with HTTP 400 even though a fresh sendRichMessage is valid.
+   // A definite 400 response has no ambiguous in-flight edit side effect.
+   const deterministicMediaEditReject=Boolean(d.data.media)&&
+    /\b400\b/.test(reason)&&/bad request/i.test(reason);
+   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason)&&
+      !deterministicMediaEditReject)
     throw error;
   }
  }
