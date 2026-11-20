@@ -64,14 +64,27 @@ async def _run(client, trace):
 
     trace["stage"]="open_link"
     mark=mk();await menu.click(text="🔗ボタン作成")
-    await latest(lambda m:"🔗ボタンを作成する上で一緒に投稿" in (m.raw_text or ""),mark)
-    trace["stage"]="material"
-    mark=mk();await client.send_message(bot,"Rich編集の安全テスト")
-    await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
-                 and any("標準" in label for label in labels(m)),mark)
-    trace["stage"]="first_link"
-    mark=mk();await client.send_message(bot,"一番目\nhttps://example.org/")
-    preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),mark)
+    # A safe test draft from an interrupted run may resume its preview.
+    # Do not overwrite or delete it. The Host preflight has verified that
+    # this resident owner has only a test-marked unregistered draft.
+    entry=await latest(lambda m:
+        "🔗ボタンを作成する上で一緒に投稿" in (m.raw_text or "")
+        or ("登録" in labels(m) and "キャンセル" in labels(m))
+        or ("戻る" in labels(m) and "キャンセル" in labels(m)),mark)
+    if "登録" in labels(entry):
+        preview=entry
+    elif "戻る" in labels(entry) and "キャンセル" in labels(entry):
+        rev=revision(entry)
+        mark=mk();await callback(entry,f"post:link:back:{rev}")
+        preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),mark)
+    else:
+        trace["stage"]="material"
+        mark=mk();await client.send_message(bot,"Rich編集の安全テスト")
+        await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
+                     and any("標準" in label for label in labels(m)),mark)
+        trace["stage"]="first_link"
+        mark=mk();await client.send_message(bot,"一番目\nhttps://example.org/")
+        preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),mark)
 
     rev=revision(preview)
 
