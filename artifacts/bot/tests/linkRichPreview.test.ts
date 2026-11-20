@@ -69,3 +69,17 @@ test("public Rich post and preview use exactly the same material and URL button 
  assert.equal(JSON.stringify(publicBlocks).includes("post:link:panel"),false);
  assert.equal(JSON.stringify(publicBlocks).includes("post:link:register"),false);
 });
+
+test("mixed image/video content and per-media captions are exactly preserved in the inline Rich result",()=>{
+ const mixed:LinkDraft={...draft,mediaExtras:[
+  {type:"video",fileId:"video_file_ref",caption:"動画の補足"},
+  {type:"photo",fileId:"another_photo_ref",caption:"画像の補足"},
+ ]};
+ const published=linkRichPublication(mixed);
+ const types=published.blocks.map(x=>x.type);
+ assert.deepEqual(types.filter(x=>x==="photo"||x==="video"),["photo","video","photo"]);
+ const inline=linkInlineResult({ownerId:42,sourceId:"12",draft:mixed});
+ assert.deepEqual((inline.input_message_content as {rich_message:typeof published}).rich_message,published);
+ assert.match(JSON.stringify(published),/動画の補足/);
+ assert.match(JSON.stringify(published),/画像の補足/);
+});
