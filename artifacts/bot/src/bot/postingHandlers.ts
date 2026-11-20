@@ -503,6 +503,14 @@ async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft)
 async function showLinkRichEditor(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
  const rich=d.data.linkEditorView==="content"?linkRichContentEditor(d.data as LinkDraft,d.revision,String(d.data.linkSelectedField||'')):
    linkRichPlacement(d.data as LinkDraft,d.revision);
+ const keyboard=Markup.inlineKeyboard(d.data.linkEditorView==="content"?[[
+  Markup.button.callback("戻る","post:link:back:"+d.revision),
+  Markup.button.callback("変更","post:link:change:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]:[[
+  Markup.button.callback("戻る","post:link:back:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]);
  const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
  const old=Number(d.data.screenMessageId);
  if(Number.isSafeInteger(old)&&old>0){
