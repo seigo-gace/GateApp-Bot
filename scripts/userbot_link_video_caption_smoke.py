@@ -6,7 +6,7 @@ No public group action, no additional Telegram session, no credential reads.
 from __future__ import annotations
 import asyncio
 import base64
-import io
+import tempfile
 from datetime import datetime, timezone, timedelta
 
 VIDEO_BASE64="AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAN1bW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAqB0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAEAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAQAAABAAAAAAIYbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAoAAAAKABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABw21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAYNzdGJsAAAAv3N0c2QAAAAAAAAAAQAAAK9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAEAAQABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAANWF2Y0MBZAAK/+EAGGdkAAqs2UQmwEQAAAMABAAAAwAoPEiWWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAYeAAAAvAAAAAYc3R0cwAAAAAAAAABAAAABQAACAAAAAAUc3RzcwAAAAAAAAABAAAAAQAAADhjdHRzAAAAAAAAAAUAAAABAAAQAAAAAAEAACgAAAAAAQAAEAAAAAABAAAAAAAAAAEAAAgAAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAFAAAAAQAAAChzdHN6AAAAAAAAAAAAAAAFAAAALAAAAA4AAAAMAAAADAAAAAwAAAAUc3RjbwAAAAAAAAABAAADpQAAAGF1ZHRhAAAAWW1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALGlsc3QAAAAkqXRvbwAAABxkYXRhAAAAAQAAAABMYXZmNjEuNy4xMDMAAAAIZnJlZQAAAGZtZGF0AAAAKGWIhAAS//7oyfzLLXnmdRqJlloPlaccwj0dI/65B2ZLyCHBWQeLicEAAAAKQZokbEP//qmdNAAAAAhBnkJ4gh8CxwAAAAgBnmF0Q/8ExAAAAAgBnmNqQ/8ExQ=="
@@ -45,14 +45,17 @@ async def _run(client, trace):
     if "🔗ボタンを作成する上で一緒に投稿" not in (screen.raw_text or ""):
         raise RuntimeError("LINK_VIDEO_EXISTING_DRAFT_BLOCKED")
     trace["stage"]="video"
-    clip=io.BytesIO(base64.b64decode(VIDEO_BASE64))
-    clip.name="link-test-video.mp4"
     t=datetime.now(timezone.utc)
     from telethon.tl import types
-    sent=await client.send_file(
-        bot,clip,caption="動画の補足",force_document=False,
-        mime_type="video/mp4",supports_streaming=True,
-        attributes=[types.DocumentAttributeVideo(duration=1,w=64,h=64,supports_streaming=True)])
+    # Telethon detects video media more reliably from an MP4 *file path*.
+    # Keep test bytes only in a disposable local file, never in shared storage.
+    with tempfile.NamedTemporaryFile(suffix=".mp4",prefix="link-video-test-",mode="w+b") as clip:
+        clip.write(base64.b64decode(VIDEO_BASE64))
+        clip.flush()
+        sent=await client.send_file(
+            bot,clip.name,caption="動画の補足",force_document=False,
+            mime_type="video/mp4",supports_streaming=True,
+            attributes=[types.DocumentAttributeVideo(duration=1,w=64,h=64,supports_streaming=True)])
     if not getattr(sent,"video",None):
         raise RuntimeError("LINK_VIDEO_SENT_AS_DOCUMENT")
     await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
