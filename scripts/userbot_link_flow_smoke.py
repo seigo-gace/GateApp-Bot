@@ -60,7 +60,7 @@ async def run(client):
                        and any("キャンセル"==b for row in labels(m) for b in row),mark)
     mark=datetime.now(timezone.utc)
     await preview.click(text="登録")
-    receipt=await wait(lambda m:any("投稿コードをコピー" in b
+    receipt=await wait(lambda m:any("登録コードをコピー" in b
                          for row in labels(m) for b in row),mark)
     if not receipt:
         raise RuntimeError("LINK_TEST_REGISTER_NO_RECEIPT")
