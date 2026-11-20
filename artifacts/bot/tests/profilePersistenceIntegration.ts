@@ -5,6 +5,7 @@ import {join} from "node:path";
 import {pool} from "../src/db/index.js";
 import {putDraft,getDraft,getProfile,savePrivateDraft,recordProfilePublication,claimProfileRevisionUpdate} from "../src/services/profileRepository.js";
 import {makeProfileViewerButtons,resolvePublishedProfileView} from "../src/services/profilePublicView.js";
+import {applyProfileKeyboardBackfill} from "../src/services/profileKeyboardBackfill.js";
 import {hidePublishedProfile} from "../src/services/profilePublicationControl.js";
 import {revisePublishedProfile} from "../src/services/profilePublicationUpdate.js";
 
@@ -122,6 +123,29 @@ try{
   assert.equal(await resolvePublishedProfileView(token),null,"publication receipt required");
   await recordProfilePublication(id,current.revision,-1009876543210,110,777,current);
   assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
+  // Keyboard-only update of the SAME Telegram message ID; no sends/deletes.
+  let markupEdits=0;
+  const onlyMarkupTelegram={
+   async editMessageReplyMarkup(chat:number,message:number,_inline:unknown,markup:any){
+    assert.equal(chat,-1009876543210);assert.equal(message,777);
+    assert.deepEqual(markup.inline_keyboard[0].map((b:any)=>b.text),
+      ["🪪","🖼️","🎞️","💖","💘"]);
+    assert.equal(markup.inline_keyboard[1][0].text,"連絡する");
+    markupEdits++;
+    return {chat:{id:chat},message_id:message};
+   },
+   async sendMessage(){throw Error("FORBIDDEN_REPOST")},
+   async deleteMessage(){throw Error("FORBIDDEN_DELETE")},
+  } as any;
+  const dry=await applyProfileKeyboardBackfill(onlyMarkupTelegram,{dryRun:true});
+  assert.equal(dry.selected,1);assert.equal(markupEdits,0);
+  const migrated=await applyProfileKeyboardBackfill(onlyMarkupTelegram,{limit:100});
+  assert.equal(migrated.applied,1);assert.equal(migrated.uncertain,0);
+  assert.equal(markupEdits,1);
+  const retry=await applyProfileKeyboardBackfill(onlyMarkupTelegram,{limit:100});
+  assert.equal(retry.selected,0,"no duplicate edits on published message");
+  assert.equal(markupEdits,1);
+
   // Saving edits leaves the original published snapshot untouched.
   const edit=await putDraft(id,"appearance",{...full,nickname:"改訂テスト"});
   const updated=await savePrivateDraft(id,edit.revision,"test_user_123");
