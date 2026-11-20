@@ -25,11 +25,11 @@ async def _run(client,code,trace):
         raise RuntimeError("LINK_INLINE_RESULT_NOT_FOUND")
     sent_id=None
     try:
-    trace["stage"]="select"
+        trace["stage"]="select"
         output=await results[0].click("me")
         if output and getattr(output,"id",0)>cursor:
             sent_id=output.id
-    trace["stage"]="readback"
+        trace["stage"]="readback"
         found=None
         for _ in range(12):
             rows=await client.get_messages("me",limit=15)
@@ -47,14 +47,14 @@ async def _run(client,code,trace):
             await asyncio.sleep(1)
         if found is None:
             raise RuntimeError("LINK_INLINE_SELF_POST_NOT_CONFIRMED")
-    trace["stage"]="rich"
+        trace["stage"]="rich"
         rich=getattr(found,"rich_message",None)
         if rich is None:
             raise RuntimeError("LINK_INLINE_POST_MISSING_RICH")
         blocks=getattr(rich,"blocks",None)
         if not blocks:
             raise RuntimeError("LINK_INLINE_POST_EMPTY_RICH")
-    trace["stage"]="buttons"
+        trace["stage"]="buttons"
         if not any("Buttons" in type(b).__name__ for b in blocks):
             raise RuntimeError("LINK_INLINE_POST_LINK_BUTTONS_MISSING")
         return {"status":"PASS","self_post_sent":True,"rich_body_verified":True,
