@@ -65,6 +65,12 @@ async def _run(client,code,trace):
         labels={str(getattr(button,"text","")) for row in rows for button in row}
         if labels.intersection(forbidden):
             raise RuntimeError("LINK_INLINE_POST_EDITOR_BUTTONS_LEAKED")
+        if "写真付きのリンク" in labels:
+            trace["stage"]="photo_media"
+            if not any("photo" in type(block).__name__.lower() for block in blocks):
+                raise RuntimeError("LINK_SAVED_PHOTO_BLOCK_MISSING")
+            if "画像の補足" not in str(rich):
+                raise RuntimeError("LINK_SAVED_PHOTO_CAPTION_MISSING")
         trace["stage"]="receipt"
         # Only the receipt containing this exact, owner-scoped code may be edited.
         # The rich body is an MTProto object; raw_text alone may be empty.
