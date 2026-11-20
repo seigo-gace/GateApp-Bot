@@ -45,9 +45,17 @@ async def _run(client, trace):
     if "🔗ボタンを作成する上で一緒に投稿" not in (screen.raw_text or ""):
         # Resume only the uniquely identified, already-persisted test draft.
         # Never overwrite someone else's unregistered editor.
-        if not ({"登録","キャンセル","動画付きのリンク"} <= set(labels(screen))):
+        if {"登録","キャンセル","動画付きのリンク"} <= set(labels(screen)):
+            preview=screen
+        elif {"再表示","素材変更","キャンセル"} <= set(labels(screen)):
+            trace["stage"]="preview_retry"
+            mark=datetime.now(timezone.utc)
+            await screen.click(text="再表示")
+            preview=await latest(lambda m:"登録" in labels(m) and
+                                 "キャンセル" in labels(m) and
+                                 "動画付きのリンク" in labels(m),mark)
+        else:
             raise RuntimeError("LINK_VIDEO_EXISTING_DRAFT_BLOCKED")
-        preview=screen
     else:
         trace["stage"]="video"
         t=datetime.now(timezone.utc)
