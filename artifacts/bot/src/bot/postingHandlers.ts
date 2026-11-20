@@ -15,7 +15,9 @@ import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic } from "../services/topicDmEntry.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
-import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
+import {parseLinkButtonPair,renderLinkCard,buttonGrid,insertLinkButton,type LinkDraft} from "../services/linkButtonDomain.js";
+import {registerLinkShare,updateLinkShare} from "../services/linkInlineShare.js";
+import {linkRichPreview,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows,linkRichRegisteredReceipt} from "../services/linkRichPreview.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {roomPublicButtons} from "../services/roomPublicButtons.js";
@@ -462,36 +464,173 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
   {visibility:"approved_only",profileLinked:false,modeSelected:false,...(screenId?{screenMessageId:screenId}:{})});
  await roomPreviewScreen(telegram,userId,draft);
 }
-/** LinkButton uses the same DM draft, owner and verified topic as other posts. */
-export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
+/** Preview with media, tappable URL buttons and in-body edit callbacks. */
+async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
+ const registered=typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true;
+ const rich=registered?
+  linkRichRegisteredReceipt(String(d.data.shareCode)):
+  linkRichPreview(d.data as LinkDraft,d.revision);
+ const urlRows=registered?[]:linkUrlKeyboardRows(d.data as LinkDraft);
+ const keyboard=registered?
+  {reply_markup:{inline_keyboard:[
+   [{text:"📋 登録コードをコピー",copy_text:{text:"@GayBBS_bot "+String(d.data.shareCode)}}],
+   [{text:"戻る",callback_data:"post:link:receipt:back:"+d.revision},
+    {text:"新規作成",callback_data:"post:link:receipt:new:"+d.revision},
+    {text:"編集",callback_data:"post:link:receipt:edit:"+d.revision}],
+  ]}}:
+  {reply_markup:{inline_keyboard:[
+   ...urlRows,
+   [{text:"登録",callback_data:"post:link:register:"+d.revision},
+    {text:"キャンセル",callback_data:"post:link:cancel:"+d.revision}],
+  ]}};
+ const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
+ const old=Number(d.data.screenMessageId);
+ if(Number.isSafeInteger(old)&&old>0){
+  try{
+   await raw.callApi("editMessageText",{chat_id:owner,message_id:old,
+    rich_message:rich,reply_markup:keyboard.reply_markup});
+   return;
+  }catch(error){
+   const reason=error instanceof Error?error.message:"";
+   if(/message is not modified/i.test(reason))return;
+   // Telegram may reject editing a plain-text DM message into a media-rich
+   // message with HTTP 400 even though a fresh sendRichMessage is valid.
+   // A definite 400 response has no ambiguous in-flight edit side effect.
+   const deterministicMediaEditReject=Boolean(d.data.media)&&
+    /\b400\b/.test(reason)&&/bad request/i.test(reason);
+   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason)&&
+      !deterministicMediaEditReject)
+    throw error;
+  }
+ }
+ let sent:any;
+ try{
+  sent=await raw.callApi("sendRichMessage",{chat_id:owner,
+   rich_message:rich,reply_markup:keyboard.reply_markup});
+ }catch(error){
+  const reason=error instanceof Error?error.message:"";
+  // A known Telegram 400 has no uncertain send side effect. For media-only
+  // errors retain the exact draft and show a recoverable editor screen.
+  // Timeout / transport ambiguity is rethrown: never blindly duplicate a post.
+  if(!d.data.media||!/\b400\b/.test(reason)||!/bad request/i.test(reason))throw error;
+  await showPostScreen(telegram,owner,d,
+   "⚠️ 素材を含むプレビューを表示できませんでした。下書きは保持しています。"+
+   "\n素材を変更するか、再表示をお試しください。",
+   Markup.inlineKeyboard([
+    [Markup.button.callback("素材変更","post:link:editmedia:"+d.revision),
+     Markup.button.callback("再表示","post:link:back:"+d.revision)],
+    [Markup.button.callback("キャンセル","post:link:cancel:"+d.revision)],
+   ]));
+  return;
+ }
+ if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
+  throw Error("LINK_RICH_SCREEN_UNCONFIRMED");
+ await bindDraftScreen(owner,"link",d.revision,sent.message_id);
+ if(old>0&&old!==sent.message_id){
+  try{await telegram.deleteMessage(owner,old);}catch{
+   console.warn("[LINK_OLD_SCREEN_REMOVE_FAILED]");
+  }
+ }
+}
+
+
+async function showLinkRichEditor(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
+ const rich=d.data.linkEditorView==="content"?linkRichContentEditor(d.data as LinkDraft,d.revision,String(d.data.linkSelectedField||'')):
+   linkRichPlacement(d.data as LinkDraft,d.revision);
+ const keyboard=Markup.inlineKeyboard(d.data.linkEditorView==="content"?[[
+  Markup.button.callback("戻る","post:link:back:"+d.revision),
+  Markup.button.callback("変更","post:link:change:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]:[[
+  Markup.button.callback("戻る","post:link:back:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]);
+ const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
+ const old=Number(d.data.screenMessageId);
+ if(Number.isSafeInteger(old)&&old>0){
+  try{
+   await raw.callApi("editMessageText",{chat_id:owner,message_id:old,
+    rich_message:rich,reply_markup:keyboard.reply_markup});
+   return;
+  }catch(error){
+   const reason=error instanceof Error?error.message:"";
+   if(/message is not modified/i.test(reason))return;
+   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason))
+    throw error;
+  }
+ }
+ const sent=await raw.callApi("sendRichMessage",{chat_id:owner,rich_message:rich,reply_markup:keyboard.reply_markup});
+ if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
+  throw Error("LINK_EDITOR_SCREEN_UNCONFIRMED");
+ await bindDraftScreen(owner,"link",d.revision,sent.message_id);
+ if(old>0&&old!==sent.message_id){
+  try{await telegram.deleteMessage(owner,old);}catch{
+   console.warn("[LINK_OLD_EDITOR_REMOVE_FAILED]");
+  }
+ }
+}
+
+
+function linkMediaEditorKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
+ const withCaption=Boolean(d.data.media)&&Boolean(String(d.data.text||"").trim());
+ const top=d.data.captionAbove===true;
  return Markup.inlineKeyboard([
-  [1,2,3].map(i=>Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
-    "post:linkcols:"+rev+":"+i)),
-  [Markup.button.callback("📝 内容を修正","post:link:edit:"+rev),
+  ...(withCaption?[[
+   Markup.button.callback((top?"✅ ":"▫️ ")+"上に表示","post:link:captiontop:"+rev),
+   Markup.button.callback((!top?"✅ ":"▫️ ")+"下に表示","post:link:captionbottom:"+rev),
+  ]]:[]),
+  [Markup.button.callback("🖼 画像/動画の差し替え","post:link:mediareplace:"+rev),
+   Markup.button.callback("🗑 画像/動画を削除","post:link:mediadelete:"+rev)],
+  [Markup.button.callback("↩ プレビューに戻る","post:link:back:"+rev),
    Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
+ ]);
+}
+
+/** Only these two actions belong in the preview InlineKeyboard. */
+export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
+ return Markup.inlineKeyboard([[
+  Markup.button.callback("登録","post:link:register:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]);
+}
+function linkColorKeyboard(d:EditorDraft):WizardKeyboard{
+ const colors=[["標準","standard"],["青","primary"],["緑","success"],["赤","danger"]] as const;
+ const selected=String(d.data.linkSelectedStyle||"standard");
+ return Markup.inlineKeyboard([
+  colors.map(([name,color])=>Markup.button.callback((selected===color?"✅ ":"▫️ ")+name,
+   "post:link:selectcolor:"+d.revision+":"+color)),
+  [Markup.button.callback("戻る","post:link:restart:"+d.revision),
+   Markup.button.callback("キャンセル","post:link:cancel:"+d.revision)],
  ]);
 }
 export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
  const prior=await getDraft(userId,"link");
- if(screenId&&prior){
-  await bindDraftScreen(userId,"link",prior.revision,screenId);
-  prior.data.screenMessageId=screenId;
+ // A registered post has its immutable code in link_button_posts. Re-entering
+ // ［🔗ボタン作成］ must start a NEW draft, not reopen a locked receipt.
+ const reusable=prior&&typeof prior.data.shareCode!=="string"?prior:null;
+ if(screenId&&reusable){
+  await bindDraftScreen(userId,"link",reusable.revision,screenId);
+  reusable.data.screenMessageId=screenId;
  }
- // Reopening /link must not erase a still-private, valid editor. Other
- // draft modules and published receipts are never touched.
- if(prior?.step==="preview"){
-  await showPostScreen(telegram,userId,prior,"公開前プレビュー\n"+preview("link",prior)+
-   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(prior));
+ if(reusable?.step==="preview"){
+  if(reusable.data.linkEditorView===true||reusable.data.linkEditorView==="content")
+   await showLinkRichEditor(telegram,userId,reusable);
+  else await showLinkRichPreview(telegram,userId,reusable);
   return;
  }
- const draft=prior?.step==="awaiting_text"?prior:
-  await beginDraft(userId,"link","awaiting_text",screenId?{screenMessageId:screenId}:{});
- await showPostScreen(telegram,userId,draft,
-  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。",
-  Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
-   "post:link:cancel:"+draft.revision)]]));
+ const d=reusable?.step==="awaiting_text"?reusable:
+  await beginDraft(userId,"link","awaiting_text",{
+   linkStage:"content",buttons:[],text:"",columns:1,linkSelectedStyle:"standard",
+   ...(screenId?{screenMessageId:screenId}:{})});
+ const buttonStage=String(d.data.linkStage||"content")==="button";
+ await showPostScreen(telegram,userId,d,buttonStage?
+  "🔗 ボタンを作成\nリンクにしたいURLとボタンのタイトルを2行で送信してください。\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL":
+  "🔗ボタンを作成する上で一緒に投稿したテキスト、動画、画像、ステッカーなどを投稿してください。動画や画像に説明を補足した場合はキャプションにテキストを入力してください。",
+  buttonStage?linkColorKeyboard(d):Markup.inlineKeyboard([[
+   Markup.button.callback("キャンセル","post:link:cancel:"+d.revision)]]));
 }
+
 /** One shared Bot DM message for the approved 告知/予告 layout. */
 export function announcementPanel(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
@@ -1311,12 +1450,49 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    if(current.module==="link"){
-    const parsed=parseLinkInput(input);
+    const stage=String(current.data.linkStage||"button");
+    if(stage==="content"||stage==="edittext"){
+     if(input.length>(current.data.media?1024:3500))throw Error("LINK_BODY_INVALID");
+     const editing=stage==="edittext";
+     const updated=await updateDraft(ctx.from.id,"link",current.revision,
+      editing?"preview":"awaiting_text",
+      {...current.data,text:input,linkStage:editing?"ready":"button",
+       linkEditorView:false});
+     if(editing)await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+     else await render(updated,
+      "🔗 ボタンを作成\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
+      linkColorKeyboard(updated));
+     return;
+    }
+    const button=parseLinkButtonPair(input);
+     const style=String(current.data.linkSelectedStyle||"standard");
+     if(!["standard","primary","success","danger"].includes(style))throw Error("LINK_STYLE_INVALID");
+     if(style!=="standard")button.style=style as "primary"|"success"|"danger";
+    const previous=Array.isArray(current.data.buttons)?
+      current.data.buttons as LinkDraft["buttons"]:[];
+    const replacing=current.data.linkEditMode==="replace"&&previous.length>0;
+    const editIndex=Number(current.data.linkEditIndex);
+    if(replacing&&(!Number.isSafeInteger(editIndex)||editIndex<0||
+      editIndex>=previous.length))throw Error("LINK_EDIT_TARGET_INVALID");
+    const existing:LinkDraft={
+     text:String(current.data.text||""),
+     buttons:previous,columns:[1,2,3].includes(Number(current.data.columns))?
+      Number(current.data.columns) as 1|2|3:1,
+     ...(current.data.media?{media:current.data.media as LinkDraft["media"]}:{})};
+    const buttons=replacing?previous.map((item,i)=>i===editIndex?
+      {...button,rowStart:item.rowStart}:item):
+      previous.length===0?[{...button,rowStart:true}]:
+      insertLinkButton(existing,button,
+       current.data.linkPlacement==="beside"?
+        {kind:"right",rowIndex:Number(current.data.linkTargetRow)}:
+        {kind:"newRow"});
+    const editorView=previous.length>0&&current.data.linkEditorView===true;
     const updated=await updateDraft(ctx.from.id,"link",current.revision,"preview",
-      {...current.data,...parsed,columns:[1,2,3].includes(Number(current.data.columns))?current.data.columns:1});
-    await render(updated,"公開前プレビュー\n"+preview("link",updated)+
-      "\n\nボタンの表示列数を選択してください。",
-      linkPreviewKeyboard(updated));
+      {...current.data,buttons,linkStage:"ready",linkEditMode:null,linkEditIndex:null,
+       linkPlacement:null,linkTargetRow:null,linkSelectedStyle:"standard",linkEditorView:editorView,
+       columns:existing.columns});
+    if(editorView)await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
+    else await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
     return;
    }
    if(current.module==="room"){
@@ -1355,6 +1531,24 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
   }catch(e){
    if(e instanceof Error&&e.message==="POST_DRAFT_STALE")throw e;
+   if(current.module==="link"){
+    // Media-rich preview can fail AFTER the revision was persisted. Never render
+    // an obsolete revision (its buttons cannot work); preserve the actual draft.
+    const latest=await getDraft(ctx.from.id,"link");
+    if(latest?.step==="preview"&&Array.isArray(latest.data.buttons)&&
+       latest.data.buttons.length>0){
+     console.warn("[LINK_PREVIEW_RENDER_FAILED] media="+
+      (latest.data.media?"PRESENT":"ABSENT"));
+     await render(latest,"⚠️ プレビューを表示できませんでした。下書きは保存されています。"+
+      "\n素材を変更するか、プレビュー表示をもう一度お試しください。",
+      Markup.inlineKeyboard([
+       [Markup.button.callback("素材変更","post:link:editmedia:"+latest.revision),
+        Markup.button.callback("再表示","post:link:back:"+latest.revision)],
+       [Markup.button.callback("キャンセル","post:link:cancel:"+latest.revision)],
+      ]));
+     return;
+    }
+   }
    const errorText=(e instanceof Error?e.message:"入力内容を確認してください。")+
      "\n内容を修正して、もう一度送信してください。";
    await render(current,errorText,current.module==="room"?
@@ -1367,9 +1561,162 @@ export function registerPostingHandlers(bot:Telegraf):void{
     ]):undefined);
   }
  });
- bot.action(/^post:link:(edit|cancel|back):(\d+)$/,async ctx=>{
+ // Uses the existing DM text-owner and Telegram file_id mechanism from profiles.
+ const receiveLinkMedia=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video"|"videoDocument")=>{
+  if(ctx.chat?.type!=="private"||!ctx.from){await next();return;}
+  if(await currentDmTextOwner(ctx.from.id)!=="link"){await next();return;}
+  const original=await getWaitingDraft(ctx.from.id);
+  if(!original||original.module!=="link"||
+     !["content","button","editmedia"].includes(String(original.data.linkStage))){await next();return;}
+  const msg=ctx.message;
+  if(!msg){await next();return;}
+  const file=kind==="photo"&&"photo" in msg?msg.photo.at(-1):
+   kind==="video"&&"video" in msg?msg.video:
+   kind==="videoDocument"&&"document" in msg&&msg.document.mime_type==="video/mp4"?
+    msg.document:undefined;
+  if(!file?.file_id){await next();return;}
+  const caption="caption" in msg&&typeof msg.caption==="string"?msg.caption:"";
+  const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,msg.message_id);
+  const notice=deleted?"":"\n⚠️ 送信した素材メッセージを削除できません。手動で削除してください。";
+  try{
+   // Extra album messages may arrive after Step ② is displayed. Preserve
+   // caption and append in the same draft rather than asking for a format menu.
+   let updated:EditorDraft|undefined;
+   for(let attempt=0;attempt<3;attempt++){
+    const d=attempt===0?original:await getWaitingDraft(ctx.from.id);
+    if(!d||d.module!=="link")throw Error("LINK_DRAFT_NOT_WAITING");
+    const stage=String(d.data.linkStage||"content");
+    if(!["content","button","editmedia"].includes(stage))throw Error("LINK_MEDIA_STAGE_CHANGED");
+    const replacing=stage==="editmedia";
+    const hasPrimary=Boolean(d.data.media);
+    const oldText=String(d.data.text||"");
+    // User-entered body and Telegram media caption are distinct fields.
+    // Never silently reinterpret the first media caption as post body.
+    const text=oldText;
+    if(text.length>1024||caption.length>1024)throw Error("LINK_BODY_INVALID");
+    const extras=Array.isArray(d.data.mediaExtras)?d.data.mediaExtras as LinkDraft["mediaExtras"]:[];
+    const appended=stage==="button"&&hasPrimary;
+    const newMedia={type:kind==="videoDocument"?"document":kind,fileId:file.file_id,...(caption?{caption}:{})};
+    const media=appended?d.data.media:newMedia;
+    const mediaExtras=appended?[...(extras||[]),newMedia]:extras||[];
+    if(mediaExtras.length>=50)throw Error("LINK_MEDIA_ALBUM_LIMIT");
+    const data={...d.data,text,media,mediaExtras,
+     captionAbove:d.data.captionAbove===true,
+     linkStage:replacing?"ready":"button",linkEditorView:false};
+    try{
+     updated=await updateDraft(ctx.from.id,"link",d.revision,
+      replacing?"preview":"awaiting_text",data);
+     break;
+    }catch(error){
+     if(!(error instanceof Error&&error.message==="POST_DRAFT_STALE")||attempt===2)throw error;
+    }
+   }
+   if(!updated)throw Error("LINK_MEDIA_UPDATE_NOT_CONFIRMED");
+   if(updated.step==="preview")await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   else await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "✅ "+(kind==="photo"?"画像":"動画")+"を受け取りました。"+notice+
+    "\n\n次の2行をまとめて1回送信してください。\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
+    linkColorKeyboard(updated));
+  }catch(error){
+   const reason=error instanceof Error?error.message:"登録失敗";
+   await showPostScreen(ctx.telegram,ctx.from.id,original,
+    "⚠️ 素材を登録できませんでした："+reason+notice,
+    Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
+     "post:link:cancel:"+original.revision)]]));
+  }
+ };
+ bot.on("photo",async(ctx,next)=>receiveLinkMedia(ctx,next,"photo"));
+ bot.on("video",async(ctx,next)=>receiveLinkMedia(ctx,next,"video"));
+ // Link-only transport diagnosis: a client may send an MP4 as a document.
+ // Never log user identity, file IDs, captions, messages or chat contents.
+ bot.on("document",async(ctx,next)=>{
+  // Telegram clients may classify an uploaded MP4 as Document rather than Video.
+  // Keep the same LinkDraft and Rich video block (no secondary storage or workflow).
+  if(ctx.message.document.mime_type==="video/mp4")
+   return receiveLinkMedia(ctx,next,"videoDocument");
+  await next();
+ });
+ bot.action(/^post:link:selectcolor:(\d+):(standard|primary|success|danger)$/,async ctx=>{
   if(!privateDM(ctx))return;
-  const op=ctx.match[1],rev=Number(ctx.match[2]);
+  const revision=Number(ctx.match[1]),color=ctx.match[2];
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==revision||d.step!=="awaiting_text"||d.data.linkStage!=="button"){
+   await ctx.answerCbQuery("古い色選択です。");return;
+  }
+  const updated=await updateDraft(ctx.from.id,"link",revision,"awaiting_text",
+   {...d.data,linkSelectedStyle:color});
+  await ctx.answerCbQuery();
+  await showPostScreen(ctx.telegram,ctx.from.id,updated,
+   "🔗 ボタンを作成\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
+   linkColorKeyboard(updated));
+ });
+ bot.action(/^post:link:restart:(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]),d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==rev||d.step!=="awaiting_text"){
+   await ctx.answerCbQuery("古い操作です。");return;
+  }
+  if(d.data.linkEditMode){
+   const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...d.data,linkEditMode:null,linkEditIndex:null,linkSelectedStyle:"standard",
+     linkEditorView:true,linkStage:"ready"});
+   await ctx.answerCbQuery();await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
+   return;
+  }
+  const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+   {...d.data,text:"",media:null,captionAbove:false,buttons:[],columns:1,
+    linkStage:"content",linkSelectedStyle:"standard",linkEditorView:false});
+  await ctx.answerCbQuery();
+  await showPostScreen(ctx.telegram,ctx.from.id,updated,
+   "🔗ボタンを作成する上で一緒に投稿したテキスト、動画、画像、ステッカーなどを投稿してください。動画や画像に説明を補足した場合はキャプションにテキストを入力してください。",
+   Markup.inlineKeyboard([[Markup.button.callback("キャンセル","post:link:cancel:"+rev)]]));
+ });
+ bot.action(/^post:link:receipt:(back|new|edit):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const action=ctx.match[1],revision=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==revision||d.step!=="preview"||
+     typeof d.data.shareCode!=="string"||d.data.linkEditingRegistered===true){
+   await ctx.answerCbQuery("登録済み画面の状態が変わりました。");return;
+  }
+  if(action==="back"){
+   await ctx.answerCbQuery();
+   await editMessageToDmPostingMenu(ctx,ctx.from.id);
+   return;
+  }
+  if(action==="new"){
+   await ctx.answerCbQuery();
+   await startLinkEditor(ctx.telegram,ctx.from.id,ctx.callbackQuery.message?.message_id);
+   return;
+  }
+  const next=await updateDraft(ctx.from.id,"link",revision,"preview",
+   {...d.data,linkEditingRegistered:true,linkEditorView:false});
+  await ctx.answerCbQuery();
+  await showLinkRichPreview(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^post:link:field:(\d+):(text|media|b\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const revision=Number(ctx.match[1]),field=ctx.match[2];
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==revision||d.step!=="preview"||d.data.linkEditorView!=="content"||
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
+   await ctx.answerCbQuery("古い編集操作です。");return;
+  }
+  const buttons=Array.isArray(d.data.buttons)?d.data.buttons:[];
+  if(field==="text"&&!String(d.data.text||"").trim()||
+     field==="media"&&!d.data.media||
+     field.startsWith("b")&&(!Number.isInteger(Number(field.slice(1)))||
+      Number(field.slice(1))>=buttons.length)){
+   await ctx.answerCbQuery("編集項目を確認できません。");return;
+  }
+  const next=await updateDraft(ctx.from.id,"link",revision,"preview",
+   {...d.data,linkSelectedField:field});
+  await ctx.answerCbQuery();await showLinkRichEditor(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^post:link:(register|content|change|edittext|editmedia|mediareplace|mediadelete|captiontop|captionbottom|panel|add|beside|edit|cancel|back|destination):(\d+)(?::(\d+))?$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  let op=ctx.match[1];const rev=Number(ctx.match[2]);
+  let targetRow=ctx.match[3]===undefined?null:Number(ctx.match[3]);
   const d=await getDraft(ctx.from.id,"link");
   if(!d||d.revision!==rev||!["awaiting_text","preview"].includes(d.step)){
    await ctx.answerCbQuery("古い操作です。/link から再開してください。");return;
@@ -1380,39 +1727,216 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await editMessageToDmPostingMenu(ctx,ctx.from.id);
    return;
   }
-  if(op==="edit"){
-   if(d.step!=="preview"){
-    await ctx.answerCbQuery("先にURLと表示名を入力してください。");return;
+
+  if(op==="back"){
+   const next=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...d.data,linkEditorView:false,linkSelectedField:null,linkEditMode:null,
+     linkEditIndex:null,linkStage:"ready",linkSelectedStyle:"standard"});
+   await ctx.answerCbQuery();await showLinkRichPreview(ctx.telegram,ctx.from.id,next);return;
+  }
+  if(op==="content"||op==="panel"){
+   if(d.step!=="preview"||(typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
+    await ctx.answerCbQuery("登録済みの投稿は変更できません。");return;
    }
-   const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",d.data);
+   const next=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...d.data,linkEditorView:op==="content"?"content":true,linkSelectedField:null});
+   await ctx.answerCbQuery();await showLinkRichEditor(ctx.telegram,ctx.from.id,next);return;
+  }
+  if(op==="change"){
+   if(d.step!=="preview"||d.data.linkEditorView!=="content"){
+    await ctx.answerCbQuery("内容の編集画面を開いてください。");return;
+   }
+   const field=String(d.data.linkSelectedField||"");
+   if(field==="text")op="edittext";
+   else if(field==="media")op="editmedia";
+   else if(/^b\d+$/.test(field)){
+    targetRow=Number(field.slice(1));
+    if(!Array.isArray(d.data.buttons)||targetRow>=d.data.buttons.length){
+     await ctx.answerCbQuery("編集項目が変更されています。");return;
+    }
+    op="edit";
+   }else{await ctx.answerCbQuery("編集項目を選択してください。");return;}
+  }
+  if(op==="register"){
+   if(d.step!=="preview"||Boolean(d.data.linkEditorView)){
+    await ctx.answerCbQuery("先に投稿プレビューへ戻ってください。");return;
+   }
+   if((typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
+    await ctx.answerCbQuery("登録済みです。");await showLinkRichPreview(ctx.telegram,ctx.from.id,d);return;
+   }
+   const me=await ctx.telegram.getMe();
+   if(!("supports_inline_queries" in me)||me.supports_inline_queries!==true){
+    await ctx.answerCbQuery("Botのインライン機能が未有効です。登録を行いません。",{show_alert:true});
+    return;
+   }
+   try{
+    const editingRegistered=typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered===true;
+    const receipt=editingRegistered?
+     await updateLinkShare(ctx.from.id,String(d.data.shareCode),d.data as LinkDraft):
+     await registerLinkShare(ctx.from.id,rev,d.data as LinkDraft);
+    const updated=await updateDraft(ctx.from.id,"link",rev,"preview",{
+     ...d.data,shareCode:receipt.code,linkSourceId:receipt.sourceId,
+     linkEditingRegistered:false,linkEditorView:false,
+    });
+    await ctx.answerCbQuery("登録しました");
+    await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   }catch(error){
+    const reason=error instanceof Error?error.message:"unknown";
+    console.error("[LINK_REGISTER_FAILED]",reason);
+    await ctx.answerCbQuery("登録結果を確認できません。元の下書きは保持しています。",{show_alert:true});
+   }
+   return;
+  }
+  if(op==="edittext"||op==="editmedia"){
+   if(d.step!=="preview"){await ctx.answerCbQuery("編集中です。");return;}
+   if((typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
+    await ctx.answerCbQuery("登録済みは変更できません。新規作成してください。",{show_alert:true});return;
+   }
+   if(op==="editmedia"){
+    const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+     {...d.data,linkMediaPanel:true,linkEditorView:false});
+    await ctx.answerCbQuery();
+    await showPostScreen(ctx.telegram,ctx.from.id,updated,
+     "🖼 画像/動画編集\n現在："+(d.data.media?"登録済み":"未登録")+
+     "\n画像・動画の差し替え、削除、コメント位置を選択できます。",
+     linkMediaEditorKeyboard(updated));
+    return;
+   }
+   const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+    {...d.data,linkStage:"edittext",linkMediaPanel:false});
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "📝 テキスト編集\n現在の文章：\n"+String(d.data.text||"（なし）")+
+    "\n\n新しい文章をDMで送信してください。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
+     "post:link:back:"+updated.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+updated.revision)]]));
+   return;
+  }
+  if(op==="mediareplace"){
+   if(d.step!=="preview"||(typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)||
+     d.data.linkMediaPanel!==true){await ctx.answerCbQuery("編集画面を開いてください。");return;}
+   const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+    {...d.data,linkStage:"editmedia"});
+   await ctx.answerCbQuery();
+   await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "新しい画像または動画をDMへ送信してください。未送信の間は既存の媒体を保持します。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
+     "post:link:back:"+updated.revision)],
+     [Markup.button.callback("キャンセル","post:link:cancel:"+updated.revision)]]));
+   return;
+  }
+  if(op==="mediadelete"){
+   if(d.step!=="preview"||d.data.linkMediaPanel!==true||!d.data.media||
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){await ctx.answerCbQuery("削除できません。");return;}
+   if(!String(d.data.text||"").trim()){
+    await ctx.answerCbQuery("画像・動画のみの投稿です。先にテキストを追加してください。",{show_alert:true});return;
+   }
+   const {media:unused,...rest}=d.data;
+   const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...rest,linkMediaPanel:false,captionAbove:false});
+   await ctx.answerCbQuery("媒体を削除しました");
+   await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
+   return;
+  }
+  if(op==="captiontop"||op==="captionbottom"){
+   if(d.step!=="preview"||d.data.linkMediaPanel!==true||
+     !d.data.media||!String(d.data.text||"").trim()||
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
+    await ctx.answerCbQuery("コメント付き画像・動画の場合のみ変更できます。");return;
+   }
+   const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
+    {...d.data,captionAbove:op==="captiontop"});
+   await ctx.answerCbQuery("表示位置を保存しました");
+   await showPostScreen(ctx.telegram,ctx.from.id,updated,
+    "🖼 画像/動画編集\nコメント位置："+(op==="captiontop"?"上":"下"),
+    linkMediaEditorKeyboard(updated));
+   return;
+  }
+  if(op==="add"||op==="beside"||op==="edit"){
+   if(d.step!=="preview"||(op==="edit"?d.data.linkEditorView!=="content":d.data.linkEditorView!==true)||
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
+    await ctx.answerCbQuery("編集画面を開いてください。");return;
+   }
+   const rows=buttonGrid(d.data as LinkDraft);
+   if(op==="edit"&&(targetRow===null||targetRow<0||
+     targetRow>=(d.data.buttons as LinkDraft["buttons"]).length)){
+    await ctx.answerCbQuery("編集するボタンを確認できません。");return;
+   }
+   if(op==="beside"&&(targetRow===null||!Number.isInteger(targetRow)||
+     targetRow<0||targetRow>=rows.length)){
+    await ctx.answerCbQuery("追加する列を確認できません。");return;
+   }
+   const next=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
+    {...d.data,linkEditMode:op==="edit"?"replace":"add",
+     linkPlacement:op==="beside"?"beside":"nextRow",
+     linkTargetRow:op==="beside"?targetRow:null,
+     linkEditIndex:op==="edit"?targetRow:null,linkStage:"button",
+     linkSelectedStyle:op==="edit"?String((d.data.buttons as LinkDraft["buttons"])[targetRow!]!.style||"standard"):"standard"});
    await ctx.answerCbQuery();
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    "📝 本文とリンクをまとめて再入力してください。\n1行目：本文\n2行目以降：表示名 | https://URL\n以前の入力は確定するまで保持します。",
-    Markup.inlineKeyboard([[Markup.button.callback("↩ プレビューに戻る",
-     "post:link:back:"+next.revision)],
-     [Markup.button.callback("キャンセル","post:link:cancel:"+next.revision)]]));
+    (op==="edit"?"📝 ボタンタイトル"+String(targetRow!+1)+"を編集":op==="beside"?
+     "▶ 右横にボタンを追加":"▼ 次の段にボタンを追加")+
+    "\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",linkColorKeyboard(next));
+   return;
+  }
+  if(op==="destination"){
+   if(d.step!=="preview"||d.data.linkEditorView===true||
+      !Array.isArray(d.data.buttons)||!d.data.buttons.length){
+    await ctx.answerCbQuery("先にリンクボタンを追加してください。");return;
+   }
+   await ctx.answerCbQuery();
+   await ctx.answerCbQuery("投稿先を選ぶ必要はありません。投稿コードを登録し、任意のチャットで使用してください。",{show_alert:true});
    return;
   }
   if(!Array.isArray(d.data.buttons)||!d.data.buttons.length){
    await ctx.answerCbQuery("先にリンクを入力してください。");return;
   }
-  const next=d.step==="awaiting_text"?
-   await updateDraft(ctx.from.id,"link",rev,"preview",d.data):d;
+  const editing=d.data.linkEditorView===true;
+  const next=await updateDraft(ctx.from.id,"link",rev,"preview",
+   {...d.data,linkEditorView:editing,linkEditMode:null,linkEditIndex:null,
+    linkPlacement:null,linkTargetRow:null,linkStage:"ready"});
   await ctx.answerCbQuery();
-  await showPostScreen(ctx.telegram,ctx.from.id,next,"公開前プレビュー\n"+preview("link",next)+
-   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(next));
+  if(editing)await showLinkRichEditor(ctx.telegram,ctx.from.id,next);
+  else await showLinkRichPreview(ctx.telegram,ctx.from.id,next);
  });
- bot.action(/^post:linkcols:(\d+):([123])$/,async ctx=>{
+
+ bot.action(/^post:link:(delete):(\d+):(\d+)(?::([0-3]))?$/,async ctx=>{
   if(!privateDM(ctx))return;
-  const rev=Number(ctx.match[1]),cols=Number(ctx.match[2]) as 1|2|3;
+  const op=ctx.match[1],revision=Number(ctx.match[2]);
+  const index=Number(ctx.match[3]);
   const d=await getDraft(ctx.from.id,"link");
-  if(!d||d.step!=="preview"||d.revision!==rev){
-   await ctx.answerCbQuery("古い選択です。/link で再開してください。");return;
+  if(!d||d.revision!==revision||d.step!=="preview"||d.data.linkEditorView!==true||
+    (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
+   await ctx.answerCbQuery("編集画面の状態が変わりました。");return;
   }
-  const data={...d.data,columns:cols};
-  const next=await updateDraft(ctx.from.id,"link",rev,"preview",data);
-  await ctx.answerCbQuery("列数を保存しました");
-  await destinationMenu(ctx,"link",next.revision);
+  const buttons=Array.isArray(d.data.buttons)?d.data.buttons as LinkDraft["buttons"]:[];
+  if(!Number.isInteger(index)||index<0||index>=buttons.length){
+   await ctx.answerCbQuery("ボタンが見つかりません。");return;
+  }
+  if(buttons.length===1){
+   // Removing the last link returns to Step ②. Never leave an invalid empty preview.
+   const next=await updateDraft(ctx.from.id,"link",revision,"awaiting_text",{
+    ...d.data,buttons:[],linkStage:"button",linkEditorView:false,
+    linkSelectedStyle:"standard",linkEditIndex:null,linkEditMode:null});
+   await ctx.answerCbQuery("ボタンを削除しました。");
+   await showPostScreen(ctx.telegram,ctx.from.id,next,
+    "🔗 ボタンを作成\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
+    linkColorKeyboard(next));
+   return;
+  }
+  const rows=buttonGrid(d.data as LinkDraft);
+  let seen=0;
+  const remain=rows.map(row=>{
+   const filtered=row.filter((_,i)=>seen+i!==index);
+   seen+=row.length;
+   return filtered;
+  }).filter(row=>row.length);
+  const nextButtons=remain.flatMap(row=>row.map((b,i)=>({...b,rowStart:i===0})));
+  const updated=await updateDraft(ctx.from.id,"link",revision,"preview",
+   {...d.data,buttons:nextButtons,linkEditIndex:null,linkEditMode:null,linkStage:"ready"});
+  await ctx.answerCbQuery("削除しました");
+  await showLinkRichEditor(ctx.telegram,ctx.from.id,updated);
  });
  bot.action(/^post:choose:(profile|room|announcement|link):(\d+):(\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;

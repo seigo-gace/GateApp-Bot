@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -40,7 +40,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     expected = ({"request_id", "action", "chat_id", "message_id"}
                 if action == "room_public_readback" else
                 {"request_id", "action", "topic_ids"}
-                if action == "profile_topics_by_id" else {"request_id", "action"})
+                if action == "profile_topics_by_id" else
+                {"request_id", "action", "code"}
+                if action in ("link_inline_query_smoke","link_send_saved_smoke") else {"request_id", "action"})
     if set(request) != expected:
         raise ValueError("REQUEST_SHAPE_INVALID")
     request_id = request["request_id"]
@@ -212,6 +214,34 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                             "receipt_visible": True, "input_deleted": True}
             await asyncio.sleep(2)
         raise RuntimeError("USERBOT_REPORT_E2E_INCOMPLETE")
+    if action == "link_inline_query_smoke":
+        code = request["code"]
+        if (not isinstance(code, str)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{24}", code)):
+            raise ValueError("LINK_CODE_INVALID")
+        bot = await client.get_entity("GayBBS_bot")
+        if not getattr(bot, "bot", False):
+            raise RuntimeError("LINK_INLINE_BOT_INVALID")
+        results = await client.inline_query(bot, code)
+        if len(results) != 1:
+            raise RuntimeError("LINK_INLINE_RESULT_NOT_FOUND")
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "inline_result_found": True}
+    if action == "link_video_caption_smoke":
+        from userbot_link_video_caption_smoke import run
+        return {"request_id":request_id,**await run(client)}
+    if action == "link_photo_caption_smoke":
+        from userbot_link_photo_caption_smoke import run
+        return {"request_id":request_id,**await run(client)}
+    if action == "link_send_saved_smoke":
+        from userbot_link_saved_message_smoke import run
+        return {"request_id":request_id,**await run(client,request["code"])}
+    if action == "link_rich_flow_smoke":
+        from userbot_link_rich_flow_smoke import run
+        return {"request_id":request_id, **await run(client)}
+    if action == "link_registration_smoke":
+        from userbot_link_flow_smoke import run
+        return {"request_id": request_id, **await run(client)}
     if action == "room_private_smoke":
         from userbot_room_smoke import run
         return {"request_id": request_id, **await run(client)}
@@ -272,6 +302,25 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         if options:
             latest = max(options, key=lambda m: m.id)
             labels = [[b.text for b in row] for row in latest.buttons]
+            if action == "link_button_smoke":
+                # Bounded in-DM click verification. No public post, edit or session copy.
+                from datetime import datetime, timezone, timedelta
+                if labels != EXPECTED_MENU:
+                    raise RuntimeError("LINK_MENU_LAYOUT_INVALID")
+                clicked_at = datetime.now(timezone.utc)
+                await latest.click(text="🔗ボタン作成")
+                for _ in range(12):
+                    recent = await client.get_messages(bot, limit=80)
+                    for screen in recent:
+                        if screen.out or "🔗ボタンを作成する上で一緒に投稿" not in (
+                                screen.raw_text or ""):
+                            continue
+                        updated_at = screen.edit_date or screen.date
+                        if updated_at and updated_at >= clicked_at - timedelta(seconds=2):
+                            return {"request_id": request_id, "action": action,
+                                    "status": "PASS", "link_editor_opened": True}
+                    await asyncio.sleep(1)
+                raise RuntimeError("LINK_BUTTON_SCREEN_NOT_OPENED")
             if action == "profile_button_smoke":
                 from datetime import datetime, timezone, timedelta
                 if labels != EXPECTED_MENU:
@@ -324,7 +373,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke"} else 30)
+                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
