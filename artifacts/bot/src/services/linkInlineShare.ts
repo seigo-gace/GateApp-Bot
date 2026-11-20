@@ -51,6 +51,44 @@ export async function registerLinkShare(ownerId:number,revision:number,draft:Lin
  return {sourceId:String(row.link_post_id),code:String(row.share_code)};
 }
 
+/** Replace only an owned, registered post. Keep its share code and source ID.
+ * The live inline query always re-reads this single persisted record.
+ * No partial edit becomes public before a successful database readback.
+ */
+export async function updateLinkShare(ownerId:number,code:string,draft:LinkDraft):Promise<LinkShareReceipt>{
+ if(!Number.isSafeInteger(ownerId)||ownerId<=0||!/^[A-Za-z0-9_-]{24}$/.test(code))
+  throw Error("LINK_SHARE_OWNER_CODE_INVALID");
+ validateLinkDraft(draft);
+ const media=draft.media??null;
+ const q=await pool.query(
+  `UPDATE link_button_posts SET content=$3,buttons=$4::jsonb,columns=$5,
+     media_kind=$6,media_file_id=$7,media_caption=$8,caption_above=$9,
+     media_extras=$10::jsonb,revision=revision+1,updated_at=NOW()
+   WHERE owner_user_id=$1 AND share_code=$2 AND status='draft'
+   RETURNING link_post_id,content,buttons,columns,media_kind,media_file_id,
+     media_caption,caption_above,media_extras,share_code`,
+  [ownerId,code,draft.text,JSON.stringify(draft.buttons),draft.columns,
+   media?.type??null,media?.fileId??null,media?.caption??null,draft.captionAbove===true,
+   JSON.stringify(draft.mediaExtras??[])]);
+ if(q.rows.length!==1)throw Error("LINK_SHARE_EDIT_TARGET_MISSING");
+ const row=q.rows[0];
+ const stored:LinkDraft={text:String(row.content),buttons:row.buttons,
+  columns:Number(row.columns) as 1|2|3,
+  ...(row.media_kind?{media:{type:row.media_kind,fileId:row.media_file_id,
+   ...(row.media_caption?{caption:row.media_caption}:{})}}:{}),
+  mediaExtras:Array.isArray(row.media_extras)?row.media_extras:[],
+  captionAbove:row.caption_above===true};
+ const normalize=(d:LinkDraft)=>JSON.stringify({
+  text:d.text,buttons:d.buttons.map(b=>[b.label,b.url,b.rowStart??null,b.style??null]),
+  columns:d.columns,media:d.media?[d.media.type,d.media.fileId,d.media.caption??null]:null,
+  mediaExtras:(d.mediaExtras??[]).map(m=>[m.type,m.fileId,m.caption??null]),
+  captionAbove:d.captionAbove===true,
+ });
+ if(normalize(stored)!==normalize(draft)||row.share_code!==code)
+  throw Error("LINK_SHARE_EDIT_READBACK_CONFLICT");
+ return {sourceId:String(row.link_post_id),code};
+}
+
 export async function readLinkShare(ownerId:number,code:string):Promise<LinkInlinePost|null>{
  if(!Number.isSafeInteger(ownerId)||ownerId<=0||
    !/^[A-Za-z0-9_-]{24}$/.test(code))return null;
