@@ -27,6 +27,12 @@ function validatePost(p:ExistingPost):void{
 }
 export async function listExistingProfilePosts(limit=100):Promise<ExistingPost[]>{
  if(!positive(limit)||limit>500)throw Error("PROFILE_BACKFILL_LIMIT_INVALID");
+ const table=await pool.query("SELECT to_regclass('profile_keyboard_backfill') IS NOT NULL AS ready");
+ const hasReceiptTable=table.rows[0]?.ready===true;
+ const receiptJoin=hasReceiptTable?`LEFT JOIN profile_keyboard_backfill k
+    ON k.chat_id=pub.chat_id AND k.message_id=pub.message_id
+    AND k.profile_revision=pub.synced_revision`:"";
+ const receiptFilter=hasReceiptTable?"AND (k.state IS NULL OR k.state='ready')":"";
  const r=await pool.query(`
   SELECT pub.owner_user_id,pub.synced_revision,pub.chat_id,pub.thread_id,
     pub.message_id,t.topic_id,p.username,l.token
@@ -37,12 +43,10 @@ export async function listExistingProfilePosts(limit=100):Promise<ExistingPost[]
     AND t.verified_by IS NOT NULL AND t.verified_at IS NOT NULL
   LEFT JOIN profile_view_links l ON l.owner_user_id=pub.owner_user_id
     AND l.profile_revision=pub.synced_revision AND l.topic_id=t.topic_id AND l.enabled=TRUE
-  LEFT JOIN profile_keyboard_backfill k
-    ON k.chat_id=pub.chat_id AND k.message_id=pub.message_id
-    AND k.profile_revision=pub.synced_revision
+  ${receiptJoin}
   WHERE pub.status='published' AND pub.synced_revision>0
     AND pub.message_id>0 AND pub.public_snapshot IS NOT NULL
-    AND (k.state IS NULL OR k.state='ready')
+    ${receiptFilter}
   ORDER BY pub.chat_id,pub.message_id LIMIT $1`,[limit]);
  return r.rows.map(x=>({
   ownerId:Number(x.owner_user_id),revision:Number(x.synced_revision),
