@@ -15,7 +15,7 @@ import {makeRoomJoinLink} from "../src/services/roomJoinLinks.js";
 import {announcementPanel,announcementSummary,registerPostingHandlers,startRoomEditor,startAnnouncementEditor} from "../src/bot/postingHandlers.js";
 import {makeApplicationLink} from "../src/services/applicationLinks.js";
 import {publishPost} from "../src/services/publishService.js";
-import {getVerifiedVideoSaleTopic} from "../src/services/postingDelivery.js";
+import {getVerifiedVideoSaleTopic,verifyVideoSaleRelease} from "../src/services/postingDelivery.js";
 import {publishExistingMenuPanel} from "../src/services/menuPanelPublisher.js";
 import {markPostSourcePublished} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
@@ -54,6 +54,14 @@ try{
  const verifiedSale=await getVerifiedVideoSaleTopic();
  assert.equal(verifiedSale.id,Number(videoRoute.rows[0].topic_id));
  assert.equal(verifiedSale.threadId,2123);
+ assert.equal(verifiedSale.verified,true);
+ assert.equal(await verifyVideoSaleRelease({purpose:"video_sale",chatId:-1002373696859,threadId:2123}),false);
+ await pool.query(`INSERT INTO gaybbs_feature_release_gates
+   (feature,source_commit,ci_evidence,gserver_runtime_evidence,telegram_e2e_evidence,approved_by,enabled)
+   VALUES('video_sale',repeat('a',40),'CI_ONLY','NOT_A_LIVE_RUN','MOCK_TELEGRAM',111001,TRUE)`);
+ assert.equal(await verifyVideoSaleRelease({purpose:"video_sale",chatId:-1002373696859,threadId:2123}),true);
+ assert.equal(await verifyVideoSaleRelease({purpose:"video_sale",chatId:-1002373696859,threadId:2124}),false);
+ await pool.query("DELETE FROM gaybbs_feature_release_gates WHERE feature='video_sale'");
  await pool.query(
   "INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled) VALUES('video_chat','video_sale',-1002373696859,2124,'duplicate',111001,NOW(),TRUE)");
  await assert.rejects(()=>getVerifiedVideoSaleTopic(),/VIDEO_SALE_TOPIC_NOT_UNIQUELY_VERIFIED/);
