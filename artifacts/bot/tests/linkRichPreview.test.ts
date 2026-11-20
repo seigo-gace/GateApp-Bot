@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {linkRichPreview,linkRichPlacement,linkRichContentEditor} from "../src/services/linkRichPreview.js";
+import {linkRichPreview,linkRichPublication,linkRichPlacement,linkRichContentEditor} from "../src/services/linkRichPreview.js";
+import {linkInlineResult,type LinkInlinePost} from "../src/services/linkInlineShare.js";
 import {insertLinkButton,buttonGrid,parseLinkButtonPair,type LinkDraft} from "../src/services/linkButtonDomain.js";
 
 const draft:LinkDraft={
@@ -55,4 +56,16 @@ test("registered code has native copy_text in Rich body and no dead callback",()
  assert.match(text,/"copy_text":/);
  assert.match(text,/@GayBBS_bot abc123/);
  assert.doesNotMatch(text,/post:link:copy/);
+});
+
+test("public Rich post and preview use exactly the same material and URL button blocks",()=>{
+ const result=linkInlineResult({ownerId:42,sourceId:"10",draft} as LinkInlinePost);
+ assert.equal(result.type,"article");
+ const embedded=(result.input_message_content as {rich_message:ReturnType<typeof linkRichPublication>}).rich_message;
+ const publicBlocks=linkRichPublication(draft).blocks;
+ assert.deepEqual(embedded.blocks,publicBlocks);
+ const privateBlocks=linkRichPreview(draft,9).blocks;
+ assert.deepEqual(privateBlocks.slice(0,publicBlocks.length),publicBlocks);
+ assert.equal(JSON.stringify(publicBlocks).includes("post:link:panel"),false);
+ assert.equal(JSON.stringify(publicBlocks).includes("post:link:register"),false);
 });
