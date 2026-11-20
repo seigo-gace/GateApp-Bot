@@ -107,6 +107,26 @@ test("mixed image/video content and per-media captions are exactly preserved in 
  assert.match(JSON.stringify(published),/画像の補足/);
 });
 
+test("MP4 received as document preserves its actual Telegram media type in preview and shared post",()=>{
+ const mp4:LinkDraft={...draft,text:"",media:{
+  type:"document",fileId:"mp4_document_file_id",caption:"動画の補足",
+ }};
+ const preview=linkRichPreview(mp4,41).blocks;
+ const publicBlocks=linkRichPublication(mp4).blocks;
+ const block=publicBlocks.find(b=>b.type==="document");
+ assert.deepEqual(block,{
+  type:"document",document:{type:"document",media:"mp4_document_file_id"},
+  caption:{text:"動画の補足"},
+ });
+ assert.deepEqual(preview.slice(0,publicBlocks.length),publicBlocks);
+ const result=linkInlineResult({ownerId:42,sourceId:"mp4",draft:mp4});
+ assert.deepEqual((result.input_message_content as {rich_message:{blocks:unknown}}).rich_message.blocks,
+  publicBlocks);
+ assert.deepEqual((result.reply_markup as {inline_keyboard:unknown}).inline_keyboard,
+  linkUrlKeyboardRows(mp4));
+ assert.match(JSON.stringify(linkRichContentEditor(mp4,42)),/動画ファイル/);
+});
+
 test("Bot launch subscribes to inline_query updates for registered link codes",async()=>{
  const {readFileSync}=await import("node:fs");
  const {resolve}=await import("node:path");
