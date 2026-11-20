@@ -23,10 +23,11 @@ export function linkRichPublication(draft:LinkDraft){
  validateLinkDraft(draft);
  const blocks:RichBlock[]=[];
  if(draft.media&&draft.captionAbove&&draft.text.trim())blocks.push(paragraph(draft.text));
- if(draft.media){
-  blocks.push(draft.media.type==="photo"
-   ?{type:"photo",photo:{type:"photo",media:draft.media.fileId}}
-   :{type:"video",video:{type:"video",media:draft.media.fileId}});
+ for(const media of [...(draft.media?[draft.media]:[]),...(draft.mediaExtras??[])]){
+  const caption=media.caption?{caption:{text:media.caption}}:{};
+  blocks.push(media.type==="photo"
+   ?{type:"photo",photo:{type:"photo",media:media.fileId},...caption}
+   :{type:"video",video:{type:"video",media:media.fileId},...caption});
  }
  if(draft.text.trim()&&(!draft.media||!draft.captionAbove))blocks.push(paragraph(draft.text));
  for(const row of buttonGrid(draft)){
