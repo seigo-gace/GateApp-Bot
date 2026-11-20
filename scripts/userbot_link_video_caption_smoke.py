@@ -48,8 +48,13 @@ async def _run(client, trace):
     clip=io.BytesIO(base64.b64decode(VIDEO_BASE64))
     clip.name="link-test-video.mp4"
     t=datetime.now(timezone.utc)
-    await client.send_file(bot,clip,caption="動画の補足",force_document=False,
-                           supports_streaming=True)
+    from telethon.tl import types
+    sent=await client.send_file(
+        bot,clip,caption="動画の補足",force_document=False,
+        mime_type="video/mp4",supports_streaming=True,
+        attributes=[types.DocumentAttributeVideo(duration=1,w=64,h=64,supports_streaming=True)])
+    if not getattr(sent,"video",None):
+        raise RuntimeError("LINK_VIDEO_SENT_AS_DOCUMENT")
     await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
                  and any("標準" in v for v in labels(m)),t)
     trace["stage"]="pair"
@@ -69,6 +74,7 @@ VIDEO_SAFE_ERRORS=frozenset({
     "LINK_VIDEO_BOT_INVALID","LINK_VIDEO_MENU_NOT_FOUND",
     "LINK_VIDEO_SCREEN_NOT_FOUND","LINK_VIDEO_EXISTING_DRAFT_BLOCKED",
     "LINK_VIDEO_REAL_URL_BUTTON_MISSING",
+    "LINK_VIDEO_SENT_AS_DOCUMENT",
 })
 
 async def run(client):
