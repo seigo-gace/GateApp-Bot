@@ -2,6 +2,7 @@
  * existing Telegram message ID. No deleteMessage/sendMessage/republication.
  */
 import "dotenv/config";
+import https from "node:https";
 import {Telegraf} from "telegraf";
 import {readConfiguredBotToken} from "../src/config/botToken.js";
 import {runMigrations} from "../src/db/migrate.js";
@@ -12,7 +13,7 @@ async function main(){
  const mode=process.argv[2];
  if(mode!=="--dry-run"&&mode!=="--apply")throw Error("PROFILE_BACKFILL_MODE_REQUIRED");
  if(!process.env.DATABASE_URL)throw Error("DATABASE_URL_REQUIRED");
- const bot=new Telegraf(readConfiguredBotToken());
+ const bot=new Telegraf(readConfiguredBotToken(),{telegram:{agent:new https.Agent({keepAlive:true,family:4})}});
  try{
   const me=await bot.telegram.getMe();
   if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
