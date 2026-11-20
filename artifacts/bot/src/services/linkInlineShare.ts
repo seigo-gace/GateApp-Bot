@@ -4,7 +4,7 @@
 import {randomBytes} from "node:crypto";
 import {pool} from "../db/index.js";
 import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
-import {linkRichPublication} from "./linkRichPreview.js";
+import {linkRichPublication,linkUrlKeyboardRows} from "./linkRichPreview.js";
 
 export type LinkShareReceipt={code:string;sourceId:string};
 export type LinkInlinePost={ownerId:number;sourceId:string;draft:LinkDraft};
@@ -80,5 +80,6 @@ export function linkInlineResult(post:LinkInlinePost):Record<string,unknown>{
   title:draft.text.slice(0,80)||"🔗 リンク投稿",
   description:"登録済み投稿をそのまま共有します",
   input_message_content:{rich_message:linkRichPublication(draft)},
+  reply_markup:{inline_keyboard:linkUrlKeyboardRows(draft)},
  };
 }
