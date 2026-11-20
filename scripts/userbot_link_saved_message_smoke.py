@@ -67,7 +67,10 @@ async def _run(client,code,trace):
             raise RuntimeError("LINK_INLINE_POST_EDITOR_BUTTONS_LEAKED")
         if "動画付きのリンク" in labels:
             trace["stage"]="video_media"
-            if not any("video" in type(block).__name__.lower() for block in blocks):
+            # A native video stays RichVideo; an MP4 uploaded as a document
+            # must stay RichDocument. Never falsely relabel the file.
+            if not any(any(kind in type(block).__name__.lower() for kind in
+                           ("video","document")) for block in blocks):
                 raise RuntimeError("LINK_SAVED_VIDEO_BLOCK_MISSING")
             if "動画の補足" not in str(rich):
                 raise RuntimeError("LINK_SAVED_VIDEO_CAPTION_MISSING")
