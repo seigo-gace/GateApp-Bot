@@ -1798,8 +1798,16 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!Number.isInteger(index)||index<0||index>=buttons.length){
    await ctx.answerCbQuery("ボタンが見つかりません。");return;
   }
-  if(buttons.length<=1){
-   await ctx.answerCbQuery("最後のボタンは削除できません。");return;
+  if(buttons.length===1){
+   // Removing the last link returns to Step ②. Never leave an invalid empty preview.
+   const next=await updateDraft(ctx.from.id,"link",revision,"awaiting_text",{
+    ...d.data,buttons:[],linkStage:"button",linkEditorView:false,
+    linkSelectedStyle:"standard",linkEditIndex:null,linkEditMode:null});
+   await ctx.answerCbQuery("ボタンを削除しました。");
+   await showPostScreen(ctx.telegram,ctx.from.id,next,
+    "🔗 ボタンを作成\\n1行目：ボタンのタイトル\\n2行目：ボタンにしたいURL",
+    linkColorKeyboard(next));
+   return;
   }
   const rows=buttonGrid(d.data as LinkDraft);
   let seen=0;
