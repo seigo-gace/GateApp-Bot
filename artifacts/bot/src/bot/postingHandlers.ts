@@ -15,7 +15,9 @@ import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic } from "../services/topicDmEntry.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
-import {parseLinkInput,renderLinkCard,buttonGrid,type LinkDraft} from "../services/linkButtonDomain.js";
+import {parseLinkButtonPair,renderLinkCard,buttonGrid,insertLinkButton,type LinkDraft} from "../services/linkButtonDomain.js";
+import {registerLinkShare} from "../services/linkInlineShare.js";
+import {linkRichPreview,linkRichPlacement,linkRichContentEditor} from "../services/linkRichPreview.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {roomPublicButtons} from "../services/roomPublicButtons.js";
@@ -462,14 +464,102 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
   {visibility:"approved_only",profileLinked:false,modeSelected:false,...(screenId?{screenMessageId:screenId}:{})});
  await roomPreviewScreen(telegram,userId,draft);
 }
-/** LinkButton uses the same DM draft, owner and verified topic as other posts. */
-export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
+/** Preview with media, tappable URL buttons and in-body edit callbacks. */
+async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
+ const rich=linkRichPreview(d.data as LinkDraft,d.revision,
+  typeof d.data.shareCode==="string"?d.data.shareCode:undefined);
+ const registered=typeof d.data.shareCode==="string";
+ const keyboard=Markup.inlineKeyboard([[
+  Markup.button.callback(registered?"✅ 登録済み":"✅ 登録","post:link:register:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]);
+ const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
+ const old=Number(d.data.screenMessageId);
+ if(Number.isSafeInteger(old)&&old>0){
+  try{
+   await raw.callApi("editMessageText",{chat_id:owner,message_id:old,
+    rich_message:rich,reply_markup:keyboard.reply_markup});
+   return;
+  }catch(error){
+   const reason=error instanceof Error?error.message:"";
+   if(/message is not modified/i.test(reason))return;
+   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason))
+    throw error;
+  }
+ }
+ const sent=await raw.callApi("sendRichMessage",{chat_id:owner,
+  rich_message:rich,reply_markup:keyboard.reply_markup});
+ if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
+  throw Error("LINK_RICH_SCREEN_UNCONFIRMED");
+ await bindDraftScreen(owner,"link",d.revision,sent.message_id);
+ if(old>0&&old!==sent.message_id){
+  try{await telegram.deleteMessage(owner,old);}catch{
+   console.warn("[LINK_OLD_SCREEN_REMOVE_FAILED]");
+  }
+ }
+}
+
+
+async function showLinkRichEditor(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
+ const rich=d.data.linkEditorView==="content"?linkRichContentEditor(d.data as LinkDraft,d.revision):
+   linkRichPlacement(d.data as LinkDraft,d.revision);
+ const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
+ const old=Number(d.data.screenMessageId);
+ if(Number.isSafeInteger(old)&&old>0){
+  try{
+   await raw.callApi("editMessageText",{chat_id:owner,message_id:old,
+    rich_message:rich,reply_markup:{inline_keyboard:[]}});
+   return;
+  }catch(error){
+   const reason=error instanceof Error?error.message:"";
+   if(/message is not modified/i.test(reason))return;
+   if(!/message can't be edited|there is no text in the message|message to edit not found/i.test(reason))
+    throw error;
+  }
+ }
+ const sent=await raw.callApi("sendRichMessage",{chat_id:owner,rich_message:rich});
+ if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
+  throw Error("LINK_EDITOR_SCREEN_UNCONFIRMED");
+ await bindDraftScreen(owner,"link",d.revision,sent.message_id);
+ if(old>0&&old!==sent.message_id){
+  try{await telegram.deleteMessage(owner,old);}catch{
+   console.warn("[LINK_OLD_EDITOR_REMOVE_FAILED]");
+  }
+ }
+}
+
+
+function linkMediaEditorKeyboard(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
+ const withCaption=Boolean(d.data.media)&&Boolean(String(d.data.text||"").trim());
+ const top=d.data.captionAbove===true;
  return Markup.inlineKeyboard([
-  [1,2,3].map(i=>Markup.button.callback((d.data.columns===i?"✅ ":"▫️ ")+i+"列",
-    "post:linkcols:"+rev+":"+i)),
-  [Markup.button.callback("📝 内容を修正","post:link:edit:"+rev),
+  ...(withCaption?[[
+   Markup.button.callback((top?"✅ ":"▫️ ")+"上に表示","post:link:captiontop:"+rev),
+   Markup.button.callback((!top?"✅ ":"▫️ ")+"下に表示","post:link:captionbottom:"+rev),
+  ]]:[]),
+  [Markup.button.callback("🖼 画像/動画の差し替え","post:link:mediareplace:"+rev),
+   Markup.button.callback("🗑 画像/動画を削除","post:link:mediadelete:"+rev)],
+  [Markup.button.callback("↩ プレビューに戻る","post:link:back:"+rev),
    Markup.button.callback("キャンセル","post:link:cancel:"+rev)],
+ ]);
+}
+
+/** Only these two actions belong in the preview InlineKeyboard. */
+export function linkPreviewKeyboard(d:EditorDraft):WizardKeyboard{
+ return Markup.inlineKeyboard([[
+  Markup.button.callback("登録","post:link:register:"+d.revision),
+  Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
+ ]]);
+}
+function linkColorKeyboard(d:EditorDraft):WizardKeyboard{
+ const colors=[["標準","standard"],["青","primary"],["緑","success"],["赤","danger"]] as const;
+ const selected=String(d.data.linkSelectedStyle||"standard");
+ return Markup.inlineKeyboard([
+  colors.map(([name,color])=>Markup.button.callback((selected===color?"✅ ":"▫️ ")+name,
+   "post:link:selectcolor:"+d.revision+":"+color)),
+  [Markup.button.callback("戻る","post:link:restart:"+d.revision),
+   Markup.button.callback("キャンセル","post:link:cancel:"+d.revision)],
  ]);
 }
 export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
@@ -478,20 +568,23 @@ export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:
   await bindDraftScreen(userId,"link",prior.revision,screenId);
   prior.data.screenMessageId=screenId;
  }
- // Reopening /link must not erase a still-private, valid editor. Other
- // draft modules and published receipts are never touched.
  if(prior?.step==="preview"){
-  await showPostScreen(telegram,userId,prior,"公開前プレビュー\n"+preview("link",prior)+
-   "\n\nボタンの表示列数を選択してください。",linkPreviewKeyboard(prior));
+  if(prior.data.linkEditorView===true||prior.data.linkEditorView==="content")await showLinkRichEditor(telegram,userId,prior);
+  else await showLinkRichPreview(telegram,userId,prior);
   return;
  }
- const draft=prior?.step==="awaiting_text"?prior:
-  await beginDraft(userId,"link","awaiting_text",screenId?{screenMessageId:screenId}:{});
- await showPostScreen(telegram,userId,draft,
-  "🔗 1行目に本文、2行目以降に「表示名 | https://URL」を1ボタン1行で送ってください。\n列数は次の画面で1〜3列から選べます。短縮URL・HTTP・ローカル宛先は拒否します。",
-  Markup.inlineKeyboard([[Markup.button.callback("キャンセル",
-   "post:link:cancel:"+draft.revision)]]));
+ const d=prior?.step==="awaiting_text"?prior:
+  await beginDraft(userId,"link","awaiting_text",{
+   linkStage:"content",buttons:[],text:"",columns:1,linkSelectedStyle:"standard",
+   ...(screenId?{screenMessageId:screenId}:{})});
+ const buttonStage=String(d.data.linkStage||"content")==="button";
+ await showPostScreen(telegram,userId,d,buttonStage?
+  "🔗 ボタンを作成\nリンクにしたいURLとボタンのタイトルを2行で送信してください。\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL":
+  "🔗ボタンを作成する上で一緒に投稿したテキスト、動画、画像、ステッカーなどを投稿してください。動画や画像に説明を補足した場合はキャプションにテキストを入力してください。",
+  buttonStage?linkColorKeyboard(d):Markup.inlineKeyboard([[
+   Markup.button.callback("キャンセル","post:link:cancel:"+d.revision)]]));
 }
+
 /** One shared Bot DM message for the approved 告知/予告 layout. */
 export function announcementPanel(d:EditorDraft):WizardKeyboard{
  const rev=d.revision;
