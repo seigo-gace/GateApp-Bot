@@ -88,7 +88,7 @@ export async function resolvePublishedProfileView(token:string):Promise<SavedPro
 export async function existingPublishedProfileUrl(ownerId:number):Promise<string|null>{
  assertId(ownerId);
  const r=await pool.query(
-  `SELECT l.token
+  `SELECT l.token,pub.chat_id,pub.message_id
     FROM profile_view_links l
     JOIN profile_publications pub
       ON pub.owner_user_id=l.owner_user_id
@@ -103,7 +103,10 @@ export async function existingPublishedProfileUrl(ownerId:number):Promise<string
       AND p.status='published'
     WHERE l.owner_user_id=$1 AND l.enabled=TRUE
     ORDER BY l.profile_revision DESC LIMIT 1`,[ownerId]);
- return r.rows.length===1?profileViewerUrl("profile",String(r.rows[0].token)):null;
+ if(r.rows.length!==1)return null;
+ const chatId=String(r.rows[0].chat_id),messageId=Number(r.rows[0].message_id);
+ if(!/^-100[1-9]\\d+$/.test(chatId)||!Number.isSafeInteger(messageId)||messageId<=0)return null;
+ return "https://t.me/c/"+chatId.slice(4)+"/"+messageId;
 }
 
 /** Bind group callbacks to their actual published source message. */
