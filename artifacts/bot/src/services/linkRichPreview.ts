@@ -94,10 +94,10 @@ export function linkRichPlacement(draft:LinkDraft,revision:number){
    parts.push(richAction("［削除］","post:link:delete:"+revision+":"+position));
    parts.push("　");
   });
-  parts.push(richAction("［▶］","post:link:beside:"+revision+":"+rowIndex));
+  parts.push(richAction("➡️","post:link:beside:"+revision+":"+rowIndex));
   blocks.push(paragraph(parts));
  });
- blocks.push(paragraph(richAction("［▼］","post:link:add:"+revision)));
+ blocks.push(paragraph(richAction("⬇️","post:link:add:"+revision)));
  blocks.push({type:"divider"});
  blocks.push(paragraph("1行目：ボタンのタイトル\n2行目：ボタンにしたいURL"));
  return {blocks};
