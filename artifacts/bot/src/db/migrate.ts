@@ -343,6 +343,7 @@ export async function runMigrations(): Promise<void> {
        ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_file_id TEXT;
        ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS caption_above BOOLEAN NOT NULL DEFAULT FALSE;
        ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS share_code TEXT;
+       ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_extras JSONB NOT NULL DEFAULT '[]'::jsonb;
        CREATE UNIQUE INDEX IF NOT EXISTS link_button_posts_share_code_unique
          ON link_button_posts(share_code) WHERE share_code IS NOT NULL;
        CREATE TABLE IF NOT EXISTS room_posts (
