@@ -55,7 +55,12 @@ async def _run(client,code,trace):
         if not blocks:
             raise RuntimeError("LINK_INLINE_POST_EMPTY_RICH")
         trace["stage"]="buttons"
-        if not any("Buttons" in type(b).__name__ for b in blocks):
+        # Telethon TL type names differ by installed protocol layer. Check
+        # the actual buttons payload, not an English class-name substring.
+        have_buttons=any(bool(getattr(b,"buttons",None)) for b in blocks)
+        if not have_buttons:
+            names={type(b).__name__ for b in blocks}
+            trace["stage"]="buttons_paragraph" if names=={"RichBlockParagraph"} else "buttons_missing"
             raise RuntimeError("LINK_INLINE_POST_LINK_BUTTONS_MISSING")
         return {"status":"PASS","self_post_sent":True,"rich_body_verified":True,
                 "link_buttons_verified":True}
