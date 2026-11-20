@@ -6,6 +6,7 @@ existing resident test draft is cancelled only after Host ownership guard.
 from __future__ import annotations
 import asyncio
 import io
+import re
 import struct
 import zlib
 from datetime import datetime, timedelta, timezone
@@ -67,9 +68,25 @@ async def run(client):
     t=mark()
     await client.send_message(bot,"写真付きのリンク\nhttps://example.org/")
     preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
+    if not any("写真付きのリンク" in x for x in labels(preview)):
+        raise RuntimeError("LINK_PHOTO_REAL_URL_BUTTON_MISSING")
     t=mark()
     await preview.click(text="登録")
-    await latest(lambda m:any("登録コードをコピー" in b for b in labels(m)),t)
+    receipt=await latest(lambda m:any("登録コードをコピー" in b for b in labels(m)),t)
+    code=re.search(r"@GayBBS_bot ([A-Za-z0-9_-]{24})",receipt.raw_text or "")
+    if not code:
+        raise RuntimeError("LINK_PHOTO_REGISTERED_CODE_MISSING")
+    t=mark()
+    await receipt.click(text="編集")
+    reopened=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
+    if not any("写真付きのリンク" in x for x in labels(reopened)):
+        raise RuntimeError("LINK_PHOTO_EDIT_PREVIEW_URL_MISSING")
+    t=mark()
+    await reopened.click(text="登録")
+    final=await latest(lambda m:any("登録コードをコピー" in b for b in labels(m)),t)
+    if code.group(1) not in (final.raw_text or ""):
+        raise RuntimeError("LINK_PHOTO_EDIT_CODE_CHANGED")
     return {"status":"PASS","photo_received":True,
             "caption_input_sent":True,"preview_ready":True,
-            "photo_registration_receipt":True}
+            "photo_registration_receipt":True,
+            "registered_edit_preview":True,"registered_code_preserved":True}
