@@ -503,8 +503,26 @@ async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft)
     throw error;
   }
  }
- const sent=await raw.callApi("sendRichMessage",{chat_id:owner,
-  rich_message:rich,reply_markup:keyboard.reply_markup});
+ let sent:any;
+ try{
+  sent=await raw.callApi("sendRichMessage",{chat_id:owner,
+   rich_message:rich,reply_markup:keyboard.reply_markup});
+ }catch(error){
+  const reason=error instanceof Error?error.message:"";
+  // A known Telegram 400 has no uncertain send side effect. For media-only
+  // errors retain the exact draft and show a recoverable editor screen.
+  // Timeout / transport ambiguity is rethrown: never blindly duplicate a post.
+  if(!d.data.media||!/\\b400\\b/.test(reason)||!/bad request/i.test(reason))throw error;
+  await showPostScreen(telegram,owner,d,
+   "⚠️ 素材を含むプレビューを表示できませんでした。下書きは保持しています。"+
+   "\\n素材を変更するか、再表示をお試しください。",
+   Markup.inlineKeyboard([
+    [Markup.button.callback("素材変更","post:link:editmedia:"+d.revision),
+     Markup.button.callback("再表示","post:link:back:"+d.revision)],
+    [Markup.button.callback("キャンセル","post:link:cancel:"+d.revision)],
+   ]));
+  return;
+ }
  if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
   throw Error("LINK_RICH_SCREEN_UNCONFIRMED");
  await bindDraftScreen(owner,"link",d.revision,sent.message_id);
