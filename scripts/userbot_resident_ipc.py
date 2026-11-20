@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -42,7 +42,7 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                 {"request_id", "action", "topic_ids"}
                 if action == "profile_topics_by_id" else
                 {"request_id", "action", "code"}
-                if action == "link_inline_query_smoke" else {"request_id", "action"})
+                if action in ("link_inline_query_smoke","link_send_saved_smoke") else {"request_id", "action"})
     if set(request) != expected:
         raise ValueError("REQUEST_SHAPE_INVALID")
     request_id = request["request_id"]
@@ -227,6 +227,9 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
             raise RuntimeError("LINK_INLINE_RESULT_NOT_FOUND")
         return {"request_id": request_id, "action": action, "status": "PASS",
                 "inline_result_found": True}
+    if action == "link_send_saved_smoke":
+        from userbot_link_saved_message_smoke import run
+        return {"request_id":request_id,**await run(client,request["code"])}
     if action == "link_rich_flow_smoke":
         from userbot_link_rich_flow_smoke import run
         return {"request_id":request_id, **await run(client)}
