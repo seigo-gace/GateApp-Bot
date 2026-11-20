@@ -83,3 +83,10 @@ test("mixed image/video content and per-media captions are exactly preserved in 
  assert.match(JSON.stringify(published),/動画の補足/);
  assert.match(JSON.stringify(published),/画像の補足/);
 });
+
+test("Bot launch subscribes to inline_query updates for registered link codes",async()=>{
+ const {readFileSync}=await import("node:fs");
+ const {resolve}=await import("node:path");
+ const source=readFileSync(resolve(process.cwd(),"src/gaybbsBot.ts"),"utf8");
+ assert.match(source,/allowedUpdates:\s*\[[^\]]*"inline_query"/);
+});
