@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {linkRichPreview,linkRichPublication,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows} from "../src/services/linkRichPreview.js";
+import {linkRichPreview,linkRichPublication,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows,linkRichRegisteredReceipt} from "../src/services/linkRichPreview.js";
 import {linkInlineResult,type LinkInlinePost} from "../src/services/linkInlineShare.js";
 import {insertLinkButton,buttonGrid,parseLinkButtonPair,type LinkDraft} from "../src/services/linkButtonDomain.js";
 
@@ -60,6 +60,18 @@ test("⑤ selected target only, keeps other field and buttons",()=>{
  assert.match(rich,/✅/);
  assert.equal(JSON.stringify(draft),before);
 });
+test("registered receipt is separate from editable publication and preserves code",()=>{
+ const code="ABCDEFGHIJKLMNOPQRSTUVWX";
+ const view=linkRichRegisteredReceipt(code);
+ const text=serialized(view);
+ assert.match(text,/登録コード/);
+ assert.match(text,/投稿する方法/);
+ assert.match(text,new RegExp(code));
+ assert.doesNotMatch(text,/post:link:register/);
+ assert.doesNotMatch(text,/post:link:panel/);
+ assert.equal(view.blocks.some(b=>b.type==="buttons"),false);
+});
+
 test("registered code is selectable text without unsupported Rich copy_text",()=>{
  const text=serialized(linkRichPreview(draft,101,"abc123"));
  assert.doesNotMatch(text,/"copy_text":/);
