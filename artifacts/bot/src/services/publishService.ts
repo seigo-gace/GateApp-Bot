@@ -4,8 +4,10 @@ import { pool } from "../db/index.js";
 import { getVerifiedTopic, claimDelivery, acknowledgeDelivery, markDeliveryUnknown } from "./postingDelivery.js";
 import type { PostPurpose } from "./topicRouting.js";
 
-/** The same feature gate protects first publish and edit-in-place. */
-export async function assertFeatureReleased(feature:PostPurpose):Promise<void>{
+type TextPostPurpose=Exclude<PostPurpose,'video_sale'>;
+/** The same feature gate protects first publish and edit-in-place.
+ * Paid-video media uses the separate verified VideoBot delivery receipts. */
+export async function assertFeatureReleased(feature:TextPostPurpose):Promise<void>{
  const gate=await pool.query(
    `SELECT feature FROM gaybbs_feature_release_gates
     WHERE feature=$1 AND enabled=TRUE AND length(source_commit)=40
@@ -18,8 +20,8 @@ export async function assertFeatureReleased(feature:PostPurpose):Promise<void>{
 }
 
 export type PublishRequest = {
-  sourceType:PostPurpose;
-  destinationPurpose?:PostPurpose;
+  sourceType:TextPostPurpose;
+  destinationPurpose?:TextPostPurpose;
   sourceId:string;
   ownerId:number;
   revision:number;
