@@ -91,7 +91,7 @@ export function linkRichPlacement(draft:LinkDraft,revision:number){
    parts.push(richAction("［削除］","post:link:delete:"+revision+":"+position));
    parts.push("　");
   });
-  if(row.length<4)parts.push(richAction("［▶］","post:link:beside:"+revision+":"+rowIndex));
+  parts.push(richAction("［▶］","post:link:beside:"+revision+":"+rowIndex));
   blocks.push(paragraph(parts));
  });
  blocks.push(paragraph(richAction("［▼］","post:link:add:"+revision)));
