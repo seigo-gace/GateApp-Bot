@@ -34,7 +34,7 @@ export function linkRichPreview(draft:LinkDraft,revision:number,shareCode?:strin
  }
  if(draft.text.trim()&&(!draft.media||!draft.captionAbove))blocks.push(paragraph(draft.text));
  for(const row of buttonGrid(draft)){
-  if(row.length>8)throw new Error("LINK_RICH_ROW_TOO_WIDE");
+  if(row.length>4)throw new Error("LINK_RICH_ROW_TOO_WIDE");
   blocks.push({type:"buttons",buttons:row.map(b=>richLink(b.label,b.url,b.style))});
  }
  blocks.push({type:"divider"});
@@ -59,7 +59,7 @@ export function linkRichPlacement(draft:LinkDraft,revision:number){
    parts.push(richAction("［削除］","post:link:delete:"+revision+":"+position));
    parts.push("　");
   });
-  parts.push(richAction("［▶］","post:link:beside:"+revision+":"+rowIndex));
+  if(row.length<4)parts.push(richAction("［▶］","post:link:beside:"+revision+":"+rowIndex));
   blocks.push(paragraph(parts));
  });
  blocks.push(paragraph(richAction("［▼］","post:link:add:"+revision)));
