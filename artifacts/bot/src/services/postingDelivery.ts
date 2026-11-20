@@ -26,9 +26,16 @@ export async function getVerifiedTopic(id:number,purpose:PostPurpose):Promise<Ve
  const t=fromRow(r.rows[0]);
  return assertVerifiedTopic(t,t.board,purpose);
 }
+/** Official owner-side provider: one verified paid-video Topic, no numeric-link fallback. */
+export async function getVerifiedVideoSaleTopic():Promise<VerifiedTopic> {
+ const routes=await listVerifiedTopics("video_sale");
+ if(routes.length!==1||routes[0]?.board!=="video_chat")
+   throw new Error("VIDEO_SALE_TOPIC_NOT_UNIQUELY_VERIFIED");
+ return assertVerifiedTopic(routes[0],"video_chat","video_sale");
+}
 export type DeliveryState={id:number,status:string,messageId:number|null};
 export async function claimDelivery(
- sourceType:PostPurpose,sourceId:string,ownerId:number,revision:number,topicId:number,
+ sourceType:Exclude<PostPurpose,'video_sale'>,sourceId:string,ownerId:number,revision:number,topicId:number,
  buttons:readonly (readonly {text:string;url:string}[])[]=[]
 ):Promise<{claimed:boolean;delivery:DeliveryState}> {
  if(!Number.isSafeInteger(ownerId)||ownerId<=0||!Number.isSafeInteger(revision)||revision<=0)
