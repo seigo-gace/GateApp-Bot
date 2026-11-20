@@ -27,11 +27,27 @@ export async function getVerifiedTopic(id:number,purpose:PostPurpose):Promise<Ve
  return assertVerifiedTopic(t,t.board,purpose);
 }
 /** Official owner-side provider: one verified paid-video Topic, no numeric-link fallback. */
-export async function getVerifiedVideoSaleTopic():Promise<VerifiedTopic> {
+export type VerifiedVideoSaleTopic=VerifiedTopic&{verified:true};
+export async function getVerifiedVideoSaleTopic():Promise<VerifiedVideoSaleTopic> {
  const routes=await listVerifiedTopics("video_sale");
  if(routes.length!==1||routes[0]?.board!=="video_chat")
    throw new Error("VIDEO_SALE_TOPIC_NOT_UNIQUELY_VERIFIED");
- return assertVerifiedTopic(routes[0],"video_chat","video_sale");
+ return {...assertVerifiedTopic(routes[0],"video_chat","video_sale"),verified:true};
+}
+/** Read-only provider gate; a source commit or CI alone cannot enable actual sale. */
+export async function verifyVideoSaleRelease(args:{purpose:string;chatId:number;threadId:number}):Promise<boolean>{
+ if(args?.purpose!=="video_sale")return false;
+ const route=await getVerifiedVideoSaleTopic();
+ if(route.chatId!==args.chatId||route.threadId!==args.threadId)return false;
+ const released=await pool.query(
+  `SELECT 1 FROM gaybbs_feature_release_gates WHERE feature='video_sale'
+   AND enabled=TRUE AND length(source_commit)=40
+   AND length(trim(ci_evidence))>0
+   AND length(trim(gserver_runtime_evidence))>0
+   AND length(trim(telegram_e2e_evidence))>0
+   AND approved_by IS NOT NULL LIMIT 1`
+ );
+ return released.rowCount===1;
 }
 export type DeliveryState={id:number,status:string,messageId:number|null};
 export async function claimDelivery(
