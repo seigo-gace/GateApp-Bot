@@ -43,7 +43,7 @@ export function linkRichPreview(draft:LinkDraft,revision:number,shareCode?:strin
  if(shareCode){
   const code="@GayBBS_bot "+shareCode;
   blocks.push(paragraph("投稿コード："+code));
-  blocks.push(paragraph({type:"button",button:{text:"［投稿コードをコピー］",copy_text:{text:code}}}));
+  // RichMessageButton has no copy_text field in Bot API.\n  // Keep the code as selectable text; post-registration copy uses a native keyboard button.
  }
  blocks.push(...linkRichPublication(draft).blocks);
  if(!shareCode){
