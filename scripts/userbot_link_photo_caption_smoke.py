@@ -51,13 +51,8 @@ async def run(client):
         "🔗ボタンを作成する上で一緒に投稿" in (m.raw_text or "") or
         "キャンセル" in labels(m),t)
     if "🔗ボタンを作成する上で一緒に投稿" not in (current.raw_text or ""):
-        # Existing draft is test-owned and test-only (Host preflight check).
-        if "キャンセル" not in labels(current):
-            raise RuntimeError("LINK_PHOTO_TEST_DRAFT_UNEXPECTED")
-        await current.click(text="キャンセル")
-        entry=await menu()
-        t=mark();await entry.click(text="🔗ボタン作成")
-        await latest(lambda m:"🔗ボタンを作成する上で一緒に投稿" in (m.raw_text or ""),t)
+        # A live user's unregistered draft must never be cancelled by a test.
+        raise RuntimeError("LINK_PHOTO_EXISTING_DRAFT_BLOCKED")
 
     image=io.BytesIO(png())
     image.name="link-test-photo.png"
