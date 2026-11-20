@@ -33,6 +33,9 @@ test("④ right and down row positions, in-body delete controls",()=>{
  assert.match(placement,/post:link:beside:33:0/);
  assert.match(placement,/post:link:beside:33:1/);
  assert.match(placement,/post:link:add:33/);
+ assert.match(placement,/"text":"➡️"/);
+ assert.match(placement,/"text":"⬇️"/);
+ assert.doesNotMatch(placement,/［▶］|［▼］|▶️|🔽/);
  const added=parseLinkButtonPair("新規\nhttps://example.edu/");
  const right=insertLinkButton(draft,added,{kind:"right",rowIndex:0});
  assert.deepEqual(buttonGrid({...draft,buttons:right}).map(r=>r.map(b=>b.label)),[
