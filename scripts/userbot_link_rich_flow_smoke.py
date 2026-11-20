@@ -119,19 +119,19 @@ async def _run(client, trace):
         raise RuntimeError("LINK_RICH_DELETE_NOT_ACKNOWLEDGED")
 
     placement=await latest(lambda m:"戻る" in labels(m) and "キャンセル" in labels(m)
-                           and "登録" not in labels(m),mark)
+                           and "登録" not in labels(m),mark,min_rev=rev)
     trace["stage"]="back"
     rev=revision(placement)
     mark=mk();await callback(placement,f"post:link:back:{rev}")
-    preview=await latest(lambda m:"登録" in labels(m),mark)
+    preview=await latest(lambda m:"登録" in labels(m),mark,min_rev=rev)
     trace["stage"]="content"
     rev=revision(preview)
     mark=mk();await callback(preview,f"post:link:content:{rev}")
-    content=await latest(lambda m:"変更" in labels(m) and "戻る" in labels(m),mark)
+    content=await latest(lambda m:"変更" in labels(m) and "戻る" in labels(m),mark,min_rev=rev)
     trace["stage"]="field"
     rev=revision(content)
     mark=mk();await callback(content,f"post:link:field:{rev}:text")
-    selected=await latest(lambda m:"変更" in labels(m),mark)
+    selected=await latest(lambda m:"変更" in labels(m),mark,min_rev=rev)
     trace["stage"]="change"
     rev=revision(selected)
     mark=mk();await selected.click(text="変更")
