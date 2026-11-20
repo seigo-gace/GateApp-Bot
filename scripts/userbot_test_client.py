@@ -42,7 +42,7 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
             raise ValueError("ROOM_READ_TARGET_ONLY_FOR_READBACK")
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
-        reply = await asyncio.wait_for(reader.readline(), 110 if action in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke"} else 40)
+        reply = await asyncio.wait_for(reader.readline(), 110 if action in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke"} else 40)
         result = json.loads(reply)
         if result.get("request_id") not in {request_id, None}:
             raise RuntimeError("USERBOT_IPC_REQUEST_ID_MISMATCH")
@@ -81,6 +81,12 @@ def main() -> int:
             print("USERBOT_REPORT_INBOX=PASS")
             print("USERBOT_REPORT_RECEIPT=PASS")
             print("USERBOT_REPORT_INPUT_DELETE=PASS")
+        if args.action == "link_rich_flow_smoke":
+            if not all(result.get(key) is True for key in (
+                    "rich_add", "rich_delete", "rich_field_select",
+                    "rich_text_change", "no_public_post")):
+                raise RuntimeError("LINK_RICH_FLOW_INCOMPLETE")
+            print("USERBOT_LINK_RICH_45=PASS")
         if args.action == "link_inline_query_smoke":
             if result.get("inline_result_found") is not True:
                 raise RuntimeError("LINK_INLINE_RESULT_NOT_FOUND")
