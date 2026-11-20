@@ -96,6 +96,19 @@ export async function runMigrations(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS profile_view_links_owner_status
         ON profile_view_links(owner_user_id,enabled);
+      -- One-way migration receipt for the SAME published Telegram message_id.
+      -- Never delete/repost; an ambiguous API result is not retried automatically.
+      CREATE TABLE IF NOT EXISTS profile_keyboard_backfill (
+        chat_id BIGINT NOT NULL CHECK(chat_id < 0),
+        message_id BIGINT NOT NULL CHECK(message_id > 0),
+        profile_revision INTEGER NOT NULL CHECK(profile_revision > 0),
+        owner_user_id BIGINT NOT NULL REFERENCES profiles(owner_user_id) ON DELETE CASCADE,
+        state TEXT NOT NULL CHECK(state IN ('ready','attempted','applied','uncertain')),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(chat_id,message_id,profile_revision)
+      );
+      CREATE INDEX IF NOT EXISTS profile_keyboard_backfill_state
+        ON profile_keyboard_backfill(state);
       CREATE TABLE IF NOT EXISTS general_guide_topics (
         chat_id BIGINT PRIMARY KEY CHECK(chat_id < 0),
         message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
