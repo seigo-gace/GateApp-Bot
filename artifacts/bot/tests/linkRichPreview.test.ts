@@ -103,3 +103,18 @@ test("registered link receipt is not silently reused as a new draft",async()=>{
  assert.match(editor,/reusable\?\.step==="preview"/);
  assert.match(editor,/beginDraft\(userId,"link","awaiting_text"/);
 });
+
+test("first photo caption remains a media caption and not a duplicate body paragraph",()=>{
+ const withCaption:LinkDraft={...draft,text:"",media:{
+  type:"photo",fileId:"photo_file_id",caption:"画像の補足"
+ },mediaExtras:[{type:"video",fileId:"video_file_id",caption:"動画の補足"}]};
+ const published=linkRichPublication(withCaption);
+ const photo=published.blocks.find(b=>b.type==="photo") as Record<string,unknown>;
+ const video=published.blocks.find(b=>b.type==="video") as Record<string,unknown>;
+ assert.deepEqual(photo.caption,{text:"画像の補足"});
+ assert.deepEqual(video.caption,{text:"動画の補足"});
+ assert.equal(published.blocks.some(b=>b.type==="paragraph" &&
+  JSON.stringify(b).includes("画像の補足")),false);
+ const result=linkInlineResult({ownerId:3,sourceId:"caption-1",draft:withCaption});
+ assert.deepEqual((result.input_message_content as {rich_message:typeof published}).rich_message,published);
+});
