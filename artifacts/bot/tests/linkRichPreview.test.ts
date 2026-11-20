@@ -170,3 +170,24 @@ test("malformed persisted media arrays fail safely before Rich rendering",()=>{
  const detached={...draft,media:undefined,mediaExtras:[{type:"photo",fileId:"x"}]} as LinkDraft;
  assert.throws(()=>validateLinkDraft(detached),/LINK_MEDIA_ALBUM_INVALID/);
 });
+
+
+test("native cached sticker URL delivery retains original Telegram sticker ID and button rows",()=>{
+ const original=JSON.stringify(draft);
+ for(const format of ["WebP","WebM","TGS"]){
+  const sticker:LinkDraft={...draft,text:"",media:{type:"sticker",fileId:"telegram_sticker_"+format}};
+  const result=linkInlineResult({ownerId:42,sourceId:format,draft:sticker});
+  assert.equal(result.type,"sticker");
+  assert.equal(result.sticker_file_id,"telegram_sticker_"+format);
+  assert.equal("input_message_content" in result,false);
+  assert.deepEqual((result.reply_markup as {inline_keyboard:unknown}).inline_keyboard,linkUrlKeyboardRows(sticker));
+  assert.throws(()=>linkRichPublication(sticker),/LINK_STICKER_USE_NATIVE_MESSAGE/);
+ }
+ assert.equal(JSON.stringify(draft),original);
+});
+test("sticker cannot silently lose body, caption, or secondary media",()=>{
+ const sticker={...draft,media:{type:"sticker" as const,fileId:"sticker-id"},text:""};
+ assert.throws(()=>validateLinkDraft({...sticker,text:"post body"}),/LINK_STICKER_RICH_COMPOSITION_UNSUPPORTED/);
+ assert.throws(()=>validateLinkDraft({...sticker,media:{...sticker.media,caption:"caption"}}),/LINK_STICKER_RICH_COMPOSITION_UNSUPPORTED/);
+ assert.throws(()=>validateLinkDraft({...sticker,mediaExtras:[{type:"photo",fileId:"another"}]}),/LINK_STICKER_RICH_COMPOSITION_UNSUPPORTED/);
+});
