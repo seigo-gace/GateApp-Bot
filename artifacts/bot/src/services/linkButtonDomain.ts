@@ -3,8 +3,8 @@
  */
 import {escapeProfileHtml} from "./profileCore.js";
 export type LinkButton={label:string;url:string;rowStart?:boolean;style?:"primary"|"success"|"danger"};
-export type LinkMedia={type:"photo"|"video";fileId:string};
-export type LinkDraft={text:string;buttons:LinkButton[];columns:1|2|3;media?:LinkMedia;captionAbove?:boolean};
+export type LinkMedia={type:"photo"|"video";fileId:string;caption?:string};
+export type LinkDraft={text:string;buttons:LinkButton[];columns:1|2|3;media?:LinkMedia;mediaExtras?:LinkMedia[];captionAbove?:boolean};
 const SHORTENERS=new Set(["bit.ly","tinyurl.com","t.co","is.gd","cutt.ly",
  "tiny.cc","rb.gy","rebrand.ly","goo.gl","ow.ly","shorturl.at"]);
 export function validateLinkDestination(raw:string):string{
@@ -26,8 +26,14 @@ export function validateLinkDestination(raw:string):string{
 export function validateLinkDraft(d:LinkDraft):LinkDraft{
  if((!d.text.trim()&&!d.media)||d.text.length>(d.media?1024:3500))
   throw new Error("LINK_BODY_INVALID");
- if(d.media&&(!["photo","video"].includes(d.media.type)||!d.media.fileId||d.media.fileId.length>512))
-  throw new Error("LINK_MEDIA_INVALID");
+ const mediaItems=[...(d.media?[d.media]:[]),...(d.mediaExtras??[])];
+ if(!Array.isArray(d.mediaExtras??[])||mediaItems.length>50||
+    (d.mediaExtras?.length&&!d.media))throw new Error("LINK_MEDIA_ALBUM_INVALID");
+ for(const media of mediaItems){
+  if(!["photo","video"].includes(media.type)||!media.fileId||media.fileId.length>512||
+     (media.caption!==undefined&&(typeof media.caption!=="string"||media.caption.length>1024)))
+   throw new Error("LINK_MEDIA_INVALID");
+ }
  if(![1,2,3].includes(d.columns))throw new Error("LINK_COLUMN_INVALID");
  if(!Array.isArray(d.buttons)||!d.buttons.length||d.buttons.length>100)
   throw new Error("LINK_BUTTON_COUNT_INVALID");
