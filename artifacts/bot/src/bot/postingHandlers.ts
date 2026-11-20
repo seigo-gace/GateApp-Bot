@@ -1519,7 +1519,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!file?.file_id){await next();return;}
   const caption="caption" in msg&&typeof msg.caption==="string"?msg.caption:"";
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,msg.message_id);
-  const notice=deleted?"":"\\n⚠️ 送信した素材メッセージを削除できません。手動で削除してください。";
+  const notice=deleted?"":"\n⚠️ 送信した素材メッセージを削除できません。手動で削除してください。";
   try{
    // Extra album messages may arrive after Step ② is displayed. Preserve
    // caption and append in the same draft rather than asking for a format menu.
@@ -1555,7 +1555,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    if(updated.step==="preview")await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
    else await showPostScreen(ctx.telegram,ctx.from.id,updated,
     "✅ "+(kind==="photo"?"画像":"動画")+"を受け取りました。"+notice+
-    "\\n\\n次の2行をまとめて1回送信してください。\\n1行目：ボタンのタイトル\\n2行目：ボタンにしたいURL",
+    "\n\n次の2行をまとめて1回送信してください。\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
     linkColorKeyboard(updated));
   }catch(error){
    const reason=error instanceof Error?error.message:"登録失敗";
