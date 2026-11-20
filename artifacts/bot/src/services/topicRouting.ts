@@ -33,7 +33,8 @@ export function assertVerifiedTopic(
   purpose: PostPurpose,
 ): VerifiedTopic {
   // Paid videos may only use the verified video board, never an area/other board.
-  if ((purpose === "video_sale" && board !== "video_chat") ||
+  if ((purpose === "video_sale" && (board !== "video_chat" ||
+       topic?.chatId !== BOARD_GROUP_CHAT_IDS.video_chat)) ||
       !topic || !topic.enabled || topic.board !== board || topic.purpose !== purpose ||
       !Number.isSafeInteger(topic.id) || topic.id <= 0 ||
       !Number.isSafeInteger(topic.chatId) || topic.chatId >= 0 ||
