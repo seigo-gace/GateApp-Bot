@@ -577,16 +577,20 @@ function linkColorKeyboard(d:EditorDraft):WizardKeyboard{
 }
 export async function startLinkEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
  const prior=await getDraft(userId,"link");
- if(screenId&&prior){
-  await bindDraftScreen(userId,"link",prior.revision,screenId);
-  prior.data.screenMessageId=screenId;
+ // A registered post has its immutable code in link_button_posts. Re-entering
+ // ［🔗ボタン作成］ must start a NEW draft, not reopen a locked receipt.
+ const reusable=prior&&typeof prior.data.shareCode!=="string"?prior:null;
+ if(screenId&&reusable){
+  await bindDraftScreen(userId,"link",reusable.revision,screenId);
+  reusable.data.screenMessageId=screenId;
  }
- if(prior?.step==="preview"){
-  if(prior.data.linkEditorView===true||prior.data.linkEditorView==="content")await showLinkRichEditor(telegram,userId,prior);
-  else await showLinkRichPreview(telegram,userId,prior);
+ if(reusable?.step==="preview"){
+  if(reusable.data.linkEditorView===true||reusable.data.linkEditorView==="content")
+   await showLinkRichEditor(telegram,userId,reusable);
+  else await showLinkRichPreview(telegram,userId,reusable);
   return;
  }
- const d=prior?.step==="awaiting_text"?prior:
+ const d=reusable?.step==="awaiting_text"?reusable:
   await beginDraft(userId,"link","awaiting_text",{
    linkStage:"content",buttons:[],text:"",columns:1,linkSelectedStyle:"standard",
    ...(screenId?{screenMessageId:screenId}:{})});
