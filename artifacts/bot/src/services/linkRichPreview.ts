@@ -62,6 +62,20 @@ export function linkRichPreview(draft:LinkDraft,revision:number,shareCode?:strin
  return {blocks};
 }
 
+/** Shown only after a confirmed registration. URL buttons and edit actions
+ * are deliberately not mixed with the copyable receipt and navigation.
+ */
+export function linkRichRegisteredReceipt(code:string){
+ if(!/^[A-Za-z0-9_-]{24}$/.test(code))throw Error("LINK_RECEIPT_CODE_INVALID");
+ return {blocks:[
+  paragraph("✅ 登録が完了しました"),
+  paragraph("登録コード：@GayBBS_bot "+code),
+  {type:"divider"},
+  paragraph("投稿する方法"),
+  paragraph("登録コードをタップしてコピーし、投稿したいTelegramのチャットの入力欄に貼り付けてください。表示された投稿候補を選択すると、登録した内容とリンクボタンを送信できます。"),
+ ]};
+}
+
 /** ④ In-body position selection, per-button delete and arrow controls.
  * Input pair and 4-color selection are rendered in the existing DM wizard.
  */
