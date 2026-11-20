@@ -65,8 +65,47 @@ async def _run(client,code,trace):
         labels={str(getattr(button,"text","")) for row in rows for button in row}
         if labels.intersection(forbidden):
             raise RuntimeError("LINK_INLINE_POST_EDITOR_BUTTONS_LEAKED")
+        trace["stage"]="receipt"
+        # Only the receipt containing this exact, owner-scoped code may be edited.
+        # The rich body is an MTProto object; raw_text alone may be empty.
+        def names(msg):
+            return {str(getattr(b,"text","")) for row in (getattr(msg,"buttons",None) or []) for b in row}
+        def code_visible(msg):
+            return code in (getattr(msg,"raw_text",None) or "") or code in str(getattr(msg,"rich_message",None) or "")
+        receipts=[m for m in await client.get_messages(bot,limit=45) if not m.out
+                  and {"登録コードをコピー","編集","新規作成"} <=
+                      {x.removeprefix("📋 ") for x in names(m)}
+                  and code_visible(m)]
+        if len(receipts)!=1:
+            raise RuntimeError("LINK_REGISTERED_TEST_RECEIPT_NOT_UNIQUE")
+        receipt=receipts[0]
+        trace["stage"]="registered_edit"
+        await receipt.click(text="編集")
+        preview=None
+        for _ in range(12):
+            updated=await client.get_messages(bot,ids=receipt.id)
+            if updated and {"登録","キャンセル"} <= names(updated):
+                preview=updated
+                break
+            await asyncio.sleep(1)
+        if preview is None:
+            raise RuntimeError("LINK_REGISTERED_EDIT_PREVIEW_MISSING")
+        if code_visible(preview):
+            raise RuntimeError("LINK_REGISTERED_EDIT_PREVIEW_LEAKED_CODE")
+        trace["stage"]="reregister"
+        await preview.click(text="登録")
+        final=None
+        for _ in range(12):
+            updated=await client.get_messages(bot,ids=receipt.id)
+            if updated and "登録コードをコピー" in {x.removeprefix("📋 ") for x in names(updated)}:
+                final=updated
+                break
+            await asyncio.sleep(1)
+        if final is None or not code_visible(final):
+            raise RuntimeError("LINK_REGISTERED_CODE_NOT_PRESERVED")
         return {"status":"PASS","self_post_sent":True,"rich_body_verified":True,
-                "link_buttons_verified":True}
+                "link_buttons_verified":True,"registered_edit_reopened":True,
+                "registered_code_preserved":True}
     finally:
         if sent_id is not None and sent_id>cursor:
             await client.delete_messages("me",[sent_id],revoke=True)
