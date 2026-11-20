@@ -167,6 +167,13 @@ async function main():Promise<void>{
    await openProfileFromMenu(ctx);
    return;
   }
+  if(ctx.match[1]==="link"){
+   await ctx.answerCbQuery();
+   const tappedId=("message" in ctx.callbackQuery
+    ?ctx.callbackQuery.message?.message_id:undefined);
+   await startLinkEditor(ctx.telegram,ctx.from.id,tappedId);
+   return;
+  }
   await ctx.answerCbQuery(
    "この機能は現在準備中です。各掲示板の固定投稿メニューからお試しください。",
    { show_alert: true },
