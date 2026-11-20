@@ -16,8 +16,8 @@ import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic }
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkButtonPair,renderLinkCard,buttonGrid,insertLinkButton,type LinkDraft} from "../services/linkButtonDomain.js";
-import {registerLinkShare} from "../services/linkInlineShare.js";
-import {linkRichPreview,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows} from "../services/linkRichPreview.js";
+import {registerLinkShare,updateLinkShare} from "../services/linkInlineShare.js";
+import {linkRichPreview,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows,linkRichRegisteredReceipt} from "../services/linkRichPreview.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {roomPublicButtons} from "../services/roomPublicButtons.js";
@@ -466,15 +466,17 @@ export async function startRoomEditor(telegram:Telegram,userId:number,screenId?:
 }
 /** Preview with media, tappable URL buttons and in-body edit callbacks. */
 async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft):Promise<void>{
- const rich=linkRichPreview(d.data as LinkDraft,d.revision,
-  typeof d.data.shareCode==="string"?d.data.shareCode:undefined);
- const registered=typeof d.data.shareCode==="string";
- const urlRows=linkUrlKeyboardRows(d.data as LinkDraft);
+ const registered=typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true;
+ const rich=registered?
+  linkRichRegisteredReceipt(String(d.data.shareCode)):
+  linkRichPreview(d.data as LinkDraft,d.revision);
+ const urlRows=registered?[]:linkUrlKeyboardRows(d.data as LinkDraft);
  const keyboard=registered?
   {reply_markup:{inline_keyboard:[
-   ...urlRows,
-   [{text:"📋 投稿コードをコピー",copy_text:{text:"@GayBBS_bot "+String(d.data.shareCode)}}],
-   [{text:"投稿メニューへ戻る",callback_data:"post:link:cancel:"+d.revision}],
+   [{text:"📋 登録コードをコピー",copy_text:{text:"@GayBBS_bot "+String(d.data.shareCode)}}],
+   [{text:"戻る",callback_data:"post:link:receipt:back:"+d.revision},
+    {text:"新規作成",callback_data:"post:link:receipt:new:"+d.revision},
+    {text:"編集",callback_data:"post:link:receipt:edit:"+d.revision}],
   ]}}:
   {reply_markup:{inline_keyboard:[
    ...urlRows,
@@ -1616,12 +1618,35 @@ export function registerPostingHandlers(bot:Telegraf):void{
    "🔗ボタンを作成する上で一緒に投稿したテキスト、動画、画像、ステッカーなどを投稿してください。動画や画像に説明を補足した場合はキャプションにテキストを入力してください。",
    Markup.inlineKeyboard([[Markup.button.callback("キャンセル","post:link:cancel:"+rev)]]));
  });
+ bot.action(/^post:link:receipt:(back|new|edit):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const action=ctx.match[1],revision=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"link");
+  if(!d||d.revision!==revision||d.step!=="preview"||
+     typeof d.data.shareCode!=="string"||d.data.linkEditingRegistered===true){
+   await ctx.answerCbQuery("登録済み画面の状態が変わりました。");return;
+  }
+  if(action==="back"){
+   await ctx.answerCbQuery();
+   await editMessageToDmPostingMenu(ctx,ctx.from.id);
+   return;
+  }
+  if(action==="new"){
+   await ctx.answerCbQuery();
+   await startLinkEditor(ctx.telegram,ctx.from.id,ctx.callbackQuery.message?.message_id);
+   return;
+  }
+  const next=await updateDraft(ctx.from.id,"link",revision,"preview",
+   {...d.data,linkEditingRegistered:true,linkEditorView:false});
+  await ctx.answerCbQuery();
+  await showLinkRichPreview(ctx.telegram,ctx.from.id,next);
+ });
  bot.action(/^post:link:field:(\d+):(text|media|b\d+)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const revision=Number(ctx.match[1]),field=ctx.match[2];
   const d=await getDraft(ctx.from.id,"link");
   if(!d||d.revision!==revision||d.step!=="preview"||d.data.linkEditorView!=="content"||
-     typeof d.data.shareCode==="string"){
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
    await ctx.answerCbQuery("古い編集操作です。");return;
   }
   const buttons=Array.isArray(d.data.buttons)?d.data.buttons:[];
@@ -1657,7 +1682,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery();await showLinkRichPreview(ctx.telegram,ctx.from.id,next);return;
   }
   if(op==="content"||op==="panel"){
-   if(d.step!=="preview"||typeof d.data.shareCode==="string"){
+   if(d.step!=="preview"||(typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
     await ctx.answerCbQuery("登録済みの投稿は変更できません。");return;
    }
    const next=await updateDraft(ctx.from.id,"link",rev,"preview",
@@ -1683,7 +1708,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    if(d.step!=="preview"||Boolean(d.data.linkEditorView)){
     await ctx.answerCbQuery("先に投稿プレビューへ戻ってください。");return;
    }
-   if(typeof d.data.shareCode==="string"){
+   if((typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
     await ctx.answerCbQuery("登録済みです。");await showLinkRichPreview(ctx.telegram,ctx.from.id,d);return;
    }
    const me=await ctx.telegram.getMe();
@@ -1692,9 +1717,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
     return;
    }
    try{
-    const receipt=await registerLinkShare(ctx.from.id,rev,d.data as LinkDraft);
+    const editingRegistered=typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered===true;
+    const receipt=editingRegistered?
+     await updateLinkShare(ctx.from.id,String(d.data.shareCode),d.data as LinkDraft):
+     await registerLinkShare(ctx.from.id,rev,d.data as LinkDraft);
     const updated=await updateDraft(ctx.from.id,"link",rev,"preview",{
      ...d.data,shareCode:receipt.code,linkSourceId:receipt.sourceId,
+     linkEditingRegistered:false,linkEditorView:false,
     });
     await ctx.answerCbQuery("登録しました");
     await showLinkRichPreview(ctx.telegram,ctx.from.id,updated);
@@ -1707,7 +1736,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   if(op==="edittext"||op==="editmedia"){
    if(d.step!=="preview"){await ctx.answerCbQuery("編集中です。");return;}
-   if(typeof d.data.shareCode==="string"){
+   if((typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
     await ctx.answerCbQuery("登録済みは変更できません。新規作成してください。",{show_alert:true});return;
    }
    if(op==="editmedia"){
@@ -1732,7 +1761,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    return;
   }
   if(op==="mediareplace"){
-   if(d.step!=="preview"||typeof d.data.shareCode==="string"||
+   if(d.step!=="preview"||(typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)||
      d.data.linkMediaPanel!==true){await ctx.answerCbQuery("編集画面を開いてください。");return;}
    const updated=await updateDraft(ctx.from.id,"link",rev,"awaiting_text",
     {...d.data,linkStage:"editmedia"});
@@ -1746,7 +1775,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   if(op==="mediadelete"){
    if(d.step!=="preview"||d.data.linkMediaPanel!==true||!d.data.media||
-     typeof d.data.shareCode==="string"){await ctx.answerCbQuery("削除できません。");return;}
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){await ctx.answerCbQuery("削除できません。");return;}
    if(!String(d.data.text||"").trim()){
     await ctx.answerCbQuery("画像・動画のみの投稿です。先にテキストを追加してください。",{show_alert:true});return;
    }
@@ -1760,7 +1789,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(op==="captiontop"||op==="captionbottom"){
    if(d.step!=="preview"||d.data.linkMediaPanel!==true||
      !d.data.media||!String(d.data.text||"").trim()||
-     typeof d.data.shareCode==="string"){
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
     await ctx.answerCbQuery("コメント付き画像・動画の場合のみ変更できます。");return;
    }
    const updated=await updateDraft(ctx.from.id,"link",rev,"preview",
@@ -1773,7 +1802,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   if(op==="add"||op==="beside"||op==="edit"){
    if(d.step!=="preview"||(op==="edit"?d.data.linkEditorView!=="content":d.data.linkEditorView!==true)||
-     typeof d.data.shareCode==="string"){
+     (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
     await ctx.answerCbQuery("編集画面を開いてください。");return;
    }
    const rows=buttonGrid(d.data as LinkDraft);
@@ -1825,7 +1854,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const index=Number(ctx.match[3]);
   const d=await getDraft(ctx.from.id,"link");
   if(!d||d.revision!==revision||d.step!=="preview"||d.data.linkEditorView!==true||
-    typeof d.data.shareCode==="string"){
+    (typeof d.data.shareCode==="string"&&d.data.linkEditingRegistered!==true)){
    await ctx.answerCbQuery("編集画面の状態が変わりました。");return;
   }
   const buttons=Array.isArray(d.data.buttons)?d.data.buttons as LinkDraft["buttons"]:[];
