@@ -27,7 +27,7 @@ async def _run(client, trace):
             for button in row:
                 value=cb_data(button) or b""
                 match=re.fullmatch(
-                    rb"post:link:(?:register|back|restart|change|cancel):(\\d+)",
+                    rb"post:link:(?:register|back|restart|change|cancel):(\d+)",
                     value)
                 if match:
                     return int(match.group(1))
