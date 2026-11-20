@@ -33,14 +33,21 @@ async def _run(client, trace):
                     return int(match.group(1))
         raise RuntimeError("LINK_RICH_REVISION_UNAVAILABLE")
 
-    async def latest(predicate,mark,attempts=15):
+    async def latest(predicate,mark,attempts=15,min_rev=None):
         for _ in range(attempts):
             messages=await client.get_messages(bot,limit=65)
+            candidates=[]
             for m in messages:
                 if m.out:continue
                 t=m.edit_date or m.date
-                if (t and t>=mark-timedelta(seconds=3) and predicate(m)):
-                    return m
+                if not (t and t>=mark-timedelta(seconds=3) and predicate(m)):continue
+                if min_rev is not None:
+                    try: fresh_rev=revision(m)
+                    except RuntimeError:continue
+                    if fresh_rev<=min_rev:continue
+                candidates.append(m)
+            if candidates:
+                return max(candidates,key=lambda m:(m.edit_date or m.date,m.id))
             await asyncio.sleep(1)
         raise RuntimeError("LINK_RICH_SCREEN_NOT_FOUND")
     async def callback(msg,payload):
@@ -96,18 +103,19 @@ async def _run(client, trace):
     rev=revision(placement)
     mark=mk();await callback(placement,f"post:link:add:{rev}")
     input_screen=await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
-                 and any("標準" in label for label in labels(m)),mark)
+                 and any("標準" in label for label in labels(m)),mark,min_rev=rev)
     rev=revision(input_screen)
     trace["stage"]="second_link"
     mark=mk();await client.send_message(bot,"二番目\nhttps://example.com/")
     placement=await latest(lambda m:"戻る" in labels(m)
                            and "キャンセル" in labels(m)
-                           and "登録" not in labels(m),mark)
+                           and "登録" not in labels(m),mark,min_rev=rev)
     trace["stage"]="delete"
     rev=revision(placement)
     mark=mk()
     answer=await callback(placement,f"post:link:delete:{rev}:1")
     if "削除" not in answer:
+        trace["stage"]="delete_stale" if "状態が変わりました" in answer else "delete_no_ack"
         raise RuntimeError("LINK_RICH_DELETE_NOT_ACKNOWLEDGED")
 
     placement=await latest(lambda m:"戻る" in labels(m) and "キャンセル" in labels(m)
@@ -142,5 +150,9 @@ async def run(client):
     trace={"stage":"setup"}
     try:
         return await _run(client,trace)
-    except Exception:
-        return {"status":"FAIL","stage":trace["stage"]}
+    except Exception as exc:
+        kind=type(exc).__name__
+        allowed={"ButtonDataInvalidError","MessageIdInvalidError",
+                 "MessageNotModifiedError","FloodWaitError"}
+        return {"status":"FAIL","stage":trace["stage"],
+                "error_class":kind if kind in allowed else "OTHER"}
