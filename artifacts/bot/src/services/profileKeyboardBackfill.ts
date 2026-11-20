@@ -79,7 +79,7 @@ async function prepareToken(p:ExistingPost):Promise<string>{
  return String(result.rows[0].token);
 }
 export async function applyProfileKeyboardBackfill(
- telegram:Pick<Telegram,"editMessageReplyMarkup">,
+ telegram:Pick<Telegram,"editMessageReplyMarkup"|"getChat">,
  options:{dryRun?:boolean;limit?:number}={},
 ):Promise<BackfillResult>{
  const posts=await listExistingProfilePosts(options.limit??100);
@@ -87,6 +87,18 @@ export async function applyProfileKeyboardBackfill(
  if(options.dryRun)return stats; // No DB/API writes on preview.
  for(const post of posts){
   validatePost(post);
+  // Resolve the live username from Telegram. A stored historical handle may
+  // now belong to another person; never publish an unverified stale URL.
+  let currentUsername:string|null=null;
+  try{
+   const owner=await telegram.getChat(post.ownerId);
+   if(Number(owner.id)!==post.ownerId)throw Error("PROFILE_OWNER_ID_MISMATCH");
+   const value="username" in owner?owner.username:null;
+   if(typeof value==="string"&&/^[A-Za-z0-9_]{5,32}$/.test(value))
+    currentUsername=value;
+  }catch{
+   stats.skipped++;continue; // No source post or keyboard mutation.
+  }
   // Token creation is not publication, and is stable on conflict.
   const token=await prepareToken(post);
   const claim=await pool.query(`
@@ -104,7 +116,7 @@ export async function applyProfileKeyboardBackfill(
   if(claim.rows.length!==1){stats.skipped++;continue;}
   try{
    const response=await telegram.editMessageReplyMarkup(
-    post.chatId,post.messageId,undefined,backfillKeyboard(token,post.username));
+    post.chatId,post.messageId,undefined,backfillKeyboard(token,currentUsername));
    // Bot-originated group posts must return the original Message, not a new one.
    if(!response||typeof response!=="object"||
       !("message_id" in response)||Number(response.message_id)!==post.messageId||
