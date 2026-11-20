@@ -93,3 +93,22 @@
 7. **実機受入**：3グループ共通リンク入口→DM①→素材自動回収→②→③→④/⑤→登録・コード共有のE2Eを検証。旧DM `dm:blocked:link` 互換も確認。iOS/AndroidのRich操作を検証。Source/CI/DB記録だけで完成にしない。
 
 **従前契約との関係**：旧共通UI契約には「本文内の見せかけボタンを描かない」条件がある。今回はMasterがリンク作成の①〜⑤に限り本文内の**実際にタップ可能なRichボタン**を承認した限定例外であり、テキストだけの非機能ダミーを許可したものではない。他機能のInlineKeyboard原則は維持。
+
+
+## 2026-11-21｜🔗ボタン作成・Master再確定と実コード責務マッピング（2026-11-20 JST会話）
+
+**正本**：Notion「TGtumbler｜Bot DM画面・操作UI設計変更履歴」2026-11-21 JST追加節、[PR #62内Master訂正記録](https://github.com/seigo-gace/GateApp-Bot/pull/62#issuecomment-7047390223)。以前の本ファイルの「下部InlineKeyboardは登録とキャンセルのみ」は編集用操作に関する説明であり、**実際のURLボタンを下部へ配置しない意味ではない**。以下の直接訂正を優先する。
+
+| 工程 | 既存Owner / 実ファイル | Master確定UI・受入 |
+|---|---|---|
+| ①DM素材受付 | `postingHandlers.ts`, `dmWizardScreen.ts`, `publicPostRepository.ts` | テキスト・画像・動画・ステッカー等を標準DMで受信。5択選択画面なし。入力を回収、下書き保持 |
+| ②最初のボタン | `postingHandlers.ts` `linkColorKeyboard`, `linkButtonDomain.ts` | 2行入力（名前/URL）。色選択は横4列［標準］［青］［緑］［赤］、初期✅標準、戻る・キャンセル |
+| ③プレビュー | `linkRichPreview.ts` `linkRichPreview`, `linkUrlKeyboardRows`, `postingHandlers.ts` `showLinkRichPreview` | 実素材と本文。本文内［ボタンの追加］［内容の編集］は区切って表示。**作成URLボタンは実際の下部ボタン領域**に各行の配置・色で置き、利用者がリンク先を確認可。その下に［登録］［キャンセル］。登録前コードなし |
+| ④ボタン配置 | `linkRichPreview.ts` `linkRichPlacement`, `linkButtonDomain.ts` `buttonGrid/insertLinkButton` | 操作文言は**［▶］［▼］**。縦横任意。**Masterは4列・4行の区切り・最大4列を指定していない**。個別削除。他の行/URL/色を維持 |
+| ⑤部分編集 | `linkRichContentEditor`, `postingHandlers.ts` | ［編集］対象を1件選択して［変更］。未変更項目を保存・保持 |
+| ⑥登録 | `linkInlineShare.ts` `registerLinkShare`, `publicPostRepository.ts` | ［登録］後のみコード発行。本人/DB/読戻し照合、通信異常時に成功を偽らない |
+| ⑦登録完了 | `linkRichRegisteredReceipt`, `showLinkRichPreview`, `updateLinkShare` | 登録コード・コピー操作・使い方・下部［戻る］［新規作成］［編集］。戻る＝投稿メニュー、新規作成＝①から、編集＝プレビュー。編集後も登録コードを維持 |
+| ⑧コードで送信 | `linkInlineHandlers.ts`, `linkInlineShare.ts` `linkInlineResult` | 本文/素材を再現。URLボタンは下部 `reply_markup` の元の行配置。編集用操作や登録・キャンセルは公開結果に含めない |
+
+- **共有責務**：既存の本人・revision・DM入力削除・同一画面更新・既存DB・inline share・Userbot常駐IPCを再利用。他CU（プロフィール/ROOM/告知/検索/クリエーター等）のコードや公開資産は無断変更しない。
+- **実装と検証は区別**：この節のSourceマッピング記録はTelegram実機/本番PASSの証拠ではない。Photo/Video/Stickerの受付→登録→共有、iOS/Android、登録後編集更新、URL行数のTelegram実限界、実Bot稼働とrollbackを個別に検証する。
