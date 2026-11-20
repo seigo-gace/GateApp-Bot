@@ -15,7 +15,7 @@ export const BOARD_TITLES:Readonly<Record<BoardKey,string>>={
 export const BOARD_GROUP_CHAT_IDS:Readonly<Record<BoardKey,number>>={
  area_bbs:-1003847210571,video_chat:-1002373696859,gay_board:-1003770334893,
 };
-export const POST_PURPOSES = ["profile", "room", "announcement", "link"] as const;
+export const POST_PURPOSES = ["profile", "room", "announcement", "link", "video_sale"] as const;
 export type PostPurpose = typeof POST_PURPOSES[number];
 export type VerifiedTopic = {
   id: number;
@@ -32,7 +32,9 @@ export function assertVerifiedTopic(
   board: BoardKey,
   purpose: PostPurpose,
 ): VerifiedTopic {
-  if (!topic || !topic.enabled || topic.board !== board || topic.purpose !== purpose ||
+  // Paid videos may only use the verified video board, never an area/other board.
+  if ((purpose === "video_sale" && board !== "video_chat") ||
+      !topic || !topic.enabled || topic.board !== board || topic.purpose !== purpose ||
       !Number.isSafeInteger(topic.id) || topic.id <= 0 ||
       !Number.isSafeInteger(topic.chatId) || topic.chatId >= 0 ||
       !Number.isSafeInteger(topic.threadId) || topic.threadId <= 0 ||
