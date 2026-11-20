@@ -113,6 +113,14 @@ export async function readLinkShare(ownerId:number,code:string):Promise<LinkInli
 export function linkInlineResult(post:LinkInlinePost):Record<string,unknown>{
  const {draft,sourceId}=post;
  validateLinkDraft(draft);
+ // Telegram supports native cached stickers with URL reply markup, but a
+ // sticker cannot be embedded inside the RichMessage article. Preserve its
+ // original WebP/WebM/TGS file_id rather than coercing it to another file type.
+ if(draft.media?.type==="sticker")return {
+  type:"sticker",id:"link_"+sourceId,
+  sticker_file_id:draft.media.fileId,
+  reply_markup:{inline_keyboard:linkUrlKeyboardRows(draft)},
+ };
  return {
   type:"article",id:"link_"+sourceId,
   title:draft.text.slice(0,80)||"🔗 リンク投稿",
