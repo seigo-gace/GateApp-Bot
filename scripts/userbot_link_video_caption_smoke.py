@@ -1,4 +1,4 @@
-"""Private-only video and caption acceptance through the authorized resident Userbot.
+"""Private-only MP4-document fallback and caption acceptance through the authorized resident Userbot.
 
 The fixed 1-second H.264 MP4 is synthetic test media. Sends only to @GayBBS_bot DM.
 No public group action, no additional Telegram session, no credential reads.
@@ -47,17 +47,17 @@ async def _run(client, trace):
     trace["stage"]="video"
     t=datetime.now(timezone.utc)
     from telethon.tl import types
-    # Telethon detects video media more reliably from an MP4 *file path*.
+    # Deliberately send MP4 as Document to verify the link editor fallback.
     # Keep test bytes only in a disposable local file, never in shared storage.
     with tempfile.NamedTemporaryFile(suffix=".mp4",prefix="link-video-test-",mode="w+b") as clip:
         clip.write(base64.b64decode(VIDEO_BASE64))
         clip.flush()
         sent=await client.send_file(
-            bot,clip.name,caption="動画の補足",force_document=False,
+            bot,clip.name,caption="動画の補足",force_document=True,
             mime_type="video/mp4",supports_streaming=True,
             attributes=[types.DocumentAttributeVideo(duration=1,w=64,h=64,supports_streaming=True)])
-    if not getattr(sent,"video",None):
-        raise RuntimeError("LINK_VIDEO_SENT_AS_DOCUMENT")
+    if not getattr(sent,"document",None):
+        raise RuntimeError("LINK_MP4_DOCUMENT_NOT_SENT")
     await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
                  and any("標準" in v for v in labels(m)),t)
     trace["stage"]="pair"
@@ -77,7 +77,7 @@ VIDEO_SAFE_ERRORS=frozenset({
     "LINK_VIDEO_BOT_INVALID","LINK_VIDEO_MENU_NOT_FOUND",
     "LINK_VIDEO_SCREEN_NOT_FOUND","LINK_VIDEO_EXISTING_DRAFT_BLOCKED",
     "LINK_VIDEO_REAL_URL_BUTTON_MISSING",
-    "LINK_VIDEO_SENT_AS_DOCUMENT",
+    "LINK_MP4_DOCUMENT_NOT_SENT",
 })
 
 async def run(client):
