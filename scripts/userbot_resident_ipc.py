@@ -370,7 +370,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke"} else 30)
+                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
