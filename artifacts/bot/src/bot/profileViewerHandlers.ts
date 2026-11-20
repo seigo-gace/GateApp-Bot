@@ -133,8 +133,8 @@ export function registerPublicProfilePanelHandlers(bot:Telegraf):void{
    return;
   }
   const text=mode==="profile"?renderPublicProfile(profile):mode==="like"?
-   "💖 #Like｜自分について\\n"+LIKE_CATEGORIES.map(c=>c.name+"："+(profile.likeTags??[]).filter(t=>t.category===c.name).map(t=>"#"+t.tag).join(" ")).join("\\n"):
-   "💘 #Love｜相手に求めること\\n"+LIKE_CATEGORIES.map(c=>c.name+"："+(profile.loveTags??[]).filter(t=>t.category===c.name).map(t=>"#"+t.tag).join(" ")).join("\\n");
+   "💖 #Like｜自分について\n"+LIKE_CATEGORIES.map(c=>c.name+"："+(profile.likeTags??[]).filter(t=>t.category===c.name).map(t=>"#"+t.tag).join(" ")).join("\n"):
+   "💘 #Love｜相手に求めること\n"+LIKE_CATEGORIES.map(c=>c.name+"："+(profile.loveTags??[]).filter(t=>t.category===c.name).map(t=>"#"+t.tag).join(" ")).join("\n");
   await ctx.answerCbQuery();
   // Group messages are shared: an edit is visible to every member.
   await ctx.editMessageText(text,{parse_mode:"HTML",...Markup.inlineKeyboard(profilePanelRows(token,profile.username).map(row=>row.map(b=>b.url?Markup.button.url(b.text,b.url):Markup.button.callback(b.text,b.callback_data!))))});
