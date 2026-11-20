@@ -3,7 +3,8 @@
  */
 import {randomBytes} from "node:crypto";
 import {pool} from "../db/index.js";
-import {buttonGrid,validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
+import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
+import {linkRichPublication} from "./linkRichPreview.js";
 
 export type LinkShareReceipt={code:string;sourceId:string};
 export type LinkInlinePost={ownerId:number;sourceId:string;draft:LinkDraft};
@@ -62,26 +63,16 @@ export async function readLinkShare(ownerId:number,code:string):Promise<LinkInli
  return {sourceId:String(row.link_post_id),ownerId,draft};
 }
 
+/** The inline result is the SAME Rich Message shown in the final-preview body.
+ * No parallel photo/video-only exporter: mixed Rich media and URL buttons stay intact.
+ */
 export function linkInlineResult(post:LinkInlinePost):Record<string,unknown>{
  const {draft,sourceId}=post;
  validateLinkDraft(draft);
- const reply_markup={inline_keyboard:buttonGrid(draft).map(row=>row.map(b=>({
-  text:b.label,url:b.url,...(b.style?{style:b.style}:{}),
- })))};
- const id="link_"+sourceId;
- if(!draft.media)return {
-  type:"article",id,title:draft.text.slice(0,80)||"投稿",
-  description:"登録済みのテキスト投稿",
-  input_message_content:{message_text:draft.text},
-  reply_markup,
- };
- const base={id,caption:draft.text,
-  show_caption_above_media:draft.captionAbove===true,reply_markup};
- if(draft.media.type==="photo")return {
-  type:"photo",photo_file_id:draft.media.fileId,...base,
- };
  return {
-  type:"video",video_file_id:draft.media.fileId,
-  title:draft.text.slice(0,80)||"動画投稿",...base,
+  type:"article",id:"link_"+sourceId,
+  title:draft.text.slice(0,80)||"🔗 リンク投稿",
+  description:"登録済み投稿をそのまま共有します",
+  input_message_content:{rich_message:linkRichPublication(draft)},
  };
 }
