@@ -1,5 +1,5 @@
 import type { Telegram } from "telegraf";
-import { createTelegramDispatcher } from "./telegramDispatcher.js";
+import { createTelegramDispatcher,type TransportButton } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
 import { getVerifiedTopic, claimDelivery, acknowledgeDelivery, markDeliveryUnknown } from "./postingDelivery.js";
 import type { PostPurpose } from "./topicRouting.js";
@@ -25,7 +25,7 @@ export type PublishRequest = {
   revision:number;
   topicId:number;
   text:string;
-  buttons?:readonly (readonly {text:string;url:string}[])[];
+  buttons?:readonly (readonly TransportButton[])[];
   approved:boolean;
 };
 
