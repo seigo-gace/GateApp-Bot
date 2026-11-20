@@ -17,7 +17,7 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import { PURPOSE_TAGS, validateAnnouncementTags, normalizePlaceCodes } from "../services/announcementTags.js";
 import {parseLinkButtonPair,renderLinkCard,buttonGrid,insertLinkButton,type LinkDraft} from "../services/linkButtonDomain.js";
 import {registerLinkShare} from "../services/linkInlineShare.js";
-import {linkRichPreview,linkRichPlacement,linkRichContentEditor} from "../services/linkRichPreview.js";
+import {linkRichPreview,linkRichPlacement,linkRichContentEditor,linkUrlKeyboardRows} from "../services/linkRichPreview.js";
 import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
 import {makeRoomJoinLink} from "../services/roomJoinLinks.js";
 import {roomPublicButtons} from "../services/roomPublicButtons.js";
@@ -469,15 +469,18 @@ async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft)
  const rich=linkRichPreview(d.data as LinkDraft,d.revision,
   typeof d.data.shareCode==="string"?d.data.shareCode:undefined);
  const registered=typeof d.data.shareCode==="string";
+ const urlRows=linkUrlKeyboardRows(d.data as LinkDraft);
  const keyboard=registered?
-  {reply_markup:{inline_keyboard:[[
-   {text:"📋 投稿コードをコピー",copy_text:{text:"@GayBBS_bot "+String(d.data.shareCode)}},
-   {text:"投稿メニューへ戻る",callback_data:"post:link:cancel:"+d.revision},
-  ]]}}:
-  Markup.inlineKeyboard([[
-   Markup.button.callback("登録","post:link:register:"+d.revision),
-   Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
-  ]]);
+  {reply_markup:{inline_keyboard:[
+   ...urlRows,
+   [{text:"📋 投稿コードをコピー",copy_text:{text:"@GayBBS_bot "+String(d.data.shareCode)}}],
+   [{text:"投稿メニューへ戻る",callback_data:"post:link:cancel:"+d.revision}],
+  ]}}:
+  {reply_markup:{inline_keyboard:[
+   ...urlRows,
+   [{text:"登録",callback_data:"post:link:register:"+d.revision},
+    {text:"キャンセル",callback_data:"post:link:cancel:"+d.revision}],
+  ]}};
  const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
  const old=Number(d.data.screenMessageId);
  if(Number.isSafeInteger(old)&&old>0){
