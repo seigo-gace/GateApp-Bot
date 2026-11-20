@@ -27,6 +27,7 @@ test("paid-video Topic shares verified routing without opening any other board",
  assert.equal(assertVerifiedTopic(sale,"video_chat","video_sale").threadId,42);
  assert.deepEqual(resolvePostingTopics([sale],"video_chat","video_sale"),[sale]);
  assert.throws(()=>assertVerifiedTopic({...sale,board:"area_bbs"},"area_bbs","video_sale"),/TOPIC_NOT_VERIFIED/);
+ assert.throws(()=>assertVerifiedTopic({...sale,chatId:-1001000000000},"video_chat","video_sale"),/TOPIC_NOT_VERIFIED/);
  assert.throws(()=>resolvePostingTopics([{...sale,board:"gay_board"}],"gay_board","video_sale"),/TOPIC_NOT_VERIFIED/);
  assert.throws(()=>resolvePostingTopics([{...sale,enabled:false}],"video_chat","video_sale"),/TOPIC_NOT_VERIFIED/);
  assert.throws(()=>resolvePostingTopics([sale,{...sale,id:2}],"video_chat","video_sale"),/DUPLICATE/);
