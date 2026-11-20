@@ -1520,7 +1520,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
  });
  // Uses the existing DM text-owner and Telegram file_id mechanism from profiles.
- const receiveLinkMedia=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video")=>{
+ const receiveLinkMedia=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video"|"videoDocument")=>{
   if(ctx.chat?.type!=="private"||!ctx.from){await next();return;}
   if(await currentDmTextOwner(ctx.from.id)!=="link"){await next();return;}
   const original=await getWaitingDraft(ctx.from.id);
@@ -1529,7 +1529,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
   const msg=ctx.message;
   if(!msg){await next();return;}
   const file=kind==="photo"&&"photo" in msg?msg.photo.at(-1):
-   kind==="video"&&"video" in msg?msg.video:undefined;
+   kind==="video"&&"video" in msg?msg.video:
+   kind==="videoDocument"&&"document" in msg&&msg.document.mime_type==="video/mp4"?
+    msg.document:undefined;
   if(!file?.file_id){await next();return;}
   const caption="caption" in msg&&typeof msg.caption==="string"?msg.caption:"";
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,msg.message_id);
@@ -1552,7 +1554,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(text.length>1024||caption.length>1024)throw Error("LINK_BODY_INVALID");
     const extras=Array.isArray(d.data.mediaExtras)?d.data.mediaExtras as LinkDraft["mediaExtras"]:[];
     const appended=stage==="button"&&hasPrimary;
-    const newMedia={type:kind,fileId:file.file_id,...(caption?{caption}:{})};
+    const newMedia={type:kind==="videoDocument"?"video":kind,fileId:file.file_id,...(caption?{caption}:{})};
     const media=appended?d.data.media:newMedia;
     const mediaExtras=appended?[...(extras||[]),newMedia]:extras||[];
     if(mediaExtras.length>=50)throw Error("LINK_MEDIA_ALBUM_LIMIT");
@@ -1586,10 +1588,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
  // Link-only transport diagnosis: a client may send an MP4 as a document.
  // Never log user identity, file IDs, captions, messages or chat contents.
  bot.on("document",async(ctx,next)=>{
-  if(ctx.chat?.type==="private"&&ctx.from&&await currentDmTextOwner(ctx.from.id)==="link"){
-   console.info("[LINK_MEDIA_DOCUMENT_CLASSIFIED] "+
-    (ctx.message.document.mime_type==="video/mp4"?"MP4":"OTHER"));
-  }
+  // Telegram clients may classify an uploaded MP4 as Document rather than Video.
+  // Keep the same LinkDraft and Rich video block (no secondary storage or workflow).
+  if(ctx.message.document.mime_type==="video/mp4")
+   return receiveLinkMedia(ctx,next,"videoDocument");
   await next();
  });
  bot.action(/^post:link:selectcolor:(\d+):(standard|primary|success|danger)$/,async ctx=>{
