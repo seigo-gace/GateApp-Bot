@@ -21,6 +21,7 @@ const richLink=(label:string,url:string,style?:"primary"|"success"|"danger")=>({
 /** One canonical public appearance for the editor preview and inline post code. */
 export function linkRichPublication(draft:LinkDraft){
  validateLinkDraft(draft);
+ if(draft.media?.type==="sticker")throw Error("LINK_STICKER_USE_NATIVE_MESSAGE");
  const blocks:RichBlock[]=[];
  if(draft.media&&draft.captionAbove&&draft.text.trim())blocks.push(paragraph(draft.text));
  for(const media of [...(draft.media?[draft.media]:[]),...(draft.mediaExtras??[])]){
