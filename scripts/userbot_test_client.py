@@ -23,7 +23,7 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
     try:
         request_id = uuid.uuid4().hex
         request = {"request_id": request_id, "action": action}
-        if action == "link_inline_query_smoke":
+        if action in {"link_inline_query_smoke","link_send_saved_smoke"}:
             if (chat_id is not None or message_id is not None or topic_ids is not None
                     or not isinstance(code,str) or not re.fullmatch(r"[A-Za-z0-9_-]{24}",code)):
                 raise ValueError("LINK_INLINE_CODE_INVALID")
@@ -87,6 +87,11 @@ def main() -> int:
                     "rich_text_change", "no_public_post")):
                 raise RuntimeError("LINK_RICH_FLOW_INCOMPLETE")
             print("USERBOT_LINK_RICH_45=PASS")
+        if args.action == "link_send_saved_smoke":
+            if not all(result.get(key) is True for key in
+                       ("self_post_sent","rich_body_verified","link_buttons_verified")):
+                raise RuntimeError("LINK_SAVED_MESSAGE_RESULT_INCOMPLETE")
+            print("USERBOT_LINK_SAVED_MESSAGE=PASS")
         if args.action == "link_inline_query_smoke":
             if result.get("inline_result_found") is not True:
                 raise RuntimeError("LINK_INLINE_RESULT_NOT_FOUND")
