@@ -138,9 +138,32 @@ async def _run(client, trace):
     await latest(lambda m:"新しい文章をDMで送信" in (m.raw_text or ""),mark)
     trace["stage"]="save_edit"
     mark=mk();await client.send_message(bot,"個別編集済みの安全テスト")
-    await latest(lambda m:"登録" in labels(m),mark)
+    preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),mark)
+    if not any("一番目" in name for name in labels(preview)):
+        raise RuntimeError("LINK_RICH_REAL_URL_BUTTON_NOT_VISIBLE")
+    trace["stage"]="register"
+    mark=mk();await preview.click(text="登録")
+    receipt=await latest(lambda m:"登録コードをコピー" in labels(m)
+                         and "編集" in labels(m) and "新規作成" in labels(m),mark)
+    match=re.search(r"@GayBBS_bot ([A-Za-z0-9_-]{24})",receipt.raw_text or "")
+    if not match:
+        raise RuntimeError("LINK_RICH_RECEIPT_CODE_NOT_VISIBLE")
+    original_code=match.group(1)
+    trace["stage"]="registered_edit"
+    mark=mk();await receipt.click(text="編集")
+    edit_preview=await latest(lambda m:"登録" in labels(m)
+                              and "キャンセル" in labels(m)
+                              and "一番目" in labels(m),mark)
+    trace["stage"]="registered_reregister"
+    mark=mk();await edit_preview.click(text="登録")
+    final=await latest(lambda m:"登録コードをコピー" in labels(m)
+                       and "編集" in labels(m),mark)
+    if original_code not in (final.raw_text or ""):
+        raise RuntimeError("LINK_RICH_REGISTERED_CODE_CHANGED")
     return {"status":"PASS","rich_add":True,"rich_delete":True,
             "rich_field_select":True,"rich_text_change":True,
+            "registered_code_created":True,"registered_edit_reopened":True,
+            "registered_code_preserved":True,"real_url_button_visible":True,
             "no_public_post":True}
 
 
