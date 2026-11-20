@@ -11,7 +11,7 @@ const BOARDS: Readonly<Record<string,BoardKey>>={
  "-1003770334893":"gay_board",
 };
 const COMMANDS: Readonly<Record<string,PostPurpose>>={
- bindprofile:"profile",bindroom:"room",bindannounce:"announcement",bindlink:"link",
+ bindprofile:"profile",bindroom:"room",bindannounce:"announcement",bindlink:"link",bindvideo:"video_sale",
 };
 export function registerTopicBindingHandlers(bot:Telegraf):void{
  for(const [command,purpose] of Object.entries(COMMANDS)){
@@ -19,7 +19,9 @@ export function registerTopicBindingHandlers(bot:Telegraf):void{
    if(ctx.chat.type!=="supergroup"||!ctx.from)return;
    const board=BOARDS[String(ctx.chat.id)];
    const thread=(ctx.message as {message_thread_id?:number}).message_thread_id;
-   if(!board||!Number.isSafeInteger(thread)||!thread||thread<=0){
+   // Video sales cannot be routed into an area or general board.
+   if((purpose==="video_sale"&&board!=="video_chat")||
+      !board||!Number.isSafeInteger(thread)||!thread||thread<=0){
      await ctx.reply("この既存トピックを確認できません。登録を拒否しました。");
      return;
    }
