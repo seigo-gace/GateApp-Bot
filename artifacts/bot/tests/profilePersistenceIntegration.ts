@@ -126,6 +126,7 @@ try{
   // Keyboard-only update of the SAME Telegram message ID; no sends/deletes.
   let markupEdits=0;
   const onlyMarkupTelegram={
+   async getChat(userId:number){assert.equal(userId,id);return {id:userId,type:"private",username:"test_user_123"};},
    async editMessageReplyMarkup(chat:number,message:number,_inline:unknown,markup:any){
     assert.equal(chat,-1009876543210);assert.equal(message,777);
     assert.deepEqual(markup.inline_keyboard[0].map((b:any)=>b.text),
