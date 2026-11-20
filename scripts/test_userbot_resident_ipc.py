@@ -50,6 +50,29 @@ class ResidentSafetyTests(unittest.TestCase):
         self.assertEqual(out["row_sizes"], [3, 2, 2, 3, 1])
         self.assertEqual(c.sent, ["/start"])
 
+    def test_link_button_smoke_uses_existing_bot_dm_without_session_restart(self):
+        from datetime import datetime, timezone
+        class LinkClient(MockClient):
+            async def get_messages(self, bot, limit):
+                if getattr(self, "clicked", False):
+                    return [SimpleNamespace(id=12, out=False,
+                        raw_text="🔗ボタンを作成する上で一緒に投稿",
+                        edit_date=datetime.now(timezone.utc), date=datetime.now(timezone.utc))]
+                messages=await super().get_messages(bot, limit)
+                for m in messages:
+                    async def click(text):
+                        if text != "🔗ボタン作成":
+                            raise RuntimeError("WRONG_LINK_BUTTON")
+                        self.clicked=True
+                    m.click=click
+                return messages
+        c=LinkClient()
+        out=asyncio.run(process_request(c,{
+            "request_id":"link-smoke-1", "action":"link_button_smoke"}))
+        self.assertEqual(out["status"],"PASS")
+        self.assertTrue(out["link_editor_opened"])
+        self.assertEqual(c.sent,["/start"])
+
     def test_wrong_menu_not_pass(self):
         c = MockClient(menu=[["wrong"]])
         out = asyncio.run(process_request(c, {"request_id": "menu-2", "action": "bot_start_menu"}))
