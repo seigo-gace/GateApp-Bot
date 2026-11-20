@@ -55,13 +55,16 @@ async def _run(client,code,trace):
         if not blocks:
             raise RuntimeError("LINK_INLINE_POST_EMPTY_RICH")
         trace["stage"]="buttons"
-        # Telethon TL type names differ by installed protocol layer. Check
-        # the actual buttons payload, not an English class-name substring.
-        have_buttons=any(bool(getattr(b,"buttons",None)) for b in blocks)
-        if not have_buttons:
-            names={type(b).__name__ for b in blocks}
-            trace["stage"]="buttons_paragraph" if names=={"RichBlockParagraph"} else "buttons_missing"
+        # The adopted layout uses Telegram's real inline keyboard under
+        # the rich content, not URL buttons embedded in the Rich blocks.
+        rows=getattr(found,"buttons",None) or []
+        urls=[getattr(button,"url",None) for row in rows for button in row]
+        if not any(isinstance(url,str) and url.startswith("https://") for url in urls):
             raise RuntimeError("LINK_INLINE_POST_LINK_BUTTONS_MISSING")
+        forbidden={"登録","キャンセル","［ボタンの追加］","［内容の編集］"}
+        labels={str(getattr(button,"text","")) for row in rows for button in row}
+        if labels.intersection(forbidden):
+            raise RuntimeError("LINK_INLINE_POST_EDITOR_BUTTONS_LEAKED")
         return {"status":"PASS","self_post_sent":True,"rich_body_verified":True,
                 "link_buttons_verified":True}
     finally:
