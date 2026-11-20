@@ -1805,7 +1805,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
     linkSelectedStyle:"standard",linkEditIndex:null,linkEditMode:null});
    await ctx.answerCbQuery("ボタンを削除しました。");
    await showPostScreen(ctx.telegram,ctx.from.id,next,
-    "🔗 ボタンを作成\\n1行目：ボタンのタイトル\\n2行目：ボタンにしたいURL",
+    "🔗 ボタンを作成\n1行目：ボタンのタイトル\n2行目：ボタンにしたいURL",
     linkColorKeyboard(next));
    return;
   }
