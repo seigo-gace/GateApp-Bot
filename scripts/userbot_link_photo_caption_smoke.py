@@ -18,7 +18,7 @@ def png():
     raw=b"".join(b"\x00"+b"\x32\x98\xde"*w for _ in range(h))
     return b"\x89PNG\r\n\x1a\n"+chunk(b"IHDR",struct.pack(">IIBBBBB",w,h,8,2,0,0,0))+chunk(b"IDAT",zlib.compress(raw))+chunk(b"IEND",b"")
 
-async def _run(client):
+async def _run(client,trace):
     bot=await client.get_entity("GayBBS_bot")
     if not getattr(bot,"bot",False):
         raise RuntimeError("LINK_PHOTO_BOT_INVALID")
@@ -45,6 +45,7 @@ async def _run(client):
                     return m
             await asyncio.sleep(1)
         raise RuntimeError("LINK_PHOTO_MENU_NOT_FOUND")
+    trace["stage"]="menu"
     entry=await menu()
     t=mark();await entry.click(text="🔗ボタン作成")
     current=await latest(lambda m:
@@ -54,6 +55,7 @@ async def _run(client):
         # A live user's unregistered draft must never be cancelled by a test.
         raise RuntimeError("LINK_PHOTO_EXISTING_DRAFT_BLOCKED")
 
+    trace["stage"]="photo"
     image=io.BytesIO(png())
     image.name="link-test-photo.png"
     t=mark()
@@ -61,25 +63,29 @@ async def _run(client):
     await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
                  and any("標準" in b for b in labels(m)),t)
     t=mark()
+    trace["stage"]="pair"
     await client.send_message(bot,"写真付きのリンク\nhttps://example.org/")
     preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
     if not any("写真付きのリンク" in x for x in labels(preview)):
         raise RuntimeError("LINK_PHOTO_REAL_URL_BUTTON_MISSING")
+    trace["stage"]="register"
     t=mark()
     await preview.click(text="登録")
     receipt=await latest(lambda m:any("登録コードをコピー" in b for b in labels(m)),t)
-    code=re.search(r"@GayBBS_bot ([A-Za-z0-9_-]{24})",receipt.raw_text or "")
+    code=re.search(r"@GayBBS_bot ([A-Za-z0-9_-]{24})",(receipt.raw_text or "")+" "+str(getattr(receipt,"rich_message",None) or ""))
     if not code:
         raise RuntimeError("LINK_PHOTO_REGISTERED_CODE_MISSING")
+    trace["stage"]="edit"
     t=mark()
     await receipt.click(text="編集")
     reopened=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
     if not any("写真付きのリンク" in x for x in labels(reopened)):
         raise RuntimeError("LINK_PHOTO_EDIT_PREVIEW_URL_MISSING")
+    trace["stage"]="reregister"
     t=mark()
     await reopened.click(text="登録")
     final=await latest(lambda m:any("登録コードをコピー" in b for b in labels(m)),t)
-    if code.group(1) not in (final.raw_text or ""):
+    if code.group(1) not in ((final.raw_text or "")+" "+str(getattr(final,"rich_message",None) or "")):
         raise RuntimeError("LINK_PHOTO_EDIT_CODE_CHANGED")
     return {"status":"PASS","photo_received":True,
             "caption_input_sent":True,"preview_ready":True,
@@ -95,10 +101,11 @@ PHOTO_SAFE_ERRORS=frozenset({
 })
 
 async def run(client):
+    trace={"stage":"setup"}
     try:
-        return await _run(client)
+        return await _run(client,trace)
     except Exception as exc:
         code=str(exc)
         if code not in PHOTO_SAFE_ERRORS:
-            code="LINK_PHOTO_UNCLASSIFIED_FAILURE"
+            code="LINK_PHOTO_UNCLASSIFIED_"+trace["stage"].upper()
         return {"status":"FAIL","error":code}
