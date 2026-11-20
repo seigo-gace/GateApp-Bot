@@ -341,6 +341,7 @@ export async function runMigrations(): Promise<void> {
       );
       ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_kind TEXT;
        ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_file_id TEXT;
+       ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_caption TEXT;
        ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS caption_above BOOLEAN NOT NULL DEFAULT FALSE;
        ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS share_code TEXT;
        ALTER TABLE link_button_posts ADD COLUMN IF NOT EXISTS media_extras JSONB NOT NULL DEFAULT '[]'::jsonb;
