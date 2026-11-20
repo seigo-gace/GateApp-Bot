@@ -43,29 +43,34 @@ async def _run(client, trace):
     screen=await latest(lambda m:"🔗ボタンを作成する上で一緒に投稿" in (m.raw_text or "")
                         or "キャンセル" in labels(m),t)
     if "🔗ボタンを作成する上で一緒に投稿" not in (screen.raw_text or ""):
-        raise RuntimeError("LINK_VIDEO_EXISTING_DRAFT_BLOCKED")
-    trace["stage"]="video"
-    t=datetime.now(timezone.utc)
-    from telethon.tl import types
-    # Deliberately send MP4 as Document to verify the link editor fallback.
-    # Keep test bytes only in a disposable local file, never in shared storage.
-    with tempfile.NamedTemporaryFile(suffix=".mp4",prefix="link-video-test-",mode="w+b") as clip:
-        clip.write(base64.b64decode(VIDEO_BASE64))
-        clip.flush()
-        sent=await client.send_file(
-            bot,clip.name,caption="動画の補足",force_document=True,
-            mime_type="video/mp4",supports_streaming=True,
-            attributes=[types.DocumentAttributeVideo(duration=1,w=64,h=64,supports_streaming=True)])
-    if not getattr(sent,"document",None):
-        raise RuntimeError("LINK_MP4_DOCUMENT_NOT_SENT")
-    await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
-                 and any("標準" in v for v in labels(m)),t)
-    trace["stage"]="pair"
-    t=datetime.now(timezone.utc)
-    await client.send_message(bot,"動画付きのリンク\nhttps://example.org/")
-    preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
-    if "動画付きのリンク" not in labels(preview):
-        raise RuntimeError("LINK_VIDEO_REAL_URL_BUTTON_MISSING")
+        # Resume only the uniquely identified, already-persisted test draft.
+        # Never overwrite someone else's unregistered editor.
+        if not ({"登録","キャンセル","動画付きのリンク"} <= set(labels(screen))):
+            raise RuntimeError("LINK_VIDEO_EXISTING_DRAFT_BLOCKED")
+        preview=screen
+    else:
+        trace["stage"]="video"
+        t=datetime.now(timezone.utc)
+        from telethon.tl import types
+        # Deliberately send MP4 as Document to verify the link editor fallback.
+        # Keep test bytes only in a disposable local file.
+        with tempfile.NamedTemporaryFile(suffix=".mp4",prefix="link-video-test-",mode="w+b") as clip:
+            clip.write(base64.b64decode(VIDEO_BASE64))
+            clip.flush()
+            sent=await client.send_file(
+                bot,clip.name,caption="動画の補足",force_document=True,
+                mime_type="video/mp4",supports_streaming=True,
+                attributes=[types.DocumentAttributeVideo(duration=1,w=64,h=64,supports_streaming=True)])
+        if not getattr(sent,"document",None):
+            raise RuntimeError("LINK_MP4_DOCUMENT_NOT_SENT")
+        await latest(lambda m:"1行目：ボタンのタイトル" in (m.raw_text or "")
+                     and any("標準" in v for v in labels(m)),t)
+        trace["stage"]="pair"
+        t=datetime.now(timezone.utc)
+        await client.send_message(bot,"動画付きのリンク\\nhttps://example.org/")
+        preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
+        if "動画付きのリンク" not in labels(preview):
+            raise RuntimeError("LINK_VIDEO_REAL_URL_BUTTON_MISSING")
     trace["stage"]="register"
     t=datetime.now(timezone.utc)
     await preview.click(text="登録")
