@@ -5,7 +5,8 @@
 import type {Telegram} from "telegraf";
 import {Markup} from "telegraf";
 export type TransportTarget={chatId:number;threadId:number};
-export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";buttons?:readonly (readonly {text:string;url:string}[])[]};
+export type TransportButton={text:string;url?:string;callback_data?:string};
+export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";buttons?:readonly (readonly TransportButton[])[]};
 function assertTarget(t:TransportTarget):void{
  if(!Number.isSafeInteger(t.chatId)||t.chatId>=0||
     !Number.isSafeInteger(t.threadId)||t.threadId<=0)
@@ -13,7 +14,7 @@ function assertTarget(t:TransportTarget):void{
 }
 function markup(buttons:TransportMessage["buttons"]){
  return buttons?.length?Markup.inlineKeyboard(buttons.map(row=>
-  row.map(x=>Markup.button.url(x.text,x.url)))):undefined;
+  row.map(x=>x.url?Markup.button.url(x.text,x.url):x.callback_data?Markup.button.callback(x.text,x.callback_data):(()=>{throw Error("MPB_BUTTON_TARGET_INVALID")})()))) :undefined;
 }
 export function createTelegramDispatcher(telegram:Telegram){
  return {
