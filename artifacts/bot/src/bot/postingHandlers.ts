@@ -1583,6 +1583,15 @@ export function registerPostingHandlers(bot:Telegraf):void{
  };
  bot.on("photo",async(ctx,next)=>receiveLinkMedia(ctx,next,"photo"));
  bot.on("video",async(ctx,next)=>receiveLinkMedia(ctx,next,"video"));
+ // Link-only transport diagnosis: a client may send an MP4 as a document.
+ // Never log user identity, file IDs, captions, messages or chat contents.
+ bot.on("document",async(ctx,next)=>{
+  if(ctx.chat?.type==="private"&&ctx.from&&await currentDmTextOwner(ctx.from.id)==="link"){
+   console.info("[LINK_MEDIA_DOCUMENT_CLASSIFIED] "+
+    (ctx.message.document.mime_type==="video/mp4"?"MP4":"OTHER"));
+  }
+  await next();
+ });
  bot.action(/^post:link:selectcolor:(\d+):(standard|primary|success|danger)$/,async ctx=>{
   if(!privateDM(ctx))return;
   const revision=Number(ctx.match[1]),color=ctx.match[2];
