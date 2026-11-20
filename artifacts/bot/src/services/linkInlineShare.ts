@@ -20,24 +20,27 @@ export async function registerLinkShare(ownerId:number,revision:number,draft:Lin
  const q=await pool.query(
   `INSERT INTO link_button_posts
     (request_key,owner_user_id,content,buttons,columns,media_kind,media_file_id,
-     caption_above,share_code)
-   VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9)
+     caption_above,share_code,media_extras)
+   VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10::jsonb)
    ON CONFLICT(request_key) DO UPDATE SET
      request_key=EXCLUDED.request_key
    RETURNING link_post_id,owner_user_id,content,buttons,columns,media_kind,
-     media_file_id,caption_above,share_code`,
+     media_file_id,caption_above,share_code,media_extras`,
   [key,ownerId,draft.text,JSON.stringify(draft.buttons),draft.columns,
-   media?.type??null,media?.fileId??null,draft.captionAbove===true,code]);
+   media?.type??null,media?.fileId??null,draft.captionAbove===true,code,
+   JSON.stringify(draft.mediaExtras??[])]);
  if(q.rows.length!==1)throw Error("LINK_SHARE_REGISTER_UNCONFIRMED");
  const row=q.rows[0];
  const persisted:LinkDraft={text:String(row.content),buttons:row.buttons,
   columns:Number(row.columns) as 1|2|3,
   ...(row.media_kind?{media:{type:row.media_kind,fileId:row.media_file_id}}:{}),
+  mediaExtras:Array.isArray(row.media_extras)?row.media_extras:[],
   captionAbove:row.caption_above===true};
  const normal=(v:LinkDraft)=>JSON.stringify({
   text:v.text,
   buttons:v.buttons.map(b=>[b.label,b.url,b.rowStart??null,b.style??null]),
-  columns:v.columns,media:v.media?[v.media.type,v.media.fileId]:null,
+  columns:v.columns,media:v.media?[v.media.type,v.media.fileId,v.media.caption??null]:null,
+  mediaExtras:(v.mediaExtras??[]).map(m=>[m.type,m.fileId,m.caption??null]),
   captionAbove:v.captionAbove===true,
  });
  // JSONB reorders object fields, so compare stable tuples, not raw JSON strings.
@@ -52,12 +55,13 @@ export async function readLinkShare(ownerId:number,code:string):Promise<LinkInli
    !/^[A-Za-z0-9_-]{24}$/.test(code))return null;
  const q=await pool.query(
   `SELECT link_post_id,owner_user_id,content,buttons,columns,media_kind,
-      media_file_id,caption_above FROM link_button_posts
+      media_file_id,caption_above,media_extras FROM link_button_posts
     WHERE owner_user_id=$1 AND share_code=$2 AND status='draft'`,[ownerId,code]);
  if(q.rows.length!==1)return null;
  const row=q.rows[0];
  const draft:LinkDraft={text:row.content,buttons:row.buttons,columns:Number(row.columns) as 1|2|3,
    ...(row.media_kind?{media:{type:row.media_kind,fileId:row.media_file_id}}:{}),
+   mediaExtras:Array.isArray(row.media_extras)?row.media_extras:[],
    captionAbove:row.caption_above===true};
  validateLinkDraft(draft);
  return {sourceId:String(row.link_post_id),ownerId,draft};
