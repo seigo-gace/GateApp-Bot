@@ -90,3 +90,16 @@ test("Bot launch subscribes to inline_query updates for registered link codes",a
  const source=readFileSync(resolve(process.cwd(),"src/gaybbsBot.ts"),"utf8");
  assert.match(source,/allowedUpdates:\s*\[[^\]]*"inline_query"/);
 });
+
+test("registered link receipt is not silently reused as a new draft",async()=>{
+ const {readFileSync}=await import("node:fs");
+ const {resolve}=await import("node:path");
+ const source=readFileSync(resolve(process.cwd(),"src/bot/postingHandlers.ts"),"utf8");
+ const start=source.indexOf("export async function startLinkEditor(");
+ const end=source.indexOf("/** One shared Bot DM message for the approved 告知/予告 layout.",start);
+ assert.ok(start>=0&&end>start);
+ const editor=source.slice(start,end);
+ assert.match(editor,/typeof prior\.data\.shareCode!=="string"/);
+ assert.match(editor,/reusable\?\.step==="preview"/);
+ assert.match(editor,/beginDraft\(userId,"link","awaiting_text"/);
+});
