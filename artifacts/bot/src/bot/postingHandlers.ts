@@ -469,8 +469,11 @@ async function showLinkRichPreview(telegram:Telegram,owner:number,d:EditorDraft)
  const rich=linkRichPreview(d.data as LinkDraft,d.revision,
   typeof d.data.shareCode==="string"?d.data.shareCode:undefined);
  const registered=typeof d.data.shareCode==="string";
- const keyboard=Markup.inlineKeyboard([[
-  Markup.button.callback(registered?"✅ 登録済み":"✅ 登録","post:link:register:"+d.revision),
+ const keyboard=Markup.inlineKeyboard(registered?[[
+  {text:"📋 投稿コードをコピー",copy_text:{text:"@GayBBS_bot "+String(d.data.shareCode)}},
+  Markup.button.callback("投稿メニューへ戻る","post:link:cancel:"+d.revision),
+ ]]:[[
+  Markup.button.callback("登録","post:link:register:"+d.revision),
   Markup.button.callback("キャンセル","post:link:cancel:"+d.revision),
  ]]);
  const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<any>};
