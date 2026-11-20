@@ -67,7 +67,7 @@ async def _run(client, trace):
                      and any("標準" in v for v in labels(m)),t)
         trace["stage"]="pair"
         t=datetime.now(timezone.utc)
-        await client.send_message(bot,"動画付きのリンク\\nhttps://example.org/")
+        await client.send_message(bot,"動画付きのリンク\nhttps://example.org/")
         preview=await latest(lambda m:"登録" in labels(m) and "キャンセル" in labels(m),t)
         if "動画付きのリンク" not in labels(preview):
             raise RuntimeError("LINK_VIDEO_REAL_URL_BUTTON_MISSING")
