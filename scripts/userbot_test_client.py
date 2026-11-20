@@ -75,6 +75,12 @@ def main() -> int:
             print("USERBOT_REPORT_INBOX=PASS")
             print("USERBOT_REPORT_RECEIPT=PASS")
             print("USERBOT_REPORT_INPUT_DELETE=PASS")
+        if args.action == "link_registration_smoke":
+            if not all(result.get(key) is True for key in (
+                    "link_editor_opened", "two_line_button_accepted",
+                    "blue_selected", "preview_present", "registration_receipt")):
+                raise RuntimeError("LINK_REGISTRATION_SMOKE_INCOMPLETE")
+            print("USERBOT_LINK_REGISTRATION=PASS")
         if args.action == "link_button_smoke":
             if result.get("link_editor_opened") is not True:
                 raise RuntimeError("LINK_BUTTON_SCREEN_NOT_OPENED")
