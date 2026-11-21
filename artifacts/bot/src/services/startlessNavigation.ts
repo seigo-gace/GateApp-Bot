@@ -16,7 +16,7 @@ export function startlessPayload(url:string):string|null{
 }
 export function publicNavigationButton<T extends {text:string;url?:string;callback_data?:string;copy_text?:unknown;style?:string}>(
  button:T
-):T{
+):T & {url?:string;callback_data?:string}{
  if(!button.url||button.copy_text)return button;
  const payload=startlessPayload(button.url);
  if(payload)return {...button,url:undefined,callback_data:STARTLESS_PREFIX+payload};
