@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify resident Userbot topic audit without Telegram credentials
         run: python3 -m unittest discover -s scripts -p 'test_userbot_topic_entry_audit.py' -v
+      - name: Verify audit activation script offline
+        run: python3 -m unittest discover -s scripts -p 'test_activate_resident_topic_audit.py' -v
       - name: Build isolated GayBBS image (no credentials)
         run: docker build --file artifacts/bot/deploy/Dockerfile.gaybbs --tag gaybbs:ci --pull=false .
       - name: Check bundled program without Telegram, DB, or network
