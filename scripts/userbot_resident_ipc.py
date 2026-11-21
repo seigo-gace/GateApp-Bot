@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke", "topic_entry_audit"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -41,6 +41,8 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                 if action == "room_public_readback" else
                 {"request_id", "action", "topic_ids"}
                 if action == "profile_topics_by_id" else
+                {"request_id", "action", "chat_id", "page"}
+                if action == "topic_entry_audit" else
                 {"request_id", "action", "code"}
                 if action in ("link_inline_query_smoke","link_send_saved_smoke") else {"request_id", "action"})
     if set(request) != expected:
@@ -55,6 +57,10 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "topic_entry_audit":
+        from userbot_topic_entry_audit import audit
+        return {"request_id": request_id,
+                **await audit(client, request["chat_id"], request["page"])}
     if action == "bug_report_inbox_provision":
         # Provision the Bot API inbox without exposing the Userbot account ID.
         me = await client.get_me()
@@ -373,7 +379,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke"} else 30)
+                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke", "topic_entry_audit"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
@@ -385,6 +391,10 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "PROFILE_TOPIC_SCAN_LIMIT_REACHED",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
                 "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
+                "TOPIC_AUDIT_CHAT_NOT_ALLOWED", "TOPIC_AUDIT_PAGE_INVALID",
+                "TOPIC_AUDIT_GROUP_NOT_JOINED", "TOPIC_AUDIT_TOPIC_LIMIT",
+                "TOPIC_AUDIT_PAGINATION_LIMIT", "TOPIC_AUDIT_PAGINATION_STALLED",
+                "TOPIC_AUDIT_TARGET_BOT_INVALID",
                 "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
                 "USERBOT_BUG_REPORT_MENU_NOT_VISIBLE", "USERBOT_BUG_REPORT_SCREEN_NOT_OPENED",
                 "USERBOT_REPORT_E2E_INCOMPLETE", "USERBOT_BUG_REPORT_STALE_MENU_REMAINS",
