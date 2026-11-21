@@ -13,7 +13,7 @@ import uuid
 from userbot_resident_ipc import SOCKET_PATH, ACTIONS
 
 
-async def invoke(action: str, chat_id: int | None = None, message_id: int | None = None, topic_ids: list[int] | None = None, code: str | None = None) -> dict:
+async def invoke(action: str, chat_id: int | None = None, message_id: int | None = None, topic_ids: list[int] | None = None, code: str | None = None, page: int | None = None) -> dict:
     if not SOCKET_PATH.exists() or not SOCKET_PATH.is_socket():
         raise RuntimeError("RESIDENT_USERBOT_IPC_NOT_AVAILABLE")
     sockstat = SOCKET_PATH.stat()
@@ -28,6 +28,11 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
                     or not isinstance(code,str) or not re.fullmatch(r"[A-Za-z0-9_-]{24}",code)):
                 raise ValueError("LINK_INLINE_CODE_INVALID")
             request["code"]=code
+        elif action == "topic_entry_audit":
+            if (type(chat_id) is not int or type(page) is not int or
+                    message_id is not None or topic_ids is not None or code is not None):
+                raise ValueError("TOPIC_AUDIT_TARGET_REQUIRED")
+            request.update({"chat_id": chat_id, "page": page})
         elif action == "room_public_readback":
             if chat_id is None or message_id is None or topic_ids is not None:
                 raise ValueError("ROOM_READ_TARGET_REQUIRED")
@@ -42,7 +47,7 @@ async def invoke(action: str, chat_id: int | None = None, message_id: int | None
             raise ValueError("ROOM_READ_TARGET_ONLY_FOR_READBACK")
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
-        reply = await asyncio.wait_for(reader.readline(), 110 if action in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke"} else 40)
+        reply = await asyncio.wait_for(reader.readline(), 110 if action in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke"} or action == "topic_entry_audit" else 40)
         result = json.loads(reply)
         if result.get("request_id") not in {request_id, None}:
             raise RuntimeError("USERBOT_IPC_REQUEST_ID_MISMATCH")
@@ -58,6 +63,7 @@ def main() -> int:
     parser.add_argument("--code", help="link share code for bounded inline-only check")
     parser.add_argument("--chat-id", type=int)
     parser.add_argument("--message-id", type=int)
+    parser.add_argument("--page", type=int)
     parser.add_argument("--topic-ids", help="three validated DB thread IDs, area/video/gay order")
     args = parser.parse_args()
     try:
@@ -67,13 +73,18 @@ def main() -> int:
             if len(parts) != 3 or any(not re.fullmatch(r"[1-9][0-9]*", v) for v in parts):
                 raise ValueError("PROFILE_TOPIC_IDS_INVALID")
             topic_ids = [int(v) for v in parts]
-        result = asyncio.run(invoke(args.action, args.chat_id, args.message_id, topic_ids, args.code))
+        result = asyncio.run(invoke(args.action, args.chat_id, args.message_id, topic_ids, args.code, args.page))
         if result.get("status") != "PASS":
             print("USERBOT_TEST_RESULT=FAIL")
             print("USERBOT_TEST_ERROR=" + re.sub(r"[^A-Z0-9_]", "_", str(result.get("error", "CONTRACT_MISMATCH")).upper())[:128])
             return 1
         print("USERBOT_TEST_RESULT=PASS")
         print("USERBOT_TEST_ACTION=" + args.action)
+        if args.action == "topic_entry_audit":
+            rows = result.get("rows")
+            if not isinstance(rows, list):
+                raise RuntimeError("TOPIC_AUDIT_RESPONSE_INVALID")
+            print("USERBOT_TOPIC_AUDIT=" + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         if args.action == "bug_report_delivery_smoke":
             if not all(result.get(key) is True for key in (
                     "userbot_inbox_received", "receipt_visible", "input_deleted")):
