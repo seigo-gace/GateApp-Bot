@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from types import SimpleNamespace
 
-from userbot_topic_entry_audit import audit, posting_entry, button_type, AREA_CHAT, CATEGORY_CHAT, VIDEO_CHAT
+from userbot_topic_entry_audit import audit, posting_entry, button_type, recent_topic_buttons, AREA_CHAT, CATEGORY_CHAT, VIDEO_CHAT
 
 
 def button(text, url):
@@ -54,6 +54,28 @@ class PostingEntryClassifierTests(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             asyncio.run(audit(Client(), VIDEO_CHAT, 0))
         self.assertNotIn("TOPIC_AUDIT_CHAT_NOT_ALLOWED", str(ctx.exception))
+
+    def test_history_detects_existing_unpinned_callback(self):
+        class Fake:
+            async def get_messages(self, entity, ids):
+                return SimpleNamespace(id=ids, sender_id=999, buttons=None)
+            async def iter_messages(self, entity, reply_to, limit):
+                yield SimpleNamespace(id=1002, sender_id=101, buttons=[[
+                    SimpleNamespace(text="📝 投稿メニューを開く", url=None, data=b"gdm:p_test")
+                ]])
+        result = asyncio.run(recent_topic_buttons(Fake(), object(), 1001, 101))
+        self.assertEqual(result["state"], "PRESENT")
+        self.assertEqual(result["message_ids"], [1002])
+
+    def test_history_empty_is_absent_not_missing_pin(self):
+        class Fake:
+            async def get_messages(self, entity, ids):
+                return SimpleNamespace(id=ids, sender_id=999, buttons=None)
+            async def iter_messages(self, entity, reply_to, limit):
+                if False: yield None
+        result = asyncio.run(recent_topic_buttons(Fake(), object(), 1001, 101))
+        self.assertEqual(result["state"], "ABSENT")
+        self.assertEqual(result["inspected"], 1)
 
     def test_no_buttons_is_not_accepted(self):
         self.assertFalse(posting_entry(SimpleNamespace(sender_id=101, buttons=None), 101))
