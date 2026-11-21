@@ -1,3 +1,4 @@
+import {publicNavigationButton} from "./startlessNavigation.js";
 /** Existing Telegram ROOM announcement remains in the group after meeting.
  * The temporary ROOM database may be purged only after confirmed edits.
  * Never include the private meeting URL in public status text.
@@ -206,8 +207,11 @@ export async function updateNextRoomStatusMessage(telegram:Telegram):Promise<{
  try{
   const terminal=["finished","cancelled"].includes(item.kind);
   const buttons=terminal?[]:item.buttons;
-  const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>
-   Markup.button.url(b.text,b.url))));
+  const keyboard=Markup.inlineKeyboard(buttons.map(row=>row.map(b=>{
+    const mapped=publicNavigationButton(b);
+    return mapped.callback_data?Markup.button.callback(mapped.text,mapped.callback_data):
+      Markup.button.url(mapped.text,mapped.url!);
+   })));
   const rendered=roomStatusMessage(item.original,item.kind,item.details);
   try{
    await telegram.editMessageText(item.chatId,item.messageId,undefined,
