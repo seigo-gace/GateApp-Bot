@@ -38,5 +38,6 @@ jobs:
           path: |
             /tmp/gaybbs-ci-bundle/gaybbs.mjs
             /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
+            /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
           if-no-files-found: error
           retention-days: 2
