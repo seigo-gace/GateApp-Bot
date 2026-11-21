@@ -40,7 +40,8 @@ def button_type(message, bot_id: int):
                 parsed.path.lower().strip("/") == "gaybbs_bot" and
                 len(start) == 1 and bool(start[0]))
             recognized_cb = isinstance(data, bytes) and data.startswith(b"gdm:p_")
-            if recognized_url or recognized_cb:
+            eligible_label = any(word in label for word in ("投稿", "プロフ", "プロフィール", "クリエーター", "クリエイター"))
+            if eligible_label and (recognized_url or recognized_cb):
                 recognized = True
             labels.append(label)
     if not recognized:
