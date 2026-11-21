@@ -135,27 +135,40 @@ export function registerProfileViewerHandlers(bot:Telegraf):void{
  * No group card edits and no Bot DM. Every viewer receives their own in-place
  * replacement of the original message, then edits only that viewer's panel.
  */
+/** Present every persisted dictionary label as one searchable Telegram hashtag.
+ * Keep the original 140-entry dictionary and stored labels unchanged. Telegram
+ * hashtag entities stop at punctuation, so normalize punctuation only at render.
+ */
+export function profileSearchHashtag(label:string):string{
+ const normalized=label.normalize("NFKC")
+  .replace(/[^\\p{L}\\p{N}_]+/gu,"_").replace(/^_+|_+$/g,"");
+ if(!normalized)throw Error("PROFILE_HASHTAG_EMPTY");
+ return "#"+normalized;
+}
 export function profilePanelRich(profile:SavedProfile,mode:"profile"|"photo"|"video"|"like"|"love"){
  const esc=(s:string)=>escapeProfileHtml(s);
- if(mode==="profile")return {html:renderPublicProfile(profile).replace(/\n/g,"<br/>")};
+ if(mode==="profile")return {html:renderPublicProfile(profile).replace(/\\n/g,"<br/>")};
  if(mode==="like"||mode==="love"){
   const tags=mode==="like"?profile.likeTags??[]:profile.loveTags??[];
   const heading=mode==="like"?"💖 #Like｜自分について":"💘 #Love｜相手に求めること";
-  return {html:esc(heading)+"<br/>"+LIKE_CATEGORIES.map(c=>
-   esc(c.name)+"："+tags.filter(t=>t.category===c.name).map(t=>"#"+esc(t.tag)).join(" ")
-  ).join("<br/>")};
+  const rows=LIKE_CATEGORIES.map(c=>{
+   const selected=tags.filter(t=>t.category===c.name).map(t=>esc(profileSearchHashtag(t.tag)));
+   return esc(c.name)+"："+selected.join(" ");
+  });
+  return {html:esc(heading)+"<br/>"+rows.join("<br/>")};
  }
- const items=availableMedia(profile).filter(x=>x.type===(mode==="photo"?"photo":"video")).slice(0,5);
+ const items=availableMedia(profile).filter(x=>x.type===(mode==="photo"?"photo":"video"));
  const heading=mode==="photo"?"🖼️ 画像":"🎞️ 動画";
  if(!items.length)return {html:heading+"<br/>登録されていません。"};
  const media=items.map((m,i)=>({
-  id:"media"+i,
-  media:{type:m.type,media:m.fileId},
+  id:"media"+i,media:{type:m.type,media:m.fileId},
  }));
  const tags=items.map((m,i)=>m.type==="photo"?
   '<img src="tg://photo?id=media'+i+'"/>':
   '<video src="tg://video?id=media'+i+'"></video>');
- return {html:heading+"<br/>"+tags.join(""),media};
+ // Telegram's actual Rich Message collage, not unrelated individual blocks.
+ // The one-item case is a direct media element; never manufacture empty slots.
+ return {html:heading+"<br/>"+(tags.length===1?tags[0]:"<tg-collage>"+tags.join("")+"</tg-collage>"),media};
 }
 function profilePanelKeyboard(token:string,username:string|null){
  return Markup.inlineKeyboard(profilePanelRows(token,username).map(row=>row.map(b=>
