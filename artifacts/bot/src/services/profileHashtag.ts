@@ -1,10 +1,9 @@
-/** Telegram hashtag entities cannot contain punctuation such as / [] or spaces.
- * Preserve all canonical dictionary labels and persisted values unchanged.
- * Normalize ONLY the presentation into one searchable #token on every surface.
+/** Profile hashtag rendering shared by public card, preview and personal viewer.
+ * Keep the adopted dictionary labels and stored selections unchanged.
+ * Punctuation / [] spaces split into independently searchable #tags.
  */
 export function profileSearchHashtag(label:string):string{
- const normalized=label.normalize("NFKC")
-  .replace(/[^\p{L}\p{N}_]+/gu,"_").replace(/^_+|_+$/g,"");
- if(!normalized)throw Error("PROFILE_HASHTAG_EMPTY");
- return "#"+normalized;
+ const parts=label.normalize("NFKC").split(/[^\p{L}\p{N}_]+/gu).filter(Boolean);
+ if(!parts.length)throw Error("PROFILE_HASHTAG_EMPTY");
+ return parts.map(part=>"#"+part).join(" ");
 }
