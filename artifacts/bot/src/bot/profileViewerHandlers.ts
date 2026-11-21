@@ -103,7 +103,7 @@ export function registerProfileViewerHandlers(bot:Telegraf):void{
   if(!profile){await ctx.answerCbQuery("このプロフィールは非公開です");return;}
   if(!profile.pr){await ctx.answerCbQuery("自己PRはありません");return;}
   await ctx.answerCbQuery();
-  await ctx.reply("📝 自己PR全文\\n"+profile.pr.slice(0,10000));
+  await ctx.reply("📝 自己PR全文\n"+profile.pr.slice(0,10000));
  });
  bot.action(/^pfv:media:([A-Za-z0-9_-]{32}):page:(\d{1,3})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
@@ -141,13 +141,13 @@ export function registerProfileViewerHandlers(bot:Telegraf):void{
  */
 export function profileSearchHashtag(label:string):string{
  const normalized=label.normalize("NFKC")
-  .replace(/[^\\p{L}\\p{N}_]+/gu,"_").replace(/^_+|_+$/g,"");
+  .replace(/[^\p{L}\p{N}_]+/gu,"_").replace(/^_+|_+$/g,"");
  if(!normalized)throw Error("PROFILE_HASHTAG_EMPTY");
  return "#"+normalized;
 }
 export function profilePanelRich(profile:SavedProfile,mode:"profile"|"photo"|"video"|"like"|"love"){
  const esc=(s:string)=>escapeProfileHtml(s);
- if(mode==="profile")return {html:renderPublicProfile(profile).replace(/\\n/g,"<br/>")};
+ if(mode==="profile")return {html:renderPublicProfile(profile).replace(/\n/g,"<br/>")};
  if(mode==="like"||mode==="love"){
   const tags=mode==="like"?profile.likeTags??[]:profile.loveTags??[];
   const heading=mode==="like"?"💖 #Like｜自分について":"💘 #Love｜相手に求めること";
