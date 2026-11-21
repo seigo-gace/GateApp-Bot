@@ -1,4 +1,5 @@
 import { pool } from "../db/index.js";
+import type {TransportButton} from "./telegramDispatcher.js";
 import { assertVerifiedTopic, type PostPurpose, type VerifiedTopic } from "./topicRouting.js";
 
 function fromRow(r:Record<string,unknown>):VerifiedTopic {
@@ -29,7 +30,7 @@ export async function getVerifiedTopic(id:number,purpose:PostPurpose):Promise<Ve
 export type DeliveryState={id:number,status:string,messageId:number|null};
 export async function claimDelivery(
  sourceType:PostPurpose,sourceId:string,ownerId:number,revision:number,topicId:number,
- buttons:readonly (readonly {text:string;url:string}[])[]=[]
+ buttons:readonly (readonly TransportButton[])[]=[]
 ):Promise<{claimed:boolean;delivery:DeliveryState}> {
  if(!Number.isSafeInteger(ownerId)||ownerId<=0||!Number.isSafeInteger(revision)||revision<=0)
    throw new Error("DELIVERY_INVALID");

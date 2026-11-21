@@ -26,11 +26,18 @@ jobs:
           container=$(docker create gaybbs:ci)
           trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
           docker cp "$container:/app/gaybbs.mjs" /tmp/gaybbs-ci-bundle/gaybbs.mjs
+          docker cp "$container:/app/backfillExistingProfileKeyboards.mjs" /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
           node --check /tmp/gaybbs-ci-bundle/gaybbs.mjs
+          docker cp "$container:/app/refreshStartlessExistingPosts.mjs" /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
+          node --check /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
+          node --check /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
           sha256sum /tmp/gaybbs-ci-bundle/gaybbs.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: gaybbs-profile-bundle
-          path: /tmp/gaybbs-ci-bundle/gaybbs.mjs
+          path: |
+            /tmp/gaybbs-ci-bundle/gaybbs.mjs
+            /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
+            /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
           if-no-files-found: error
           retention-days: 2

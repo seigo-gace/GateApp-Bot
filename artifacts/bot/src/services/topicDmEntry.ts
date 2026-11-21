@@ -185,11 +185,11 @@ export async function recoverExistingTopicDmEntry(
   throw Error("TOPIC_ENTRY_RECONCILE_NO_KNOWN_MESSAGE");
  const messageId=Number(row.message_id);
  const token=newMenuToken(),hash=tokenHash(token);
- const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ const buttonCallback="gdm:p_"+token;
  // Telegram's successful edit proves this exact message exists and is
  // writable by the Bot. Retain it rather than posting a duplicate.
  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
-  reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
+  reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,callback_data:buttonCallback,style:"primary"} as any]]},
  });
  await telegram.pinChatMessage(chatId,messageId,{disable_notification:true});
  const saved=await pool.query(
@@ -224,12 +224,12 @@ export async function refreshPublishedTopicDmEntry(
  const messageId=Number(old.rows[0].message_id);
  const oldHash=String(old.rows[0].token_hash);
  const token=newMenuToken(),hash=tokenHash(token);
- const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ const buttonCallback="gdm:p_"+token;
  // Only update the existing message. Telegram's edit may fail or be ambiguous:
  // keep the prior pin and avoid a duplicate send in either case.
  try{
-  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
+  await telegram.editMessageReplyMarkup(chatId,messageId,undefined,{
+   inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,callback_data:buttonCallback,style:"primary"} as any]],
   });
  }catch(e){
   // A definitive Bot API rejection did not change the old message: preserve
@@ -312,10 +312,10 @@ export async function publishTopicDmEntry(
  if(claimed.rows.length!==1)throw Error("TOPIC_ENTRY_NEEDS_RECONCILE");
  let sent=false;
  try {
-  const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+  const buttonCallback="gdm:p_"+token;
   const message=await telegram.sendMessage(chatId,TOPIC_ENTRY_TEXT,{
    message_thread_id:threadId,
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
+   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,callback_data:buttonCallback,style:"primary"} as any]]},
   });
   sent=true;
   await pool.query(

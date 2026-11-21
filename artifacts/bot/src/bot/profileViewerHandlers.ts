@@ -1,10 +1,12 @@
 import {Markup,type Context,type Telegraf} from "telegraf";
 import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js";
 import {LIKE_CATEGORIES} from "../services/profileLike.js";
-import {parseProfileViewerPayload,profileViewerUrl,resolvePublishedProfileView,
+import {parseProfileViewerPayload,profileViewerUrl,resolvePublishedProfileView,resolvePublishedProfilePanel,profilePanelRows,
  type ViewerPurpose} from "../services/profilePublicView.js";
 import type {SavedProfile} from "../services/profileRepository.js";
 import {PROFILE_ALBUM_LIMIT} from "../services/profileMedia.js";
+import {profileSearchHashtag} from "../services/profileHashtag.js";
+export {profileSearchHashtag} from "../services/profileHashtag.js";
 
 type ProfileMedia={itemId?:number;fileId:string;type:"photo"|"video"};
 function availableMedia(profile:SavedProfile):ProfileMedia[]{
@@ -36,7 +38,7 @@ export function renderPublishedTagDetail(profile:SavedProfile):string{
   return [
    purpose==="like"?"💖 #Like｜自分について":"💘 #Love｜相手に求めること",
    ...LIKE_CATEGORIES.map(c=>{
-    const values=tags.filter(t=>t.category===c.name).map(t=>"#"+t.tag);
+    const values=tags.filter(t=>t.category===c.name).map(t=>profileSearchHashtag(t.tag));
     return c.name+"："+values.join(" ");
    }),
   ].join("\n");
@@ -96,13 +98,14 @@ export async function startProfileViewer(ctx:Context,payload:string):Promise<voi
 }
 /** Media display never edits or forwards the owner's original upload. */
 export function registerProfileViewerHandlers(bot:Telegraf):void{
+ registerPublicProfilePanelHandlers(bot);
  bot.action(/^pfv:pr:([A-Za-z0-9_-]{32})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const profile=await resolvePublishedProfileView(ctx.match[1]!);
   if(!profile){await ctx.answerCbQuery("このプロフィールは非公開です");return;}
   if(!profile.pr){await ctx.answerCbQuery("自己PRはありません");return;}
   await ctx.answerCbQuery();
-  await ctx.reply("📝 自己PR全文\\n"+profile.pr.slice(0,10000));
+  await ctx.reply("📝 自己PR全文\n"+profile.pr.slice(0,10000));
  });
  bot.action(/^pfv:media:([A-Za-z0-9_-]{32}):page:(\d{1,3})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
@@ -126,6 +129,82 @@ export function registerProfileViewerHandlers(bot:Telegraf):void{
    else await ctx.replyWithVideo(item.fileId);
   }catch{
    await ctx.reply("このメディアは現在表示できません。");
+  }
+ });
+}
+
+/** Telegram Bot API 10.3 ephemeral rich panels.
+ * No group card edits and no Bot DM. Every viewer receives their own in-place
+ * replacement of the original message, then edits only that viewer's panel.
+ */
+export function profilePanelRich(profile:SavedProfile,mode:"profile"|"photo"|"video"|"like"|"love"){
+ const esc=(s:string)=>escapeProfileHtml(s);
+ if(mode==="profile")return {html:renderPublicProfile(profile).replace(/\n/g,"<br/>")};
+ if(mode==="like"||mode==="love"){
+  const tags=mode==="like"?profile.likeTags??[]:profile.loveTags??[];
+  const heading=mode==="like"?"💖 #Like｜自分について":"💘 #Love｜相手に求めること";
+  const rows=LIKE_CATEGORIES.map(c=>{
+   const selected=tags.filter(t=>t.category===c.name).map(t=>esc(profileSearchHashtag(t.tag)));
+   return esc(c.name)+"："+selected.join(" ");
+  });
+  return {html:esc(heading)+"<br/>"+rows.join("<br/>")};
+ }
+ const items=availableMedia(profile).filter(x=>x.type===(mode==="photo"?"photo":"video"));
+ const heading=mode==="photo"?"🖼️ 画像":"🎞️ 動画";
+ if(!items.length)return {html:heading+"<br/>登録されていません。"};
+ const media=items.map((m,i)=>({
+  id:"media"+i,media:{type:m.type,media:m.fileId},
+ }));
+ const tags=items.map((m,i)=>m.type==="photo"?
+  '<img src="tg://photo?id=media'+i+'"/>':
+  '<video src="tg://video?id=media'+i+'"></video>');
+ // Telegram's actual Rich Message collage, not unrelated individual blocks.
+ // The one-item case is a direct media element; never manufacture empty slots.
+ return {html:heading+"<br/>"+(tags.length===1?tags[0]:"<tg-collage>"+tags.join("")+"</tg-collage>"),media};
+}
+function profilePanelKeyboard(token:string,username:string|null){
+ return Markup.inlineKeyboard(profilePanelRows(token,username).map(row=>row.map(b=>
+  b.url?Markup.button.url(b.text,b.url):Markup.button.callback(b.text,b.callback_data!)
+ ))).reply_markup;
+}
+type BotApiCaller={callApi:(method:string,params:Record<string,unknown>)=>Promise<unknown>};
+export function registerPublicProfilePanelHandlers(bot:Telegraf):void{
+ bot.action(/^pfv:contact:([A-Za-z0-9_-]{32})$/,async ctx=>{
+  await ctx.answerCbQuery("投稿者にTelegram usernameが設定されていません。",{show_alert:true});
+ });
+ bot.action(/^pfv:show:([A-Za-z0-9_-]{32}):(profile|photo|video|like|love)$/,async ctx=>{
+  const msg=ctx.callbackQuery.message;
+  if(!msg||!ctx.chat||ctx.chat.type!=="supergroup"){
+   await ctx.answerCbQuery("公開プロフィールから操作してください");return;
+  }
+  const token=ctx.match[1]!,mode=ctx.match[2] as "profile"|"photo"|"video"|"like"|"love";
+  const ephemeralId=(msg as typeof msg & {ephemeral_message_id?:number}).ephemeral_message_id;
+  const profile=ephemeralId?
+   await resolvePublishedProfileView(token):
+   await resolvePublishedProfilePanel(token,ctx.chat.id,msg.message_id);
+  if(!profile){await ctx.answerCbQuery("公開状態を確認できません");return;}
+  const rich_message=profilePanelRich(profile,mode);
+  const reply_markup=profilePanelKeyboard(token,profile.username);
+  const api=ctx.telegram as unknown as BotApiCaller;
+  try{
+   if(ephemeralId){
+    if(!Number.isSafeInteger(ephemeralId)||ephemeralId<=0)throw Error("EPHEMERAL_ID_INVALID");
+    await api.callApi("editEphemeralMessageText",{
+     chat_id:ctx.chat.id,receiver_user_id:ctx.from.id,
+     ephemeral_message_id:ephemeralId,rich_message,reply_markup,
+    });
+   }else{
+    await api.callApi("sendRichMessage",{
+     chat_id:ctx.chat.id,rich_message,reply_markup,
+     ephemeral_message_parameters:{
+      callback_query_id:ctx.callbackQuery.id,replace_callback_query_message:true,
+     },
+    });
+   }
+   await ctx.answerCbQuery();
+  }catch{
+   // Never replace or broadcast-edit the shared group post as a fallback.
+   await ctx.answerCbQuery("表示できません。Telegramの更新状態をご確認ください。",{show_alert:true});
   }
  });
 }

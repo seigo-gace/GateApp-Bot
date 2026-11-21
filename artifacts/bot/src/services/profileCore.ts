@@ -2,6 +2,8 @@
  * Adopted latest spec: nickname is mandatory; three numbers share line 2.
  * Saving a profile never publishes it to a group.
  */
+import {profileSearchHashtag} from "./profileHashtag.js";
+
 export const PROFILE_POSITIONS = ["タチ", "タチリバ", "リバ", "ウケリバ", "ウケ", "S", "M"] as const;
 export type ProfilePosition = typeof PROFILE_POSITIONS[number];
 export type ProfileBasic = {
@@ -73,7 +75,7 @@ export type ProfileDisplayExtras = {
 function displayProfileLines(p:ProfileBasicDraft & ProfileDisplayExtras,displayName:string):string[]{
  const compact=(v:string|null|undefined)=>escapeProfileHtml(v??"");
  const tags=(v:readonly {category:string;tag:string}[]|undefined)=>
-  (v??[]).slice(0,3).map(x=>"#"+compact(x.tag)).join(" ");
+  (v??[]).slice(0,3).map(x=>compact(profileSearchHashtag(x.tag))).join(" ");
  const pr=p.pr?.trim().replace(/\s+/g," ").slice(0,180)??"";
  return [
   "🪪 "+displayName,
@@ -83,8 +85,8 @@ function displayProfileLines(p:ProfileBasicDraft & ProfileDisplayExtras,displayN
   "✈️ エリア："+(p.region&&p.area?compact(p.region)+" ＞ "+compact(p.area):""),
   "💖 #Like | "+tags(p.likeTags),
   "💘 #Love | "+tags(p.loveTags),
-  ...(p.purposeCodes?.length?["🎯 目的："+p.purposeCodes.map(t=>"#"+compact(t)).join(" ")]:[]),
-  ...(p.placeCodes?.length?["📍 場所："+p.placeCodes.map(t=>"#"+compact(t)).join(" ")]:[]),
+  ...(p.purposeCodes?.length?["🎯 目的："+p.purposeCodes.map(t=>compact(profileSearchHashtag(t))).join(" ")]:[]),
+  ...(p.placeCodes?.length?["📍 場所："+p.placeCodes.map(t=>compact(profileSearchHashtag(t))).join(" ")]:[]),
   "PR："+compact(pr),
  ];
 }
