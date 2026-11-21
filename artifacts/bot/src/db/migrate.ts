@@ -134,6 +134,17 @@ export async function runMigrations(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS profile_keyboard_backfill_state
         ON profile_keyboard_backfill(state);
+      CREATE TABLE IF NOT EXISTS startless_public_post_migrations (
+        kind TEXT NOT NULL CHECK(kind IN ('menu','topic','board')),
+        identity TEXT NOT NULL CHECK(length(identity)>0),
+        chat_id BIGINT NOT NULL CHECK(chat_id<0),
+        message_id BIGINT NOT NULL CHECK(message_id>0),
+        state TEXT NOT NULL CHECK(state IN ('attempted','applied','uncertain')),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(kind,identity,chat_id,message_id)
+      );
+      CREATE INDEX IF NOT EXISTS startless_public_post_migrations_state
+        ON startless_public_post_migrations(state);
       CREATE TABLE IF NOT EXISTS general_guide_topics (
         chat_id BIGINT PRIMARY KEY CHECK(chat_id < 0),
         message_thread_id BIGINT NOT NULL CHECK(message_thread_id > 0),
