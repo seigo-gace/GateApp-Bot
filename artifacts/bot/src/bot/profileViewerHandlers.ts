@@ -5,6 +5,8 @@ import {parseProfileViewerPayload,profileViewerUrl,resolvePublishedProfileView,r
  type ViewerPurpose} from "../services/profilePublicView.js";
 import type {SavedProfile} from "../services/profileRepository.js";
 import {PROFILE_ALBUM_LIMIT} from "../services/profileMedia.js";
+import {profileSearchHashtag} from "../services/profileHashtag.js";
+export {profileSearchHashtag} from "../services/profileHashtag.js";
 
 type ProfileMedia={itemId?:number;fileId:string;type:"photo"|"video"};
 function availableMedia(profile:SavedProfile):ProfileMedia[]{
@@ -36,7 +38,7 @@ export function renderPublishedTagDetail(profile:SavedProfile):string{
   return [
    purpose==="like"?"💖 #Like｜自分について":"💘 #Love｜相手に求めること",
    ...LIKE_CATEGORIES.map(c=>{
-    const values=tags.filter(t=>t.category===c.name).map(t=>"#"+t.tag);
+    const values=tags.filter(t=>t.category===c.name).map(t=>profileSearchHashtag(t.tag));
     return c.name+"："+values.join(" ");
    }),
   ].join("\n");
@@ -135,16 +137,6 @@ export function registerProfileViewerHandlers(bot:Telegraf):void{
  * No group card edits and no Bot DM. Every viewer receives their own in-place
  * replacement of the original message, then edits only that viewer's panel.
  */
-/** Present every persisted dictionary label as one searchable Telegram hashtag.
- * Keep the original 140-entry dictionary and stored labels unchanged. Telegram
- * hashtag entities stop at punctuation, so normalize punctuation only at render.
- */
-export function profileSearchHashtag(label:string):string{
- const normalized=label.normalize("NFKC")
-  .replace(/[^\p{L}\p{N}_]+/gu,"_").replace(/^_+|_+$/g,"");
- if(!normalized)throw Error("PROFILE_HASHTAG_EMPTY");
- return "#"+normalized;
-}
 export function profilePanelRich(profile:SavedProfile,mode:"profile"|"photo"|"video"|"like"|"love"){
  const esc=(s:string)=>escapeProfileHtml(s);
  if(mode==="profile")return {html:renderPublicProfile(profile).replace(/\n/g,"<br/>")};
