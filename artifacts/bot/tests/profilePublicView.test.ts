@@ -66,7 +66,7 @@ test("all six canonical categories and every original candidate become a single 
  assert.equal(all.length,140,"keep the established 140 entries; never silently drop choices");
  for(const {tag} of all){
   const hashtag=profileSearchHashtag(tag);
-  assert.match(hashtag,/^#[\p{L}\p{N}_]+$/u,tag);
+  assert.match(hashtag,/^#[\p{L}\p{N}_]+(?: #[\p{L}\p{N}_]+)*$/u,tag);
   assert.ok(hashtag.length>1,tag);
  }
  const fixture={nickname:"掲載者",heightCm:175,weightKg:75,age:40,position:"リバ",
@@ -77,10 +77,10 @@ test("all six canonical categories and every original candidate become a single 
   for(const {name} of LIKE_CATEGORIES)assert.ok(rendered.includes(name+"："));
   assert.equal((rendered.match(/<br\/>/g)||[]).length,6);
  }
- assert.equal(profileSearchHashtag("縛りたい[緊縛]"),"#縛りたい_緊縛");
- assert.equal(profileSearchHashtag("露出/野外"),"#露出_野外");
- assert.equal(profileSearchHashtag("飲み/飯"),"#飲み_飯");
- assert.equal(profileSearchHashtag("3p/4p"),"#3p_4p");
+ assert.equal(profileSearchHashtag("縛りたい[緊縛]"),"#縛りたい #緊縛");
+ assert.equal(profileSearchHashtag("露出/野外"),"#露出 #野外");
+ assert.equal(profileSearchHashtag("飲み/飯"),"#飲み #飯");
+ assert.equal(profileSearchHashtag("3p/4p"),"#3p #4p");
 });
 
 test("published media uses a true rich collage for 2-5 photos/videos, with one-item fallback",()=>{
@@ -107,4 +107,23 @@ test("published media uses a true rich collage for 2-5 photos/videos, with one-i
  const empty=profilePanelRich({...fixture,media:[]},"photo");
  assert.equal(empty.media,undefined);
  assert.match(empty.html,/登録されていません/);
+});
+
+test("published card and preview split punctuated tags independently without modifying stored tags",async()=>{
+ const {renderPublicProfile,renderProfileBasicPreview}=await import("../src/services/profileCore.js");
+ const base={
+  nickname:"プロフィール",heightCm:175,weightKg:70,age:40,position:"リバ" as const,
+  likeTags:[{category:"プレイ",tag:"露出/野外"}],
+  loveTags:[{category:"プレイ",tag:"縛りたい[緊縛]"}],
+  purposeCodes:["飲み/飯"],placeCodes:["露出/野外"]
+ };
+ const expected=["#露出 #野外","#縛りたい #緊縛","#飲み #飯"];
+ const publicText=renderPublicProfile(base);
+ const preview=renderProfileBasicPreview(base,"poster_user");
+ for(const fragment of expected){
+  assert.ok(publicText.includes(fragment),fragment);
+  assert.ok(preview.includes(fragment),fragment);
+ }
+ assert.equal(base.likeTags[0]?.tag,"露出/野外");
+ assert.equal(base.loveTags[0]?.tag,"縛りたい[緊縛]");
 });
