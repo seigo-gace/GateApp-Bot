@@ -113,6 +113,39 @@ async def pinned_post_entry(client, entity, topic_id: int, bot_id: int):
     return {"state": "ABSENT_FROM_PINS", "message_ids": [], "button_types": []}
 
 
+async def recent_topic_buttons(client, entity, topic_id: int, bot_id: int):
+    """Inspect topic starter and actual message history; never create any post."""
+    inspected = 0
+    found = []
+    seen = set()
+    try:
+        starter = await client.get_messages(entity, ids=topic_id)
+        if starter is not None:
+            inspected += 1
+            seen.add(starter.id)
+            typ = button_type(starter, bot_id)
+            if typ is not None:
+                found.append((starter.id, typ))
+        async for message in client.iter_messages(entity, reply_to=topic_id, limit=150):
+            if message.id in seen:
+                continue
+            seen.add(message.id)
+            inspected += 1
+            typ = button_type(message, bot_id)
+            if typ is not None:
+                found.append((message.id, typ))
+                if len(found) == 5:
+                    break
+    except Exception:
+        return {"state": "INCONCLUSIVE_HISTORY_QUERY_FAILED",
+                "message_ids": [], "button_types": [], "inspected": inspected}
+    return {"state": "PRESENT" if found else
+            "INCONCLUSIVE_HISTORY_LIMIT" if inspected >= 150 else "ABSENT",
+            "message_ids": [x[0] for x in found],
+            "button_types": [x[1] for x in found],
+            "inspected": inspected}
+
+
 async def audit(client, chat_id: int, page: int):
     if type(chat_id) is not int or chat_id not in AUDIT_CHATS:
         raise ValueError("TOPIC_AUDIT_CHAT_NOT_ALLOWED")
@@ -127,12 +160,17 @@ async def audit(client, chat_id: int, page: int):
     rows = []
     for topic in selected:
         status = await pinned_post_entry(client, entity, topic.id, bot.id)
+        history = await recent_topic_buttons(client, entity, topic.id, bot.id)
         rows.append({
             "topic_id": topic.id,
             "title": topic.title[:120],
-            "post_button": status["state"],
+            "post_button": "PRESENT" if status["state"] == "PRESENT" or
+                           history["state"] == "PRESENT" else history["state"],
+            "pin_state": status["state"],
             "pin_message_ids": status["message_ids"],
-            "button_types": status["button_types"],
+            "history_message_ids": history["message_ids"],
+            "history_inspected": history["inspected"],
+            "button_types": list(dict.fromkeys(status["button_types"] + history["button_types"])),
         })
         await asyncio.sleep(0.12)
     return {
