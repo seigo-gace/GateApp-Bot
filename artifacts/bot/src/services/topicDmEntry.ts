@@ -228,8 +228,8 @@ export async function refreshPublishedTopicDmEntry(
  // Only update the existing message. Telegram's edit may fail or be ambiguous:
  // keep the prior pin and avoid a duplicate send in either case.
  try{
-  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,callback_data:buttonCallback,style:"primary"} as any]]},
+  await telegram.editMessageReplyMarkup(chatId,messageId,undefined,{
+   inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,callback_data:buttonCallback,style:"primary"} as any]],
   });
  }catch(e){
   // A definitive Bot API rejection did not change the old message: preserve
