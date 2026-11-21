@@ -13,7 +13,8 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path("/home/gace/Project/Gserver/projects/TGtumbler/GateApp-Bot")
-FILES = ("scripts/userbot_resident_ipc.py", "scripts/userbot_test_client.py")
+FILES = ("scripts/userbot_resident_ipc.py",)
+CLIENT = "scripts/userbot_topic_audit_client.py"
 MODULE = "scripts/userbot_topic_entry_audit.py"
 SERVICE = "gace-userbot-verify.service"
 ACTION = "topic_entry_audit"
@@ -32,20 +33,20 @@ def patch_ipc(s: str) -> str:
     if not m:
         raise RuntimeError("IPC_ACTIONS_ANCHOR_MISSING")
     s = replace_once(s, m.group(), m.group()[:-2] + ', "topic_entry_audit"})')
-    s = replace_once(s, 'if action == "room_public_readback" else',
-        'if action == "room_public_readback" else\n'
-        '                {"request_id", "action", "chat_id", "page"}\n'
-        '                if action == "topic_entry_audit" else')
+    s = replace_once(s, '    if set(request) != expected:',
+        '    if action == "topic_entry_audit":\n'
+        '        expected = {"request_id", "action", "chat_id", "page"}\n'
+        '    if set(request) != expected:')
     s = replace_once(s, '    if action == "health":',
         '    if action == "topic_entry_audit":\n'
         '        from userbot_topic_entry_audit import audit\n'
         '        return {"request_id": request_id,\n'
         '                **await audit(client, request["chat_id"], request["page"])}\n'
         '    if action == "health":')
-    m = re.search(r'timeout=\d+ if request\.get\("action"\) in \{[^\n}]+\} else \d+', s)
-    if not m:
-        raise RuntimeError("IPC_TIMEOUT_ANCHOR_MISSING")
-    s = replace_once(s, m.group(), m.group().replace('} else', ', "topic_entry_audit"} else'))
+    s = replace_once(s, '                if request.get("action") == "link_rich_flow_smoke":',
+        '                if request.get("action") == "topic_entry_audit":\n'
+        '                    response = await asyncio.wait_for(process_request(client, request),timeout=100)\n'
+        '                elif request.get("action") == "link_rich_flow_smoke":')
     s = replace_once(s, '"REQUEST_SIZE_INVALID",', 
         '"REQUEST_SIZE_INVALID",\n'
         '                "TOPIC_AUDIT_CHAT_NOT_ALLOWED", "TOPIC_AUDIT_PAGE_INVALID",\n'
@@ -119,10 +120,10 @@ def main():
         code, _ = run(["git", "diff", "--quiet", "--", name])
         if code:
             raise RuntimeError("AUDIT_EXISTING_LOCAL_EDIT_PROTECTED")
-    if (ROOT / MODULE).exists():
+    if (ROOT / MODULE).exists() or (ROOT / CLIENT).exists():
         raise RuntimeError("AUDIT_MODULE_ALREADY_EXISTS")
     sources = {}
-    for name in (*FILES, MODULE):
+    for name in (*FILES, MODULE, CLIENT):
         cp = subprocess.run(["git", "show", opts.source_sha + ":" + name],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
         if cp.returncode:
@@ -132,8 +133,8 @@ def main():
     # operational files in place to preserve all later runtime additions.
     patched = {
         FILES[0]: patch_ipc((ROOT / FILES[0]).read_text()),
-        FILES[1]: patch_client((ROOT / FILES[1]).read_text()),
         MODULE: sources[MODULE],
+        CLIENT: sources[CLIENT],
     }
     with tempfile.TemporaryDirectory(prefix="gace-audit-stage-") as stage:
         stage_path = pathlib.Path(stage)
@@ -154,7 +155,7 @@ def main():
             shutil.copy2(ROOT / name, rollback / pathlib.Path(name).name)
         updated = []
         try:
-            for name in (*FILES, MODULE):
+            for name in (*FILES, MODULE, CLIENT):
                 old_file = ROOT / name
                 temp = stage_path / pathlib.Path(name).name
                 swap = old_file.with_suffix(old_file.suffix + ".audit-next")
@@ -180,8 +181,9 @@ def main():
                 backup = rollback / pathlib.Path(name).name
                 if backup.is_file():
                     shutil.copy2(backup, ROOT / name)
-            if MODULE in updated:
-                (ROOT / MODULE).unlink(missing_ok=True)
+            for name in (MODULE, CLIENT):
+                if name in updated:
+                    (ROOT / name).unlink(missing_ok=True)
             run(["systemctl", "--user", "restart", SERVICE], 45)
             raise
 
