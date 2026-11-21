@@ -3,6 +3,7 @@ import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
+import {registerStartlessNavigationHandlers} from "./bot/startlessNavigationHandlers.js";
 import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/profileCompactHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
@@ -50,6 +51,7 @@ async function main():Promise<void>{
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
  await runMigrations();
  registerBugReportHandlers(bot);
+ registerStartlessNavigationHandlers(bot);
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
   if(ctx.startPayload?.startsWith("p_")){
