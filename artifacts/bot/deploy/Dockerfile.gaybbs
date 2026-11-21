@@ -16,6 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/gaybbs.mjs /app/gaybbs.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/backfillExistingProfileKeyboards.mjs /app/backfillExistingProfileKeyboards.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/refreshStartlessExistingPosts.mjs /app/refreshStartlessExistingPosts.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/publishMenuPanels.mjs /app/publishMenuPanels.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/recordPhaseADmEvidence.mjs /app/recordPhaseADmEvidence.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/publishTopicBoards.mjs /app/publishTopicBoards.mjs
