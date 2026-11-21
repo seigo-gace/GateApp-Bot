@@ -66,7 +66,7 @@ test("all six canonical categories and every original candidate become a single 
  assert.equal(all.length,140,"keep the established 140 entries; never silently drop choices");
  for(const {tag} of all){
   const hashtag=profileSearchHashtag(tag);
-  assert.match(hashtag,/^#[\\p{L}\\p{N}_]+$/u,tag);
+  assert.match(hashtag,/^#[\p{L}\p{N}_]+$/u,tag);
   assert.ok(hashtag.length>1,tag);
  }
  const fixture={nickname:"掲載者",heightCm:175,weightKg:75,age:40,position:"リバ",
@@ -75,7 +75,7 @@ test("all six canonical categories and every original candidate become a single 
   const rendered=profilePanelRich(fixture,mode).html;
   for(const {tag} of all)assert.ok(rendered.includes(profileSearchHashtag(tag)),mode+":"+tag);
   for(const {name} of LIKE_CATEGORIES)assert.ok(rendered.includes(name+"："));
-  assert.equal((rendered.match(/<br\\/>/g)||[]).length,6);
+  assert.equal((rendered.match(/<br\/>/g)||[]).length,6);
  }
  assert.equal(profileSearchHashtag("縛りたい[緊縛]"),"#縛りたい_緊縛");
  assert.equal(profileSearchHashtag("露出/野外"),"#露出_野外");
@@ -95,8 +95,8 @@ test("published media uses a true rich collage for 2-5 photos/videos, with one-i
  const photos=profilePanelRich(fixture,"photo"),videos=profilePanelRich(fixture,"video");
  assert.equal(photos.media?.length,3);
  assert.equal(videos.media?.length,2);
- assert.match(photos.html,/<tg-collage>.*<\\/tg-collage>/);
- assert.match(videos.html,/<tg-collage>.*<\\/tg-collage>/);
+ assert.match(photos.html,/<tg-collage>.*<\/tg-collage>/);
+ assert.match(videos.html,/<tg-collage>.*<\/tg-collage>/);
  assert.equal((photos.html.match(/<img /g)||[]).length,3);
  assert.equal((videos.html.match(/<video /g)||[]).length,2);
  assert.deepEqual(photos.media?.map(x=>x.media.media),["photo1","photo3","photo5"]);
