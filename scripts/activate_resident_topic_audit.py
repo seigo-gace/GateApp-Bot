@@ -11,6 +11,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 
 ROOT = pathlib.Path("/home/gace/Project/Gserver/projects/TGtumbler/GateApp-Bot")
 FILES = ("scripts/userbot_resident_ipc.py",)
@@ -147,7 +148,7 @@ def main():
         print("USERBOT_AUDIT_PATCH_DRY_RUN=PASS")
         if opts.mode == "dry-run":
             return
-        rollback = ROOT.parent / ".userbot-topic-audit-rollback"
+        rollback = ROOT.parent / ".userbot-topic-audit-rollback-v2"
         rollback.mkdir(mode=0o700, exist_ok=True)
         if any(rollback.iterdir()):
             raise RuntimeError("AUDIT_ROLLBACK_DIR_NOT_EMPTY")
@@ -171,8 +172,14 @@ def main():
                 raise RuntimeError("AUDIT_POST_RESTART_INACTIVE")
             if (session.stat().st_ino, session.stat().st_mode) != original_session:
                 raise RuntimeError("AUDIT_SESSION_CHANGED")
-            code, result = run([str(venv), "scripts/userbot_test_client.py", "health"], 45)
-            if code or "USERBOT_TEST_RESULT=PASS" not in result:
+            healthy = False
+            for _ in range(20):
+                code, result = run([str(venv), "scripts/userbot_test_client.py", "health"], 12)
+                if not code and "USERBOT_TEST_RESULT=PASS" in result:
+                    healthy = True
+                    break
+                time.sleep(2)
+            if not healthy:
                 raise RuntimeError("AUDIT_HEALTH_AFTER_FAILED")
             print("USERBOT_AUDIT_RUNTIME_ACTIVATED=PASS")
             print("USERBOT_SESSION_PRESERVED=YES")
