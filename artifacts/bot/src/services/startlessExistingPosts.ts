@@ -45,13 +45,18 @@ async function targets():Promise<StartlessExistingRow[]>{
    result.push(target);
   }
  }
- const keys=new Set<string>();
+ // Combined board menus can have two ledger owners for the SAME Telegram
+ // message. Pick one renderer only; board is canonical over topic/menu.
+ // Otherwise a later edit would overwrite an earlier keyboard on that post.
+ const rank:Readonly<Record<Kind,number>>={menu:1,topic:2,board:3};
+ const chosen=new Map<string,StartlessExistingRow>();
  for(const r of result){
   const key=r.chatId+":"+r.messageId;
-  if(keys.has(key))throw Error("STARTLESS_POST_DUPLICATE_OWNERSHIP:"+key);
-  keys.add(key);
+  const prior=chosen.get(key);
+  if(!prior||rank[r.kind]>rank[prior.kind])chosen.set(key,r);
+  else if(prior.kind===r.kind)throw Error("STARTLESS_POST_DUPLICATE_OWNER:"+key);
  }
- return result;
+ return [...chosen.values()];
 }
 export async function dryRunStartlessExistingPosts():Promise<StartlessMigrationResult>{
  const list=await targets();
