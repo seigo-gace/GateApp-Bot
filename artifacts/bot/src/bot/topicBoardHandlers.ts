@@ -75,7 +75,7 @@ async function nationalBackUrl():Promise<string>{
  return guideMessageUrl(AREA_CHAT_ID,Number(r.rows[0].message_id));
 }
 type CombinedGuideBundle={panel:TopicBoardPanel;guideDm:{panelId:number;tokenHashes:string[]}|null};
-async function boardPanel(key:string):Promise<CombinedGuideBundle>{
+export async function boardPanel(key:string):Promise<CombinedGuideBundle>{
  if(key==="video"){
   const dm=await mintGeneralGuideDmLinks(CHAT_VIDEO);
   return {panel:buildL1CombinedPanel("video",dm.links),
