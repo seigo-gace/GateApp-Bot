@@ -107,8 +107,14 @@ async function applyOne(telegram:Telegram,row:StartlessExistingRow){
  }
  await verifySamePost(row);
 }
-export async function applyStartlessExistingPosts(telegram:Telegram):Promise<StartlessMigrationResult>{
- const list=await targets();
+export async function applyStartlessExistingPosts(telegram:Telegram,limit=15):Promise<StartlessMigrationResult>{
+ if(!Number.isInteger(limit)||limit<1||limit>30)throw Error("STARTLESS_APPLY_LIMIT_INVALID");
+ const all=await targets();
+ const existing=await pool.query(
+  "SELECT kind,identity,chat_id,message_id FROM startless_public_post_migrations");
+ const attempted=new Set(existing.rows.map(r=>
+  String(r.kind)+":"+String(r.identity)+":"+String(r.chat_id)+":"+String(r.message_id)));
+ const list=all.filter(r=>!attempted.has(r.kind+":"+r.identity+":"+r.chatId+":"+r.messageId)).slice(0,limit);
  const stats:StartlessMigrationResult={selected:list.length,applied:0,skipped:0,uncertain:0};
  for(const row of list){
   const claim=await pool.query(
