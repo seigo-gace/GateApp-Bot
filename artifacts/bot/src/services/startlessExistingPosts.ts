@@ -59,8 +59,14 @@ async function targets():Promise<StartlessExistingRow[]>{
  return [...chosen.values()];
 }
 export async function dryRunStartlessExistingPosts():Promise<StartlessMigrationResult>{
- const list=await targets();
- return {selected:list.length,applied:0,skipped:0,uncertain:0};
+ const all=await targets();
+ const ledger=await pool.query("SELECT kind,identity,chat_id,message_id,state FROM startless_public_post_migrations");
+ const statuses=new Map(ledger.rows.map(r=>
+  [String(r.kind)+":"+String(r.identity)+":"+String(r.chat_id)+":"+String(r.message_id),String(r.state)]));
+ const pending=all.filter(r=>!statuses.has(r.kind+":"+r.identity+":"+r.chatId+":"+r.messageId));
+ const unknown=all.filter(r=>statuses.get(r.kind+":"+r.identity+":"+r.chatId+":"+r.messageId)==="uncertain");
+ return {selected:pending.length,applied:0,skipped:all.length-pending.length,
+  uncertain:unknown.length};
 }
 async function verifySamePost(row:StartlessExistingRow){
  const relation=row.kind==="menu"?"board_menu_panels":
