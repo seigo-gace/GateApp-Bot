@@ -80,7 +80,8 @@ function api(method,data){
    text:'📝 投稿メニューを開く',callback_data:task.callback_data
  }]]};
  const result=await api('sendMessage',{
-  chat_id:task.chat_id,message_thread_id:task.thread_id,
+  chat_id:task.chat_id,
+  ...(task.thread_id===1?{}:{message_thread_id:task.thread_id}),
   text:'📝 このトピックに投稿するには、下のボタンからBotのDMへ移動してください。',
   disable_notification:true,reply_markup
  });
@@ -89,7 +90,8 @@ function api(method,data){
   process.exitCode=2;return;
  }
  const msg=result.value;
- if(!msg||msg.chat?.id!==task.chat_id||msg.message_thread_id!==task.thread_id||
+ if(!msg||msg.chat?.id!==task.chat_id||
+    (task.thread_id!==1&&msg.message_thread_id!==task.thread_id)||
     !Number.isInteger(msg.message_id)||msg.message_id<=0)throw Error('SEND_RESULT_UNCERTAIN');
  const pin=await api('pinChatMessage',{chat_id:task.chat_id,message_id:msg.message_id,disable_notification:true});
  console.log(JSON.stringify({state:pin.ok?'PUBLISHED_PINNED':'PUBLISHED_NOT_PINNED',
