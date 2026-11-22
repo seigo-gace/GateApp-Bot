@@ -101,7 +101,7 @@ class ReadOnlyScopeTests(unittest.TestCase):
         for chat_id in (-1001, 0, True, "area"):
             with self.assertRaisesRegex(ValueError, "TOPIC_AUDIT_CHAT_NOT_ALLOWED"):
                 asyncio.run(audit(NoTelegram(), chat_id, 0))
-        for page in (-1, 25, True, "0"):
+        for page in (-2000000001, 25, True, "0"):
             with self.assertRaisesRegex(ValueError, "TOPIC_AUDIT_PAGE_INVALID"):
                 asyncio.run(audit(NoTelegram(), AREA_CHAT, page))
 
