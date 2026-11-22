@@ -6,7 +6,9 @@ from verify_missing_normal_topic_entries import classify
 class NormalButtonSafetyTests(unittest.TestCase):
  def test_scope_excludes_all_announcement_topics(self):
   self.assertEqual([(g,t) for g,(c,items) in FORUMS.items() for t,v in items],
-    [("area",105),("video",4672)])
+    [("area",105)])
+  self.assertEqual(FORUMS['video'][1],[])
+  self.assertEqual(FORUMS['category'][1],[])
  def test_announcement_title_excluded(self):
   self.assertEqual(classify({"title":"運営からのお知らせ","post_button":"ABSENT",
      "pin_state":"ABSENT_FROM_PINS","history_inspected":5},"お知らせ"),
