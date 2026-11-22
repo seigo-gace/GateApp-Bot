@@ -28,11 +28,13 @@ TARGETS = {
         0: [1379],
         7: [995, 994, 993],
         8: [992, 991, 990, 621, 999, 998, 997, 996],
-        9: [273, 44, 105],
+        9: [44, 105],
     },
-    "video": {0: [1723, 4672], 1: [1724, 1, 4291]},
-    "category": {0: [783, 1], 1: [18]},
+    "video": {0: [1723, 4672], 1: [1]},
+    "category": {0: [783, 1]},
 }
+# Existing database pin records for area:273, video:1724,4291 and category:18
+# require in-place readback/reconciliation, never a new send.
 # Topic 1 in area was INCONCLUSIVE_HISTORY_LIMIT and cannot be sent without
 # exhaustive existing-history verification. Keep it outside this run.
 assert set(TARGETS["area"][8]) == {992, 991, 990, 621, 999, 998, 997, 996}
