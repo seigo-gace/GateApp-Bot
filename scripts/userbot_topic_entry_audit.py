@@ -39,7 +39,7 @@ def button_type(message, bot_id: int):
                 (parsed.hostname or "").lower() in {"t.me", "telegram.me"} and
                 parsed.path.lower().strip("/") == "gaybbs_bot" and
                 len(start) == 1 and bool(start[0]))
-            recognized_cb = isinstance(data, bytes) and data.startswith(b"gdm:p_")
+            recognized_cb = isinstance(data, bytes) and (data.startswith(b"gdm:p_") or data.startswith(b"gdm:m_"))
             recognized_creator = (("クリエーター" in label or "クリエイター" in label) and
                 parsed.scheme == "https" and
                 (parsed.hostname or "").lower() in {"t.me", "telegram.me"} and
