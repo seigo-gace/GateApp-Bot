@@ -266,8 +266,8 @@ async def audit(client, chat_id: int, page: int):
             "pin_state": status["state"],
             "pin_message_ids": status["message_ids"],
             "history_message_ids": history["message_ids"],
-            "pin_transports": status["transports"],
-            "history_transports": history["transports"],
+            "pin_transports": status.get("transports", ["UNKNOWN_TRANSPORT"] * len(status["message_ids"])),
+            "history_transports": history.get("transports", ["UNKNOWN_TRANSPORT"] * len(history["message_ids"])),
             "history_inspected": history["inspected"],
             "button_types": list(dict.fromkeys(status["button_types"] + history["button_types"])),
         })
