@@ -12,10 +12,12 @@ import publish_missing_normal_topic_buttons as n
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--group',required=True,choices=n.CHATS)
+    p.add_argument('--page',type=int,default=None)
     x=p.parse_args()
     pg=n.unique_container('postgres')
     total=0
     for page,topics in n.TARGETS[x.group].items():
+        if x.page is not None and page!=x.page:continue
         for topic in topics:
             record=n.LEDGER/x.group/(str(topic)+'.json')
             if not record.is_file():raise RuntimeError("POST_LEDGER_MISSING")
