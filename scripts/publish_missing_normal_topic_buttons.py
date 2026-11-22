@@ -30,13 +30,15 @@ TARGETS = {
         8: [992, 991, 990, 621, 999, 998, 997, 996],
         9: [44, 105],
     },
-    "video": {0: [1723, 4672]},
+    "video": {},
     "category": {0: [783]},
 }
 # Existing database pin records for area:273, video:1724,4291 and category:18
 # require in-place readback/reconciliation, never a new send.
-# Announcement/General Topic 1 is excluded by Master across all three forums.
-# Never add posting-entry buttons to announcement topics.
+# Master: video forum posting buttons only on the video, sticker, and profile topics.
+# These specialist entrypoints have their own existing owners; this normal-topic
+# publisher may not place ANY additional buttons inside the video forum.
+# Announcement topics are excluded across all three forums.
 assert set(TARGETS["area"][8]) == {992, 991, 990, 621, 999, 998, 997, 996}
 
 BOT_NODE = r"""
