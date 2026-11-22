@@ -16,7 +16,7 @@ ALLOWED = (-1003847210571, -1002373696859, -1003770334893)
 
 
 async def inspect(chat_id: int, page: int):
-    if chat_id not in ALLOWED or type(page) is not int or not 0 <= page <= 24:
+    if chat_id not in ALLOWED or type(page) is not int or not -2000000000 <= page <= 24:
         raise ValueError("TOPIC_AUDIT_TARGET_DENIED")
     if not SOCKET_PATH.is_socket():
         raise RuntimeError("RESIDENT_USERBOT_IPC_NOT_AVAILABLE")
@@ -47,9 +47,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--chat-id", type=int, choices=ALLOWED, required=True)
     parser.add_argument("--page", type=int, default=0)
+    parser.add_argument("--topic-id", type=int, default=None)
     args = parser.parse_args()
     try:
-        result = asyncio.run(inspect(args.chat_id, args.page))
+        result = asyncio.run(inspect(args.chat_id, -args.topic_id if args.topic_id is not None else args.page))
         print("USERBOT_TOPIC_AUDIT=" + json.dumps(result, ensure_ascii=False,
                                                separators=(",", ":")))
         return 0
