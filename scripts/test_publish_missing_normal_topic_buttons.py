@@ -10,7 +10,8 @@ from unittest.mock import patch
 class NormalPostingProtectionTests(unittest.TestCase):
  def test_exact_scope(self):
   self.assertEqual(len(CHATS),3)
-  self.assertEqual(sum(len(p) for group in TARGETS.values() for p in group.values()),17)
+  self.assertEqual(TARGETS['video'],{})
+  self.assertEqual(sum(len(p) for group in TARGETS.values() for p in group.values()),15)
   for group, pages in TARGETS.items():
    for ids in pages.values():
     self.assertFalse({1,48,1613,210,1695,4640,1000,273,1724,4291,18}&set(ids))
