@@ -469,7 +469,7 @@ class ResidentDialogResolutionTests(unittest.TestCase):
 
 class NativePaidVideoReadbackTests(unittest.TestCase):
     def test_reads_real_message_shapes_without_writing_or_new_session(self):
-        paid = type("MessageMediaPaidMedia", (), {"stars_amount": 10})()
+        paid = type("MessageMediaPaidMedia", (), {"stars_amount": 10, "extended_media": [type("MessageExtendedMediaPreview", (), {})()]})()
         reply = SimpleNamespace(reply_to_top_id=4650, reply_to_msg_id=None)
         class ReadOnlyClient:
             def __init__(self):
@@ -493,6 +493,7 @@ class NativePaidVideoReadbackTests(unittest.TestCase):
             "message_ids":[111,112,113]}))
         self.assertTrue(result["free_album_grouped"])
         self.assertTrue(result["paid_media_native"])
+        self.assertTrue(result["preview_for_reader"])
         self.assertEqual(result["paid_stars"],10)
         self.assertTrue(result["target_topic_confirmed"])
         self.assertEqual(c.calls,[("identity","CreateVdobot"),
