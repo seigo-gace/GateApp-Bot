@@ -4,9 +4,13 @@ sys.path.insert(0,str(pathlib.Path(__file__).parent))
 from publish_missing_normal_topic_entries import NODE,FORUMS,escape
 from verify_missing_normal_topic_entries import classify
 class NormalButtonSafetyTests(unittest.TestCase):
- def test_scope_only_four_known_candidates(self):
+ def test_scope_excludes_all_announcement_topics(self):
   self.assertEqual([(g,t) for g,(c,items) in FORUMS.items() for t,v in items],
-    [("area",105),("video",4672),("video",1),("category",1)])
+    [("area",105),("video",4672)])
+ def test_announcement_title_excluded(self):
+  self.assertEqual(classify({"title":"運営からのお知らせ","post_button":"ABSENT",
+     "pin_state":"ABSENT_FROM_PINS","history_inspected":5},"お知らせ"),
+   "OUT_OF_SCOPE_OR_CHANGED_TITLE")
  def test_existing_buttons_protected(self):
   self.assertEqual(classify({"title":"国際交流トーク","post_button":"PRESENT",
      "pin_state":"ABSENT_FROM_PINS","history_inspected":7},"国際交流"),
