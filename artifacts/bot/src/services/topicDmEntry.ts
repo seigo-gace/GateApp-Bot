@@ -85,7 +85,7 @@ export function draftTopicEntryOrigin(
 ):TopicEntryOrigin|null{
  if(chatId==null&&threadId==null)return null;
  const chat=Number(chatId),thread=Number(threadId);
- if(!ALLOWED_CHATS.has(chat)||!Number.isSafeInteger(thread)||thread<=0)
+ if(!permittedTopicDmEntry(chat,thread))
   throw Error("TOPIC_ENTRY_DRAFT_CONTEXT_INVALID");
  return {chatId:chat,threadId:thread};
 }
