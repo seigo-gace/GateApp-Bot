@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Recover one verified-denied Telegram General-topic menu without duplicate.
-General topic 1 requires sendMessage without message_thread_id.
+"""Historical General-topic recovery (disabled by Master).
+Announcements never receive posting-entry buttons in any forum.
 """
 import argparse
 import base64
@@ -16,11 +16,12 @@ sys.path.insert(0,str(Path(__file__).resolve().parent))
 import publish_missing_normal_topic_buttons as norm
 
 ROOT=norm.ROOT
-TARGETS={"video":norm.CHATS["video"],"category":norm.CHATS["category"]}
+TARGETS={}  # Master exclusion: all announcement/General topic 1 entrances
 LEDGER=ROOT/"deploy/state/general-topic-button-recovery-20261122"
 OLD=ROOT/"deploy/state/missing-normal-topic-buttons-20261122/video/1.json"
 
 def preflight(group,pg,bot):
+    raise RuntimeError("ANNOUNCEMENT_BUTTONS_PROHIBITED_BY_MASTER")
     chat=TARGETS[group]
     if norm.run(["systemctl","--user","is-active","gace-userbot-verify.service"])[1].strip()!="active":
         raise RuntimeError("USERBOT_INACTIVE")
