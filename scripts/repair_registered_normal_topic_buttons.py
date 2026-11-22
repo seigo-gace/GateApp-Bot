@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repair only four EXISTING pinned posting entrances in place.
+"""Repair only verified area/category existing posting entrances in place.
 
 Never sends a new group message. Existing Telegram message IDs and all unrelated
 posts are immutable. A transport-uncertain edit stops; no retry without readback.
@@ -11,8 +11,6 @@ from pathlib import Path
 ROOT=Path("/home/gace/Project/Gserver/projects/TGtumbler/GateApp-Bot")
 TARGETS={
  "area273":(-1003847210571,273,9,"area",1604),
- "video1724":(-1002373696859,1724,1,"video",4659),
- "video4291":(-1002373696859,4291,1,"video",4633),
  "category18":(-1003770334893,18,1,"category",1146),
 }
 LEDGER=ROOT/"deploy/state/existing-normal-pin-repair-20261122"
