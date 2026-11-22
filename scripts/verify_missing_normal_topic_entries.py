@@ -50,9 +50,6 @@ def pg():
     return names[0]
 
 def query(name, statement):
-    code, out = run(["docker", "exec", "-i", name, "sh", "-c",
-                      'exec psql -X -q -At -F "|" -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d gaybbs -f -'],
-                    timeout=40) if False else (None, None)
     # Never put an untrusted URL or opaque token into the shell or logs.
     p = subprocess.run(["docker", "exec", "-i", name, "sh", "-c",
         'exec psql -X -q -At -F "|" -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d gaybbs -f -'],
