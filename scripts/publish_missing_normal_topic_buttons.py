@@ -35,9 +35,8 @@ TARGETS = {
 }
 # Existing database pin records for area:273, video:1724,4291 and category:18
 # require in-place readback/reconciliation, never a new send.
-# Video/category Topic 1 requires a separately verified General-topic protocol.
-# Topic 1 in area was INCONCLUSIVE_HISTORY_LIMIT and cannot be sent without
-# exhaustive existing-history verification. Keep it outside this run.
+# Announcement/General Topic 1 is excluded by Master across all three forums.
+# Never add posting-entry buttons to announcement topics.
 assert set(TARGETS["area"][8]) == {992, 991, 990, 621, 999, 998, 997, 996}
 
 BOT_NODE = r"""
