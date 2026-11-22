@@ -16,6 +16,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify resident Userbot topic audit without Telegram credentials
+        run: python3 -m unittest discover -s scripts -p 'test_userbot_topic_entry_audit.py' -v
+      - name: Verify Userbot exact-topic ID audit contract
+        run: python3 -m unittest discover -s scripts -p 'test_resident_exact_topic_audit.py' -v
+      - name: Verify audit activation script offline
+        run: python3 -m unittest discover -s scripts -p 'test_activate_resident_topic_audit.py' -v
+      - name: Verify creator topic button repair without Telegram access
+        run: python3 -m unittest discover -s scripts -p 'test_publish_missing_creator_topic_buttons.py' -v
+      - name: Verify profile-only existing post edit contracts
+        run: python3 -m unittest discover -s scripts -p 'test_reconcile_profile_topic_buttons.py' -v
+      - name: Verify normal topic missing-only guard
+        run: python3 -m unittest discover -s scripts -p 'test_publish_missing_normal_topic_buttons.py' -v
+      - name: Verify existing pinned message repair without new sends
+        run: python3 -m unittest discover -s scripts -p 'test_repair_registered_normal_topic_buttons.py' -v
+      - name: Verify General forum topic 1 recovery protocol
+        run: python3 -m unittest discover -s scripts -p 'test_recover_denied_general_topic_button.py' -v
+      - name: Verify missing normal topic entry preflight and fail-closed publication
+        run: python3 -m unittest discover -s scripts -p 'test_publish_missing_normal_topic_entries.py' -v
       - name: Build isolated GayBBS image (no credentials)
         run: docker build --file artifacts/bot/deploy/Dockerfile.gaybbs --tag gaybbs:ci --pull=false .
       - name: Check bundled program without Telegram, DB, or network

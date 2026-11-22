@@ -34,6 +34,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Validate unified read-only Telegram rights preflight without contacting Telegram
         run: pnpm --dir artifacts/bot exec esbuild scripts/gaybbsRuntimePreflight.ts --bundle --platform=node --format=esm --outfile=/tmp/gaybbs-runtime-preflight.mjs
+      - name: Install Telegram protocol dependency for real IPC request-shape tests
+        run: python3 -m pip install 'Telethon>=1.40,<2'
       - name: Verify resident Userbot IPC and secure report inbox tests
         run: cd scripts && python3 -m unittest -q test_userbot_resident_ipc
       - name: Typecheck existing Bot plus profile
