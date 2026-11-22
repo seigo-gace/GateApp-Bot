@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseTopicEntryPayload,canReuseUncertainEntry,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic} from "../src/services/topicDmEntry.js";
+import {parseTopicEntryPayload,canReuseUncertainEntry,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic,permittedTopicDmEntry,VIDEO_SPECIALIST_ENTRY_TOPIC_IDS} from "../src/services/topicDmEntry.js";
 import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 
 test("a forum topic has one DM doorway, not a group-side editor keyboard",()=>{
@@ -73,4 +73,26 @@ test("uncertain entry can be repaired only when original Telegram message ID exi
  for(const id of [null,undefined,0,-1,"abc",1.2]){
   assert.equal(canReuseUncertainEntry("needs_reconcile",id),false);
  }
+});
+
+test("Master: video forum allows only video, sticker and profile topic entry buttons",()=>{
+ const video=-1002373696859;
+ assert.deepEqual([...VIDEO_SPECIALIST_ENTRY_TOPIC_IDS].sort((a,b)=>a-b),[1613,1695,4640]);
+ for(const t of [1613,1695,4640]){
+  assert.equal(permittedTopicDmEntry(video,t),true);
+  assert.deepEqual(draftTopicEntryOrigin(video,t),{chatId:video,threadId:t});
+ }
+ for(const t of [1,1605,1634,1723,1724,4291,4672]){
+  assert.equal(permittedTopicDmEntry(video,t),false);
+  assert.throws(()=>draftTopicEntryOrigin(video,t),/TOPIC_ENTRY_DRAFT_CONTEXT_INVALID/);
+ }
+});
+
+test("Master: no posting entry button on announcement Topic 1 in any group",()=>{
+ for(const chat of [-1003847210571,-1002373696859,-1003770334893]){
+  assert.equal(permittedTopicDmEntry(chat,1),false);
+ }
+ assert.equal(permittedTopicDmEntry(-1003847210571,1379),true);
+ assert.equal(permittedTopicDmEntry(-1003770334893,783),true);
+ assert.equal(permittedTopicDmEntry(-1003847210571,116),true);
 });
