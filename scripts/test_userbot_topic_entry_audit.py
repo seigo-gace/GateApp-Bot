@@ -91,6 +91,20 @@ class PostingEntryClassifierTests(unittest.TestCase):
         result = asyncio.run(recent_topic_buttons(Fake(), object(), 1001, 101))
         self.assertEqual(result["state"], "PRESENT")
         self.assertEqual(result["message_ids"], [1002])
+        self.assertEqual(result["history_transports"] if "history_transports" in result else result["transports"], ["INTERNAL_CALLBACK"])
+
+    def test_history_reports_original_start_link_without_disclosing_token(self):
+        class Fake:
+            async def get_messages(self, entity, ids):
+                return SimpleNamespace(id=ids, sender_id=999, buttons=None)
+            async def iter_messages(self, entity, reply_to, limit):
+                yield SimpleNamespace(id=1012, sender_id=101, buttons=[[
+                    SimpleNamespace(text="📝 投稿", url="https://t.me/GayBBS_bot?start=p_PRIVATE123", data=None)
+                ]])
+        result = asyncio.run(recent_topic_buttons(Fake(), object(), 1001, 101))
+        self.assertEqual(result["message_ids"], [1012])
+        self.assertEqual(result["transports"], ["REPEATED_START_DEEPLINK"])
+        self.assertNotIn("PRIVATE123", str(result))
 
     def test_history_empty_is_absent_not_missing_pin(self):
         class Fake:

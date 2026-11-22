@@ -171,13 +171,13 @@ async def pinned_post_entry(client, entity, topic_id: int, bot_id: int):
         peer=entity, q="", filter=types.InputMessagesFilterPinned(),
         min_date=None, max_date=None, offset_id=0, add_offset=0,
         limit=100, max_id=0, min_id=0, hash=0, top_msg_id=topic_id))
-    found = [(m.id, button_type(m, bot_id)) for m in response.messages if posting_entry(m, bot_id)]
+    found = [(m.id, button_type(m, bot_id), opaque_button_transport(m, bot_id)) for m in response.messages if posting_entry(m, bot_id)]
     total = int(getattr(response, "count", len(response.messages)))
     if found:
-        return {"state": "PRESENT", "message_ids": [x[0] for x in found[:5]], "button_types": [x[1] for x in found[:5]]}
+        return {"state": "PRESENT", "message_ids": [x[0] for x in found[:5]], "button_types": [x[1] for x in found[:5]], "transports": [x[2] for x in found[:5]]}
     if total > len(response.messages):
-        return {"state": "INCONCLUSIVE_PIN_PAGE_LIMIT", "message_ids": [], "button_types": []}
-    return {"state": "ABSENT_FROM_PINS", "message_ids": [], "button_types": []}
+        return {"state": "INCONCLUSIVE_PIN_PAGE_LIMIT", "message_ids": [], "button_types": [], "transports": []}
+    return {"state": "ABSENT_FROM_PINS", "message_ids": [], "button_types": [], "transports": []}
 
 
 async def recent_topic_buttons(client, entity, topic_id: int, bot_id: int):
@@ -192,7 +192,7 @@ async def recent_topic_buttons(client, entity, topic_id: int, bot_id: int):
             seen.add(starter.id)
             typ = button_type(starter, bot_id)
             if typ is not None:
-                found.append((starter.id, typ))
+                found.append((starter.id, typ, opaque_button_transport(starter, bot_id)))
         async for message in client.iter_messages(entity, reply_to=topic_id, limit=150):
             if message.id in seen:
                 continue
@@ -200,16 +200,17 @@ async def recent_topic_buttons(client, entity, topic_id: int, bot_id: int):
             inspected += 1
             typ = button_type(message, bot_id)
             if typ is not None:
-                found.append((message.id, typ))
+                found.append((message.id, typ, opaque_button_transport(message, bot_id)))
                 if len(found) == 5:
                     break
     except Exception:
         return {"state": "INCONCLUSIVE_HISTORY_QUERY_FAILED",
-                "message_ids": [], "button_types": [], "inspected": inspected}
+                "message_ids": [], "button_types": [], "transports": [], "inspected": inspected}
     return {"state": "PRESENT" if found else
             "INCONCLUSIVE_HISTORY_LIMIT" if inspected >= 150 else "ABSENT",
             "message_ids": [x[0] for x in found],
             "button_types": [x[1] for x in found],
+            "transports": [x[2] for x in found],
             "inspected": inspected}
 
 
@@ -265,6 +266,8 @@ async def audit(client, chat_id: int, page: int):
             "pin_state": status["state"],
             "pin_message_ids": status["message_ids"],
             "history_message_ids": history["message_ids"],
+            "pin_transports": status.get("transports", ["UNKNOWN_TRANSPORT"] * len(status["message_ids"])),
+            "history_transports": history.get("transports", ["UNKNOWN_TRANSPORT"] * len(history["message_ids"])),
             "history_inspected": history["inspected"],
             "button_types": list(dict.fromkeys(status["button_types"] + history["button_types"])),
         })
