@@ -14,6 +14,7 @@ AREA_CHAT = -1003847210571
 CATEGORY_CHAT = -1003770334893
 VIDEO_CHAT = -1002373696859
 AUDIT_CHATS = frozenset((AREA_CHAT, CATEGORY_CHAT, VIDEO_CHAT))
+# A negative page encodes an exact Telegram topic ID for stable single-topic audit.
 PAGE_SIZE = 8
 MAX_TOPICS = 200
 
@@ -153,14 +154,19 @@ async def recent_topic_buttons(client, entity, topic_id: int, bot_id: int):
 async def audit(client, chat_id: int, page: int):
     if type(chat_id) is not int or chat_id not in AUDIT_CHATS:
         raise ValueError("TOPIC_AUDIT_CHAT_NOT_ALLOWED")
-    if type(page) is not int or not 0 <= page <= 24:
+    if type(page) is not int or not -2000000000 <= page <= 24:
         raise ValueError("TOPIC_AUDIT_PAGE_INVALID")
     entity = await existing_chat(client, chat_id)
     topics = await list_topics(client, entity)
     bot = await client.get_entity("GayBBS_bot")
     if not getattr(bot, "bot", False):
         raise RuntimeError("TOPIC_AUDIT_TARGET_BOT_INVALID")
-    selected = topics[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+    if page < 0:
+        selected = [t for t in topics if t.id == -page]
+        if len(selected) != 1:
+            raise ValueError("TOPIC_AUDIT_TOPIC_NOT_FOUND")
+    else:
+        selected = topics[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
     rows = []
     for topic in selected:
         status = await pinned_post_entry(client, entity, topic.id, bot.id)
@@ -181,6 +187,6 @@ async def audit(client, chat_id: int, page: int):
         "status": "PASS", "chat": ("area" if chat_id == AREA_CHAT else
                  "video" if chat_id == VIDEO_CHAT else "category"),
         "page": page, "total_topics": len(topics),
-        "has_more": (page + 1) * PAGE_SIZE < len(topics),
+        "has_more": page >= 0 and (page + 1) * PAGE_SIZE < len(topics),
         "rows": rows,
     }
