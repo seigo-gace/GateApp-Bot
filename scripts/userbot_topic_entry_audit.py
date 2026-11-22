@@ -40,8 +40,12 @@ def button_type(message, bot_id: int):
                 parsed.path.lower().strip("/") == "gaybbs_bot" and
                 len(start) == 1 and bool(start[0]))
             recognized_cb = isinstance(data, bytes) and data.startswith(b"gdm:p_")
+            recognized_creator = (("クリエーター" in label or "クリエイター" in label) and
+                parsed.scheme == "https" and
+                (parsed.hostname or "").lower() in {"t.me", "telegram.me"} and
+                parsed.path.lower().strip("/") == "createvdobot")
             eligible_label = any(word in label for word in ("投稿", "プロフ", "プロフィール", "クリエーター", "クリエイター"))
-            if eligible_label and (recognized_url or recognized_cb):
+            if eligible_label and (recognized_url or recognized_cb or recognized_creator):
                 recognized = True
             labels.append(label)
     if not recognized:
