@@ -47,6 +47,12 @@ class PostingEntryClassifierTests(unittest.TestCase):
             ]])
             self.assertEqual(button_type(msg, 101), kind)
 
+    def test_profile_startless_callback_is_detected(self):
+        msg = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="🪪 プロフ投稿", url=None, data=b"gdm:m_abc")
+        ]])
+        self.assertEqual(button_type(msg, 101), "profile")
+
     def test_creator_bot_deep_link_is_detected(self):
         msg = SimpleNamespace(sender_id=101, buttons=[[
             SimpleNamespace(text="クリエーター投稿", url="https://t.me/CreateVdobot", data=None)
