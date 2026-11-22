@@ -31,7 +31,7 @@ function api(method,data){
    res=>{
     let s='';res.setEncoding('utf8');
     res.on('data',x=>{if(s.length<20000)s+=x;});
-    res.on('end',()=>{try{const d=JSON.parse(s);resolve(d.ok===true?{ok:true}:{ok:false,code:d.error_code});}
+    res.on('end',()=>{try{const d=JSON.parse(s);resolve(d.ok===true?{ok:true,value:d.result}:{ok:false,code:d.error_code});}
     catch{reject(Error('RESPONSE_UNCERTAIN'));}});
    });
   req.on('error',()=>reject(Error('TRANSPORT_UNCERTAIN')));
