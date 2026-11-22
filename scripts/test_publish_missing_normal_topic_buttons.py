@@ -26,11 +26,14 @@ class NormalPostingProtectionTests(unittest.TestCase):
   self.assertEqual(assert_absent({'topic_id':995,'title':'東海ブロック','post_button':'ABSENT',
                   'pin_state':'ABSENT_FROM_PINS','history_inspected':2},995),'東海ブロック')
  def test_topic_moving_between_pages_still_found_by_id(self):
+  import json
   target={'topic_id':995,'title':'東海ブロック','post_button':'ABSENT',
           'pin_state':'ABSENT_FROM_PINS','history_inspected':2}
-  with patch('publish_missing_normal_topic_buttons.live_rows',
-             side_effect=lambda group,page:{995:target} if page==8 else {}):
+  output="USERBOT_TOPIC_AUDIT="+json.dumps({'chat':'area','page':-995,'rows':[target]})
+  with patch('publish_missing_normal_topic_buttons.run',return_value=(0,output)) as fake:
    self.assertEqual(resolve_topic('area',7,995),target)
+  self.assertIn('--topic-id',fake.call_args.args[0])
+  self.assertIn('995',fake.call_args.args[0])
  def test_existing_bot_node_sender_valid(self):
   p=subprocess.run(['node','--check','-'],input=BOT_NODE.replace('__TASK_JSON__','{"action":"identity"}'),
                    text=True,capture_output=True,check=False)
