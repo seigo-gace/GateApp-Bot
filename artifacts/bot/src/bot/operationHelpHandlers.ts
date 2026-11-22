@@ -33,6 +33,12 @@ export function helpHomeKeyboard(rev:number){
   Markup.button.callback(label,label==="戻る"?`help:back:${rev}`:
     `help:topic:${rev}:${SECTION_KEYS.find(key=>sectionLabels[key]===label)}`))));
 }
+/** Returning within an existing DM must be a callback, never ?start. */
+export function helpReturnToPostingKeyboard(){
+ return Markup.inlineKeyboard([[
+  Markup.button.callback("↩ 投稿メニュー","dm:utility:home"),
+ ]]);
+}
 export function helpSectionKeyboard(rev:number,section:Topic){
  return Markup.inlineKeyboard([
   [Markup.button.callback("▶ この機能を開く",`help:open:${rev}:${section}`)],
@@ -125,9 +131,7 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
    "📚 操作説明を終了しました。\n元の投稿メニューが確認できないため、入口を作成しません。";
   // In an already-open Bot DM, returning to a menu must NEVER use a deep
   // link (?start=...) and cause Telegram to show /start again.
-  const keyboard=verified?Markup.inlineKeyboard([[
-   Markup.button.callback("↩ 投稿メニュー","dm:utility:home"),
-  ]]):undefined;
+  const keyboard=verified?helpReturnToPostingKeyboard():undefined;
   const view=await showWizardScreen(ctx.telegram,ctx.from.id,next.screenMessageId??undefined,message,keyboard);
   if(view.messageId!==next.screenMessageId)
    await pool.query("UPDATE gaybbs_help_sessions SET screen_message_id=$3 WHERE owner_user_id=$1 AND revision=$2",
