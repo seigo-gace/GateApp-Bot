@@ -69,7 +69,7 @@ def db(pg,sql):
     return [x.strip() for x in out.splitlines() if x.strip()]
 def live(group,chat,page,topic):
     code,out=run([sys.executable,"scripts/userbot_topic_audit_client.py",
-       "--chat-id",str(chat),"--page",str(page)],timeout=120)
+       "--chat-id",str(chat),"--topic-id",str(topic)],timeout=120)
     if code:raise RuntimeError("USERBOT_AUDIT_FAILED")
     r=[json.loads(x.split("=",1)[1]) for x in out.splitlines()
        if x.startswith("USERBOT_TOPIC_AUDIT=")]
