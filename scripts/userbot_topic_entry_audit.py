@@ -15,6 +15,14 @@ CATEGORY_CHAT = -1003770334893
 VIDEO_CHAT = -1002373696859
 AUDIT_CHATS = frozenset((AREA_CHAT, CATEGORY_CHAT, VIDEO_CHAT))
 # A negative page encodes an exact Telegram topic ID for stable single-topic audit.
+# Fixed IDs are actual DB-registered, pre-existing Telegram messages. Only roles
+# (not account IDs or private message content) are exposed for repair eligibility.
+LEGACY_PIN_IDS = {
+    (AREA_CHAT, 273): 1604,
+    (VIDEO_CHAT, 1724): 4659,
+    (VIDEO_CHAT, 4291): 4633,
+    (CATEGORY_CHAT, 18): 1146,
+}
 PAGE_SIZE = 8
 MAX_TOPICS = 200
 
@@ -171,7 +179,22 @@ async def audit(client, chat_id: int, page: int):
     for topic in selected:
         status = await pinned_post_entry(client, entity, topic.id, bot.id)
         history = await recent_topic_buttons(client, entity, topic.id, bot.id)
+        legacy = None
+        if page < 0 and (chat_id, topic.id) in LEGACY_PIN_IDS:
+            mid = LEGACY_PIN_IDS[(chat_id, topic.id)]
+            msg = await client.get_messages(entity, ids=mid)
+            own = await client.get_me()
+            legacy = {
+                "message_id": mid,
+                "message_exists": msg is not None and msg.id == mid,
+                "sender_role": (
+                    "USERBOT" if msg and msg.sender_id == own.id else
+                    "GAYBBS_BOT" if msg and msg.sender_id == bot.id else
+                    "OTHER" if msg else "NOT_FOUND"
+                ),
+            }
         rows.append({
+            "legacy_pin": legacy,
             "topic_id": topic.id,
             "title": topic.title[:120],
             "post_button": "PRESENT" if status["state"] == "PRESENT" or
