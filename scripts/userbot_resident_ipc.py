@@ -96,13 +96,16 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         paid_type = type(paid_media).__name__
         native_paid = paid_type == "MessageMediaPaidMedia"
         stars = getattr(paid_media, "stars_amount", None) if native_paid else None
+        extended = getattr(paid_media, "extended_media", None) if native_paid else None
+        preview = (all(type(item).__name__ == "MessageExtendedMediaPreview" for item in extended)
+                   if isinstance(extended, (list, tuple)) and extended else None)
         return {"request_id": request_id, "action": action, "status": "PASS",
                 "all_from_creator_bot": True,
                 "free_album_grouped": grouped,
                 "paid_media_native": native_paid,
                 "paid_stars": stars if type(stars) is int and 1 <= stars <= 25000 else None,
                 "target_topic_confirmed": all(topic_matches(m) for m in messages),
-                "paid_media_type": paid_type[:64]}
+                "paid_media_type": paid_type[:64], "preview_for_reader": preview}
     if action == "topic_entry_audit":
         from userbot_topic_entry_audit import audit
         return {"request_id": request_id,
