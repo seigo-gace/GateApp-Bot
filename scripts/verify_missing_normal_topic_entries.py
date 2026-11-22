@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify missing ordinary forum menu entrances before sending any Telegram post.
 
-Only verified non-announcement candidates; existing messages, published pins,
+Only verified non-announcement, non-video candidates; existing messages, published pins,
 unknown send outcomes, unverified DB routes and excluded topics stay untouched.
 No Telegram session access: only the already-authorized resident IPC client.
 """
@@ -14,7 +14,7 @@ import sys
 
 FORUMS = {
     "area": (-1003847210571, [(105, "国際交流")]),
-    "video": (-1002373696859, [(4672, "サブスク")]),
+    "video": (-1002373696859, []),
     "category": (-1003770334893, []),
 }
 EXCLUDE = re.compile("お知らせ|総合案内|雑談|コミュニティ.?リンク|エリアブロック|オンライン")
