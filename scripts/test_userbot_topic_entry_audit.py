@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from types import SimpleNamespace
 
-from userbot_topic_entry_audit import audit, posting_entry, button_type, recent_topic_buttons, AREA_CHAT, CATEGORY_CHAT, VIDEO_CHAT
+from userbot_topic_entry_audit import audit, posting_entry, button_type, recent_topic_buttons, opaque_button_transport, MIGRATION_MESSAGE_IDS, AREA_CHAT, CATEGORY_CHAT, VIDEO_CHAT
 
 
 def button(text, url):
@@ -52,6 +52,19 @@ class PostingEntryClassifierTests(unittest.TestCase):
             SimpleNamespace(text="🪪 プロフ投稿", url=None, data=b"gdm:m_abc")
         ]])
         self.assertEqual(button_type(msg, 101), "profile")
+
+    def test_startless_transport_readback_is_safe_and_exact(self):
+        self.assertEqual(len(MIGRATION_MESSAGE_IDS), 21)
+        callback = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="📝 投稿", url=None, data=b"gdm:p_private")
+        ]])
+        deep = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="📝 投稿", url="https://t.me/GayBBS_bot?start=p_secret", data=None)
+        ]])
+        self.assertEqual(opaque_button_transport(callback,101),"INTERNAL_CALLBACK")
+        self.assertEqual(opaque_button_transport(deep,101),"REPEATED_START_DEEPLINK")
+        self.assertEqual(opaque_button_transport(deep,102),"OTHER_AUTHOR")
+        self.assertEqual(opaque_button_transport(None,101),"NOT_FOUND")
 
     def test_creator_bot_deep_link_is_detected(self):
         msg = SimpleNamespace(sender_id=101, buttons=[[
