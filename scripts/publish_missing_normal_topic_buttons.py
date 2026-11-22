@@ -30,11 +30,12 @@ TARGETS = {
         8: [992, 991, 990, 621, 999, 998, 997, 996],
         9: [44, 105],
     },
-    "video": {0: [1723, 4672], 1: [1]},
-    "category": {0: [783, 1]},
+    "video": {0: [1723, 4672]},
+    "category": {0: [783]},
 }
 # Existing database pin records for area:273, video:1724,4291 and category:18
 # require in-place readback/reconciliation, never a new send.
+# Video/category Topic 1 requires a separately verified General-topic protocol.
 # Topic 1 in area was INCONCLUSIVE_HISTORY_LIMIT and cannot be sent without
 # exhaustive existing-history verification. Keep it outside this run.
 assert set(TARGETS["area"][8]) == {992, 991, 990, 621, 999, 998, 997, 996}
@@ -235,7 +236,8 @@ def main():
                 "callback_data":"gdm:p_"+token})
             mid=response.get("message_id")
             if code or response.get("state") not in ("PUBLISHED_PINNED","PUBLISHED_NOT_PINNED") or not isinstance(mid,int):
-                persist(record,{"group":group,"topic":topic,"state":response.get("state","UNCERTAIN")})
+                persist(record,{"group":group,"topic":topic,"state":response.get("state","UNCERTAIN"),
+                                "error_code":response.get("code")})
                 raise RuntimeError("TELEGRAM_SEND_NOT_VERIFIED")
             pinned=bool(response.get("pinned"))
             finalize(pg,CHATS[group],topic,digest,mid,pinned)
