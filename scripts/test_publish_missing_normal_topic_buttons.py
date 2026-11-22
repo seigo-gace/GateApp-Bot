@@ -9,10 +9,10 @@ from publish_missing_normal_topic_buttons import TARGETS,CHATS,BOT_NODE,assert_a
 class NormalPostingProtectionTests(unittest.TestCase):
  def test_exact_scope(self):
   self.assertEqual(len(CHATS),3)
-  self.assertEqual(sum(len(p) for group in TARGETS.values() for p in group.values()),23)
+  self.assertEqual(sum(len(p) for group in TARGETS.values() for p in group.values()),19)
   for group, pages in TARGETS.items():
    for ids in pages.values():
-    self.assertFalse({48,1613,210,1695,4640,1000}&set(ids))
+    self.assertFalse({48,1613,210,1695,4640,1000,273,1724,4291,18}&set(ids))
  def test_protect_published(self):
   with self.assertRaisesRegex(RuntimeError,'EXISTING_BUTTON'):
    assert_absent({'topic_id':995,'title':'東海ブロック','post_button':'PRESENT',
