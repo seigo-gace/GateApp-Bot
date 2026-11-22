@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify resident Userbot topic audit without Telegram credentials
         run: python3 -m unittest discover -s scripts -p 'test_userbot_topic_entry_audit.py' -v
+      - name: Verify Userbot exact-topic ID audit contract
+        run: python3 -m unittest discover -s scripts -p 'test_resident_exact_topic_audit.py' -v
       - name: Verify audit activation script offline
         run: python3 -m unittest discover -s scripts -p 'test_activate_resident_topic_audit.py' -v
       - name: Verify creator topic button repair without Telegram access
