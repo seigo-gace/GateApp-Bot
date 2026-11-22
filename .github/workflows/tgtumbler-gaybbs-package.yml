@@ -28,6 +28,8 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_publish_missing_normal_topic_buttons.py' -v
       - name: Verify existing pinned message repair without new sends
         run: python3 -m unittest discover -s scripts -p 'test_repair_registered_normal_topic_buttons.py' -v
+      - name: Verify General forum topic 1 recovery protocol
+        run: python3 -m unittest discover -s scripts -p 'test_recover_denied_general_topic_button.py' -v
       - name: Verify missing normal topic entry preflight and fail-closed publication
         run: python3 -m unittest discover -s scripts -p 'test_publish_missing_normal_topic_entries.py' -v
       - name: Build isolated GayBBS image (no credentials)
