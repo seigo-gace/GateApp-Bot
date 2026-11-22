@@ -47,6 +47,12 @@ class PostingEntryClassifierTests(unittest.TestCase):
             ]])
             self.assertEqual(button_type(msg, 101), kind)
 
+    def test_creator_bot_deep_link_is_detected(self):
+        msg = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="クリエーター投稿", url="https://t.me/CreateVdobot", data=None)
+        ]])
+        self.assertEqual(button_type(msg, 101), "creator")
+
     def test_video_chat_is_allowed(self):
         class Client:
             pass
