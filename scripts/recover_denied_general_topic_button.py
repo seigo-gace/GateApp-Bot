@@ -24,7 +24,7 @@ def preflight(group,pg,bot):
     chat=TARGETS[group]
     if norm.run(["systemctl","--user","is-active","gace-userbot-verify.service"])[1].strip()!="active":
         raise RuntimeError("USERBOT_INACTIVE")
-    row=norm.live_rows(group,0 if group=="category" else 1).get(1)
+    row=norm.resolve_topic(group,0 if group=="category" else 1,1)
     norm.assert_absent(row,1)
     a=norm.db_query(pg,f"""SELECT state,COALESCE(message_id,0),pinned FROM topic_dm_entry_pins
         WHERE chat_id={chat} AND message_thread_id=1;""")
@@ -60,7 +60,7 @@ def main():
         json.dump({"state":"ATTEMPTING","group":x.group},f)
         f.flush();os.fsync(f.fileno())
     # Re-check immediately before making any change.
-    row=norm.live_rows(x.group,0 if x.group=="category" else 1).get(1)
+    row=norm.resolve_topic(x.group,0 if x.group=="category" else 1,1)
     norm.assert_absent(row,1)
     chat=TARGETS[x.group]
     if x.group=="video":
