@@ -4,8 +4,8 @@ sys.path.insert(0,str(pathlib.Path(__file__).parent))
 import recover_denied_general_topic_button as g
 import publish_missing_normal_topic_buttons as n
 class GeneralForumRecoveryTests(unittest.TestCase):
- def test_exact_chats_no_area_or_online(self):
-  self.assertEqual(set(g.TARGETS),{"video","category"})
+ def test_all_announcement_targets_disabled(self):
+  self.assertEqual(g.TARGETS,{})
  def test_general_sender_omits_thread_id(self):
   self.assertIn("task.thread_id===1?{}:",n.BOT_NODE)
   self.assertIn("(task.thread_id!==1&&",n.BOT_NODE)
