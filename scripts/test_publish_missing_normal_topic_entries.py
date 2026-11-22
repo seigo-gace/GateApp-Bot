@@ -18,8 +18,8 @@ class NormalButtonSafetyTests(unittest.TestCase):
      "pin_state":"ABSENT_FROM_PINS","history_inspected":7},"国際交流"),
    "EXISTING_BUTTON_PROTECTED")
  def test_history_limit_protected(self):
-  self.assertEqual(classify({"title":"運営からのお知らせ","post_button":"INCONCLUSIVE_HISTORY_LIMIT",
-     "pin_state":"ABSENT_FROM_PINS","history_inspected":150},"お知らせ"),
+  self.assertEqual(classify({"title":"国際交流","post_button":"INCONCLUSIVE_HISTORY_LIMIT",
+     "pin_state":"ABSENT_FROM_PINS","history_inspected":150},"国際交流"),
    "HISTORY_INCONCLUSIVE")
  def test_excluded_topic_never_allowed(self):
   self.assertEqual(classify({"title":"総合案内","post_button":"ABSENT",
