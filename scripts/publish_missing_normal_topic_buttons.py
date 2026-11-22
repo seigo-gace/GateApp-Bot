@@ -141,16 +141,21 @@ def live_rows(group,page):
     return {int(x["topic_id"]):x for x in data[0]["rows"]}
 
 def resolve_topic(group, expected_page, topic):
-    """Search by Telegram topic ID, not the moving forum-list page position."""
-    max_pages = 10 if group == "area" else 2
-    if expected_page < 0 or expected_page >= max_pages:
-        raise RuntimeError("TOPIC_EXPECTED_PAGE_INVALID")
-    pages = sorted(range(max_pages), key=lambda p: (abs(p-expected_page),p))
-    for page in pages:
-        rows = live_rows(group,page)
-        if topic in rows:
-            return rows[topic]
-    raise RuntimeError("TOPIC_ID_NOT_FOUND_IN_CURRENT_FORUM")
+    """One exact Telegram topic by stable ID via resident owner-only IPC."""
+    if group not in CHATS or type(topic) is not int or topic <= 0:
+        raise RuntimeError("EXACT_TOPIC_REQUEST_INVALID")
+    code,out=run([sys.executable,"scripts/userbot_topic_audit_client.py",
+                  "--chat-id",str(CHATS[group]),"--topic-id",str(topic)],timeout=120)
+    if code:
+        raise RuntimeError("EXACT_TOPIC_USERBOT_AUDIT_FAILED")
+    results=[json.loads(x.split("=",1)[1]) for x in out.splitlines()
+             if x.startswith("USERBOT_TOPIC_AUDIT=")]
+    if len(results)!=1 or results[0].get("chat")!=group or results[0].get("page")!=-topic:
+        raise RuntimeError("EXACT_TOPIC_RESULT_INVALID")
+    found=[x for x in results[0].get("rows",[]) if x.get("topic_id")==topic]
+    if len(found)!=1:
+        raise RuntimeError("EXACT_TOPIC_ID_MISMATCH")
+    return found[0]
 
 
 def assert_absent(row,topic):
