@@ -192,6 +192,7 @@ def main():
     p=argparse.ArgumentParser()
     p.add_argument("--mode",choices=("dry-run","apply"),required=True)
     p.add_argument("--group",choices=tuple(CHATS),required=True)
+    p.add_argument("--page",type=int,default=None)
     a=p.parse_args()
     if Path.cwd().resolve()!=ROOT.resolve():raise RuntimeError("PROJECT_ROOT_MISMATCH")
     code,s=run(["systemctl","--user","is-active","gace-userbot-verify.service"])
@@ -201,7 +202,9 @@ def main():
     code,r=bot_call(bot,{"action":"identity"})
     if code or r.get("state")!="IDENTITY_VERIFIED":raise RuntimeError("BOT_IDENTITY_FAILED")
     group=a.group
-    pages=TARGETS[group]
+    pages={page:ids for page,ids in TARGETS[group].items()
+           if a.page is None or page==a.page}
+    if not pages:raise RuntimeError("TARGET_PAGE_NOT_IN_SCOPE")
     scanned={}
     for page in pages:
         scanned[page]=live_rows(group,page)
