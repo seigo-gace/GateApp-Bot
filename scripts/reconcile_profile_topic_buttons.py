@@ -98,7 +98,7 @@ def bot_container():
 
 def sql(pg,query):
     code,out=run(["docker","exec","-i",pg,"sh","-c",
-      'exec psql -X -U "$POSTGRES_USER" -d gaybbs -At -F "|" -v ON_ERROR_STOP=1 -f -'],
+      'exec psql -X -q -U "$POSTGRES_USER" -d gaybbs -At -F "|" -v ON_ERROR_STOP=1 -f -'],
       input_data=query,timeout=35)
     if code:raise RuntimeError("PROFILE_DB_QUERY_FAILED")
     return [x for x in out.splitlines() if x.strip()]
