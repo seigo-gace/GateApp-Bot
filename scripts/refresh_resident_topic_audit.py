@@ -64,7 +64,7 @@ def main():
         if code:raise RuntimeError("AUDIT_NEW_MODULE_COMPILE_FAILED")
         print("AUDIT_HISTORY_MODULE_DRY_RUN=PASS")
         if opts.mode=="dry-run":return
-        backup=ROOT.parent/".userbot-topic-audit-history-backup-v4"
+        backup=ROOT.parent/".userbot-topic-audit-legacy-author-backup-v5"
         backup.mkdir(mode=0o700,exist_ok=True)
         if any(backup.iterdir()):
             raise RuntimeError("AUDIT_HISTORY_BACKUP_EXISTS")
