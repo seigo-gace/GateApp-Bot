@@ -24,6 +24,8 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_publish_missing_creator_topic_buttons.py' -v
       - name: Verify profile-only existing post edit contracts
         run: python3 -m unittest discover -s scripts -p 'test_reconcile_profile_topic_buttons.py' -v
+      - name: Verify missing normal topic entry preflight and fail-closed publication
+        run: python3 -m unittest discover -s scripts -p 'test_publish_missing_normal_topic_entries.py' -v
       - name: Build isolated GayBBS image (no credentials)
         run: docker build --file artifacts/bot/deploy/Dockerfile.gaybbs --tag gaybbs:ci --pull=false .
       - name: Check bundled program without Telegram, DB, or network
