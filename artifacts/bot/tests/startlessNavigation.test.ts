@@ -50,3 +50,26 @@ test("group posting dispatcher builds original label and one callback, not the s
  assert.equal(rows[0][0].url,undefined);
  assert.equal(rows[1][0].url,"https://t.me/CreateVdobot");
 });
+
+test("never publish an unsupported GayBBS /start deep link in routine public keyboards",()=>{
+ for(const url of [
+  "https://t.me/GayBBS_bot?start=unknown",
+  "https://telegram.me/gaybbs_bot?start=creator",
+  "https://t.me/GayBBS_bot?start=p_invalid",
+  "https://t.me/GayBBS_bot?start=search&foo=1",
+  "https://t.me/GayBBS_bot?start=search#fragment",
+ ]){
+  assert.throws(()=>publicNavigationButton({text:"投稿はこちら",url}),
+   /STARTLESS_REPEATED_START_LINK_FORBIDDEN/);
+ }
+ for(const url of [
+  "https://t.me/GayBBS_bot?start=gate_valid",
+  "https://t.me/GayBBS_bot?start=online_valid",
+ ]){
+  assert.equal(publicNavigationButton({text:"初回だけ",url}).url,url);
+ }
+ assert.throws(()=>publicNavigationButton({
+  text:"競合",url:"https://t.me/GayBBS_bot?start=search",
+  callback_data:"old",
+ }),/STARTLESS_BUTTON_TRANSPORT_CONFLICT/);
+});
