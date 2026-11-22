@@ -6,7 +6,8 @@ import {Markup,type Telegraf,type Telegram} from "telegraf";
 import {pool} from "../db/index.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
 import {APPROVED_HELP_ROWS} from "../services/menuPanelRenderer.js";
-import {verifiedPostingMenuReturnUrl} from "../services/menuOriginRepository.js";
+import {currentMenuOrigin} from "../services/menuOriginRepository.js";
+import {currentTopicDmEntry} from "../services/topicDmEntry.js";
 import {startRoomEditor,startAnnouncementEditor,startLinkEditor} from "./postingHandlers.js";
 
 import {startSearchEditor} from "./searchHandlers.js";
@@ -31,6 +32,12 @@ export function helpHomeKeyboard(rev:number){
  return Markup.inlineKeyboard(APPROVED_HELP_ROWS.map(row=>row.map(label=>
   Markup.button.callback(label,label==="戻る"?`help:back:${rev}`:
     `help:topic:${rev}:${SECTION_KEYS.find(key=>sectionLabels[key]===label)}`))));
+}
+/** Returning within an existing DM must be a callback, never ?start. */
+export function helpReturnToPostingKeyboard(){
+ return Markup.inlineKeyboard([[
+  Markup.button.callback("↩ 投稿メニュー","dm:utility:home"),
+ ]]);
 }
 export function helpSectionKeyboard(rev:number,section:Topic){
  return Markup.inlineKeyboard([
@@ -116,11 +123,15 @@ export function registerOperationHelpHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   const next=await advance(ctx.from.id,rev,"home");
   if(op==="home"||s.section!=="home"){await show(ctx.telegram,ctx.from.id,next);return;}
-  const url=await verifiedPostingMenuReturnUrl(ctx.from.id);
-  const message=url?
+  const origin=await currentMenuOrigin(ctx.from.id);
+  const topic=origin?null:await currentTopicDmEntry(ctx.from.id);
+  const verified=Boolean(origin||topic);
+  const message=verified?
    "📚 操作説明を終了しました。\n元の投稿メニューへ戻れます。":
-   "📚 操作説明を終了しました。\n元の投稿メニューが確認できないため、リンクを作成しません。";
-  const keyboard=url?Markup.inlineKeyboard([[Markup.button.url("↩ 投稿メニュー",url)]]):undefined;
+   "📚 操作説明を終了しました。\n元の投稿メニューが確認できないため、入口を作成しません。";
+  // In an already-open Bot DM, returning to a menu must NEVER use a deep
+  // link (?start=...) and cause Telegram to show /start again.
+  const keyboard=verified?helpReturnToPostingKeyboard():undefined;
   const view=await showWizardScreen(ctx.telegram,ctx.from.id,next.screenMessageId??undefined,message,keyboard);
   if(view.messageId!==next.screenMessageId)
    await pool.query("UPDATE gaybbs_help_sessions SET screen_message_id=$3 WHERE owner_user_id=$1 AND revision=$2",
