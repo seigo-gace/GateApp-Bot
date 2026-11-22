@@ -140,6 +140,19 @@ def live_rows(group,page):
         raise RuntimeError("USERBOT_RESULT_INVALID")
     return {int(x["topic_id"]):x for x in data[0]["rows"]}
 
+def resolve_topic(group, expected_page, topic):
+    """Search by Telegram topic ID, not the moving forum-list page position."""
+    max_pages = 10 if group == "area" else 2
+    if expected_page < 0 or expected_page >= max_pages:
+        raise RuntimeError("TOPIC_EXPECTED_PAGE_INVALID")
+    pages = sorted(range(max_pages), key=lambda p: (abs(p-expected_page),p))
+    for page in pages:
+        rows = live_rows(group,page)
+        if topic in rows:
+            return rows[topic]
+    raise RuntimeError("TOPIC_ID_NOT_FOUND_IN_CURRENT_FORUM")
+
+
 def assert_absent(row,topic):
     if not row or int(row.get("topic_id",-1))!=topic:
         raise RuntimeError("TOPIC_ID_NOT_VERIFIED")
@@ -208,11 +221,9 @@ def main():
     pages={page:ids for page,ids in TARGETS[group].items()
            if a.page is None or page==a.page}
     if not pages:raise RuntimeError("TARGET_PAGE_NOT_IN_SCOPE")
-    scanned={}
     for page in pages:
-        scanned[page]=live_rows(group,page)
         for topic in pages[page]:
-            assert_absent(scanned[page].get(topic),topic)
+            assert_absent(resolve_topic(group,page,topic),topic)
             check_db(pg,CHATS[group],topic)
             if (LEDGER/group/(str(topic)+".json")).exists():
                 raise RuntimeError("TOPIC_PREVIOUS_ATTEMPT_PROTECTED")
@@ -227,7 +238,7 @@ def main():
                 json.dump({"state":"ATTEMPTING","group":group,"topic":topic},f)
                 f.flush();os.fsync(f.fileno())
             # Never publish after discovery of an existing or ambiguous message.
-            row=live_rows(group,page).get(topic)
+            row=resolve_topic(group,page,topic)
             title=assert_absent(row,topic)
             check_db(pg,CHATS[group],topic)
             token=base64.urlsafe_b64encode(secrets.token_bytes(24)).decode().rstrip("=")
