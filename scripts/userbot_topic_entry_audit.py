@@ -23,6 +23,60 @@ LEGACY_PIN_IDS = {
     (VIDEO_CHAT, 4291): 4633,
     (CATEGORY_CHAT, 18): 1146,
 }
+# Exact historical message IDs flagged by startless migration: read only.
+# Never expose URL token, callback payload or private content to the result.
+MIGRATION_MESSAGE_IDS = {
+    (AREA_CHAT, 102): 1494, (AREA_CHAT, 104): 1496,
+    (AREA_CHAT, 116): 1498, (AREA_CHAT, 1000): 1500,
+    (AREA_CHAT, 81): 1502, (AREA_CHAT, 92): 1504,
+    (AREA_CHAT, 103): 1506, (AREA_CHAT, 50): 1526,
+    (AREA_CHAT, 51): 1529, (AREA_CHAT, 52): 1532,
+    (AREA_CHAT, 273): 1604, (AREA_CHAT, 1379): 1656,
+    (CATEGORY_CHAT, 4): 1123, (CATEGORY_CHAT, 18): 1146,
+    (CATEGORY_CHAT, 783): 1171,
+    (VIDEO_CHAT, 1695): 4629, (VIDEO_CHAT, 4291): 4633,
+    (VIDEO_CHAT, 1724): 4659, (VIDEO_CHAT, 1723): 4695,
+    (VIDEO_CHAT, 4672): 4697, (VIDEO_CHAT, 1): 4703,
+}
+
+
+def opaque_button_transport(message, bot_id: int) -> str:
+    """Summarize button type without exposing URL, token or content."""
+    if message is None:
+        return "NOT_FOUND"
+    if getattr(message, "sender_id", None) != bot_id:
+        return "OTHER_AUTHOR"
+    saw_button = False
+    saw_callback = False
+    saw_start = False
+    saw_creator = False
+    for row in getattr(message, "buttons", None) or ():
+        for button in row:
+            saw_button = True
+            data = getattr(button, "data", None)
+            if isinstance(data, bytes) and data.startswith(b"gdm:"):
+                saw_callback = True
+            url = str(getattr(button, "url", "") or "")
+            parsed = urlsplit(url)
+            if (parsed.scheme == "https" and
+                (parsed.hostname or "").lower() in {"t.me", "telegram.me"} and
+                parsed.path.lower().strip("/") == "gaybbs_bot" and
+                len(parse_qs(parsed.query).get("start", [])) == 1):
+                saw_start = True
+            if (parsed.scheme == "https" and
+                (parsed.hostname or "").lower() in {"t.me", "telegram.me"} and
+                parsed.path.lower().strip("/") == "createvdobot" and
+                not parse_qs(parsed.query).get("start")):
+                saw_creator = True
+    if saw_start:
+        return "REPEATED_START_DEEPLINK"
+    if saw_callback:
+        return "INTERNAL_CALLBACK"
+    if saw_creator:
+        return "DIRECT_CREATOR_BOT"
+    return "OTHER_BUTTON" if saw_button else "NO_BUTTON"
+
+
 PAGE_SIZE = 8
 MAX_TOPICS = 200
 
@@ -193,7 +247,16 @@ async def audit(client, chat_id: int, page: int):
                     "OTHER" if msg else "NOT_FOUND"
                 ),
             }
+        migration = None
+        if page < 0 and (chat_id, topic.id) in MIGRATION_MESSAGE_IDS:
+            current_id = MIGRATION_MESSAGE_IDS[(chat_id, topic.id)]
+            current = await client.get_messages(entity, ids=current_id)
+            migration = {
+                "message_id": current_id,
+                "transport": opaque_button_transport(current, bot.id),
+            }
         rows.append({
+            "migration": migration,
             "legacy_pin": legacy,
             "topic_id": topic.id,
             "title": topic.title[:120],
