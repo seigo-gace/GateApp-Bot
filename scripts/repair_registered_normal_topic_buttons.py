@@ -41,7 +41,7 @@ function api(method,data){
 }
 (async()=>{
  const me=await api('getMe',{});
- if(!me.ok)throw Error('BOT_AUTH_UNVERIFIED');
+ if(!me.ok||String(me.value?.username||'').toLowerCase()!=='gaybbs_bot'||me.value.id===8086265383)throw Error('BOT_AUTH_UNVERIFIED');
  if(task.action==='identity'){console.log(JSON.stringify({state:'IDENTITY_PASS'}));return;}
  if(task.action!=='edit'||!task.callback_data.startsWith('gdm:p_'))
   throw Error('ACTION_DENIED');
