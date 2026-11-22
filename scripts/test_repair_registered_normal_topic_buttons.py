@@ -4,9 +4,9 @@ sys.path.insert(0,str(pathlib.Path(__file__).parent))
 from repair_registered_normal_topic_buttons import TARGETS,NODE
 
 class RegisteredPinRepairTest(unittest.TestCase):
- def test_exact_four_existing_messages_only(self):
+ def test_exact_two_allowed_existing_messages_only(self):
   self.assertEqual({k:x[4] for k,x in TARGETS.items()},
-    {'area273':1604,'video1724':4659,'video4291':4633,'category18':1146})
+    {'area273':1604,'category18':1146})
  def test_no_new_public_messages(self):
   self.assertNotIn("sendMessage",NODE)
   self.assertIn("editMessageReplyMarkup",NODE)
