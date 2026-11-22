@@ -499,6 +499,49 @@ class NativePaidVideoReadbackTests(unittest.TestCase):
         self.assertEqual(c.calls,[("identity","CreateVdobot"),
                                   ("read",-1002373696859,(111,112,113))])
 
+    def test_stars_purchase_form_is_read_only_and_requires_matching_native_paid_media(self):
+        from telethon import functions, types
+        reply=SimpleNamespace(reply_to_top_id=4650,reply_to_msg_id=None)
+        media=type("MessageMediaPaidMedia",(),{"stars_amount":10,
+             "extended_media":[type("MessageExtendedMediaPreview",(),{})()]})()
+        class Buyer:
+            def __init__(self):
+                self.calls=[]
+            async def is_user_authorized(self):
+                return True
+            async def get_entity(self,username):
+                return SimpleNamespace(bot=True,id=700)
+            async def get_messages(self,chat,ids):
+                return [
+                    SimpleNamespace(id=ids[0],sender_id=700,grouped_id=900,reply_to=reply,media=object()),
+                    SimpleNamespace(id=ids[1],sender_id=700,grouped_id=900,reply_to=reply,media=object()),
+                    SimpleNamespace(id=ids[2],sender_id=700,grouped_id=None,reply_to=reply,media=media)]
+            async def get_input_entity(self,chat):
+                assert chat==-1002373696859
+                return SimpleNamespace()
+            async def __call__(self,request):
+                assert isinstance(request,functions.payments.GetPaymentFormRequest)
+                assert isinstance(request.invoice,types.InputInvoiceMessage)
+                assert request.invoice.msg_id==113
+                self.calls.append("getPaymentForm")
+                return type("PaymentFormStars",(),{"invoice":SimpleNamespace(currency="XTR",
+                    prices=[SimpleNamespace(amount=10)])})()
+        buyer=Buyer()
+        result=asyncio.run(process_request(buyer,{"request_id":"quote-1",
+            "action":"video_sale_payment_form","chat_id":-1002373696859,
+            "thread_id":4650,"message_ids":[111,112,113]}))
+        self.assertTrue(result["stars_purchase_form"])
+        self.assertTrue(result["currency_xtr"])
+        self.assertTrue(result["quote_matches_media"])
+        self.assertEqual(buyer.calls,["getPaymentForm"])
+        for wrong in ({"chat_id":-100999},{"message_ids":[111,112,112]},
+                      {"message_ids":[111,112,True]}):
+            with self.assertRaises(ValueError):
+                asyncio.run(process_request(buyer,{"request_id":"quote-wrong",
+                    "action":"video_sale_payment_form","chat_id":-1002373696859,
+                    "thread_id":4650,"message_ids":[111,112,113],**wrong}))
+        self.assertEqual(buyer.calls,["getPaymentForm"])
+
     def test_rejects_arbitrary_chat_or_unbounded_messages_before_read(self):
         class GuardClient:
             def __init__(self):
