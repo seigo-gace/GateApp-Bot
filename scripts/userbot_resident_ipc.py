@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke", "topic_entry_audit", "video_sale_readback"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke", "topic_entry_audit", "video_sale_readback", "video_sale_payment_form"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -44,7 +44,7 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                 {"request_id", "action", "chat_id", "page"}
                 if action == "topic_entry_audit" else
                 {"request_id", "action", "chat_id", "thread_id", "message_ids"}
-                if action == "video_sale_readback" else
+                if action in ("video_sale_readback","video_sale_payment_form") else
                 {"request_id", "action", "code"}
                 if action in ("link_inline_query_smoke","link_send_saved_smoke") else {"request_id", "action"})
     if set(request) != expected:
@@ -59,6 +59,29 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "video_sale_payment_form":
+        # Read-only payment offer. Never submit payments.sendStarsForm.
+        from telethon import functions, types
+        verification = await process_request(client, {**request, "action": "video_sale_readback"})
+        if (verification.get("status") != "PASS" or
+                verification.get("paid_media_native") is not True or
+                verification.get("preview_for_reader") is not True):
+            raise RuntimeError("VIDEO_SALE_LOCK_NOT_VERIFIED")
+        chat_id = request["chat_id"]
+        paid_message_id = request["message_ids"][2]
+        peer = await client.get_input_entity(chat_id)
+        form = await client(functions.payments.GetPaymentFormRequest(
+            invoice=types.InputInvoiceMessage(peer=peer,msg_id=paid_message_id)))
+        invoice = getattr(form, "invoice", None)
+        prices = getattr(invoice, "prices", None)
+        charge = (sum(p.amount for p in prices) if isinstance(prices, list) and
+                  all(type(p.amount) is int for p in prices) else None)
+        return {"request_id":request_id,"action":action,"status":"PASS",
+                "form_type":type(form).__name__[:64],
+                "stars_purchase_form":type(form).__name__=="PaymentFormStars",
+                "currency_xtr":getattr(invoice,"currency",None)=="XTR",
+                "quote_matches_media":charge == verification.get("paid_stars"),
+                "not_purchased":True}
     if action == "video_sale_readback":
         # One read-only video-sale product in the already joined forum only.
         chat_id, thread_id, ids = (
