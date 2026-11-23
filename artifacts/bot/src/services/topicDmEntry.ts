@@ -17,6 +17,10 @@ const ALLOWED_CHATS = new Set<number>([
   BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
 const tokenPattern=/^p_([A-Za-z0-9_-]{32})$/;
+export function topicEntryDirectDmUrl(token:string):string{
+ if(!/^[A-Za-z0-9_-]{32}$/.test(token))throw Error("TOPIC_ENTRY_TOKEN_INVALID");
+ return "https://t.me/GayBBS_bot?start=p_"+token;
+}
 /** Master new exact exception: video-chat Topic 1605 also gets a pinned posting-menu doorway.\n * Existing paid-video (1695), sticker (4640), profile (1613) remain permitted.
  * All three forums exclude announcement (General Topic 1).
  * No area/category topic or existing specialist UI is otherwise changed.
@@ -199,7 +203,7 @@ export async function recoverExistingTopicDmEntry(
   throw Error("TOPIC_ENTRY_RECONCILE_NO_KNOWN_MESSAGE");
  const messageId=Number(row.message_id);
  const token=newMenuToken(),hash=tokenHash(token);
- const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ const buttonUrl=topicEntryDirectDmUrl(token);
  // Telegram's successful edit proves this exact message exists and is
  // writable by the Bot. Retain it rather than posting a duplicate.
  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
@@ -238,7 +242,7 @@ export async function refreshPublishedTopicDmEntry(
  const messageId=Number(old.rows[0].message_id);
  const oldHash=String(old.rows[0].token_hash);
  const token=newMenuToken(),hash=tokenHash(token);
- const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ const buttonUrl=topicEntryDirectDmUrl(token);
  // Only update the existing message. Telegram's edit may fail or be ambiguous:
  // keep the prior pin and avoid a duplicate send in either case.
  try{
@@ -326,7 +330,7 @@ export async function publishTopicDmEntry(
  if(claimed.rows.length!==1)throw Error("TOPIC_ENTRY_NEEDS_RECONCILE");
  let sent=false;
  try {
-  const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+  const buttonUrl=topicEntryDirectDmUrl(token);
   const message=await telegram.sendMessage(chatId,TOPIC_ENTRY_TEXT,{
    message_thread_id:threadId,
    reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl} as any]]},
