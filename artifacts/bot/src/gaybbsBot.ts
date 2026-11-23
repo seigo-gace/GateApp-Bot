@@ -2,7 +2,7 @@
 import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import { Markup, Telegraf } from "telegraf";
-import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
+import { registerProfileHandlers } from "./bot/profileHandlers.js";
 import {registerStartlessNavigationHandlers} from "./bot/startlessNavigationHandlers.js";
 import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/profileCompactHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
@@ -200,6 +200,20 @@ async function main():Promise<void>{
  registerCompactRecruitmentHandlers(bot);
  registerPostingMenuUtilityHandlers(bot);
  registerCompactProfileHandlers(bot);
+ // /profile is not a navigation command for users, but old explicit links
+ // must still reach today's compact screen rather than the retired wizard.
+ bot.command("profile",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await startCompactProfileEditor(ctx);
+ });
+ // Retired profile keyboards must not recreate the old seven-position wizard.
+ // The real current compact profile editor reuses the exact tapped DM message.
+ // Preserve existing draft/profile and already published messages.
+ bot.action(/^pf:/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery("現在のプロフィール画面を開きます。");
+  await startCompactProfileEditor(ctx);
+ });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
