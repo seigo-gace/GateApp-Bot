@@ -7,8 +7,8 @@ test("every help topic describes purpose, effects and real operations before ope
  const topics=["profile","room","announcement","link","search"] as const;
  for(const topic of topics){
   const text=sectionText[topic];
-  assert.match(text,/【どんな機能？】/);
-  assert.match(text,/【具体的な操作】/);
+  assert.match(text,/<b>/);
+  assert.match(text,/➔/);
   for(const step of ["①","②","③","④"])assert.ok(text.includes(step),topic+" "+step);
   const buttons=helpSectionKeyboard(9,topic).reply_markup.inline_keyboard;
   assert.equal(buttons[0]?.[0]?.callback_data,"help:open:9:"+topic);
@@ -50,4 +50,30 @@ test("room and announcement descriptions follow current stage and publication ch
  assert.match(sectionText.search,/5件ずつ/);
  assert.match(sectionText.search,/#Like/);
  assert.match(sectionText.search,/#Love/);
+});
+
+test("all five instructions are rich, stepwise and readable without developer terminology",()=>{
+ const topics=["profile","room","announcement","link","search"] as const;
+ for(const topic of topics){
+  const manual=sectionText[topic];
+  assert.ok(manual.length>500,topic+" must explain full operation");
+  assert.match(manual,/➔/);
+  assert.match(manual,/<b>① /);
+  assert.match(manual,/<b>② /);
+  assert.match(manual,/<b>③ /);
+  assert.match(manual,/<b>④ /);
+  assert.ok((manual.match(/➔/g)||[]).length>=10,topic+" needs actionable steps");
+  assert.doesNotMatch(manual,/callback|revision|handler|Telegraf|API|SQL|DB|ウィザード/);
+  const opened=(manual.match(/<b>/g)||[]).length;
+  assert.equal(opened,(manual.match(/<\/b>/g)||[]).length,topic+" bold tags");
+  assert.equal((manual.match(/<code>/g)||[]).length,(manual.match(/<\/code>/g)||[]).length,topic+" code tags");
+  assert.ok(manual.length<4096,topic+" exceeds Telegram message limit");
+ }
+ assert.match(sectionText.profile,/差替 1/);
+ assert.match(sectionText.room,/自由参加/);
+ assert.match(sectionText.room,/承認制/);
+ assert.match(sectionText.announcement,/下書き保存/);
+ assert.match(sectionText.link,/［▶］/);
+ assert.match(sectionText.link,/［▼］/);
+ assert.match(sectionText.search,/条件クリア/);
 });
