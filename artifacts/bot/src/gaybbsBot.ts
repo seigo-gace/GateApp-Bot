@@ -2,7 +2,7 @@
 import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import { Markup, Telegraf } from "telegraf";
-import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
+import { registerProfileHandlers } from "./bot/profileHandlers.js";
 import {registerStartlessNavigationHandlers} from "./bot/startlessNavigationHandlers.js";
 import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/profileCompactHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
