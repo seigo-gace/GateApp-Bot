@@ -4,7 +4,7 @@
  */
 import "dotenv/config";
 import https from "node:https";
-import {Telegraf} from "telegraf";
+import {Telegraf, type Telegram} from "telegraf";
 import {readConfiguredBotToken} from "../src/config/botToken.js";
 import {pool,closePool} from "../src/db/index.js";
 import {BOARD_GROUP_CHAT_IDS} from "../src/services/topicRouting.js";
@@ -70,7 +70,7 @@ async function findTargets():Promise<Target[]>{
  * Preserve the old Telegram message; never delete, repin, or reuse its stale ID.
  */
 async function replaceStaleGayPin(
- telegram:Telegraf["telegram"], t:Target, confirmedMissingMessageId:number,
+ telegram:Telegram, t:Target, confirmedMissingMessageId:number,
 ):Promise<{messageId:number;updatedExisting:boolean}>{
  if(t.chatId!==BOARD_GROUP_CHAT_IDS.gay_board||t.threadId!==4)
   throw Error("STALE_RECOVERY_TARGET_FORBIDDEN");
