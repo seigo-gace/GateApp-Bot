@@ -29,7 +29,7 @@ async function verifiedCandidates(chatId:number):Promise<Candidate[]>{
    chat_id,message_thread_id,title,verified_by
   FROM posting_topics
   WHERE chat_id=$1 AND enabled=TRUE AND verified_at IS NOT NULL
-    AND title ~* 'ビデオ|video|VC|チャット|chat'
+
   ORDER BY chat_id,message_thread_id,verified_at DESC
  `,[chatId]);
  return q.rows;
