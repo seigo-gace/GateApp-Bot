@@ -14,4 +14,5 @@ await esbuild.build({...opts,entryPoints:["scripts/recolorPublishedPostingMenus.
 await esbuild.build({...opts,entryPoints:["scripts/backfillExistingProfileKeyboards.ts"],outfile:"dist/backfillExistingProfileKeyboards.mjs"});
 await esbuild.build({...opts,entryPoints:["scripts/refreshStartlessExistingPosts.ts"],outfile:"dist/refreshStartlessExistingPosts.mjs"});
 await esbuild.build({...opts,entryPoints:["scripts/repairTwoVideoChatPinnedEntries.ts"],outfile:"dist/repairTwoVideoChatPinnedEntries.mjs"});
+await esbuild.build({...opts,entryPoints:["scripts/repairTwoVideoChatPinnedEntries.ts"],outfile:"dist/repairTwoVideoChatPinnedEntries.mjs"});
 console.log("GayBBS standalone Bot build complete.");
