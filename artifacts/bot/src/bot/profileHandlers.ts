@@ -8,6 +8,7 @@ import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,likePageIndex,toggleLike,v
 import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
 import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
+import {startCompactProfileEditor} from "./profileCompactHandlers.js";
 import {PROFILE_ALBUM_LIMIT,appendProfileMedia,mediaStatus,numberProfileMedia,replaceProfileMedia,deleteProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {
   PROFILE_POSITIONS, type ProfilePosition, parseProfileBasic, renderProfileBasicPreview,
@@ -317,7 +318,7 @@ export function registerProfileHandlers(
   repo: ProfileRepo = profileRepo,
   activeDmOwner:typeof currentDmTextOwner=currentDmTextOwner,
 ): void {
-  bot.command("profile", async ctx => startProfileEditor(ctx,repo));
+  bot.command("profile", async ctx => startCompactProfileEditor(ctx));
 
   /** Editing one Bot-owned screen, never a synthetic posting-menu URL. */
   const returnToPostingMenu=async(ctx:Context):Promise<void>=>{
