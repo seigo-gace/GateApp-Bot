@@ -41,14 +41,13 @@ async function findTargets():Promise<Target[]>{
   ["gay_board",BOARD_GROUP_CHAT_IDS.gay_board],
  ] as const){
   const candidates=await verifiedCandidates(chatId);
-  const selected=board==="video_chat"
-   ? candidates.filter(r=>Number(r.message_thread_id)===1695)
-   : candidates.filter(r=>r.purpose==="room");
+  const selected=candidates.filter(r=>
+   /ビデオ.{0,3}(チャット|chat)|video.?chat|ビデチャ|ビデオ通話|VC専用/iu.test(r.title));
   if(selected.length!==1)throw Error("TARGET_NOT_UNIQUE:"+board+":"+selected.length);
   const r=selected[0]!;
   const threadId=validInt(r.message_thread_id),adminId=validInt(r.verified_by);
   if(!permittedTopicDmEntry(chatId,threadId))throw Error("TARGET_FORBIDDEN:"+board);
-  if(board==="gay_board"&&!/(ビデオ|video|VC|チャット|chat|Room|ルーム)/iu.test(r.title))
+  if(!/ビデオ.{0,3}(チャット|chat)|video.?chat|ビデチャ|ビデオ通話|VC専用/iu.test(r.title))
    throw Error("TARGET_TITLE_INVALID:"+board);
   await assertPostingDoorwayAllowed(chatId,threadId,r.title);
   const p=await pool.query<Pin>(
