@@ -17,11 +17,11 @@ const ALLOWED_CHATS = new Set<number>([
   BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
 const tokenPattern=/^p_([A-Za-z0-9_-]{32})$/;
-/** Master: only the dedicated video, sticker and profile topics get buttons.
+/** Master new exact exception: video-chat Topic 1605 also gets a pinned posting-menu doorway.\n * Existing paid-video (1695), sticker (4640), profile (1613) remain permitted.
  * All three forums exclude announcement (General Topic 1).
  * No area/category topic or existing specialist UI is otherwise changed.
  */
-export const VIDEO_SPECIALIST_ENTRY_TOPIC_IDS = new Set<number>([1695,4640,1613]);
+export const VIDEO_SPECIALIST_ENTRY_TOPIC_IDS = new Set<number>([1695,4640,1613,1605]);
 export function permittedTopicDmEntry(chatId:number,threadId:number):boolean{
  if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
   return false;
