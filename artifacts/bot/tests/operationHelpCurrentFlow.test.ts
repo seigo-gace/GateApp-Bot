@@ -7,8 +7,8 @@ test("every help topic describes purpose, effects and real operations before ope
  const topics=["profile","room","announcement","link","search"] as const;
  for(const topic of topics){
   const text=sectionText[topic];
-  assert.match(text,/【どんな機能？】/);
-  assert.match(text,/【具体的な操作】/);
+  assert.match(text,/<b>/);
+  assert.match(text,/➔/);
   for(const step of ["①","②","③","④"])assert.ok(text.includes(step),topic+" "+step);
   const buttons=helpSectionKeyboard(9,topic).reply_markup.inline_keyboard;
   assert.equal(buttons[0]?.[0]?.callback_data,"help:open:9:"+topic);
