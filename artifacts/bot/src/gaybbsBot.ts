@@ -200,6 +200,12 @@ async function main():Promise<void>{
  registerCompactRecruitmentHandlers(bot);
  registerPostingMenuUtilityHandlers(bot);
  registerCompactProfileHandlers(bot);
+ // /profile is not a navigation command for users, but old explicit links
+ // must still reach today's compact screen rather than the retired wizard.
+ bot.command("profile",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await startCompactProfileEditor(ctx);
+ });
  // Retired profile keyboards must not recreate the old seven-position wizard.
  // The real current compact profile editor reuses the exact tapped DM message.
  // Preserve existing draft/profile and already published messages.
