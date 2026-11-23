@@ -200,6 +200,14 @@ async function main():Promise<void>{
  registerCompactRecruitmentHandlers(bot);
  registerPostingMenuUtilityHandlers(bot);
  registerCompactProfileHandlers(bot);
+ // Retired profile keyboards must not recreate the old seven-position wizard.
+ // The real current compact profile editor reuses the exact tapped DM message.
+ // Preserve existing draft/profile and already published messages.
+ bot.action(/^pf:/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery("現在のプロフィール画面を開きます。");
+  await startCompactProfileEditor(ctx);
+ });
  registerProfileHandlers(bot);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
