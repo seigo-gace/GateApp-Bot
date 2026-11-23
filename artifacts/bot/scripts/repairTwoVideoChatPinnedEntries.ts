@@ -66,6 +66,46 @@ async function findTargets():Promise<Target[]>{
   throw Error("EXACT_TWO_GROUPS_REQUIRED");
  return out;
 }
+/** Only after Telegram definitively rejects editing the recorded gay Topic 4 post.
+ * Preserve the old Telegram message; never delete, repin, or reuse its stale ID.
+ */
+async function replaceStaleGayPin(
+ telegram:Telegraf["telegram"], t:Target, confirmedMissingMessageId:number,
+):Promise<{messageId:number;updatedExisting:boolean}>{
+ if(t.chatId!==BOARD_GROUP_CHAT_IDS.gay_board||t.threadId!==4)
+  throw Error("STALE_RECOVERY_TARGET_FORBIDDEN");
+ const old=t.pin;
+ if(!old||old.state!=="published"||old.pinned!==true||
+    Number(old.message_id)!==confirmedMissingMessageId||
+    !Number.isSafeInteger(confirmedMissingMessageId)||confirmedMissingMessageId<=0||
+    !old.token_hash)throw Error("STALE_RECOVERY_PRECONDITION_FAILED");
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const q=await client.query(
+   `SELECT token_hash FROM topic_dm_entry_pins
+     WHERE chat_id=$1 AND message_thread_id=$2
+       AND state='published' AND pinned=TRUE
+       AND message_id=$3 AND token_hash=$4 FOR UPDATE`,
+   [t.chatId,t.threadId,confirmedMissingMessageId,old.token_hash]);
+  if(q.rowCount!==1)throw Error("STALE_PIN_CHANGED_CONCURRENTLY");
+  await client.query("DELETE FROM topic_dm_entry_sessions WHERE token_hash=$1",[old.token_hash]);
+  const changed=await client.query(
+   `UPDATE topic_dm_entry_pins SET state='verified',pinned=FALSE,
+       message_id=NULL,updated_at=NOW()
+     WHERE chat_id=$1 AND message_thread_id=$2 AND message_id=$3
+       AND token_hash=$4 AND state='published' AND pinned=TRUE
+     RETURNING token_hash`,
+   [t.chatId,t.threadId,confirmedMissingMessageId,old.token_hash]);
+  if(changed.rowCount!==1)throw Error("STALE_PIN_RESET_FAILED");
+  await client.query("COMMIT");
+ }catch(e){await client.query("ROLLBACK");throw e}
+ finally{client.release()}
+ // Only after committing definitive stale reference, publish with existing
+ // idempotent send/pin ledger. Ambiguous sends stop; never auto-retry.
+ return publishTopicDmEntry(telegram,t.chatId,t.threadId,t.title,t.adminId);
+}
+
 async function main():Promise<void>{
  if(!process.env.DATABASE_URL)throw Error("DATABASE_URL_REQUIRED");
  const apply=process.env.VIDEO_TWO_TOPIC_ENTRY_APPLY==="enabled";
@@ -93,12 +133,26 @@ async function main():Promise<void>{
  }));
  if(!apply)return;
  for(const [i,t] of targets.entries()){
+  if(process.env.VIDEO_TWO_TOPIC_RECOVER_GAY_ONLY==="enabled"&&
+     t.chatId!==BOARD_GROUP_CHAT_IDS.gay_board)continue;
   const p=t.pin;
-  const result=p?.state==="published"&&p.pinned===true&&p.message_id
-   ? await refreshPublishedTopicDmEntry(bot.telegram,t.chatId,t.threadId)
-   : p&&canReuseUncertainEntry(String(p.state),p.message_id)
-    ? await recoverExistingTopicDmEntry(bot.telegram,t.chatId,t.threadId,t.adminId)
-    : await publishTopicDmEntry(bot.telegram,t.chatId,t.threadId,t.title,t.adminId);
+  let result:{messageId:number;updatedExisting:boolean};
+  if(p?.state==="published"&&p.pinned===true&&p.message_id){
+   try{
+    result=await refreshPublishedTopicDmEntry(bot.telegram,t.chatId,t.threadId);
+   }catch(e){
+    const response=(e as {response?:{error_code?:number;description?:string}})?.response;
+    if(process.env.VIDEO_TWO_TOPIC_RECOVER_GAY_ONLY!=="enabled"||
+       t.chatId!==BOARD_GROUP_CHAT_IDS.gay_board||t.threadId!==4||
+       response?.error_code!==400||
+       !/message to edit not found/i.test(response.description??""))throw e;
+    result=await replaceStaleGayPin(bot.telegram,t,Number(p.message_id));
+   }
+  }else if(p&&canReuseUncertainEntry(String(p.state),p.message_id)){
+   result=await recoverExistingTopicDmEntry(bot.telegram,t.chatId,t.threadId,t.adminId);
+  }else{
+   result=await publishTopicDmEntry(bot.telegram,t.chatId,t.threadId,t.title,t.adminId);
+  }
   const q=await pool.query(
    `SELECT message_id FROM topic_dm_entry_pins WHERE chat_id=$1
      AND message_thread_id=$2 AND state='published' AND pinned=TRUE
