@@ -29,7 +29,7 @@ async function verifiedCandidates(chatId:number):Promise<Candidate[]>{
    chat_id,message_thread_id,title,verified_by
   FROM posting_topics
   WHERE chat_id=$1 AND enabled=TRUE AND verified_at IS NOT NULL
-    AND title ~ 'ビデオ.?チャット'
+    AND title ~* 'ビデオ|video|VC|チャット|chat'
   ORDER BY chat_id,message_thread_id,verified_at DESC
  `,[chatId]);
  return q.rows;
@@ -43,12 +43,13 @@ async function findTargets():Promise<Target[]>{
   const candidates=await verifiedCandidates(chatId);
   const selected=board==="video_chat"
    ? candidates.filter(r=>Number(r.message_thread_id)===1695)
-   : candidates.filter(r=>/ビデオ.?チャット.*専用|専用.*ビデオ.?チャット/u.test(r.title));
+   : candidates.filter(r=>/(ビデオ|video|VC).*(チャット|chat|専用)|(チャット|chat).*専用/iu.test(r.title));
   if(selected.length!==1)throw Error("TARGET_NOT_UNIQUE:"+board+":"+selected.length);
   const r=selected[0]!;
   const threadId=validInt(r.message_thread_id),adminId=validInt(r.verified_by);
   if(!permittedTopicDmEntry(chatId,threadId))throw Error("TARGET_FORBIDDEN:"+board);
-  if(!/ビデオ.?チャット/u.test(r.title))throw Error("TARGET_TITLE_INVALID:"+board);
+  if(board==="gay_board"&&!/(ビデオ|video|VC|チャット|chat)/iu.test(r.title))
+   throw Error("TARGET_TITLE_INVALID:"+board);
   await assertPostingDoorwayAllowed(chatId,threadId,r.title);
   const p=await pool.query<Pin>(
    `SELECT state,pinned,message_id,token_hash FROM topic_dm_entry_pins
