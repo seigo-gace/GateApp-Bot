@@ -5,7 +5,7 @@
 ARG NODE_IMAGE=node@sha256:025b8e975a61d94e33abeafaad1255ef44e4898cf1a1b6446860009c72e6d284
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
-RUN corepack enable && corepack prepare pnpm@10.16.1 --activate
+RUN npm install -g pnpm@10.16.1
 COPY . .
 RUN pnpm install --frozen-lockfile --filter '@workspace/bot...'
 RUN pnpm --dir artifacts/bot run build:gaybbs
@@ -15,6 +15,7 @@ FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/gaybbs.mjs /app/gaybbs.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/repairTwoVideoChatPinnedEntries.mjs /app/repairTwoVideoChatPinnedEntries.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/repairTwoVideoChatPinnedEntries.mjs /app/repairTwoVideoChatPinnedEntries.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/backfillExistingProfileKeyboards.mjs /app/backfillExistingProfileKeyboards.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/refreshStartlessExistingPosts.mjs /app/refreshStartlessExistingPosts.mjs
