@@ -110,6 +110,16 @@ async function main():Promise<void>{
  }
 }
 main().catch(e=>{
- console.error("VIDEO_ENTRY_FAILED",e instanceof Error?e.message:"UNKNOWN");
- process.exitCode=1;
+ const reason=e instanceof Error?e.message:"UNKNOWN";
+ console.error("VIDEO_ENTRY_FAILED",reason);
+ if(reason.startsWith("TARGET_NOT_UNIQUE:video_chat"))process.exitCode=51;
+ else if(reason.startsWith("TARGET_NOT_UNIQUE:gay_board"))process.exitCode=52;
+ else if(reason.startsWith("TARGET_FORBIDDEN"))process.exitCode=53;
+ else if(reason.startsWith("TARGET_TITLE_INVALID"))process.exitCode=54;
+ else if(reason==="TOPIC_ENTRY_EXCLUDED_BY_MASTER")process.exitCode=55;
+ else if(reason.startsWith("PIN_RECONCILE_REQUIRED"))process.exitCode=56;
+ else if(reason.startsWith("PIN_PERMISSION_MISSING"))process.exitCode=57;
+ else if(reason.startsWith("OPERATOR_NOT_ADMIN"))process.exitCode=58;
+ else if(reason==="DATABASE_URL_REQUIRED")process.exitCode=59;
+ else process.exitCode=1;
 }).finally(async()=>{await closePool();});
