@@ -153,6 +153,15 @@ async function main():Promise<void>{
   }else{
    result=await publishTopicDmEntry(bot.telegram,t.chatId,t.threadId,t.title,t.adminId);
   }
+  // Telegram pin state is independent of the DB's old pinned flag.
+  // Re-pin the verified original message, without publishing a duplicate.
+  try{
+   await bot.telegram.pinChatMessage(t.chatId,result.messageId,{disable_notification:true});
+  }catch(e){
+   const response=(e as {response?:{error_code?:number;description?:string}})?.response;
+   if(response?.error_code!==400||
+      !/already pinned/i.test(response.description??""))throw e;
+  }
   const q=await pool.query(
    `SELECT message_id FROM topic_dm_entry_pins WHERE chat_id=$1
      AND message_thread_id=$2 AND state='published' AND pinned=TRUE
