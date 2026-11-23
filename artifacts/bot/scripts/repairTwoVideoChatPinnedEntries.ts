@@ -56,7 +56,7 @@ async function findTargets():Promise<Target[]>{
   if(p.rows.length>1)throw Error("PIN_DUPLICATED:"+board);
   const pin=p.rows[0]??null;
   const known=pin&&canReuseUncertainEntry(String(pin.state),pin.message_id);
-  const published=pin?.state==="published"&&pin.pinned===true&&validInt(pin.message_id);
+  const published=pin?.state==="published"&&pin.pinned===true&&pin.message_id!==null&&Number.isSafeInteger(Number(pin.message_id))&&Number(pin.message_id)>0;
   if(pin&&!known&&!published&&!(pin.state==="verified"&&pin.message_id===null))
    throw Error("PIN_RECONCILE_REQUIRED:"+board);
   out.push({chatId,threadId,title:r.title,adminId,pin});
