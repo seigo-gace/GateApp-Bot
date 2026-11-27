@@ -113,6 +113,20 @@ def main() -> int:
                     "blue_selected", "preview_present", "registration_receipt")):
                 raise RuntimeError("LINK_REGISTRATION_SMOKE_INCOMPLETE")
             print("USERBOT_LINK_REGISTRATION=PASS")
+        if args.action == "help_button_burst_smoke":
+            if (result.get("presses") != 5 or result.get("same_screen") is not True
+                    or result.get("screen_count") != 1
+                    or type(result.get("accepted_callbacks")) is not int
+                    or type(result.get("stale_rejections")) is not int
+                    or not 1 <= result["accepted_callbacks"] <= 5
+                    or result["accepted_callbacks"] + result["stale_rejections"] != 5
+                    or type(result.get("elapsed_ms")) is not int or result["elapsed_ms"] < 0):
+                raise RuntimeError("HELP_BURST_RESULT_INCOMPLETE")
+            print("USERBOT_HELP_BURST_PRESSES=5")
+            print("USERBOT_HELP_BURST_SCREENS=1")
+            print("USERBOT_HELP_BURST_ACCEPTED=" + str(result["accepted_callbacks"]))
+            print("USERBOT_HELP_BURST_STALE=" + str(result["stale_rejections"]))
+            print("USERBOT_HELP_BURST_ELAPSED_MS=" + str(result["elapsed_ms"]))
         if args.action == "link_button_smoke":
             if result.get("link_editor_opened") is not True:
                 raise RuntimeError("LINK_BUTTON_SCREEN_NOT_OPENED")

@@ -73,6 +73,36 @@ class ResidentSafetyTests(unittest.TestCase):
         self.assertTrue(out["link_editor_opened"])
         self.assertEqual(c.sent,["/start"])
 
+    def test_help_burst_is_fixed_five_private_clicks_on_one_screen(self):
+        class HelpClient(MockClient):
+            def __init__(self, duplicate=False):
+                super().__init__()
+                self.clicks = 0
+                self.duplicate = duplicate
+            async def get_messages(self, bot, limit):
+                if self.clicks:
+                    ids = [11, 12] if self.duplicate else [11]
+                    return [SimpleNamespace(id=i, out=False,
+                        raw_text="📚 操作説明\n知りたい機能を選択してください。") for i in ids]
+                messages = await super().get_messages(bot, limit)
+                for m in messages:
+                    async def click(text):
+                        assert text == "操作説明"
+                        self.clicks += 1
+                        await asyncio.sleep(0)
+                    m.click = click
+                return messages
+        c = HelpClient()
+        request = {"request_id":"help-burst-1", "action":"help_button_burst_smoke"}
+        result = asyncio.run(process_request(c, request))
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(c.clicks, 5)
+        self.assertEqual(result["screen_count"], 1)
+        self.assertEqual(result["accepted_callbacks"], 5)
+        self.assertEqual(c.sent, ["/start"])
+        with self.assertRaisesRegex(RuntimeError, "HELP_BURST_SCREEN_DUPLICATED"):
+            asyncio.run(process_request(HelpClient(duplicate=True), request))
+
     def test_link_registration_uses_only_resident_allowlisted_action(self):
         from unittest.mock import AsyncMock
         c=MockClient()
