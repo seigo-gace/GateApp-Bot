@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {noticeParts,noticeText,noticeEdit,noticeJoin,noticeMedia,
- validateNotice,noticeCard} from "../src/services/noticeEditor.js";
+ validateNotice,noticeCard,buildNoticeRichPreview} from "../src/services/noticeEditor.js";
 import {announcementPanel,announcementSummary} from "../src/bot/postingHandlers.js";
 
 test("general notice edits title/body individually without resetting related fields",()=>{
@@ -58,10 +58,19 @@ test("approved notice preview shows only requested eight controls and correct ca
  assert.equal(rows.flat().find(x=>x.text==="投稿する")?.callback_data,"post:announce:publish:7");
  assert.ok(!rows.flat().some(x=>/プロフ連携|投稿先/.test(x.text)));
  const preview=announcementSummary(d);
- assert.match(preview, /start=ne_t_7/);
- assert.match(preview, /［編集］<\/a>タイトル：題名/);
- assert.match(preview, /start=ne_b_7/);
- assert.match(preview, /［編集］<\/a>説明：本文/);
+ assert.match(preview,/タイトル：題名/);
+ assert.match(preview,/説明：本文/);
+ assert.doesNotMatch(preview,/\/start|[?&]start=|［編集］|<a\b/);
+ const rich=buildNoticeRichPreview(d.data,d.revision);
+ assert.deepEqual(rich.blocks,[
+  {type:"paragraph",text:"📢 告知/予告"},
+  {type:"paragraph",text:[{type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:title:7"}}," タイトル：題名"]},
+  {type:"paragraph",text:[{type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:body:7"}}," 説明：本文"]},
+  {type:"paragraph",text:"開催日時：［未設定］"},
+  {type:"paragraph",text:"受付期限：［未設定］"},
+  {type:"paragraph",text:"参加方法：［未設定］"}
+ ]);
+ assert.doesNotMatch(JSON.stringify(rich),/\/start|[?&]start=|ne_[tb]_|"url":/);
  assert.match(preview,/開催日時：［未設定］/);
  assert.match(preview,/受付期限：［未設定］/);
  assert.match(preview,/参加方法：［未設定］/);
@@ -124,6 +133,10 @@ for(const field of unsetNoticeFields){
   const preview=announcementSummary({module:"announcement",step:"preview",revision:10,data});
   const lines=preview.split("\n").filter(line=>line.includes(field+"："));
   assert.deepEqual(lines,[field+"：［未設定］"]);
+  const rich=buildNoticeRichPreview(data,10);
+  assert.deepEqual(rich.blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(field+"：")),
+   [{type:"paragraph",text:field+"：［未設定］"}]);
+  assert.doesNotMatch(JSON.stringify(rich),/"type":"button"|"callback_data":/);
  });
 }
 test("notice preview does not offer editing for an unset title or explanation",()=>{
@@ -137,7 +150,15 @@ test("notice preview does not offer editing for an unset title or explanation",(
   assert.deepEqual(lines.filter(line=>line.includes(unset+"：")),[unset+"：［未設定］"]);
   const configured=lines.filter(line=>line.includes(present+"："));
   assert.equal(configured.length,1);
-  assert.ok(configured[0]?.includes("［編集］"));
+  assert.doesNotMatch(preview,/［編集］|[?&]start=/);
+  const rich=buildNoticeRichPreview(data,11);
+  const field=present==="タイトル"?"title":"body";
+  const value=present==="タイトル"?data.title:data.body;
+  assert.deepEqual(rich.blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(unset+"：")),
+   [{type:"paragraph",text:unset+"：［未設定］"}]);
+  assert.deepEqual(rich.blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(present+"：")),
+   [{type:"paragraph",text:[{type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:"+field+":11"}}," "+present+"："+value]}]);
+  assert.equal(rich.blocks.filter(block=>JSON.stringify(block).includes('"type":"button"')).length,1);
  }
 });
 test("notice preview keeps unset options non-editable even when text is registered",()=>{
@@ -145,6 +166,8 @@ test("notice preview keeps unset options non-editable even when text is register
  const preview=announcementSummary({module:"announcement",step:"preview",revision:12,data});
  for(const field of ["開催日時","受付期限","参加方法"]){
   assert.deepEqual(preview.split("\n").filter(line=>line.includes(field+"：")),[field+"：［未設定］"]);
+  assert.deepEqual(buildNoticeRichPreview(data,12).blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(field+"：")),
+   [{type:"paragraph",text:field+"：［未設定］"}]);
  }
 });
 test("media-only public card omits all private placeholders and edit controls",()=>{
@@ -152,5 +175,33 @@ test("media-only public card omits all private placeholders and edit controls",(
   const data={kind:"announcement",media:[{kind,fileId:"media_1"}],eventAt:null,deadlineAt:null,participation:"none"};
   validateNotice(data,1);
   assert.equal(noticeCard(data,1),"📢 告知");
+ }
+});
+
+test("Rich notice preview keeps up to five ordered photo and video references in the same blocks",()=>{
+ const media=[
+  {kind:"photo",fileId:"photo_1"},{kind:"video",fileId:"video_2"},
+  {kind:"photo",fileId:"photo_3"},{kind:"video",fileId:"video_4"},
+  {kind:"photo",fileId:"photo_5"},{kind:"video",fileId:"video_6"}
+ ];
+ const data={kind:"announcement",title:"題名",body:"本文",media};
+ const before=JSON.stringify(data);
+ const rich=buildNoticeRichPreview(data,7);
+ assert.equal(rich.blocks.length,11);
+ assert.deepEqual(rich.blocks.slice(6),[
+  {type:"photo",photo:{type:"photo",media:"photo_1"}},
+  {type:"video",video:{type:"video",media:"video_2"}},
+  {type:"photo",photo:{type:"photo",media:"photo_3"}},
+  {type:"video",video:{type:"video",media:"video_4"}},
+  {type:"photo",photo:{type:"photo",media:"photo_5"}}
+ ]);
+ assert.equal(JSON.stringify(data),before);
+ const mediaOnly=buildNoticeRichPreview({kind:"announcement",media:media.slice(0,2)},8);
+ assert.deepEqual(mediaOnly.blocks.slice(6),rich.blocks.slice(6,8));
+ assert.doesNotMatch(JSON.stringify(mediaOnly),/"type":"button"|"callback_data":/);
+});
+test("Rich notice preview rejects invalid action revisions",()=>{
+ for(const revision of [0,-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
+  assert.throws(()=>buildNoticeRichPreview({title:"題名",body:"本文"},revision),/NOTICE_REVISION_INVALID/);
  }
 });
