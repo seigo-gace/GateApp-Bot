@@ -160,6 +160,34 @@ class ResidentSafetyTests(unittest.TestCase):
         self.assertEqual(c.sent, [])
 
 
+
+class HelpBurstMergeTests(unittest.TestCase):
+    def test_merge_preserves_independent_adopted_source_and_rejects_wrong_anchor(self):
+        import userbot_help_burst_merge as m
+        root = pathlib.Path(__file__).resolve().parent
+        reference = (root / "userbot_resident_ipc.py").read_text(encoding="utf-8")
+        reference_client = (root / "userbot_test_client.py").read_text(encoding="utf-8")
+        resident_block = m.verified_block(reference, m.RESIDENT_START, m.RESIDENT_END)
+        client_block = m.verified_block(reference_client, m.CLIENT_START, m.CLIENT_END)
+        # Simulate a separately adopted source, preserving all unrelated actions,
+        # and the live client's insertion anchor without relying on its link branch.
+        base = reference.replace(m.ACTION_WITH_BURST, m.ACTION_ANCHOR, 1)
+        base = base.replace(resident_block, "", 1).replace(m.ERRORS, "", 1)
+        base = base.replace(m.ACTION_ANCHOR, '"existing_action", ' + m.ACTION_ANCHOR, 1)
+        base_client = reference_client.replace(client_block, "", 1)
+        result, result_client = m.merge(base, base_client, reference, reference_client)
+        self.assertIn('"existing_action"', result)
+        self.assertIn(resident_block, result)
+        self.assertIn(client_block, result_client)
+        self.assertEqual(result.replace(m.ACTION_WITH_BURST, m.ACTION_ANCHOR, 1)
+                         .replace(resident_block, "", 1).replace(m.ERRORS, "", 1), base)
+        self.assertEqual(result_client.replace(client_block, "", 1), base_client)
+        with self.assertRaises(ValueError):
+            m.merge(base.replace(m.RESIDENT_END, '            if action == "different":\n'),
+                    base_client, reference, reference_client)
+        with self.assertRaises(ValueError):
+            m.merge(result, result_client, reference, reference_client)
+
 class ExactProfileTopicReadbackTests(unittest.TestCase):
     """Exact DB-bound topic IDs, no Telegram session, group join or credentials."""
     def test_rejects_wrong_shape_before_any_telegram_read(self):
