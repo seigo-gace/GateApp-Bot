@@ -94,3 +94,13 @@ test("notice date picker supports explicit removal of both optional dates",async
  assert.match(source,/data\.noticeDateField==="deadline"\?"deadlineAt":"eventAt"\]:null/);
  assert.match(source,/noticePickerStage:null,noticeDateField:null/);
 });
+
+test("notice publish uses selected destination and never loops to picker",async()=>{
+ const {readFileSync}=await import("node:fs");
+ const source=readFileSync(new URL("../src/bot/postingHandlers.ts",import.meta.url),"utf8");
+ const branch=source.slice(source.indexOf('}else if(op==="destination"||op==="publish"){'));
+ assert.ok(branch.startsWith('}else if(op==="destination"||op==="publish"){'));
+ assert.match(branch,/Number\.isSafeInteger\(selectedTopicId\)&&selectedTopicId>0/);
+ assert.match(branch,/await publishAccepted\(ctx,"announcement",rev,selectedTopicId\);/);
+ assert.ok(branch.indexOf('await publishAccepted(ctx,"announcement",rev,selectedTopicId);')<branch.indexOf('await announcementDestinationPicker(ctx.telegram,ctx.from.id,current);'));
+});
