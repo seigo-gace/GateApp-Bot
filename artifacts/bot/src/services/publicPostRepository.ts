@@ -88,13 +88,13 @@ export async function createAnnouncement(id:number,revision:number,kind:Announce
  const r=await pool.query(
   `INSERT INTO announcement_posts
      (request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,room_id,
-      profile_snapshot,conditions,status)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft')
+      profile_snapshot,conditions,status,deadline_at)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft',NULLIF($11::text,'')::timestamptz)
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
   [key,id,kind,text,eventAt||null,purposeCodes,placeCodes,linkedRoomId||null,
    details?.profileSnapshot?JSON.stringify(details.profileSnapshot):null,
-   JSON.stringify(details?.conditions??{})]
+   JSON.stringify(details?.conditions??{}),String(details?.conditions?.deadlineAt??"")]
  );
  return {sourceId:String(r.rows[0].announcement_id)};
 }
