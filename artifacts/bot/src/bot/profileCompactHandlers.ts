@@ -187,9 +187,10 @@ export async function startCompactProfileEditor(
   Number(tapped):undefined;
  const existingDraft=await profiles.getDraft(ctx.from.id);
  if(existingDraft){
-  // Preserve the existing draft, changing only the display location.
+  // A legacy partial draft must not erase fields from an existing original.
+  const existing=await profiles.getProfile(ctx.from.id);
   const next=await profiles.putDraft(ctx.from.id,"compact",{
-   ...existingDraft.data,compactOrigin:origin,
+   ...seedExisting(existing),...existingDraft.data,compactOrigin:origin,
    screenMessageId:menuScreenId??existingDraft.data.screenMessageId
   },existingDraft.revision);
   await render(ctx.telegram,ctx.from.id,next);return;
@@ -214,6 +215,7 @@ export async function returnFromCompactAppearance(ctx:Context,draft:ProfileDraft
  if(!origins.has(origin))throw Error("PROFILE_COMPACT_ORIGIN_INVALID");
  const data={...draft.data,pendingRegion:null,compactPanel:undefined,compactCategory:null,compactPage:0};
  let acknowledged=false;
+ let persisted=false;
  try{
   let next:ProfileDraft;
   if(save){
@@ -221,16 +223,22 @@ export async function returnFromCompactAppearance(ctx:Context,draft:ProfileDraft
       !data.heightCm||!data.weightKg||!data.age||!isProfilePosition(data.position)){
     await ctx.answerCbQuery("先にタイトル・基本情報・ポジションを入力してください。",{show_alert:true});return;
    }
-   const saved=await profiles.savePrivateDraft(id,draft.revision,ctx.from.username);
-   next=await profiles.putDraft(id,"compact",{...data,...seedExisting(saved),compactOrigin:origin},draft.revision+1);
+   await profiles.savePrivateDraft(id,draft.revision,ctx.from.username,true);
+   persisted=true;
+   const restored=await profiles.getDraft(id);
+   if(!restored||restored.revision!==draft.revision+1||restored.step!=="compact")
+    throw Error("PROFILE_SAVED_SCREEN_CHANGED");
+   next=restored;
   }else{
    next=await profiles.putDraft(id,"compact",data,draft.revision);
   }
   await ctx.answerCbQuery();acknowledged=true;
   await render(ctx.telegram,id,next,save?"✅ 保存しました。公開内容を更新するには「保存・3掲示板へ投稿」を押してください。":"");
  }catch{
-  if(!acknowledged)await ctx.answerCbQuery("操作を完了できませんでした。プロフィールを開き直して保存状態を確認してください。",{show_alert:true}).catch(()=>undefined);
-  else await ctx.reply("画面を更新できませんでした。プロフィールを開き直してください。");
+  const message=persisted?"保存は完了しました。画面を開き直してください。":
+   "操作を完了できませんでした。プロフィールを開き直して保存状態を確認してください。";
+  if(!acknowledged)await ctx.answerCbQuery(message,{show_alert:true}).catch(()=>undefined);
+  else await ctx.reply(message);
  }
 }
 async function resumeOrigin(ctx:Context,origin:Origin):Promise<void>{
@@ -404,8 +412,14 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery("タイトル・基本情報・ポジションを入力してください。",{show_alert:true});
     return;
    }
-   const profile=await profiles.savePrivateDraft(ctx.from.id,r,ctx.from.username??null);
-   await ctx.answerCbQuery("保存しました。公開先を確認しています");
+   let profile:Awaited<ReturnType<typeof profiles.savePrivateDraft>>;
+   try{profile=await profiles.savePrivateDraft(ctx.from.id,r,ctx.from.username??null);}
+   catch{
+    await ctx.answerCbQuery("保存できませんでした。入力内容を確認して再度お試しください。",{show_alert:true}).catch(()=>undefined);
+    return;
+   }
+   // An expired callback acknowledgement must not stop publication after DB save.
+   await ctx.answerCbQuery("保存しました。公開先を確認しています").catch(()=>undefined);
    const origin=origins.has(d.data.compactOrigin as Origin)?d.data.compactOrigin as Origin:"profile";
    // Saving the owner's original must survive any incomplete Telegram delivery.
    // Each board uses its existing delivery/publication ledger for safe retry.
@@ -471,7 +485,7 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
     }else{
      const input=parseRecruitmentMessage(text,false);
      parsed={title:input.title,nickname:input.nickname,heightCm:input.heightCm,
-      weightKg:input.weightKg,age:input.age,pr:input.body};
+      weightKg:input.weightKg,age:input.age,pr:input.body||null};
     }
     const next=await profiles.putDraft(ctx.from.id,"compact",{...d.data,...parsed},d.revision);
     await render(ctx.telegram,ctx.from.id,next,notice);
