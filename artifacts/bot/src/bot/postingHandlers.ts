@@ -1,4 +1,4 @@
-import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard,buildNoticeRichPreview} from "../services/noticeEditor.js";
+import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard,buildNoticeRichPreview,noticeUrlButton,noticeStickerPreviews,type NoticeStickerPreview} from "../services/noticeEditor.js";
 import {showPublishedNoticeOwner} from "./noticeInteractions.js";
 import { Markup, type Telegraf, type Telegram, type Context } from "telegraf";
 import {pool} from "../db/index.js";
@@ -10,7 +10,7 @@ import { listVerifiedTopics, getVerifiedTopic } from "../services/postingDeliver
 import { publishPost,assertFeatureReleased } from "../services/publishService.js";
 import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,parseRoomDetails,type AnnouncementKind } from "../services/postingDomain.js";
-import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,createRoom,createLinkButton,markRoomDraftSaved,
+import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,bindNoticeStickerPreviews,createRoom,createLinkButton,markRoomDraftSaved,
  createAnnouncement,markDraftPublished,markPostSourcePublished,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
 import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
@@ -677,6 +677,36 @@ async function announcementDatePicker(t:Telegram,id:number,d:EditorDraft):Promis
  await showPostScreen(t,id,d,(field==="deadline"?"📅 受付終了日時":"📅 開催日時")+
   "（日本時間）を選択してください。",Markup.inlineKeyboard(rows));
 }
+/** Stickers cannot be embedded in Rich Messages. Keep native copies tracked by
+ * the same draft; never resend an ambiguous pending copy automatically. */
+async function clearNoticeStickerPreviews(t:Telegram,id:number,data:Record<string,unknown>):Promise<void>{
+ for(const p of noticeStickerPreviews(data)){
+  if(p.messageId===null)continue;
+  try{await t.deleteMessage(id,p.messageId);}catch{console.warn("[NOTICE_STICKER_PREVIEW_REMOVE_FAILED]");}
+ }
+}
+async function syncNoticeStickerPreviews(t:Telegram,id:number,d:EditorDraft):Promise<void>{
+ const wanted=noticeMedia(d.data).filter(x=>x.kind==="sticker");
+ let previews=noticeStickerPreviews(d.data);
+ if(!wanted.length&&!previews.length)return;
+ if(previews.some((p,i)=>wanted[i]?.fileId!==p.fileId)){
+  await clearNoticeStickerPreviews(t,id,d.data);
+  previews=[];
+  await bindNoticeStickerPreviews(id,d.revision,previews);
+ }
+ for(let i=previews.length;i<wanted.length;i++){
+  const fileId=wanted[i]!.fileId;
+  const pending:NoticeStickerPreview={fileId,messageId:null};
+  previews=[...previews,pending];
+  await bindNoticeStickerPreviews(id,d.revision,previews);
+  const sent=await t.sendSticker(id,fileId);
+  if(!Number.isSafeInteger(sent.message_id)||sent.message_id<=0)throw Error("NOTICE_STICKER_PREVIEW_UNCONFIRMED");
+  previews=[...previews.slice(0,-1),{fileId,messageId:sent.message_id}];
+  try{await bindNoticeStickerPreviews(id,d.revision,previews);}
+  catch(error){try{await t.deleteMessage(id,sent.message_id);}catch{}throw error;}
+ }
+ if(previews.some(x=>x.messageId===null))throw Error("NOTICE_STICKER_PREVIEW_UNCONFIRMED");
+}
 async function announcementScreen(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
  if(["date_calendar","time_hour","time_minute"].includes(String(d.data.noticePickerStage||""))){
   await announcementDatePicker(telegram,userId,d);return;
@@ -710,8 +740,9 @@ async function announcementScreen(telegram:Telegram,userId:number,d:EditorDraft)
    catch{console.warn("[NOTICE_OLD_SCREEN_REMOVE_FAILED]");}
   }
  }
+ await syncNoticeStickerPreviews(telegram,userId,d);
  // Retire only the previously tracked private notice preview copies.
- // Never send separate media previews; the Rich body already contains them.
+ // Photo/video are in the Rich body; native stickers are tracked separately.
  const legacy=Array.isArray(d.data.noticePreviewIds)?d.data.noticePreviewIds:[];
  for(const id of new Set(legacy)){
   if(typeof id!=="number"||!Number.isSafeInteger(id)||id<=0||id===screenId||id===old)continue;
@@ -734,7 +765,8 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number,sc
   existing.data.screenMessageId=screenId;
  }
  if(existing?.step==="saved"&&existing.data.kind!=="recruitment"){
-  const {savedTemplate:_previous,...template}=existing.data;
+  const {savedTemplate:_previous,noticeStickerPreviews:_receipts,...template}=existing.data;
+  await clearNoticeStickerPreviews(telegram,userId,existing.data);
   const resumed=await updateDraft(userId,"announcement",existing.revision,
    (noticeText(template).trim()||noticeMedia(template).length)?"preview":"awaiting_text",
    {...template,savedTemplate:template});
@@ -749,10 +781,10 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number,sc
     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
      `post:announce:back:${existing.revision}`)]]));
   }else if(existing.step==="awaiting_media"){
-    await showPostScreen(telegram,userId,existing,"画像または動画を送信してください。最大5件。［戻る］でプレビューへ戻れます。",
+    await showPostScreen(telegram,userId,existing,"画像・動画・ステッカーを送信してください（合計最大5件）。「なし」で解除、［戻る］でプレビューへ。",
      Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${existing.revision}`)]]));
    }else if(existing.step==="awaiting_text"){
-    const prompt="1行目：タイトル\n2行目：説明\n画像・動画もこの画面で送信できます。画像・動画があれば文章は省略できます。";
+    const prompt="1行目：タイトル\n2行目：説明\n画像・動画・ステッカーもこの画面で送信できます。素材があれば文章は省略できます。";
     await showPostScreen(telegram,userId,existing,prompt,
      Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`post:announce:cancel:${existing.revision}`)]]));
    }else await announcementScreen(telegram,userId,existing);
@@ -760,7 +792,7 @@ export async function startAnnouncementEditor(telegram:Telegram,userId:number,sc
  }
  const draft=await beginDraft(userId,"announcement","awaiting_text",
   {kind:"announcement",participation:"none",editField:"initial",...(screenId?{screenMessageId:screenId}:{})});
- await showPostScreen(telegram,userId,draft,"1行目：タイトル\n2行目：説明\n画像・動画もここで送信してください。画像・動画がある場合、タイトル・説明は省略できます。",
+ await showPostScreen(telegram,userId,draft,"1行目：タイトル\n2行目：説明\n画像・動画・ステッカーもここで送信してください。素材がある場合、タイトル・説明は省略できます。",
   Markup.inlineKeyboard([[Markup.button.callback("キャンセル",`post:announce:cancel:${draft.revision}`)]]));
 }
 export function registerPostingHandlers(bot:Telegraf):void{
@@ -1341,8 +1373,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
      await showPostScreen(ctx.telegram,ctx.from.id,next,
      ({initial:"1行目：タイトル\n2行目：説明（画像・動画がある場合は省略可能）",title:"タイトルを入力してください。",body:"内容を入力してください。",
        deadline:"受付終了日時（YYYY/MM/DD HH:mm）または「なし」を入力してください。",
-       link:"1行目：ボタン名　2行目：HTTPS URL。「なし」で解除できます。",
-       media:"画像・動画を送信してください（最大5件）。"}[editField]||"本文を入力してください。"),
+       link:(noticeUrlButton(d.data)?"現在のボタン："+noticeUrlButton(d.data)!.text+"\n現在のURL："+noticeUrlButton(d.data)!.url+"\n\n":"")+"1行目：ボタン名\n2行目：HTTPS URL\n登録後はプレビューでボタンをタップして確認できます。「なし」で解除できます。",
+       media:"画像・動画・ステッカーを送信してください（合計最大5件）。「なし」で解除できます。"}[editField]||"本文を入力してください。"),
      Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",
       `post:announce:back:${next.revision}`)]]));
    }else if(op==="joinmenu"){
@@ -1395,6 +1427,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="save"){
     await saveAnnouncementEditorDraft(ctx.from.id,rev);
+    await clearNoticeStickerPreviews(ctx.telegram,ctx.from.id,d.data);
+    await bindNoticeStickerPreviews(ctx.from.id,rev,[]);
     await ctx.answerCbQuery("下書きを保存しました");
     await ctx.editMessageText("✅ 告知/予告を非公開保存しました。投稿メニューから再開できます。");
    }else if(op==="cancel"){
@@ -1402,7 +1436,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const saved=old&&typeof old==="object"&&!Array.isArray(old)?
      old as Record<string,unknown>:null;
     await updateDraft(ctx.from.id,"announcement",rev,saved?"saved":"cancelled",
-     saved??{cancelled:true});
+     saved?{...saved,noticeStickerPreviews:[]}:{cancelled:true});
+    await clearNoticeStickerPreviews(ctx.telegram,ctx.from.id,d.data);
     await ctx.answerCbQuery();
     await editMessageToDmPostingMenu(ctx,ctx.from.id);
    }
@@ -1533,8 +1568,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx)||ctx.message.text.startsWith("/"))return next();
   const owner=await currentDmTextOwner(ctx.from.id);
   if(owner!=="room"&&owner!=="announcement"&&owner!=="link")return next();
-  const current=await getWaitingDraft(ctx.from.id);
-  if(!current||current.module!==owner)return next();
+  const current=owner==="announcement"?await getDraft(ctx.from.id,"announcement"):await getWaitingDraft(ctx.from.id);
+  if(!current||current.module!==owner||!["awaiting_text","awaiting_datetime","awaiting_room_url","awaiting_media"].includes(current.step))return next();
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
   const warning=deleted?"":"\n⚠️ 入力メッセージを削除できませんでした。手動で削除してください。";
   const render=(d:EditorDraft,text:string,keyboard?:WizardKeyboard)=>
@@ -1572,8 +1607,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await announcementScreen(ctx.telegram,ctx.from.id,next);
     return;
    }
-   if(current.module==="announcement"&&current.step==="awaiting_media"){
-    if(input!=="なし")throw Error("画像または動画を送信してください。解除は「なし」です");
+   if(current.module==="announcement"&&current.step==="awaiting_media"&&current.data.kind!=="recruitment"){
+    if(input!=="なし")throw Error("画像・動画・ステッカーを送信してください。解除は「なし」です");
     const next=await updateDraft(ctx.from.id,"announcement",current.revision,"preview",
      noticeEdit(current.data,"media",input));
     await announcementScreen(ctx.telegram,ctx.from.id,next);
@@ -1720,7 +1755,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
        [[Markup.button.callback("↩ プレビューに戻る",
         "post:link:back:"+current.revision)]]:[]),
      [Markup.button.callback("キャンセル","post:link:cancel:"+current.revision)]
-    ]):undefined);
+    ]):current.module==="announcement"&&current.data.kind!=="recruitment"?
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る","post:announce:back:"+current.revision)]]):undefined);
   }
  });
  // Uses the existing DM text-owner and Telegram file_id mechanism from profiles.
@@ -1800,21 +1836,34 @@ export function registerPostingHandlers(bot:Telegraf):void{
  });
  // Notice-only media, using Telegram file_id references.
  async function receiveNoticeMedia(telegram:Telegram,userId:number,chatId:number,
-  messageId:number,kind:"photo"|"video",fileId:string):Promise<boolean>{
+  messageId:number,kind:"photo"|"video"|"sticker",fileId:string):Promise<boolean>{
   const d=await getDraft(userId,"announcement");
   if(!d||!["awaiting_media","awaiting_text","preview"].includes(d.step)||d.data.kind==="recruitment"||
      await currentDmTextOwner(userId)!=="announcement")return false;
-  const removed=await removeUserWizardInput(telegram,chatId,messageId);
+  if(d.step==="awaiting_text"&&d.data.editField&&d.data.editField!=="initial")return false;
   const media=noticeMedia(d.data);
   if(media.length>=5){
-   await showPostScreen(telegram,userId,d,"画像/動画は最大5件です。"+
-    (removed?"":"\n⚠️ 入力媒体は手動削除してください。"),
+   await showPostScreen(telegram,userId,d,"画像・動画・ステッカーは合計最大5件です。送信した素材は未登録です。",
     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
    return true;
   }
-  const next=await updateDraft(userId,"announcement",d.revision,d.step==="awaiting_text"?"awaiting_text":"preview",
-   {...d.data,media:[...media,{kind,fileId}]});
-  await announcementScreen(telegram,userId,next);
+  let next:EditorDraft;
+  try{
+   next=await updateDraft(userId,"announcement",d.revision,"preview",
+    {...d.data,editField:null,media:[...media,{kind,fileId}]});
+  }catch(error){
+   await showPostScreen(telegram,userId,d,"素材を登録できませんでした。送信した素材は削除していません。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
+   return true;
+  }
+  try{await announcementScreen(telegram,userId,next);}
+  catch{
+   await showPostScreen(telegram,userId,next,"素材は下書きに保存されましたが、プレビューを確認できません。元の素材は削除していません。",
+    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${next.revision}`)]]));
+   return true;
+  }
+  const removed=await removeUserWizardInput(telegram,chatId,messageId);
+  if(!removed)await telegram.sendMessage(userId,"素材は登録済みです。元の送信メッセージは削除できませんでした。");
   return true;
  }
  bot.on("photo",async(ctx,next)=>{
@@ -1827,6 +1876,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(ctx.chat.type!=="private")return next();
   if(!await receiveNoticeMedia(ctx.telegram,ctx.from.id,ctx.chat.id,
     ctx.message.message_id,"video",ctx.message.video.file_id))return next();
+ });
+ bot.on("sticker",async(ctx,next)=>{
+  if(ctx.chat.type!=="private")return next();
+  if(!await receiveNoticeMedia(ctx.telegram,ctx.from.id,ctx.chat.id,
+    ctx.message.message_id,"sticker",ctx.message.sticker.file_id))return next();
  });
  // Telegram may classify a short silent MP4 as animation or a video/* document.
  // These fallbacks only accept the active private notice draft.
@@ -2247,6 +2301,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    let isScheduledRoom=false;
    let buttons:ReadonlyArray<ReadonlyArray<{text:string;url?:string;callback_data?:string;copy_text?:{text:string};style?:"primary"|"success"|"danger"}>>|undefined;
    let noticeAttachment:ReturnType<typeof noticeMedia>|undefined;
+   let noticePreviewData:Record<string,unknown>|undefined;
    if(module==="profile"){
     const p=await getProfile(ctx.from.id);
     if(!p||p.revision!==revision)throw new Error("プロフィールが更新されています。");
@@ -2343,10 +2398,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
       if(join==="public")actions.push({text:"✅ 参加する",url:entry});
       else if(join==="approved_only")actions.push({text:"📝 応募する",url:entry});
       actions.push({text:"✉️ 質問する",url:entry});
-      if(draft.data.linkLabel&&draft.data.linkUrl)
-       actions.push({text:String(draft.data.linkLabel),url:String(draft.data.linkUrl)});
+      const link=noticeUrlButton(draft.data);
+      if(link)actions.push(link);
       buttons=adaptiveChoiceRows(actions);
       noticeAttachment=noticeMedia(draft.data);
+      noticePreviewData=draft.data;
      }else if(kind==="recruitment"){
       buttons=[[{text:"🔗 募集者へ連絡",url:await ownerUsernameLink(ctx.telegram,ctx.from.id)}]];
      }
@@ -2417,6 +2473,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
      ctx.callbackQuery.message?.message_id:undefined;
     await showRoomPublished(ctx.telegram,ctx.from.id,Number(sourceId),screenId);
    }else if(module==="announcement"&&!isRecruitment){
+    if(noticePreviewData)await clearNoticeStickerPreviews(ctx.telegram,ctx.from.id,noticePreviewData);
     await showPublishedNoticeOwner(ctx.telegram,ctx.from.id,Number(sourceId),
      "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
    }else await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+

@@ -1,7 +1,7 @@
 import test, {mock} from "node:test";
 import assert from "node:assert/strict";
 import {noticeParts,noticeText,noticeEdit,noticeJoin,noticeMedia,
- validateNotice,noticeCard,buildNoticeRichPreview} from "../src/services/noticeEditor.js";
+ validateNotice,noticeCard,buildNoticeRichPreview,noticeUrlButton} from "../src/services/noticeEditor.js";
 import {pool} from "../src/db/index.js";
 import {announcementPanel,announcementSummary,startAnnouncementEditor,registerPostingHandlers} from "../src/bot/postingHandlers.js";
 
@@ -394,4 +394,37 @@ test("registered notice edit callbacks reject each owner, chat, revision, screen
    }finally{f.restore();}
   }
  }
+});
+
+test("notice link preview exposes the exact clickable URL and preserves eight controls",()=>{
+ const data=noticeEdit({kind:"announcement",title:"テスト",body:"説明"},"link","詳細を見る\nhttps://example.com/details");
+ const link=noticeUrlButton(data);
+ assert.deepEqual(link,{text:"詳細を見る",url:"https://example.com/details"});
+ const rich=buildNoticeRichPreview(data,7);
+ assert.deepEqual(rich.blocks.at(-1),{type:"buttons",buttons:[link]});
+ assert.equal(announcementPanel({module:"announcement",step:"preview",revision:7,data}).reply_markup.inline_keyboard.flat().length,8);
+ assert.equal(buildNoticeRichPreview(noticeEdit(data,"link","なし"),8).blocks.some(x=>x.type==="buttons"),false);
+});
+test("native sticker is saved as sticker, counts toward five, and is not an invalid Rich video",()=>{
+ const data={kind:"announcement",media:[{kind:"sticker",fileId:"sticker_file"}]};
+ assert.deepEqual(noticeMedia(data),data.media);
+ validateNotice(data,1);
+ assert.equal(noticeCard(data,1),"📢 告知");
+ const blocks=buildNoticeRichPreview(data,1).blocks;
+ assert.ok(blocks.some(x=>x.text==="ステッカー：1件（実物は別メッセージで表示）"));
+ assert.equal(blocks.some(x=>x.type==="video"||x.type==="photo"),false);
+ assert.deepEqual(noticeMedia(noticeEdit(data,"media","なし")),[]);
+});
+test("native sticker and mixed albums use native delivery and the registered link",async()=>{
+ const {createTelegramDispatcher}=await import("../src/services/telegramDispatcher.js");
+ const calls:any[][]=[];
+ const t=Object.fromEntries(["sendMessage","sendSticker","sendPhoto","sendVideo","sendMediaGroup"].map(k=>[k,async(...args:any[])=>{calls.push([k,...args]);return {message_id:123};}]));
+ const target={chatId:-100123,threadId:8};
+ const buttons=[[{text:"詳細",url:"https://example.com/"}]];
+ const result=await createTelegramDispatcher(t as any).publish(target,{text:"告知",buttons,media:[
+  {kind:"photo",fileId:"p1"},{kind:"video",fileId:"v1"},{kind:"sticker",fileId:"s1"},{kind:"photo",fileId:"p2"}]});
+ assert.equal(result,123);
+ assert.deepEqual(calls.map(x=>x[0]),["sendMessage","sendMediaGroup","sendSticker","sendPhoto"]);
+ assert.equal(calls[0]![3].reply_markup.inline_keyboard[0][0].url,"https://example.com/");
+ assert.deepEqual(calls[2],["sendSticker",target.chatId,"s1",{message_thread_id:8}]);
 });

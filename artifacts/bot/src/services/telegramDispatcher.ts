@@ -8,7 +8,7 @@ import {assertTelegramInlineKeyboard} from "./telegramClientCompatibility.js";
 import {publicNavigationButton} from "./startlessNavigation.js";
 export type TransportTarget={chatId:number;threadId:number};
 export type TransportButton={text:string;url?:string;callback_data?:string;copy_text?:{text:string};style?:"primary"|"success"|"danger"};
-export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";media?:readonly {kind:"photo"|"video";fileId:string}[];buttons?:readonly (readonly TransportButton[])[]};
+export type TransportMessage={text:string;parseMode?:"HTML"|"MarkdownV2";media?:readonly {kind:"photo"|"video"|"sticker";fileId:string}[];buttons?:readonly (readonly TransportButton[])[]};
 function assertTarget(t:TransportTarget):void{
  if(!Number.isSafeInteger(t.chatId)||t.chatId>=0||
     !Number.isSafeInteger(t.threadId)||t.threadId<=0)
@@ -34,7 +34,7 @@ export function createTelegramDispatcher(telegram:Telegram){
    assertTarget(t);
    const media=message.media??[];
    if(media.length>5)throw Error("ANNOUNCEMENT_MEDIA_LIMIT");
-   if(media.length===1&&message.text.length<=1024){
+   if(media.length===1&&media[0]!.kind!=="sticker"&&message.text.length<=1024){
     const one=media[0]!;
     const opts={message_thread_id:t.threadId,caption:message.text,
      ...(message.parseMode?{parse_mode:message.parseMode}:{}),
@@ -49,14 +49,24 @@ export function createTelegramDispatcher(telegram:Telegram){
     ...(message.parseMode?{parse_mode:message.parseMode}:{}),
     ...(markup(message.buttons)||{}),
    });
-   if(media.length===1){
-    const one=media[0]!;
-    if(one.kind==="photo")await telegram.sendPhoto(t.chatId,one.fileId,{message_thread_id:t.threadId});
-    else await telegram.sendVideo(t.chatId,one.fileId,{message_thread_id:t.threadId});
-   }else if(media.length>=2){
-    await telegram.sendMediaGroup(t.chatId,
-     media.map(x=>({type:x.kind,media:x.fileId})) as Parameters<typeof telegram.sendMediaGroup>[1],
+   // Native stickers are not valid album members and cannot carry captions.
+   // Preserve their file type and sequence; only contiguous photos/videos form albums.
+   for(let i=0;i<media.length;){
+    const one=media[i]!;
+    if(one.kind==="sticker"){
+     await telegram.sendSticker(t.chatId,one.fileId,{message_thread_id:t.threadId});
+     i++;continue;
+    }
+    let end=i+1;
+    while(end<media.length&&media[end]!.kind!=="sticker")end++;
+    const batch=media.slice(i,end);
+    if(batch.length===1){
+     if(one.kind==="photo")await telegram.sendPhoto(t.chatId,one.fileId,{message_thread_id:t.threadId});
+     else await telegram.sendVideo(t.chatId,one.fileId,{message_thread_id:t.threadId});
+    }else await telegram.sendMediaGroup(t.chatId,
+     batch.map(x=>({type:x.kind,media:x.fileId})) as Parameters<typeof telegram.sendMediaGroup>[1],
      {message_thread_id:t.threadId});
+    i=end;
    }
    return sent.message_id;
   },

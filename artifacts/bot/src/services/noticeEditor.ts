@@ -2,7 +2,7 @@
 import {escapeProfileHtml} from "./profileCore.js";
 import {parseJstDateTime,validateAnnouncement} from "./postingDomain.js";
 export type NoticeJoin="none"|"public"|"approved_only";
-export type NoticeMedia={kind:"photo"|"video";fileId:string};
+export type NoticeMedia={kind:"photo"|"video"|"sticker";fileId:string};
 export type NoticeDraft=Record<string,unknown>;
 export function noticeParts(data:NoticeDraft):{title:string;body:string}{
  const source=String(data.text||"");
@@ -21,6 +21,17 @@ export function noticeLink(url:string):string{
   throw Error("告知リンクは公開HTTPSのURLを入力してください");
  return u.toString();
 }
+/** The very same validated URL button is used in the DM and public card. */
+export function noticeUrlButton(data:NoticeDraft):{text:string;url:string}|undefined{
+ if(!data.linkLabel||!data.linkUrl)return undefined;
+ return {text:String(data.linkLabel),url:noticeLink(String(data.linkUrl))};
+}
+export type NoticeStickerPreview={fileId:string;messageId:number|null};
+export function noticeStickerPreviews(data:NoticeDraft):NoticeStickerPreview[]{
+ return (Array.isArray(data.noticeStickerPreviews)?data.noticeStickerPreviews:[]).filter(
+ (x):x is NoticeStickerPreview=>!!x&&typeof x==="object"&&typeof x.fileId==="string"&&
+ (x.messageId===null||(Number.isSafeInteger(x.messageId)&&x.messageId>0))).slice(0,5);
+}
 export function noticeJoin(data:NoticeDraft):NoticeJoin{
  return data.participation==="public"?"public":
   data.participation==="approved_only"?"approved_only":"none";
@@ -28,7 +39,7 @@ export function noticeJoin(data:NoticeDraft):NoticeJoin{
 export function noticeMedia(data:NoticeDraft):NoticeMedia[]{
  const value=Array.isArray(data.media)?data.media:[];
  return value.filter((x):x is NoticeMedia=>!!x&&typeof x==="object"&&
-  (x.kind==="photo"||x.kind==="video")&&
+  (x.kind==="photo"||x.kind==="video"||x.kind==="sticker")&&
   typeof x.fileId==="string"&&x.fileId.length>0).slice(0,5);
 }
 export function noticeEdit(data:NoticeDraft,field:string,input:string):NoticeDraft{
@@ -51,14 +62,14 @@ export function noticeEdit(data:NoticeDraft,field:string,input:string):NoticeDra
   return {...data,linkLabel:label.trim(),linkUrl:noticeLink(url)};
  }
  if(field==="media"){
-  if(value!=="なし")throw Error("画像・動画を送信するか「なし」と入力してください");
+  if(value!=="なし")throw Error("画像・動画・ステッカーを送信するか「なし」と入力してください");
   return {...data,media:[]};
  }
  throw Error("告知編集の項目が無効です");
 }
 export function validateNotice(data:NoticeDraft,ownerId:number):void{
  const parts=noticeParts(data),text=noticeText(data);
- if(!text.trim()&&!noticeMedia(data).length)throw Error("文章または画像・動画を登録してください");
+ if(!text.trim()&&!noticeMedia(data).length)throw Error("文章または画像・動画・ステッカーを登録してください");
  const event=data.eventAt?new Date(String(data.eventAt)):undefined;
  const deadline=data.deadlineAt?new Date(String(data.deadlineAt)):undefined;
  // The shared announcement validator reserves its deadline/required date for
@@ -106,10 +117,18 @@ export function buildNoticeRichPreview(data:NoticeDraft,revision:number){
   paragraph("参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"［未設定］")),
  ];
  if(data.destinationLabel)blocks.push(paragraph("投稿先："+String(data.destinationLabel)));
+ const stickers=noticeMedia(data).filter(x=>x.kind==="sticker");
+ if(stickers.length)blocks.push(paragraph("ステッカー："+stickers.length+"件（実物は別メッセージで表示）"));
  for(const media of noticeMedia(data)){
+  if(media.kind==="sticker")continue; // Telegram has no native Rich sticker block.
   blocks.push(media.kind==="photo"
    ?{type:"photo",photo:{type:"photo",media:media.fileId}}
    :{type:"video",video:{type:"video",media:media.fileId}});
+ }
+ const link=noticeUrlButton(data);
+ if(link){
+  blocks.push(paragraph("🔗 リンクボタン（タップして確認）"));
+  blocks.push({type:"buttons",buttons:[link]});
  }
  return {blocks};
 }

@@ -32,6 +32,13 @@ export async function bindDraftScreen(id:number,module:PostModule,revision:numbe
   [validOwner(id),module,revision,messageId]);
  if(r.rows.length!==1)throw new Error("POST_DRAFT_STALE");
 }
+/** Record only Bot-owned native sticker preview receipts on this notice revision. */
+export async function bindNoticeStickerPreviews(id:number,revision:number,previews:readonly {fileId:string;messageId:number|null}[]):Promise<void>{
+ const r=await pool.query(
+  "UPDATE public_post_drafts SET data=jsonb_set(data,'{noticeStickerPreviews}',$3::jsonb,true) WHERE owner_user_id=$1 AND module='announcement' AND revision=$2 RETURNING owner_user_id",
+  [validOwner(id),revision,JSON.stringify(previews)]);
+ if(r.rows.length!==1)throw Error("POST_DRAFT_STALE");
+}
 export async function getDraft(id:number,module:PostModule):Promise<EditorDraft|null>{
  const r=await pool.query(
   "SELECT step,data,revision FROM public_post_drafts WHERE owner_user_id=$1 AND module=$2",

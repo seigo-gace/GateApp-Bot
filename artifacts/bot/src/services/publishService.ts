@@ -26,7 +26,7 @@ export type PublishRequest = {
   topicId:number;
   text:string;
   buttons?:readonly (readonly TransportButton[])[];
-  media?:readonly {kind:"photo"|"video";fileId:string}[];
+  media?:readonly {kind:"photo"|"video"|"sticker";fileId:string}[];
   approved:boolean;
 };
 
