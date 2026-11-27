@@ -65,10 +65,22 @@ export function pollApiRequest(token:string,method:PollMethod,payload:Record<str
 export function installPollingTransport(telegram:Telegram,token:string,request:Request=https.request):void{
  const original=telegram.callApi.bind(telegram) as (method:string,payload:unknown,options?:unknown)=>Promise<unknown>;
  let ready=false;
+ let lastSuccess=Date.now();
+ let consecutiveFailures=0;
  telegram.callApi=(async(method:string,payload:Record<string,unknown>,options?:{signal?:Signal})=>{
   if(method!=="getUpdates"&&method!=="deleteWebhook")return original(method,payload,options);
-  const result=await pollApiRequest(token,method,payload,options?.signal,request);
+  let result:unknown;
+  try{result=await pollApiRequest(token,method,payload,options?.signal,request);}
+  catch(error){
+   if(method==="getUpdates"&&!options?.signal?.aborted){
+    consecutiveFailures++;
+    console.error("GAYBBS_POLLING_FAILURE count="+consecutiveFailures+" since_success_ms="+(Date.now()-lastSuccess),error instanceof Error?error.name:"unknown");
+   }
+   throw error;
+  }
   if(method==="getUpdates"){
+   if(consecutiveFailures)console.log("GAYBBS_POLLING_RECOVERED failures="+consecutiveFailures+" elapsed_ms="+(Date.now()-lastSuccess));
+   consecutiveFailures=0;lastSuccess=Date.now();
    if(!ready){ready=true;console.log("GAYBBS_POLLING_READY");}
    const count=(result as unknown[]).length;
    if(count)console.log("GAYBBS_UPDATE_BATCH_RECEIVED count="+count);

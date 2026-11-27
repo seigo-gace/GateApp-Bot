@@ -53,6 +53,13 @@ async function main():Promise<void>{
  if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
  await runMigrations();
+ bot.use(async(ctx,next)=>{
+  const started=Date.now();
+  const slow=setTimeout(()=>console.warn("GAYBBS_UPDATE_STILL_RUNNING type="+ctx.updateType+" elapsed_ms="+(Date.now()-started)),5000);
+  try{await next();console.log("GAYBBS_UPDATE_COMPLETED type="+ctx.updateType+" elapsed_ms="+(Date.now()-started));}
+  catch(error){console.error("GAYBBS_UPDATE_FAILED type="+ctx.updateType+" elapsed_ms="+(Date.now()-started));throw error;}
+  finally{clearTimeout(slow);}
+ });
  registerBugReportHandlers(bot);
  registerStartlessNavigationHandlers(bot);
  bot.start(async ctx=>{

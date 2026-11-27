@@ -15,6 +15,8 @@ async function clearKnownCommandVariants(
  telegram:Telegram,scope:CommandScope,
 ):Promise<void>{
  for(const language_code of COMMAND_LANGUAGES){
+  const existing=await telegram.getMyCommands({scope,language_code});
+  if(existing.length===0)continue;
   await telegram.setMyCommands([],{scope,language_code});
   const remaining=await telegram.getMyCommands({scope,language_code});
   if(remaining.length!==0)
