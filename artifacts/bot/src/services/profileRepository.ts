@@ -64,6 +64,8 @@ export async function getDraft(id: number): Promise<ProfileDraft | null> {
   if(data.loveTags!==undefined)data.loveTags=validLikeTags(data.loveTags);
   if(data.prRef){
     data.pr=await readProfilePr(id,data.prRef);
+  }else if(data.prRef===null){
+    data.pr=null;
   }
   return {step:r.rows[0].step, data, revision:r.rows[0].revision};
 }
@@ -94,6 +96,7 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
   if (!r.rows.length) throw new Error("PROFILE_DRAFT_STALE");
   const returned=r.rows[0].data as ProfileDraft["data"];
   if(returned.prRef)returned.pr=await readProfilePr(id,returned.prRef);
+  else if(returned.prRef===null)returned.pr=null;
   return {step:r.rows[0].step,data:returned,revision:r.rows[0].revision};
 }
 export async function getProfile(id: number): Promise<SavedProfile | null> {
