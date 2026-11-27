@@ -61,7 +61,10 @@ export function validateNotice(data:NoticeDraft,ownerId:number):void{
  if(!text.trim()&&!noticeMedia(data).length)throw Error("文章または画像・動画を登録してください");
  const event=data.eventAt?new Date(String(data.eventAt)):undefined;
  const deadline=data.deadlineAt?new Date(String(data.deadlineAt)):undefined;
- validateAnnouncement({ownerId,kind:data.kind==="preview"?"preview":"announcement",text:text||"媒体のみ",eventAt:event,deadlineAt:deadline});
+ // The shared announcement validator reserves its deadline/required date for
+ // Recruitment. General notice dates and deadlines are independently optional.
+ validateAnnouncement({ownerId,kind:"announcement",text:text||"媒体のみ",eventAt:event});
+ if(deadline&&!Number.isFinite(deadline.getTime()))throw Error("ANNOUNCEMENT_DATE_INVALID");
  if(data.linkLabel||data.linkUrl){
   if(!data.linkLabel||!data.linkUrl)throw Error("リンク名とURLが両方必要です");
   noticeLink(String(data.linkUrl));
