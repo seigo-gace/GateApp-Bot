@@ -104,3 +104,10 @@ test("notice publish uses selected destination and never loops to picker",async(
  assert.match(branch,/await publishAccepted\(ctx,"announcement",rev,selectedTopicId\);/);
  assert.ok(branch.indexOf('await publishAccepted(ctx,"announcement",rev,selectedTopicId);')<branch.indexOf('await announcementDestinationPicker(ctx.telegram,ctx.from.id,current);'));
 });
+
+test("selected notice destination is visible on final preview",()=>{
+ const draft={module:"announcement",step:"preview",revision:9,
+  data:{kind:"announcement",title:"告知",body:"本文",destinationLabel:"エリア掲示板 / テストTopic"}} as const;
+ const preview=announcementSummary(draft);
+ assert.match(preview,/投稿先：エリア掲示板 \/ テストTopic/);
+});
