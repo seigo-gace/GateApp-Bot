@@ -1,4 +1,4 @@
-import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard,buildNoticeRichPreview,noticeUrlButton,noticeStickerPreviews,resolveNoticeDestination} from "../services/noticeEditor.js";
+import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard,noticeUrlButton,noticeStickerPreviews,resolveNoticeDestination} from "../services/noticeEditor.js";
 import {showPublishedNoticeOwner} from "./noticeInteractions.js";
 import {prepareNoticeRich} from "../services/noticeRichMedia.js";
 import { Markup, type Telegraf, type Telegram, type Context } from "telegraf";
@@ -674,8 +674,7 @@ async function announcementDatePicker(t:Telegram,id:number,d:EditorDraft):Promis
  await showPostScreen(t,id,d,(field==="deadline"?"📅 受付終了日時":"📅 開催日時")+
   "（日本時間）を選択してください。",Markup.inlineKeyboard(rows));
 }
-/** Stickers cannot be embedded in Rich Messages. Keep native copies tracked by
- * the same draft; never resend an ambiguous pending copy automatically. */
+/** Remove only tracked private previews produced by earlier versions. */
 async function clearNoticeStickerPreviews(t:Telegram,id:number,data:Record<string,unknown>):Promise<void>{
  for(const p of noticeStickerPreviews(data)){
   if(p.messageId===null)continue;

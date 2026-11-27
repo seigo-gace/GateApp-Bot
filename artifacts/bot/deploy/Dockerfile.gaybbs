@@ -28,7 +28,7 @@ COPY --from=build --chown=node:node /src/artifacts/bot/deploy/topic-board-ledger
 USER root
 RUN npm install --omit=dev undici@6.21.3
 # Export codec packages for the existing offline image update route.
-RUN mkdir -p /app/notice-codecs && apk fetch --recursive --output /app/notice-codecs libwebp-tools \
+RUN mkdir -p /app/notice-codecs && apk update && apk fetch --recursive --output /app/notice-codecs libwebp-tools \
     && apk add --no-network --no-cache /app/notice-codecs/*.apk \
     && /usr/bin/dwebp -version
 RUN mkdir -p /app/preload && printf '%s\n' \

@@ -17,6 +17,8 @@ import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
 import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
 import {claimDelivery,markDeliveryUnknown} from "../src/services/postingDelivery.js";
+import {makeNoticeApplicationLink,makeApplicationLink} from "../src/services/applicationLinks.js";
+import {isNoticeApplicationLink} from "../src/bot/noticeInteractions.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -573,6 +575,11 @@ try{
  for(const kind of ["announcement","preview"] as const){
   const open=await makeNotice(kind,"public");
   await noticeState(open,"published",true);
+  const link=await makeNoticeApplicationLink(noticeOwner,open);
+  const payload=new URL(link).searchParams.get("start")!;
+  assert.equal(await isNoticeApplicationLink(payload),true);
+  await assert.rejects(makeNoticeApplicationLink(noticeOther,open),/NOTICE_SOURCE_NOT_OWNED/);
+  await assert.rejects(makeApplicationLink(noticeOwner,open),/APPLICATION_SOURCE_NOT_OWNED/);
   await assert.rejects(submitApplication(open,noticeOwner,null),/SELF_APPLICATION_REFUSED/);
   const joined=await submitApplication(open,noticeApplicant,{source:"notice"});
   assert.equal(joined.status,"accepted");
@@ -643,6 +650,8 @@ try{
  await assert.rejects(submitApplication(roomApprovalNotice,noticeApplicant,null),/APPLICATIONS_CLOSED/);
  await noticeCounts(roomNotice,0,0);
  await noticeCounts(roomApprovalNotice,0,0);
+ await assert.rejects(makeNoticeApplicationLink(noticeOwner,roomNotice),/NOTICE_SOURCE_NOT_OWNED/);
+ console.log("GAYBBS_DB_NOTICE_ENTRY_OWNER_AND_KIND=PASS");
  console.log("GAYBBS_DB_STANDALONE_NOTICE_PARTICIPATION=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
