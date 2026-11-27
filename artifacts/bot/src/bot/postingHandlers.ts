@@ -645,14 +645,14 @@ export function announcementPanel(d:EditorDraft):WizardKeyboard{
 }
 export function announcementSummary(d:EditorDraft):string{
  const {title,body}=noticeParts(d.data);
- const dt=(v:unknown)=>v?new Date(String(v)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}):"未設定";
+ const dt=(v:unknown)=>v?new Date(String(v)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}):"［未設定］";
  const join=noticeJoin(d.data);
  return ["📢 告知/予告",
-  title?`<a href="https://t.me/GayBBS_bot?start=ne_t_${d.revision}">［編集］</a>タイトル：`+escapeProfileHtml(title):"タイトル：未設定",
-  body?`<a href="https://t.me/GayBBS_bot?start=ne_b_${d.revision}">［編集］</a>説明：`+escapeProfileHtml(body):"説明：未設定",
+  title?`<a href="https://t.me/GayBBS_bot?start=ne_t_${d.revision}">［編集］</a>タイトル：`+escapeProfileHtml(title):"タイトル：［未設定］",
+  body?`<a href="https://t.me/GayBBS_bot?start=ne_b_${d.revision}">［編集］</a>説明：`+escapeProfileHtml(body):"説明：［未設定］",
   "開催日時："+dt(d.data.eventAt),
   "受付期限："+dt(d.data.deadlineAt),
-  "参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"未設定"),
+  "参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"［未設定］"),
   ...(d.data.destinationLabel?["投稿先："+escapeProfileHtml(String(d.data.destinationLabel))]:[])
  ].join("\n");
 }
