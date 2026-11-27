@@ -115,7 +115,7 @@ async function results(t:Telegram,id:number,s:SearchSession,page:number){
 }
 export async function startSearchEditor(t:Telegram,id:number,screenId?:number){
  const old=await getSearchSession(id);
- const s=old?(old.step==="home"?old:await updateSearch(id,old.revision,"home",old.filters)):
+ const s=old?await updateSearch(id,old.revision,"home",old.filters):
   await beginSearch(id);
  // The help screen owns the message being edited. Pass that ID into the
  // existing search session before rendering, rather than sending another DM.
@@ -130,7 +130,7 @@ export function registerSearchHandlers(bot:Telegraf){
  bot.action(/^search:(keyword|filter|run|clear|back):(\d+)$/,async ctx=>{
   if(!dm(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),s=await getSearchSession(ctx.from.id);
-  if(!s||s.revision!==rev){await ctx.answerCbQuery("古い操作です。/search で再開してください。");return;}
+  if(!s||s.revision!==rev){await ctx.answerCbQuery("古い操作です。投稿メニューの検索/フィルターから再開してください。");return;}
   await ctx.answerCbQuery();
   if(op==="keyword"){
    const next=await updateSearch(ctx.from.id,rev,"keyword",s.filters);
@@ -238,7 +238,7 @@ export function registerSearchHandlers(bot:Telegraf){
   const s=await getSearchSession(ctx.from.id);
   if(!s||!["keyword","age"].includes(s.step))return goNext();
   // Search owns its own session; never consume input owned by another active wizard.
-   if(await currentDmTextOwner(ctx.from.id)!==null)return goNext();
+   if(await currentDmTextOwner(ctx.from.id)!=="search")return goNext();
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
   const input=ctx.message.text.trim();
   let filters=s.filters;

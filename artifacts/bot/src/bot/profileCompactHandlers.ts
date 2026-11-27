@@ -187,9 +187,10 @@ export async function startCompactProfileEditor(
   Number(tapped):undefined;
  const existingDraft=await profiles.getDraft(ctx.from.id);
  if(existingDraft){
-  // Preserve the existing draft, changing only the display location.
+  // A legacy partial draft must not erase fields from an existing original.
+  const existing=await profiles.getProfile(ctx.from.id);
   const next=await profiles.putDraft(ctx.from.id,"compact",{
-   ...existingDraft.data,compactOrigin:origin,
+   ...seedExisting(existing),...existingDraft.data,compactOrigin:origin,
    screenMessageId:menuScreenId??existingDraft.data.screenMessageId
   },existingDraft.revision);
   await render(ctx.telegram,ctx.from.id,next);return;
@@ -204,6 +205,41 @@ export async function startCompactProfileEditor(
  const draft=await profiles.putDraft(ctx.from.id,"compact",data);
  await render(ctx.telegram,ctx.from.id,draft,
   existing&&origin!=="profile"?"登録済みプロフィールを開きました。今回の募集・応募内容で自動上書きしていません。":"");
+}
+/** Restore the current editor after a shared appearance section.
+ * Section Save remains private; only the final compact Save publishes.
+ */
+export async function returnFromCompactAppearance(ctx:Context,draft:ProfileDraft,save:boolean):Promise<void>{
+ if(ctx.chat?.type!=="private"||!ctx.from)return;
+ const id=ctx.from.id,origin=draft.data.compactOrigin as Origin;
+ if(!origins.has(origin))throw Error("PROFILE_COMPACT_ORIGIN_INVALID");
+ const data={...draft.data,pendingRegion:null,compactPanel:undefined,compactCategory:null,compactPage:0};
+ let acknowledged=false;
+ let persisted=false;
+ try{
+  let next:ProfileDraft;
+  if(save){
+   if(!ctx.from.username||!data.title?.trim()||!data.nickname||!data.position||
+      !data.heightCm||!data.weightKg||!data.age||!isProfilePosition(data.position)){
+    await ctx.answerCbQuery("先にタイトル・基本情報・ポジションを入力してください。",{show_alert:true});return;
+   }
+   await profiles.savePrivateDraft(id,draft.revision,ctx.from.username,true);
+   persisted=true;
+   const restored=await profiles.getDraft(id);
+   if(!restored||restored.revision!==draft.revision+1||restored.step!=="compact")
+    throw Error("PROFILE_SAVED_SCREEN_CHANGED");
+   next=restored;
+  }else{
+   next=await profiles.putDraft(id,"compact",data,draft.revision);
+  }
+  await ctx.answerCbQuery();acknowledged=true;
+  await render(ctx.telegram,id,next,save?"✅ 保存しました。公開内容を更新するには「保存・3掲示板へ投稿」を押してください。":"");
+ }catch{
+  const message=persisted?"保存は完了しました。画面を開き直してください。":
+   "操作を完了できませんでした。プロフィールを開き直して保存状態を確認してください。";
+  if(!acknowledged)await ctx.answerCbQuery(message,{show_alert:true}).catch(()=>undefined);
+  else await ctx.reply(message);
+ }
 }
 async function resumeOrigin(ctx:Context,origin:Origin):Promise<void>{
  if(!ctx.from)return;
@@ -376,24 +412,36 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery("タイトル・基本情報・ポジションを入力してください。",{show_alert:true});
     return;
    }
-   const profile=await profiles.savePrivateDraft(ctx.from.id,r,ctx.from.username??null);
-   await ctx.answerCbQuery("保存しました。公開先を確認しています");
+   let profile:Awaited<ReturnType<typeof profiles.savePrivateDraft>>;
+   try{profile=await profiles.savePrivateDraft(ctx.from.id,r,ctx.from.username??null);}
+   catch{
+    await ctx.answerCbQuery("保存できませんでした。入力内容を確認して再度お試しください。",{show_alert:true}).catch(()=>undefined);
+    return;
+   }
+   // An expired callback acknowledgement must not stop publication after DB save.
+   await ctx.answerCbQuery("保存しました。公開先を確認しています").catch(()=>undefined);
    const origin=origins.has(d.data.compactOrigin as Origin)?d.data.compactOrigin as Origin:"profile";
    // Saving the owner's original must survive any incomplete Telegram delivery.
    // Each board uses its existing delivery/publication ledger for safe retry.
    let notice:string;
    try{
     const result=await publishProfileToAllBoards(ctx.telegram,ctx.from.id,profile);
-    notice="✅ プロフィールを3掲示板の「みんなのプロフ」に反映しました。"+
-     "（新規"+result.published+"・更新"+result.updated+"・変更なし"+result.unchanged+"）";
+    const incomplete=result.unconfirmed+result.blocked;
+    notice=(incomplete?"⚠️ プロフィールは保存済みです。一部の掲示板は反映未確認です。":
+     "✅ プロフィールを3掲示板の「みんなのプロフ」に反映しました。")+
+     "（新規"+result.published+"・更新"+result.updated+"・変更なし"+result.unchanged+
+     "・未確認"+result.unconfirmed+"・保留"+result.blocked+"）";
    }catch{
     notice="⚠️ プロフィールは保存しましたが、3掲示板への投稿完了は確認できません。"+
      "一部が投稿済みの可能性があるため、自動再送はしません。";
    }
-   await ctx.editMessageText(notice+"\n"+renderProfileBasicPreview(profile,ctx.from.username??""),{
-    parse_mode:"HTML",
-    ...Markup.inlineKeyboard([[button("↩ 元の操作へ戻る","pc:return:"+origin)]])
-   });
+   try{
+    await showWizardScreen(ctx.telegram,ctx.from.id,d.data.screenMessageId,
+     notice+"\n"+renderProfileBasicPreview(profile,ctx.from.username??""),
+     Markup.inlineKeyboard([[button("↩ 元の操作へ戻る","pc:return:"+origin)]]),"HTML");
+   }catch{
+    await ctx.reply("保存は完了しました。表示を更新できなかったため、プロフィールを開き直してください。").catch(()=>undefined);
+   }
    return;
   }
   if(action==="appearance"){
@@ -443,7 +491,7 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
     }else{
      const input=parseRecruitmentMessage(text,false);
      parsed={title:input.title,nickname:input.nickname,heightCm:input.heightCm,
-      weightKg:input.weightKg,age:input.age,pr:input.body};
+      weightKg:input.weightKg,age:input.age,pr:input.body||null};
     }
     const next=await profiles.putDraft(ctx.from.id,"compact",{...d.data,...parsed},d.revision);
     await render(ctx.telegram,ctx.from.id,next,notice);

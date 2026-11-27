@@ -23,7 +23,7 @@ function assertInlineKeyboard(rows:readonly (readonly ButtonSpec[])[]):void{
  if(rows.flat().some(b=>b.url.includes("\n")))throw new Error("INLINE_KEYBOARD_URL_BODY_FORBIDDEN");
 }
 import {BOARD_GROUP_CHAT_IDS,type BoardKey} from "./topicRouting.js";
-type PanelRow={
+export type PanelRow={
  panel_id:string;chat_id:string;message_thread_id:string;panel_type:"general_guide"|"posting";
  state:string;message_id:string|null;pinned:boolean;
 };
@@ -33,7 +33,7 @@ function board(chatId:number):BoardKey{
  if(!found)throw new Error("UNREGISTERED_GROUP");
  return found;
 }
-async function buildLinks(panel:PanelRow):Promise<{
+export async function buildLinks(panel:PanelRow):Promise<{
  links:NavLink[];entries:EntryLink[];tokenHashes:string[];
 }>{
  const chatId=Number(panel.chat_id);

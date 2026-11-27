@@ -5,6 +5,7 @@ import {join} from "node:path";
 import {pool} from "../src/db/index.js";
 import {putDraft,getDraft,getProfile,savePrivateDraft,recordProfilePublication,claimProfileRevisionUpdate} from "../src/services/profileRepository.js";
 import {makeProfileViewerButtons,resolvePublishedProfileView} from "../src/services/profilePublicView.js";
+import {applyProfileKeyboardBackfill} from "../src/services/profileKeyboardBackfill.js";
 import {hidePublishedProfile} from "../src/services/profilePublicationControl.js";
 import {revisePublishedProfile} from "../src/services/profilePublicationUpdate.js";
 
@@ -114,7 +115,7 @@ try{
   const buttons=await makeProfileViewerButtons(id,current.revision,topicId);
   const again=await makeProfileViewerButtons(id,current.revision,topicId);
   assert.deepEqual(again,buttons,"publication retry must reuse stable URLs");
-  const token=buttons[0][0].url.split("pv_")[1];
+  const token=buttons[0][0].callback_data!.split(":")[2]!;
   assert.match(token,/^[A-Za-z0-9_-]{32}$/);
   assert.equal(await resolvePublishedProfileView(token),null,"private profile must not be viewable");
   await pool.query(
@@ -122,13 +123,37 @@ try{
   assert.equal(await resolvePublishedProfileView(token),null,"publication receipt required");
   await recordProfilePublication(id,current.revision,-1009876543210,110,777,current);
   assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
+  // Keyboard-only update of the SAME Telegram message ID; no sends/deletes.
+  let markupEdits=0;
+  const onlyMarkupTelegram={
+   async getChat(userId:number){assert.equal(userId,id);return {id:userId,type:"private",username:"test_user_123"};},
+   async editMessageReplyMarkup(chat:number,message:number,_inline:unknown,markup:any){
+    assert.equal(chat,-1009876543210);assert.equal(message,777);
+    assert.deepEqual(markup.inline_keyboard[0].map((b:any)=>b.text),
+      ["🪪","🖼️","🎞️","💖","💘"]);
+    assert.equal(markup.inline_keyboard[1][0].text,"連絡する");
+    markupEdits++;
+    return {chat:{id:chat},message_id:message};
+   },
+   async sendMessage(){throw Error("FORBIDDEN_REPOST")},
+   async deleteMessage(){throw Error("FORBIDDEN_DELETE")},
+  } as any;
+  const dry=await applyProfileKeyboardBackfill(onlyMarkupTelegram,{dryRun:true});
+  assert.equal(dry.selected,1);assert.equal(markupEdits,0);
+  const migrated=await applyProfileKeyboardBackfill(onlyMarkupTelegram,{limit:100});
+  assert.equal(migrated.applied,1);assert.equal(migrated.uncertain,0);
+  assert.equal(markupEdits,1);
+  const retry=await applyProfileKeyboardBackfill(onlyMarkupTelegram,{limit:100});
+  assert.equal(retry.selected,0,"no duplicate edits on published message");
+  assert.equal(markupEdits,1);
+
   // Saving edits leaves the original published snapshot untouched.
   const edit=await putDraft(id,"appearance",{...full,nickname:"改訂テスト"});
   const updated=await savePrivateDraft(id,edit.revision,"test_user_123");
   assert.equal(updated.status,"published");
   assert.equal((await resolvePublishedProfileView(token))?.nickname,"テスト");
   const nextLinks=await makeProfileViewerButtons(id,updated.revision,topicId);
-  const nextToken=nextLinks[0][0].url.split("pv_")[1];
+  const nextToken=nextLinks[0][0].callback_data!.split(":")[2]!;
   assert.equal(await resolvePublishedProfileView(nextToken),null,"unconfirmed edit not public");
   // Test-only gate in ephemeral PostgreSQL; not real Telegram E2E evidence.
   await pool.query(
@@ -142,7 +167,8 @@ try{
    async editMessageText(chat:number,msg:number,_inline:unknown,text:string,opts:any){
     assert.equal(chat,-1009876543210);assert.equal(msg,777);
     assert.match(text,/改訂テスト/);
-    assert.equal(opts.reply_markup.inline_keyboard[0].length,3);
+    assert.equal(opts.reply_markup.inline_keyboard[0].length,5);
+     assert.equal(opts.reply_markup.inline_keyboard[1][0].text,"連絡する");
     revisions++;return true;
    },
   } as any;

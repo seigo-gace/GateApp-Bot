@@ -26,34 +26,35 @@ export async function profileBoardDestinations(){
 
 export async function publishProfileToAllBoards(
  telegram:Telegram,ownerId:number,profile:SavedProfile
-):Promise<{published:number;updated:number;unchanged:number}>{
+):Promise<{published:number;updated:number;unchanged:number;unconfirmed:number;blocked:number}>{
  // Check *every* destination before the first Telegram side effect.
  const destinations=await profileBoardDestinations();
  await assertFeatureReleased("profile");
  const pubs=await listProfilePublications(ownerId);
- for(const destination of destinations){
-  const existing=pubs.find(p=>p.chatId===destination.chatId&&p.threadId===destination.threadId);
-  if(existing&&existing.status!=="published")
-   throw Error("PROFILE_PUBLICATION_NEEDS_RECONCILE");
- }
- let published=0,updated=0,unchanged=0;
+ let published=0,updated=0,unchanged=0,unconfirmed=0,blocked=0;
  for(const topic of destinations){
   const existing=pubs.find(p=>p.chatId===topic.chatId&&p.threadId===topic.threadId);
-  if(existing){
-   const result=await revisePublishedProfile(telegram,ownerId,profile,topic.id);
-   if(!result)throw Error("PROFILE_PUBLICATION_STATE_CHANGED");
-   if(result.updated)updated++;else unchanged++;
-   continue;
+  // A hidden or uncertain post must not prevent independent boards from updating.
+  if(existing&&existing.status!=="published"){blocked++;continue;}
+  try{
+   if(existing){
+    const result=await revisePublishedProfile(telegram,ownerId,profile,topic.id);
+    if(!result)throw Error("PROFILE_PUBLICATION_STATE_CHANGED");
+    if(result.updated)updated++;else unchanged++;
+    continue;
+   }
+   const buttons=await makeProfileViewerButtons(ownerId,profile.revision,topic.id,profile.username);
+   const delivered=await publishPost(telegram,{
+    sourceType:"profile",sourceId:String(ownerId),ownerId,revision:profile.revision,
+    topicId:topic.id,text:renderPublicProfile(profile),buttons,approved:true
+   });
+   await recordProfilePublication(ownerId,profile.revision,
+    delivered.chatId,delivered.threadId,delivered.messageId,profile);
+   published++;
+  }catch{
+   // Existing delivery/revision ledgers are authoritative; no blind replay.
+   unconfirmed++;
   }
-  const buttons=await makeProfileViewerButtons(ownerId,profile.revision,topic.id);
-  const delivered=await publishPost(telegram,{
-   sourceType:"profile",sourceId:String(ownerId),ownerId,revision:profile.revision,
-   topicId:topic.id,text:renderPublicProfile(profile),buttons,approved:true
-  });
-  // If recording fails, the delivery ledger prevents a blind duplicate.
-  await recordProfilePublication(ownerId,profile.revision,
-   delivered.chatId,delivered.threadId,delivered.messageId,profile);
-  published++;
  }
- return {published,updated,unchanged};
+ return {published,updated,unchanged,unconfirmed,blocked};
 }

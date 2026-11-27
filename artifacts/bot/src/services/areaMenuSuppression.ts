@@ -5,10 +5,22 @@ import type {Telegram} from "telegraf";
 export const AREA_BBS_CHAT_ID = -1003847210571;
 const SHOWTIME_LEGACY_BOT_ID = 8086265383;
 
-const AREA_COMMAND_SCOPES = [
-  { type: "chat" as const, chat_id: AREA_BBS_CHAT_ID },
-  { type: "chat_administrators" as const, chat_id: AREA_BBS_CHAT_ID },
-];
+/** Existing bot commands may be registered with language and inherited global scopes.
+ * Cover these without deleting any other bot's commands or Telegram client UI.
+ */
+const COMMAND_LANGUAGES = ["", "ja", "en"] as const;
+type CommandScope = {type:"default"|"all_private_chats"|"all_group_chats"|"all_chat_administrators"}|
+ {type:"chat"|"chat_administrators";chat_id:number};
+async function clearKnownCommandVariants(
+ telegram:Telegram,scope:CommandScope,
+):Promise<void>{
+ for(const language_code of COMMAND_LANGUAGES){
+  await telegram.setMyCommands([],{scope,language_code});
+  const remaining=await telegram.getMyCommands({scope,language_code});
+  if(remaining.length!==0)
+   throw Error("BOT_COMMANDS_STILL_REGISTERED:"+scope.type+":"+language_code);
+ }
+}
 
 export type AreaCommandSuppressionResult = {
   chatId: number;
@@ -27,15 +39,15 @@ const ALLOWED_GROUP_COMMAND_TARGETS=new Set([
   AREA_BBS_CHAT_ID,VIDEO_CHAT_CHAT_ID,GAY_BOARD_CHAT_ID,
 ]);
 export async function suppressBotDmCommandMenu(telegram:Telegram):Promise<string[]>{
- const scopes=[
-  {type:"default" as const},
-  {type:"all_private_chats" as const},
+ const scopes:CommandScope[]=[
+  {type:"default"},
+  {type:"all_private_chats"},
+  {type:"all_group_chats"},
+  {type:"all_chat_administrators"},
  ];
  const cleared:string[]=[];
  for(const scope of scopes){
-  await telegram.setMyCommands([],{scope,language_code:""});
-  const after=await telegram.getMyCommands({scope,language_code:""});
-  if(after.length!==0)throw new Error("DM_COMMAND_READBACK_NOT_EMPTY:"+scope.type);
+  await clearKnownCommandVariants(telegram,scope);
   cleared.push(scope.type);
  }
  return cleared;
@@ -53,10 +65,8 @@ export async function suppressGroupCommandMenu(telegram:Telegram,chatId:number):
  ];
  const cleared:string[]=[];
  for(const scope of scopes){
-  // Explicitly empty group scope. Do not delete to reveal inherited commands.
-  await telegram.setMyCommands([],{scope,language_code:""});
-  const after=await telegram.getMyCommands({scope,language_code:""});
-  if(after.length!==0)throw new Error("GROUP_COMMAND_READBACK_NOT_EMPTY:"+scope.type);
+  // Clear per-chat commands after global scopes to avoid inherited command lists.
+  await clearKnownCommandVariants(telegram,scope);
   cleared.push(scope.type);
  }
  return cleared;

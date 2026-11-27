@@ -25,7 +25,7 @@ test("all eleven labels have exactly one consistent DM/public mapping",()=>{
  assert.equal(POSTING_DM_CALLBACKS["🐞 不具合を報告"],"dm:bug:open");
  assert.equal(postingButtonStyle("🐞 不具合を報告"),"danger");
  assert.deepEqual(APPROVED_POSTING_ROWS[4],["🐞 不具合を報告"]);
- assert.equal(POSTING_CREATOR_URL,"https://t.me/CreateVdobot?start=creator");
+ assert.equal(POSTING_CREATOR_URL,"https://t.me/CreateVdobot");
  assert.equal(POSTING_TALK_URL,"https://t.me/GayBBS_bot?start=talk");
  assert.equal(POSTING_BUG_REPORT_URL,"https://t.me/GayBBS_bot?start=bugreport");
 });

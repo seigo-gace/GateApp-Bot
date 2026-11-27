@@ -33,7 +33,7 @@ export async function revisePublishedProfile(
  if(member.status!=="administrator"&&member.status!=="creator")
   throw Error("PUBLISH_BOT_NOT_ADMIN");
  // Prepare a stable link and the new exact public message before claiming.
- const buttons=await makeProfileViewerButtons(ownerId,profile.revision,topicId);
+ const buttons=await makeProfileViewerButtons(ownerId,profile.revision,topicId,profile.username);
  const text=renderPublicProfile(profile);
  const messageId=await claimProfileRevisionUpdate(ownerId,profile.revision,topic.chatId,topic.threadId);
  try{

@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""No-Telegram-network contract tests for bounded topic entry audit."""
+import asyncio
+import unittest
+from types import SimpleNamespace
+
+from userbot_topic_entry_audit import audit, posting_entry, button_type, recent_topic_buttons, opaque_button_transport, MIGRATION_MESSAGE_IDS, AREA_CHAT, CATEGORY_CHAT, VIDEO_CHAT
+
+
+def button(text, url):
+    return SimpleNamespace(text=text, url=url)
+
+
+class PostingEntryClassifierTests(unittest.TestCase):
+    def test_own_pinned_post_button_is_detected(self):
+        msg = SimpleNamespace(sender_id=101, buttons=[[
+            button("📝 投稿はこちら", "https://t.me/GayBBS_bot?start=m_abc")
+        ]])
+        self.assertTrue(posting_entry(msg, 101))
+
+    def test_foreign_user_identical_button_is_not_accepted(self):
+        msg = SimpleNamespace(sender_id=999, buttons=[[
+            button("投稿はこちら", "https://t.me/GayBBS_bot?start=m_abc")
+        ]])
+        self.assertFalse(posting_entry(msg, 101))
+
+    def test_unrelated_url_or_text_is_not_accepted(self):
+        for text, url in [
+            ("投稿はこちら", "https://t.me/unrelated_bot?start=x"),
+            ("グループへ戻る", "https://t.me/GayBBS_bot?start=m_abc"),
+            ("投稿はこちら", "https://evil.example/t.me/GayBBS_bot?start=x"),
+            ("投稿はこちら", "https://t.me/GayBBS_bot?start="),
+        ]:
+            msg = SimpleNamespace(sender_id=101, buttons=[[button(text, url)]])
+            self.assertFalse(posting_entry(msg, 101))
+
+    def test_callback_posting_entry_detected(self):
+        msg = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="📝 投稿メニューを開く", url=None, data=b"gdm:p_abc")
+        ]])
+        self.assertEqual(button_type(msg, 101), "normal")
+
+    def test_specialized_single_button_types(self):
+        for title, kind in (("🪪 プロフ投稿", "profile"), ("🎬 クリエーター投稿", "creator")):
+            msg = SimpleNamespace(sender_id=101, buttons=[[
+                SimpleNamespace(text=title, url="https://t.me/GayBBS_bot?start=m_abc")
+            ]])
+            self.assertEqual(button_type(msg, 101), kind)
+
+    def test_profile_startless_callback_is_detected(self):
+        msg = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="🪪 プロフ投稿", url=None, data=b"gdm:m_abc")
+        ]])
+        self.assertEqual(button_type(msg, 101), "profile")
+
+    def test_startless_transport_readback_is_safe_and_exact(self):
+        self.assertEqual(len(MIGRATION_MESSAGE_IDS), 21)
+        callback = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="📝 投稿", url=None, data=b"gdm:p_private")
+        ]])
+        deep = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="📝 投稿", url="https://t.me/GayBBS_bot?start=p_secret", data=None)
+        ]])
+        self.assertEqual(opaque_button_transport(callback,101),"INTERNAL_CALLBACK")
+        self.assertEqual(opaque_button_transport(deep,101),"REPEATED_START_DEEPLINK")
+        self.assertEqual(opaque_button_transport(deep,102),"OTHER_AUTHOR")
+        self.assertEqual(opaque_button_transport(None,101),"NOT_FOUND")
+
+    def test_creator_bot_deep_link_is_detected(self):
+        msg = SimpleNamespace(sender_id=101, buttons=[[
+            SimpleNamespace(text="クリエーター投稿", url="https://t.me/CreateVdobot", data=None)
+        ]])
+        self.assertEqual(button_type(msg, 101), "creator")
+
+    def test_video_chat_is_allowed(self):
+        class Client:
+            pass
+        # Chat allowlisting is validated before any Telethon request.
+        with self.assertRaises(Exception) as ctx:
+            asyncio.run(audit(Client(), VIDEO_CHAT, 0))
+        self.assertNotIn("TOPIC_AUDIT_CHAT_NOT_ALLOWED", str(ctx.exception))
+
+    def test_history_detects_existing_unpinned_callback(self):
+        class Fake:
+            async def get_messages(self, entity, ids):
+                return SimpleNamespace(id=ids, sender_id=999, buttons=None)
+            async def iter_messages(self, entity, reply_to, limit):
+                yield SimpleNamespace(id=1002, sender_id=101, buttons=[[
+                    SimpleNamespace(text="📝 投稿メニューを開く", url=None, data=b"gdm:p_test")
+                ]])
+        result = asyncio.run(recent_topic_buttons(Fake(), object(), 1001, 101))
+        self.assertEqual(result["state"], "PRESENT")
+        self.assertEqual(result["message_ids"], [1002])
+        self.assertEqual(result["history_transports"] if "history_transports" in result else result["transports"], ["INTERNAL_CALLBACK"])
+
+    def test_history_reports_original_start_link_without_disclosing_token(self):
+        class Fake:
+            async def get_messages(self, entity, ids):
+                return SimpleNamespace(id=ids, sender_id=999, buttons=None)
+            async def iter_messages(self, entity, reply_to, limit):
+                yield SimpleNamespace(id=1012, sender_id=101, buttons=[[
+                    SimpleNamespace(text="📝 投稿", url="https://t.me/GayBBS_bot?start=p_PRIVATE123", data=None)
+                ]])
+        result = asyncio.run(recent_topic_buttons(Fake(), object(), 1001, 101))
+        self.assertEqual(result["message_ids"], [1012])
+        self.assertEqual(result["transports"], ["REPEATED_START_DEEPLINK"])
+        self.assertNotIn("PRIVATE123", str(result))
+
+    def test_history_empty_is_absent_not_missing_pin(self):
+        class Fake:
+            async def get_messages(self, entity, ids):
+                return SimpleNamespace(id=ids, sender_id=999, buttons=None)
+            async def iter_messages(self, entity, reply_to, limit):
+                if False: yield None
+        result = asyncio.run(recent_topic_buttons(Fake(), object(), 1001, 101))
+        self.assertEqual(result["state"], "ABSENT")
+        self.assertEqual(result["inspected"], 1)
+
+    def test_no_buttons_is_not_accepted(self):
+        self.assertFalse(posting_entry(SimpleNamespace(sender_id=101, buttons=None), 101))
+
+
+class ReadOnlyScopeTests(unittest.TestCase):
+    def test_other_groups_are_rejected_before_telegram_access(self):
+        class NoTelegram:
+            def __getattr__(self, name):
+                raise AssertionError("Telegram access must not occur")
+        for chat_id in (-1001, 0, True, "area"):
+            with self.assertRaisesRegex(ValueError, "TOPIC_AUDIT_CHAT_NOT_ALLOWED"):
+                asyncio.run(audit(NoTelegram(), chat_id, 0))
+        for page in (-2000000001, 25, True, "0"):
+            with self.assertRaisesRegex(ValueError, "TOPIC_AUDIT_PAGE_INVALID"):
+                asyncio.run(audit(NoTelegram(), AREA_CHAT, page))
+
+
+if __name__ == "__main__":
+    unittest.main()

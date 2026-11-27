@@ -21,6 +21,6 @@ export const POSTING_DM_CALLBACKS:Readonly<Record<string,string>>={
 };
 export const POSTING_FEATURE_BY_LABEL:Readonly<Record<string,string>>=
  Object.fromEntries(POSTING_EDITOR_SPECS.map(({label,feature})=>[label,feature]));
-export const POSTING_CREATOR_URL="https://t.me/CreateVdobot?start=creator";
+export const POSTING_CREATOR_URL="https://t.me/CreateVdobot";
 export const POSTING_TALK_URL="https://t.me/GayBBS_bot?start=talk";
 export const POSTING_BUG_REPORT_URL="https://t.me/GayBBS_bot?start=bugreport";

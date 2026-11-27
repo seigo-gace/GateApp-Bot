@@ -64,6 +64,8 @@ export async function getDraft(id: number): Promise<ProfileDraft | null> {
   if(data.loveTags!==undefined)data.loveTags=validLikeTags(data.loveTags);
   if(data.prRef){
     data.pr=await readProfilePr(id,data.prRef);
+  }else if(data.prRef===null){
+    data.pr=null;
   }
   return {step:r.rows[0].step, data, revision:r.rows[0].revision};
 }
@@ -94,6 +96,7 @@ export async function putDraft(id: number, step: ProfileDraft["step"],
   if (!r.rows.length) throw new Error("PROFILE_DRAFT_STALE");
   const returned=r.rows[0].data as ProfileDraft["data"];
   if(returned.prRef)returned.pr=await readProfilePr(id,returned.prRef);
+  else if(returned.prRef===null)returned.pr=null;
   return {step:r.rows[0].step,data:returned,revision:r.rows[0].revision};
 }
 export async function getProfile(id: number): Promise<SavedProfile | null> {
@@ -134,7 +137,7 @@ export async function getProfile(id: number): Promise<SavedProfile | null> {
     status:p.status,revision:p.revision};
 }
 export async function savePrivateDraft(id: number, revision: number,
-    username: string | null): Promise<SavedProfile> {
+    username: string | null, keepCompactDraft=false): Promise<SavedProfile> {
   ownerId(id);
   if (!Number.isSafeInteger(revision) || revision < 1) throw new Error("PROFILE_DRAFT_STALE");
   const client = await pool.connect();
@@ -211,11 +214,19 @@ export async function savePrivateDraft(id: number, revision: number,
          [id,item.itemId,item.fileId,item.type,item.sourceMessageId,item.mediaGroupId??null]);
       }
     }
-    await client.query("UPDATE profile_drafts SET step='cancelled',data=jsonb_build_object('screenMessageId',data->'screenMessageId'),revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
-    await client.query("COMMIT");
+    if(keepCompactDraft){
+      // Save and return to the current editor in the SAME transaction.
+      await client.query("UPDATE profile_drafts SET step='compact',data=data - ARRAY['pendingRegion','compactPanel','compactCategory','compactPage','replaceMediaId']::text[],revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
+    }else{
+      await client.query("UPDATE profile_drafts SET step='cancelled',data=jsonb_build_object('screenMessageId',data->'screenMessageId'),revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1",[id]);
+    }
     const x=saved.rows[0];
+    // Read referenced text before COMMIT so a storage read failure cannot be
+    // misreported as a failed save after the original has already changed.
+    const savedPr=x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr;
+    await client.query("COMMIT");
     return {nickname:x.nickname,username:x.username,heightCm:x.height_cm,
-      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:x.pr_ref?await readProfilePr(id,x.pr_ref):x.pr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,loveTags:p.loveTags,
+      weightKg:x.weight_kg,age:x.age,position:x.position,hair:x.hair,body:x.body,region:x.region,area:x.area,pr:savedPr,prRef:x.pr_ref,media:numberedMedia,mediaNextId:Number(x.media_next_id),likeTags:p.likeTags,loveTags:p.loveTags,
       title:x.profile_context?.title??"",purposeCodes:x.profile_context?.purposeCodes??[],placeCodes:x.profile_context?.placeCodes??[],status:x.status,revision:x.revision};
   } catch(e) {
     await client.query("ROLLBACK");

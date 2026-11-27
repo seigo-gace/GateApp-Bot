@@ -62,9 +62,11 @@ test("invalid live-like DM input deletes original, edits the SAME report screen,
  assert.ok(handleText);
  const db=pool as unknown as {query:(sql:string,args:any[])=>Promise<{rows:any[]}>};
  const original=db.query;
+ let owner="bug_report";
  const calls:string[]=[];
  db.query=async(sql:string,args:any[])=>{
   calls.push("sql:"+String(sql).slice(0,16));
+  if(String(sql).startsWith("SELECT module FROM"))return {rows:[{module:owner}]};
   if(String(sql).startsWith("SELECT id,prompt_message_id"))
    return {rows:[{id:"9",prompt_message_id:77}]};
   return {rows:[]};
@@ -85,5 +87,14 @@ test("invalid live-like DM input deletes original, edits the SAME report screen,
   await handleText!(ctx,async()=>{throw Error("UNEXPECTED_FORWARD");});
   assert.equal(calls.filter(x=>x==="delete-original").length,1);
   assert.equal(calls.filter(x=>x==="edit-prompt").length,1);
+  // The same still-pending report must not consume newer editor text.
+  for(const other of ["profile","announcement","room","link","search","help","room_host","room_application"]){
+   owner=other;
+   calls.length=0;
+   let forwarded=0;
+   await handleText!({...ctx,message:{message_id:89,text:"通常の編集入力"}},async()=>{forwarded++;});
+   assert.equal(forwarded,1,other);
+   assert.ok(calls.every(x=>x.startsWith("sql:SELECT")),other+" must not write, delete or forward a report");
+  }
  }finally{db.query=original;}
 });

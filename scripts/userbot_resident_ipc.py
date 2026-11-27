@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke"})
+ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke", "topic_entry_audit", "video_sale_readback", "video_sale_payment_form"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -41,6 +41,10 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
                 if action == "room_public_readback" else
                 {"request_id", "action", "topic_ids"}
                 if action == "profile_topics_by_id" else
+                {"request_id", "action", "chat_id", "page"}
+                if action == "topic_entry_audit" else
+                {"request_id", "action", "chat_id", "thread_id", "message_ids"}
+                if action in ("video_sale_readback","video_sale_payment_form") else
                 {"request_id", "action", "code"}
                 if action in ("link_inline_query_smoke","link_send_saved_smoke") else {"request_id", "action"})
     if set(request) != expected:
@@ -55,6 +59,80 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
     if action == "health":
         return {"request_id": request_id, "action": action, "authorized": True,
                 "connected": bool(client.is_connected()), "status": "PASS"}
+    if action == "video_sale_payment_form":
+        # Read-only payment offer. Never submit payments.sendStarsForm.
+        from telethon import functions, types
+        verification = await process_request(client, {**request, "action": "video_sale_readback"})
+        if (verification.get("status") != "PASS" or
+                verification.get("paid_media_native") is not True or
+                verification.get("preview_for_reader") is not True):
+            raise RuntimeError("VIDEO_SALE_LOCK_NOT_VERIFIED")
+        chat_id = request["chat_id"]
+        paid_message_id = request["message_ids"][2]
+        peer = await client.get_input_entity(chat_id)
+        form = await client(functions.payments.GetPaymentFormRequest(
+            invoice=types.InputInvoiceMessage(peer=peer,msg_id=paid_message_id)))
+        invoice = getattr(form, "invoice", None)
+        prices = getattr(invoice, "prices", None)
+        charge = (sum(p.amount for p in prices) if isinstance(prices, list) and
+                  all(type(p.amount) is int for p in prices) else None)
+        return {"request_id":request_id,"action":action,"status":"PASS",
+                "form_type":type(form).__name__[:64],
+                "stars_purchase_form":type(form).__name__=="PaymentFormStars",
+                "currency_xtr":getattr(invoice,"currency",None)=="XTR",
+                "quote_matches_media":charge == verification.get("paid_stars"),
+                "not_purchased":True}
+    if action == "video_sale_readback":
+        # One read-only video-sale product in the already joined forum only.
+        chat_id, thread_id, ids = (
+            request["chat_id"], request["thread_id"], request["message_ids"])
+        if chat_id != -1002373696859 or type(thread_id) is not int or not 1 <= thread_id <= 2147483647:
+            raise ValueError("VIDEO_SALE_READ_TARGET_INVALID")
+        if (type(ids) is not list or len(ids) != 3
+                or any(type(v) is not int or not 1 <= v <= 2147483647 for v in ids)
+                or len(set(ids)) != 3):
+            raise ValueError("VIDEO_SALE_MESSAGE_IDS_INVALID")
+        bot = await client.get_entity("CreateVdobot")
+        if getattr(bot, "bot", False) is not True or type(bot.id) is not int:
+            raise RuntimeError("VIDEO_SALE_BOT_IDENTITY_INVALID")
+        try:
+            messages = await client.get_messages(chat_id, ids=ids)
+        except ValueError:
+            dialogs = await client.get_dialogs(limit=500)
+            existing = next((d.entity for d in dialogs if d.id == chat_id), None)
+            if existing is None:
+                raise RuntimeError("VIDEO_SALE_GROUP_NOT_JOINED")
+            messages = await client.get_messages(existing, ids=ids)
+        if (not isinstance(messages, list) or len(messages) != 3
+                or any(m is None or m.id != ids[i] or m.sender_id != bot.id
+                       for i, m in enumerate(messages))):
+            raise RuntimeError("VIDEO_SALE_MESSAGES_NOT_VERIFIED")
+        def topic_matches(m):
+            reply = getattr(m, "reply_to", None)
+            return (getattr(reply, "reply_to_top_id", None) == thread_id or
+                    getattr(reply, "reply_to_msg_id", None) == thread_id)
+        free = messages[:2]
+        grouped = (isinstance(getattr(free[0], "grouped_id", None), int)
+                   and free[0].grouped_id > 0
+                   and free[0].grouped_id == free[1].grouped_id)
+        paid_media = getattr(messages[2], "media", None)
+        paid_type = type(paid_media).__name__
+        native_paid = paid_type == "MessageMediaPaidMedia"
+        stars = getattr(paid_media, "stars_amount", None) if native_paid else None
+        extended = getattr(paid_media, "extended_media", None) if native_paid else None
+        preview = (all(type(item).__name__ == "MessageExtendedMediaPreview" for item in extended)
+                   if isinstance(extended, (list, tuple)) and extended else None)
+        return {"request_id": request_id, "action": action, "status": "PASS",
+                "all_from_creator_bot": True,
+                "free_album_grouped": grouped,
+                "paid_media_native": native_paid,
+                "paid_stars": stars if type(stars) is int and 1 <= stars <= 25000 else None,
+                "target_topic_confirmed": all(topic_matches(m) for m in messages),
+                "paid_media_type": paid_type[:64], "preview_for_reader": preview}
+    if action == "topic_entry_audit":
+        from userbot_topic_entry_audit import audit
+        return {"request_id": request_id,
+                **await audit(client, request["chat_id"], request["page"])}
     if action == "bug_report_inbox_provision":
         # Provision the Bot API inbox without exposing the Userbot account ID.
         me = await client.get_me()
@@ -373,7 +451,7 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
             async with lock:
                 response = await asyncio.wait_for(
                     process_request(client, request),
-                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke"} else 30)
+                    timeout=95 if request.get("action") in {"room_public_post_smoke", "bug_report_delivery_smoke", "link_registration_smoke", "link_rich_flow_smoke", "link_photo_caption_smoke", "topic_entry_audit"} else 30)
         except Exception as exc:
             # Never surface raw Telethon errors: they can include group/user IDs.
             safe_codes = {
@@ -385,6 +463,13 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "PROFILE_TOPIC_SCAN_LIMIT_REACHED",
                 "TARGET_NOT_BOT", "PEER_UID_NOT_ALLOWED", "PEER_CREDENTIALS_UNAVAILABLE",
                 "REQUEST_SIZE_INVALID", "USERBOT_ACCOUNT_ID_UNAVAILABLE",
+                "TOPIC_AUDIT_CHAT_NOT_ALLOWED", "TOPIC_AUDIT_PAGE_INVALID",
+                "TOPIC_AUDIT_GROUP_NOT_JOINED", "TOPIC_AUDIT_TOPIC_LIMIT",
+                "TOPIC_AUDIT_PAGINATION_LIMIT", "TOPIC_AUDIT_PAGINATION_STALLED",
+                "TOPIC_AUDIT_TARGET_BOT_INVALID",
+                "VIDEO_SALE_READ_TARGET_INVALID", "VIDEO_SALE_MESSAGE_IDS_INVALID",
+                "VIDEO_SALE_BOT_IDENTITY_INVALID", "VIDEO_SALE_GROUP_NOT_JOINED",
+                "VIDEO_SALE_MESSAGES_NOT_VERIFIED",
                 "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
                 "USERBOT_BUG_REPORT_MENU_NOT_VISIBLE", "USERBOT_BUG_REPORT_SCREEN_NOT_OPENED",
                 "USERBOT_REPORT_E2E_INCOMPLETE", "USERBOT_BUG_REPORT_STALE_MENU_REMAINS",

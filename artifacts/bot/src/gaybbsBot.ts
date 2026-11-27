@@ -2,8 +2,9 @@
 import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import { Markup, Telegraf } from "telegraf";
-import { registerProfileHandlers, startProfileEditor } from "./bot/profileHandlers.js";
-import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/profileCompactHandlers.js";
+import { registerProfileHandlers } from "./bot/profileHandlers.js";
+import {registerStartlessNavigationHandlers} from "./bot/startlessNavigationHandlers.js";
+import {registerCompactProfileHandlers,startCompactProfileEditor,returnFromCompactAppearance} from "./bot/profileCompactHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
@@ -50,6 +51,7 @@ async function main():Promise<void>{
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
  await runMigrations();
  registerBugReportHandlers(bot);
+ registerStartlessNavigationHandlers(bot);
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
   if(ctx.startPayload?.startsWith("p_")){
@@ -198,7 +200,23 @@ async function main():Promise<void>{
  registerCompactRecruitmentHandlers(bot);
  registerPostingMenuUtilityHandlers(bot);
  registerCompactProfileHandlers(bot);
- registerProfileHandlers(bot);
+ // /profile is not a navigation command for users, but old explicit links
+ // must still reach today's compact screen rather than the retired wizard.
+ bot.command("profile",async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await startCompactProfileEditor(ctx);
+ });
+ // Retired profile keyboards must not recreate the old seven-position wizard.
+ // The real current compact profile editor reuses the exact tapped DM message.
+ // Preserve existing draft/profile and already published messages.
+ // Current compact appearance uses the shared pf:ap/ar/section handlers.
+ // Do not consume these callbacks in the retired-screen fallback.
+ bot.action(/^pf:(?!(?:ap|ar|section):)/,async ctx=>{
+  if(ctx.chat?.type!=="private"||!ctx.from)return;
+  await ctx.answerCbQuery("現在のプロフィール画面を開きます。");
+  await startCompactProfileEditor(ctx);
+ });
+ registerProfileHandlers(bot,undefined,undefined,returnFromCompactAppearance);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
  registerPostingHandlers(bot);

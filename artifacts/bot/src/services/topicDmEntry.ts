@@ -17,12 +17,30 @@ const ALLOWED_CHATS = new Set<number>([
   BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
 const tokenPattern=/^p_([A-Za-z0-9_-]{32})$/;
+export function topicEntryDirectDmUrl(token:string):string{
+ if(!/^[A-Za-z0-9_-]{32}$/.test(token))throw Error("TOPIC_ENTRY_TOKEN_INVALID");
+ return "https://t.me/GayBBS_bot?start=p_"+token;
+}
+/** Master new exact exception: video-chat Topic 1605 also gets a pinned posting-menu doorway.\n * Existing paid-video (1695), sticker (4640), profile (1613) remain permitted.
+ * All three forums exclude announcement (General Topic 1).
+ * No area/category topic or existing specialist UI is otherwise changed.
+ */
+export const VIDEO_SPECIALIST_ENTRY_TOPIC_IDS = new Set<number>([1695,4640,1613,1605]);
+export function permittedTopicDmEntry(chatId:number,threadId:number):boolean{
+ if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
+  return false;
+ if(threadId===1)return false;
+ if(chatId===BOARD_GROUP_CHAT_IDS.video_chat &&
+    !VIDEO_SPECIALIST_ENTRY_TOPIC_IDS.has(threadId))return false;
+ return true;
+}
+
 /** Do not revive Master-deleted community/link entrances or post a menu in a general guide. */
 export async function assertPostingDoorwayAllowed(
  chatId:number,threadId:number,title?:string,
 ):Promise<void>{
- if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
-  throw Error("TOPIC_ENTRY_TARGET_INVALID");
+ if(!permittedTopicDmEntry(chatId,threadId))
+  throw Error("TOPIC_ENTRY_EXCLUDED_BY_MASTER");
  const q=await pool.query<{blocked:boolean}>(
   `SELECT (
      EXISTS(SELECT 1 FROM posting_topics t
@@ -71,7 +89,7 @@ export function draftTopicEntryOrigin(
 ):TopicEntryOrigin|null{
  if(chatId==null&&threadId==null)return null;
  const chat=Number(chatId),thread=Number(threadId);
- if(!ALLOWED_CHATS.has(chat)||!Number.isSafeInteger(thread)||thread<=0)
+ if(!permittedTopicDmEntry(chat,thread))
   throw Error("TOPIC_ENTRY_DRAFT_CONTEXT_INVALID");
  return {chatId:chat,threadId:thread};
 }
@@ -101,7 +119,7 @@ export async function activateTopicDmEntry(
  if(row.rows.length!==1)throw Error("TOPIC_ENTRY_NOT_PUBLISHED");
  const chatId=Number(row.rows[0].chat_id);
  const threadId=Number(row.rows[0].message_thread_id);
- if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)
+ if(!permittedTopicDmEntry(chatId,threadId))
   throw Error("TOPIC_ENTRY_NOT_REGISTERED");
  // Prove the user is still a member of the originating forum.
  const membership=await telegram.getChatMember(chatId,userId);
@@ -137,7 +155,7 @@ export async function currentTopicDmEntry(userId:number):Promise<TopicEntryOrigi
      AND s.chat_id=p.chat_id AND s.message_thread_id=p.message_thread_id`,[userId]);
  if(r.rows.length!==1)return null;
  const chatId=Number(r.rows[0].chat_id),threadId=Number(r.rows[0].message_thread_id);
- if(!ALLOWED_CHATS.has(chatId)||!Number.isSafeInteger(threadId)||threadId<=0)return null;
+ if(!permittedTopicDmEntry(chatId,threadId))return null;
  return {chatId,threadId};
 }
 
@@ -185,11 +203,11 @@ export async function recoverExistingTopicDmEntry(
   throw Error("TOPIC_ENTRY_RECONCILE_NO_KNOWN_MESSAGE");
  const messageId=Number(row.message_id);
  const token=newMenuToken(),hash=tokenHash(token);
- const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ const buttonUrl=topicEntryDirectDmUrl(token);
  // Telegram's successful edit proves this exact message exists and is
  // writable by the Bot. Retain it rather than posting a duplicate.
  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
-  reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
+  reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl} as any]]},
  });
  await telegram.pinChatMessage(chatId,messageId,{disable_notification:true});
  const saved=await pool.query(
@@ -224,12 +242,12 @@ export async function refreshPublishedTopicDmEntry(
  const messageId=Number(old.rows[0].message_id);
  const oldHash=String(old.rows[0].token_hash);
  const token=newMenuToken(),hash=tokenHash(token);
- const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+ const buttonUrl=topicEntryDirectDmUrl(token);
  // Only update the existing message. Telegram's edit may fail or be ambiguous:
  // keep the prior pin and avoid a duplicate send in either case.
  try{
-  await telegram.editMessageText(chatId,messageId,undefined,TOPIC_ENTRY_TEXT,{
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
+  await telegram.editMessageReplyMarkup(chatId,messageId,undefined,{
+   inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl} as any]],
   });
  }catch(e){
   // A definitive Bot API rejection did not change the old message: preserve
@@ -312,10 +330,10 @@ export async function publishTopicDmEntry(
  if(claimed.rows.length!==1)throw Error("TOPIC_ENTRY_NEEDS_RECONCILE");
  let sent=false;
  try {
-  const buttonUrl="https://t.me/GayBBS_bot?start=p_"+token;
+  const buttonUrl=topicEntryDirectDmUrl(token);
   const message=await telegram.sendMessage(chatId,TOPIC_ENTRY_TEXT,{
    message_thread_id:threadId,
-   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl,style:"primary"} as any]]},
+   reply_markup:{inline_keyboard:[[{text:TOPIC_ENTRY_BUTTON,url:buttonUrl} as any]]},
   });
   sent=true;
   await pool.query(
