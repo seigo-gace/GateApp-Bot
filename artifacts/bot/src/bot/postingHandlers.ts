@@ -1586,7 +1586,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
     data={...current.data,
      [current.data.editField==="deadline"?"deadlineAt":"eventAt"]:date.toISOString(),
      editField:null,noticeDateField:null,noticePickerStage:null};
-    validateAnnouncement({ownerId:ctx.from.id,
+    if(current.module==="announcement"&&data.kind!=="recruitment")validateNotice(data,ctx.from.id);
+    else validateAnnouncement({ownerId:ctx.from.id,
       kind:data.kind as AnnouncementKind,text:String(data.text),eventAt:date});
     const updated=await updateDraft(ctx.from.id,current.module,current.revision,"preview",data);
     if(current.module==="announcement"&&data.kind!=="recruitment"){
@@ -1660,7 +1661,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else{
     if(!current.data.kind)throw new Error("投稿種別が未選択です。");
     const kind=current.data.kind as AnnouncementKind;
-    if(kind==="preview"&&!current.data.eventAt){
+    if(kind==="preview"&&!current.data.eventAt&&current.module!=="announcement"){
      const next=await updateDraft(ctx.from.id,current.module,current.revision,"preview",
        {...current.data,text:input});
      await announcementScreen(ctx.telegram,ctx.from.id,next);
@@ -2408,6 +2409,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const screenId="message" in ctx.callbackQuery?
      ctx.callbackQuery.message?.message_id:undefined;
     await showRoomPublished(ctx.telegram,ctx.from.id,Number(sourceId),screenId);
+   }else if(module==="announcement"&&!isRecruitment){
+    await showPublishedNoticeOwner(ctx.telegram,ctx.from.id,Number(sourceId),
+     "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
    }else await ctx.editMessageText("✅ 投稿済み\n投稿先："+result.chatId+
     " / Topic "+result.threadId+"\n投稿ID："+result.messageId);
   }catch(e){
