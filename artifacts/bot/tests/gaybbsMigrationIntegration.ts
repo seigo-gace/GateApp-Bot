@@ -561,6 +561,12 @@ try{
   await assert.rejects(decideApplication(noticeOwner,open,joined.applicationId,"declined"),/APPLICATIONS_CLOSED/);
   await noticeApplicationState(open,noticeApplicant,joined.applicationId,"accepted");
   await noticeCounts(open,1,1);
+  const joinedNotice=await pool.query(
+   "SELECT recipient_user_id,payload,event_key FROM announcement_notifications WHERE announcement_id=$1",[open]);
+  assert.equal(joinedNotice.rows.length,1);
+  assert.equal(Number(joinedNotice.rows[0].recipient_user_id),noticeOwner);
+  assert.deepEqual(joinedNotice.rows[0].payload,{applicationId:joined.applicationId,action:"notice_joined"});
+  assert.equal(joinedNotice.rows[0].event_key,"application:"+joined.applicationId+":notice_joined");
   await noticeState(open,"published",true);
   const approval=await makeNotice(kind,"approved_only");
   await noticeState(approval,"published",true);
@@ -582,6 +588,11 @@ try{
   await noticeApplicationState(approval,noticeApplicant,waiting.applicationId,"accepted");
   await noticeApplicationState(approval,noticeOther,waitingOther.applicationId,"declined");
   await noticeCounts(approval,2,4);
+  const approvedNotice=await pool.query(
+   "SELECT recipient_user_id,payload FROM announcement_notifications WHERE announcement_id=$1 AND payload->>'action'='accepted'",[approval]);
+  assert.equal(approvedNotice.rows.length,1);
+  assert.equal(Number(approvedNotice.rows[0].recipient_user_id),noticeApplicant);
+  assert.deepEqual(approvedNotice.rows[0].payload,{applicationId:waiting.applicationId,action:"accepted"});
   await noticeState(approval,"published",true);
   for(const mode of ["none","unknown"]){
    const closed=await makeNotice(kind,mode);
