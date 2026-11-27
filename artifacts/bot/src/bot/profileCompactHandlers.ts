@@ -205,6 +205,34 @@ export async function startCompactProfileEditor(
  await render(ctx.telegram,ctx.from.id,draft,
   existing&&origin!=="profile"?"登録済みプロフィールを開きました。今回の募集・応募内容で自動上書きしていません。":"");
 }
+/** Restore the current editor after a shared appearance section.
+ * Section Save remains private; only the final compact Save publishes.
+ */
+export async function returnFromCompactAppearance(ctx:Context,draft:ProfileDraft,save:boolean):Promise<void>{
+ if(ctx.chat?.type!=="private"||!ctx.from)return;
+ const id=ctx.from.id,origin=draft.data.compactOrigin as Origin;
+ if(!origins.has(origin))throw Error("PROFILE_COMPACT_ORIGIN_INVALID");
+ const data={...draft.data,pendingRegion:null,compactPanel:undefined,compactCategory:null,compactPage:0};
+ let acknowledged=false;
+ try{
+  let next:ProfileDraft;
+  if(save){
+   if(!ctx.from.username||!data.title?.trim()||!data.nickname||!data.position||
+      !data.heightCm||!data.weightKg||!data.age||!isProfilePosition(data.position)){
+    await ctx.answerCbQuery("先にタイトル・基本情報・ポジションを入力してください。",{show_alert:true});return;
+   }
+   const saved=await profiles.savePrivateDraft(id,draft.revision,ctx.from.username);
+   next=await profiles.putDraft(id,"compact",{...data,...seedExisting(saved),compactOrigin:origin},draft.revision+1);
+  }else{
+   next=await profiles.putDraft(id,"compact",data,draft.revision);
+  }
+  await ctx.answerCbQuery();acknowledged=true;
+  await render(ctx.telegram,id,next,save?"✅ 保存しました。公開内容を更新するには「保存・3掲示板へ投稿」を押してください。":"");
+ }catch{
+  if(!acknowledged)await ctx.answerCbQuery("操作を完了できませんでした。プロフィールを開き直して保存状態を確認してください。",{show_alert:true}).catch(()=>undefined);
+  else await ctx.reply("画面を更新できませんでした。プロフィールを開き直してください。");
+ }
+}
 async function resumeOrigin(ctx:Context,origin:Origin):Promise<void>{
  if(!ctx.from)return;
  if(origin==="recruit")await startCompactRecruitmentEditor(ctx.telegram,ctx.from.id);
