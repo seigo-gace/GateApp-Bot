@@ -2,7 +2,7 @@ import {Markup,type Telegraf} from "telegraf";
 import {getProfile,listProfilePublications} from "../services/profileRepository.js";
 import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js";
 import {hidePublishedProfile} from "../services/profilePublicationControl.js";
-import {startProfileEditor} from "./profileHandlers.js";
+import {startCompactProfileEditor} from "./profileCompactHandlers.js";
 
 const privateDM=(ctx:{chat?:{type:string};from?:{id:number}})=>
  ctx.chat?.type==="private"&&!!ctx.from;
@@ -48,7 +48,7 @@ export function registerProfilePostManagement(bot:Telegraf):void{
   if(!exists){await ctx.answerCbQuery("対象の投稿がありません");return;}
   await ctx.answerCbQuery();
   if(action==="edit"){
-   await startProfileEditor(ctx);
+   await startCompactProfileEditor(ctx);
    return;
   }
   const p=await getProfile(ctx.from.id);
