@@ -62,9 +62,9 @@ test("approved notice preview shows only requested eight controls and correct ca
  assert.match(preview, /［編集］<\/a>タイトル：題名/);
  assert.match(preview, /start=ne_b_7/);
  assert.match(preview, /［編集］<\/a>説明：本文/);
- assert.match(preview,/開催日時：未設定/);
- assert.match(preview,/受付期限：未設定/);
- assert.match(preview,/参加方法：未設定/);
+ assert.match(preview,/開催日時：［未設定］/);
+ assert.match(preview,/受付期限：［未設定］/);
+ assert.match(preview,/参加方法：［未設定］/);
  assert.ok(!preview.includes("プロフ連携"));
  assert.ok(!preview.includes("投稿先"));
 });
@@ -74,8 +74,8 @@ test("media-only notice can be submitted without title or explanation",()=>{
  assert.equal(noticeText(data),"");
  assert.equal(noticeCard(data,1),"📢 告知");
  const preview=announcementSummary({module:"announcement",step:"preview",revision:8,data});
- assert.match(preview,/タイトル：未設定/);
- assert.match(preview,/説明：未設定/);
+ assert.match(preview,/タイトル：［未設定］/);
+ assert.match(preview,/説明：［未設定］/);
  assert.equal(preview.includes("［編集］"),false);
 });
 test("public announcement omits unset options",()=>{
@@ -83,6 +83,8 @@ test("public announcement omits unset options",()=>{
  assert.ok(!text.includes("開催："));
  assert.ok(!text.includes("受付終了："));
  assert.ok(!text.includes("未設定"));
+ assert.ok(!text.includes("参加方法"));
+ assert.ok(!text.includes("［編集］"));
 });
 
 // Static wiring regression: callback action and keyboard entry must remain paired.
@@ -110,4 +112,45 @@ test("selected notice destination is visible on final preview",()=>{
   data:{kind:"announcement",title:"告知",body:"本文",destinationLabel:"エリア掲示板 / テストTopic"}} as const;
  const preview=announcementSummary(draft);
  assert.match(preview,/投稿先：エリア掲示板 \/ テストTopic/);
+});
+
+ // The adopted 2026-11-15 notice contract distinguishes private preview
+ // placeholders from public content. Test the rendered field lines separately.
+const unsetNoticeFields=["タイトル","説明","開催日時","受付期限","参加方法"] as const;
+for(const field of unsetNoticeFields){
+ test(`notice media-only preview renders exact unset field: ${field}`,()=>{
+  const data={kind:"announcement",media:[{kind:"video",fileId:"video_1"}]};
+  validateNotice(data,1);
+  const preview=announcementSummary({module:"announcement",step:"preview",revision:10,data});
+  const lines=preview.split("\n").filter(line=>line.includes(field+"："));
+  assert.deepEqual(lines,[field+"：［未設定］"]);
+ });
+}
+test("notice preview does not offer editing for an unset title or explanation",()=>{
+ const cases=[
+  {data:{kind:"announcement",title:"題名",body:""},unset:"説明",present:"タイトル"},
+  {data:{kind:"announcement",title:"",body:"本文"},unset:"タイトル",present:"説明"}
+ ];
+ for(const {data,unset,present} of cases){
+  const preview=announcementSummary({module:"announcement",step:"preview",revision:11,data});
+  const lines=preview.split("\n");
+  assert.deepEqual(lines.filter(line=>line.includes(unset+"：")),[unset+"：［未設定］"]);
+  const configured=lines.filter(line=>line.includes(present+"："));
+  assert.equal(configured.length,1);
+  assert.ok(configured[0]?.includes("［編集］"));
+ }
+});
+test("notice preview keeps unset options non-editable even when text is registered",()=>{
+ const data={kind:"announcement",title:"題名",body:"本文",participation:"none",eventAt:null,deadlineAt:null};
+ const preview=announcementSummary({module:"announcement",step:"preview",revision:12,data});
+ for(const field of ["開催日時","受付期限","参加方法"]){
+  assert.deepEqual(preview.split("\n").filter(line=>line.includes(field+"：")),[field+"：［未設定］"]);
+ }
+});
+test("media-only public card omits all private placeholders and edit controls",()=>{
+ for(const kind of ["photo","video"]){
+  const data={kind:"announcement",media:[{kind,fileId:"media_1"}],eventAt:null,deadlineAt:null,participation:"none"};
+  validateNotice(data,1);
+  assert.equal(noticeCard(data,1),"📢 告知");
+ }
 });
