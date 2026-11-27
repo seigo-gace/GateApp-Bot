@@ -84,3 +84,13 @@ test("public announcement omits unset options",()=>{
  assert.ok(!text.includes("受付終了："));
  assert.ok(!text.includes("未設定"));
 });
+
+// Static wiring regression: callback action and keyboard entry must remain paired.
+test("notice date picker supports explicit removal of both optional dates",async()=>{
+ const {readFileSync}=await import("node:fs");
+ const source=readFileSync(new URL("../src/bot/postingHandlers.ts",import.meta.url),"utf8");
+ assert.match(source,/post:announce:dt:clear:\$\{rev\}/);
+ assert.match(source,/hour\|minute\|manual\|clear/);
+ assert.match(source,/data\.noticeDateField==="deadline"\?"deadlineAt":"eventAt"\]:null/);
+ assert.match(source,/noticePickerStage:null,noticeDateField:null/);
+});
