@@ -549,6 +549,7 @@ async function announcementDatePicker(t:Telegram,id:number,d:EditorDraft):Promis
  const rows=stage==="date_calendar"?
   pickerDateRows(validPickerMonth(month)?month:jstCurrentMonth(),actions):
   stage==="time_hour"?pickerHourRows(actions):pickerMinuteRows(actions);
+ rows.push([Markup.button.callback("設定を解除",`post:announce:dt:clear:${rev}`)]);
  await showPostScreen(t,id,d,(field==="deadline"?"📅 受付終了日時":"📅 開催日時")+
   "（日本時間）を選択してください。",Markup.inlineKeyboard(rows));
 }
@@ -1256,7 +1257,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
  });
- bot.action(/^post:announce:dt:(month|day|hour|minute|manual):(\d+)(?::(\d{2,8}))?$/,async ctx=>{
+ bot.action(/^post:announce:dt:(month|day|hour|minute|manual|clear):(\d+)(?::(\d{2,8}))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]),value=ctx.match[3]||"";
   const d=await getDraft(ctx.from.id,"announcement");
@@ -1268,7 +1269,11 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   try{
    let data={...d.data};
-   if(op==="month"){
+   if(op==="clear"){
+    data={...data,
+     [data.noticeDateField==="deadline"?"deadlineAt":"eventAt"]:null,
+     noticePickerStage:null,noticeDateField:null,pickerDay:null,pickerHour:null};
+   }else if(op==="month"){
     if(stage!=="date_calendar"||!validPickerMonth(value))throw Error("NOTICE_DATE_MONTH");
     data={...data,pickerMonth:value};
    }else if(op==="day"){
