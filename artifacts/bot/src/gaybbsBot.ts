@@ -1,6 +1,7 @@
 /** Dedicated @GayBBS_bot user-facing runtime. NOT the existing admin/Gate bot. */
 import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
+import {installPollingTransport} from "./services/telegramPollingTransport.js";
 import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers } from "./bot/profileHandlers.js";
 import {registerStartlessNavigationHandlers} from "./bot/startlessNavigationHandlers.js";
@@ -47,6 +48,7 @@ async function main():Promise<void>{
  const bot=new Telegraf(BOT_TOKEN,{
   telegram:{agent:new https.Agent({keepAlive:true,family:4})},
  });
+ installPollingTransport(bot.telegram,BOT_TOKEN);
  const me=await bot.telegram.getMe();
  if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
