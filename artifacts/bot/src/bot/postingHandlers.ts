@@ -513,7 +513,8 @@ export function announcementSummary(d:EditorDraft):string{
   body?`<a href="https://t.me/GayBBS_bot?start=ne_b_${d.revision}">［編集］</a>説明：`+escapeProfileHtml(body):"説明：未設定",
   "開催日時："+dt(d.data.eventAt),
   "受付期限："+dt(d.data.deadlineAt),
-  "参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"未設定")
+  "参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"未設定"),
+  ...(d.data.destinationLabel?["投稿先："+escapeProfileHtml(String(d.data.destinationLabel))]:[])
  ].join("\n");
 }
 async function showNoticeMedia(telegram:Telegram,userId:number,d:EditorDraft):Promise<EditorDraft>{
