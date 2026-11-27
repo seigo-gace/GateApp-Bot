@@ -1418,7 +1418,9 @@ export function registerPostingHandlers(bot:Telegraf):void{
       await updateDraft(ctx.from.id,"announcement",rev,"preview",
        {...d.data,topicId:selected.id,destinationLabel:label,noticeDestinationExplicit:explicit,editField:null});
      if(op==="publish"){
-      if(current.revision!==rev)await announcementScreen(ctx.telegram,ctx.from.id,current);
+      // The user's explicit publish action already confirmed the draft.
+      // Do not make a second Rich/attachment upload a prerequisite to public
+      // delivery. The result/error is rendered on the owning editor afterward.
       await publishAccepted(ctx,"announcement",current.revision,selected.id);
      }else{
       await ctx.answerCbQuery();

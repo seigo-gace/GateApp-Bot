@@ -10,7 +10,8 @@ import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
-import {createRoom,createAnnouncement,markPostSourcePublished} from "../src/services/publicPostRepository.js";
+import {createRoom,createAnnouncement,markPostSourcePublished,beginDraft,getDraft} from "../src/services/publicPostRepository.js";
+import {registerPostingHandlers} from "../src/bot/postingHandlers.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
@@ -651,6 +652,76 @@ try{
  await noticeCounts(roomNotice,0,0);
  await noticeCounts(roomApprovalNotice,0,0);
  await assert.rejects(makeNoticeApplicationLink(noticeOwner,roomNotice),/NOTICE_SOURCE_NOT_OWNED/);
+ // Full registered publish callback, real isolated DB and fake Telegram only.
+ // The earlier unit fixture intentionally kept release closed; exercise the
+ // actual successful route, including repeat publication after draft deletion.
+ const publicationOwner=991820;
+ const publicationTopic=Number(topic.rows[0].topic_id);
+ const callbacks:Array<{pattern:RegExp;handler:Function}>=[];
+ const fakeBot={command(){},on(){},action(pattern:unknown,handler:Function){
+  if(pattern instanceof RegExp)callbacks.push({pattern,handler});
+ }};
+ registerPostingHandlers(fakeBot as any);
+ const sentNotices:Array<{text:string;thread:number;buttons:any}>=[];
+ const sentStickers:string[]=[];
+ let ownerPanels=0;
+ const fakeTelegram={
+  async getChat(chatId:number){assert.equal(chatId,-1002373696859);return {id:chatId,type:"supergroup"};},
+  async getMe(){return {id:123456};},
+  async getChatMember(chatId:number,botId:number){assert.equal(chatId,-1002373696859);assert.equal(botId,123456);return {status:"administrator"};},
+  async sendMessage(chatId:number,text:string,extra:any){
+   assert.equal(chatId,-1002373696859);assert.equal(extra.message_thread_id,123);
+   sentNotices.push({text,thread:extra.message_thread_id,buttons:extra.reply_markup.inline_keyboard});
+   return {message_id:90000+sentNotices.length};
+  },
+  async sendSticker(chatId:number,fileId:string,extra:any){
+   assert.equal(chatId,-1002373696859);assert.equal(extra.message_thread_id,123);
+   sentStickers.push(fileId);return {message_id:91000+sentStickers.length};
+  },
+  async editMessageText(chatId:number,id:number,_inline:unknown,text:string){
+   assert.equal(chatId,publicationOwner);assert.ok(id>=100);assert.match(text,/告知\/予告 管理/);
+   ownerPanels++;return true;
+  },
+  async callApi(){throw Error("PUBLISH_MUST_NOT_REUPLOAD_PREVIEW");},
+  async deleteMessage(){throw Error("UNEXPECTED_DELETE");}
+ };
+ const publications:string[]=[];
+ for(let i=1;i<=2;i++){
+  const draft=await beginDraft(publicationOwner,"announcement","preview",{
+   kind:"announcement",title:"CI notice "+i,body:"test only",participation:"public",
+   topicId:publicationTopic,noticeDestinationExplicit:true,destinationLabel:"old label",
+   screenMessageId:100+i,media:[{kind:"sticker",fileId:"ci_sticker_"+i}],
+   linkLabel:"詳細",linkUrl:"https://example.com/"
+  });
+  const data="post:announce:publish:"+draft.revision;
+  const action=callbacks.find(x=>x.pattern.test(data));assert.ok(action);
+  const replies:string[]=[];
+  await action.handler({from:{id:publicationOwner},chat:{id:publicationOwner,type:"private"},
+   match:action.pattern.exec(data),callbackQuery:{data,message:{message_id:100+i,chat:{id:publicationOwner,type:"private"}}},
+   telegram:fakeTelegram,answerCbQuery:async()=>{},reply:async(text:string)=>{replies.push(text);}});
+  assert.deepEqual(replies,[]);
+  assert.equal(await getDraft(publicationOwner,"announcement"),null);
+  const sources=await pool.query(
+   "SELECT announcement_id,status,text,accept_applications FROM announcement_posts WHERE owner_user_id=$1 ORDER BY announcement_id",
+   [publicationOwner]);
+  assert.equal(sources.rows.length,i);
+  const source=sources.rows.at(-1)!;
+  assert.equal(source.status,"published");assert.equal(source.accept_applications,true);
+  assert.equal(source.text,"CI notice "+i+"\ntest only");
+  publications.push(String(source.announcement_id));
+  const delivery=await pool.query(
+   "SELECT status,telegram_message_id,posting_topic_id FROM posting_deliveries WHERE source_type='announcement' AND source_id=$1",
+   [publications.at(-1)]);
+  assert.equal(delivery.rows.length,1);assert.equal(delivery.rows[0].status,"sent");
+  assert.equal(Number(delivery.rows[0].telegram_message_id),90000+i);
+  assert.equal(Number(delivery.rows[0].posting_topic_id),publicationTopic);
+  assert.equal(sentNotices.length,i);assert.equal(ownerPanels,i);
+  assert.ok(sentNotices.at(-1)!.buttons.flat().some((x:any)=>x.callback_data?.startsWith("gdm:a_")));
+  assert.ok(sentNotices.at(-1)!.buttons.flat().some((x:any)=>x.url==="https://example.com/"));
+ }
+ assert.notEqual(publications[0],publications[1]);
+ assert.deepEqual(sentStickers,["ci_sticker_1","ci_sticker_2"]);
+ console.log("GAYBBS_DB_NOTICE_REAL_CALLBACK_REPEAT_PUBLICATION=PASS");
  console.log("GAYBBS_DB_NOTICE_ENTRY_OWNER_AND_KIND=PASS");
  console.log("GAYBBS_DB_STANDALONE_NOTICE_PARTICIPATION=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
