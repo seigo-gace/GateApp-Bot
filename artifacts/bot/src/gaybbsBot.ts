@@ -20,6 +20,8 @@ import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js"
 import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
+import {registerNoticeInteractionHandlers,isNoticeApplicationLink,startNoticeApplication} from "./bot/noticeInteractions.js";
+import {startNoticeInlineEdit} from "./bot/postingHandlers.js";
 import {resolveRoomJoinLink,roomJoinDenialReason} from "./services/roomJoinLinks.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
@@ -54,6 +56,12 @@ async function main():Promise<void>{
  registerStartlessNavigationHandlers(bot);
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  const noticeEdit=ctx.startPayload?.match(/^ne_([tb])_(\d+)$/);
+  if(noticeEdit){
+   await startNoticeInlineEdit(ctx.telegram,ctx.from.id,Number(noticeEdit[2]),
+    noticeEdit[1]==="t"?"title":"body");
+   return;
+  }
   if(ctx.startPayload?.startsWith("p_")){
    try {
     const origin=await activateTopicDmEntry(ctx.from.id,ctx.startPayload,ctx.telegram);
@@ -110,7 +118,9 @@ async function main():Promise<void>{
    return;
   }
   if(ctx.startPayload?.startsWith("a_")){
-   await startApplicationEditor(ctx,ctx.startPayload);
+   if(await isNoticeApplicationLink(ctx.startPayload)){
+    await startNoticeApplication(ctx,ctx.startPayload);
+   }else await startApplicationEditor(ctx,ctx.startPayload);
    return;
   }
   if(ctx.startPayload && /^(?:m|r)_/.test(ctx.startPayload)){
@@ -218,6 +228,7 @@ async function main():Promise<void>{
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
  registerPostingHandlers(bot);
+ registerNoticeInteractionHandlers(bot);
  registerLinkInlineHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
