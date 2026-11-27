@@ -83,7 +83,7 @@ export async function submitApplication(
   }
   let resubmitted=false;
   if(!duplicate||resubmitAllowed){
-   const action=noticeMode==="public"?"accepted":"submitted";
+   const action=noticeMode==="public"?"notice_joined":"submitted";
    const key="application:"+id+":"+action+
     (freshAttempt?":"+String(attemptCreatedAtMs):"");
    const notify=await c.query(
