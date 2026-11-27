@@ -4,7 +4,7 @@ import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
 
 export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_media"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
