@@ -20,6 +20,15 @@ test("application and room notices never require user slash commands",()=>{
  }
 });
 
+test("public notice join informs the owner without implying applicant approval",()=>{
+ assert.equal(renderAnnouncementNotification({action:"notice_joined",applicationId:2}),
+  "告知に新しい参加者が登録されました");
+ assert.equal(renderAnnouncementNotification({action:"submitted",applicationId:2}),
+  "📨 新しい応募が届きました。下のボタンから確認できます。");
+ assert.equal(renderAnnouncementNotification({action:"accepted",applicationId:2}),
+  "✅ 応募が承認されました。下のボタンから参加状況を確認できます。");
+});
+
 import {applicantDmLink} from "../src/services/telegramUsernameLink.js";
 test("owner gets a direct applicant chat link with or without username",()=>{
  assert.equal(applicantDmLink(123456,"Applicant_1"),"https://t.me/Applicant_1");
