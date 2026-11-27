@@ -1,8 +1,9 @@
-import test from "node:test";
+import test, {mock} from "node:test";
 import assert from "node:assert/strict";
 import {noticeParts,noticeText,noticeEdit,noticeJoin,noticeMedia,
  validateNotice,noticeCard,buildNoticeRichPreview} from "../src/services/noticeEditor.js";
-import {announcementPanel,announcementSummary} from "../src/bot/postingHandlers.js";
+import {pool} from "../src/db/index.js";
+import {announcementPanel,announcementSummary,startAnnouncementEditor,registerPostingHandlers} from "../src/bot/postingHandlers.js";
 
 test("general notice edits title/body individually without resetting related fields",()=>{
  const draft={kind:"announcement",title:"旧タイトル",body:"旧本文",text:"旧タイトル\n旧本文",
@@ -203,5 +204,194 @@ test("Rich notice preview keeps up to five ordered photo and video references in
 test("Rich notice preview rejects invalid action revisions",()=>{
  for(const revision of [0,-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
   assert.throws(()=>buildNoticeRichPreview({title:"題名",body:"本文"},revision),/NOTICE_REVISION_INVALID/);
+ }
+});
+
+/** Execute the actual notice entry and registered callback. Only I/O is faked.
+ * Unknown SQL or Telegram operations must fail rather than escape to production.
+ */
+function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>;editError?:Error;sendResult?:unknown}={}){
+ const owner=4321,oldId=99,newId=200;
+ let draft={step:options.step??"preview",revision:7,data:{
+  kind:"announcement",title:"題名",body:"本文",screenMessageId:oldId,
+  media:[{kind:"photo",fileId:"photo_1"},{kind:"video",fileId:"video_2"}],
+  ...options.data
+ } as Record<string,unknown>};
+ const events:any[][]=[],answers:any[][]=[],reads:any[][]=[];
+ const query=mock.method(pool,"query", (async(sql:string,values:any[])=>{
+  assert.equal(values[1],"announcement");
+  if(sql==="SELECT step,data,revision FROM public_post_drafts WHERE owner_user_id=$1 AND module=$2"){
+   reads.push(values);
+   return {rows:values[0]===owner?[structuredClone(draft)]:[]};
+  }
+  assert.equal(values[0],owner);
+  assert.equal(values[2],draft.revision);
+  if(sql==="UPDATE public_post_drafts SET data=jsonb_set(data,'{screenMessageId}',to_jsonb($4::integer),true) WHERE owner_user_id=$1 AND module=$2 AND revision=$3 RETURNING owner_user_id"){
+   events.push(["bind",...values]);
+   draft.data.screenMessageId=values[3];
+   return {rows:[{owner_user_id:owner}]};
+  }
+  if(sql.replace(/\s+/g," ").trim()==="UPDATE public_post_drafts SET step=$4,data=$5::jsonb,revision=revision+1,updated_at=NOW() WHERE owner_user_id=$1 AND module=$2 AND revision=$3 RETURNING step,data,revision"){
+   events.push(["update",...values]);
+   draft={step:values[3],revision:draft.revision+1,data:JSON.parse(values[4])};
+   return {rows:[structuredClone(draft)]};
+  }
+  assert.fail("Unexpected notice fixture SQL: "+sql);
+ }) as any);
+ const forbid=async (...args:any[])=>{events.push(["forbidden",...args]);throw Error("UNEXPECTED_TELEGRAM_IO");};
+ const telegram={
+  async callApi(method:string,args:Record<string,unknown>){
+   events.push([method,args]);
+   assert.ok(method==="editMessageText"||method==="sendRichMessage");
+   if(method==="editMessageText"){
+    if(options.editError)throw options.editError;
+    return true;
+   }
+   return Object.hasOwn(options,"sendResult")?options.sendResult:{message_id:newId};
+  },
+  async editMessageText(...args:any[]){events.push(["plain-edit",...args]);return true;},
+  async deleteMessage(...args:any[]){events.push(["delete",...args]);return true;},
+  sendPhoto:forbid,sendVideo:forbid,sendMediaGroup:forbid,sendMessage:forbid,
+ };
+ const actions:Array<{pattern:RegExp;handler:Function}>=[];
+ const bot={
+  command(_key:unknown,_fn:Function){},
+  action(pattern:unknown,handler:Function){if(pattern instanceof RegExp)actions.push({pattern,handler});},
+  on(_key:unknown,_fn:Function){}
+ };
+ async function callback(field:"title"|"body",overrides:{fromId?:number;chatId?:number;chatType?:string;messageChatId?:number;messageId?:number;revision?:number;omitMessage?:boolean}={}){
+  registerPostingHandlers(bot as any);
+  const data="post:announce:"+field+":"+(overrides.revision??7);
+  const matching=actions.filter(a=>a.pattern.test(data));
+  assert.equal(matching.length,1,"exactly one registered notice callback");
+  const action=matching[0]!;
+  const ctx={
+   from:{id:overrides.fromId??owner},
+   chat:{type:overrides.chatType??"private",id:overrides.chatId??owner},
+   match:action.pattern.exec(data),
+   callbackQuery:{data,...(overrides.omitMessage?{}:{message:{message_id:overrides.messageId??oldId,
+    chat:{type:"private",id:overrides.messageChatId??owner}}})},
+   telegram,answerCbQuery:async (...args:any[])=>{answers.push(args);},
+   reply:forbid,editMessageText:forbid,
+  };
+  await action.handler(ctx);
+ }
+ return {owner,oldId,newId,telegram,events,answers,reads,callback,
+  get draft(){return draft;},
+  start:()=>startAnnouncementEditor(telegram as any,owner),
+  restore:()=>query.mock.restore()};
+}
+function assertNoticeRichTransport(args:any,owner:number,messageId?:number){
+ assert.equal(args.chat_id,owner);
+ assert.equal(args.message_id,messageId);
+ assert.deepEqual(args.rich_message.blocks.slice(6),[
+  {type:"photo",photo:{type:"photo",media:"photo_1"}},
+  {type:"video",video:{type:"video",media:"video_2"}}
+ ]);
+ assert.deepEqual(args.rich_message.blocks[1],{type:"paragraph",text:[
+  {type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:title:7"}}," タイトル：題名"]});
+ assert.deepEqual(args.rich_message.blocks[2],{type:"paragraph",text:[
+  {type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:body:7"}}," 説明：本文"]});
+ assert.deepEqual(args.reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>[b.text,b.callback_data])),[
+  [["日時設定","post:announce:date:7"],["期限設定","post:announce:deadline:7"],["参加方法","post:announce:joinmenu:7"]],
+  [["画像/動画変更","post:announce:media:7"],["🔗ボタン","post:announce:link:7"],["下書き保存","post:announce:save:7"]],
+  [["投稿する","post:announce:publish:7"],["キャンセル","post:announce:cancel:7"]]
+ ]);
+}
+test("notice entry edits the existing private Rich screen with both media and all eight footer callbacks",async()=>{
+ const f=noticeHandlerFixture();
+ try{
+  await f.start();
+  assert.deepEqual(f.events.map(e=>e[0]),["editMessageText"]);
+  assertNoticeRichTransport(f.events[0]![1],f.owner,f.oldId);
+  assert.equal(f.draft.data.screenMessageId,f.oldId);
+ }finally{f.restore();}
+});
+test("definite notice edit rejection sends one Rich replacement, binds it before deleting the old private screen",async()=>{
+ const f=noticeHandlerFixture({editError:Error("400: Bad Request: message cannot be edited")});
+ try{
+  await f.start();
+  assert.deepEqual(f.events.map(e=>e[0]),["editMessageText","sendRichMessage","bind","delete"]);
+  assertNoticeRichTransport(f.events[0]![1],f.owner,f.oldId);
+  assertNoticeRichTransport(f.events[1]![1],f.owner);
+  assert.deepEqual(f.events[2],["bind",f.owner,"announcement",7,f.newId]);
+  assert.deepEqual(f.events[3],["delete",f.owner,f.oldId]);
+  assert.equal(f.draft.data.screenMessageId,f.newId);
+  assert.equal(f.draft.revision,7);
+ }finally{f.restore();}
+});
+test("unchanged notice edit does not send, bind or delete",async()=>{
+ const f=noticeHandlerFixture({editError:Error("400: Bad Request: message is not modified")});
+ try{
+  await f.start();
+  assert.deepEqual(f.events.map(e=>e[0]),["editMessageText"]);
+  assert.equal(f.draft.data.screenMessageId,f.oldId);
+ }finally{f.restore();}
+});
+for(const reason of ["ETIMEDOUT","socket hang up","400: Bad Request: invalid rich message"]){
+ test("notice edit rejects without replacement on "+reason,async()=>{
+  const error=Error(reason),f=noticeHandlerFixture({editError:error});
+  try{
+   await assert.rejects(f.start(),e=>e===error);
+   assert.deepEqual(f.events.map(e=>e[0]),["editMessageText"]);
+   assert.equal(f.draft.data.screenMessageId,f.oldId);
+  }finally{f.restore();}
+ });
+}
+test("notice replacement with unconfirmed message ID never binds or deletes the old screen",async()=>{
+ for(const sendResult of [null,{}, {message_id:0},{message_id:-1},{message_id:1.5},{message_id:"200"}]){
+  const f=noticeHandlerFixture({editError:Error("400: Bad Request: message cannot be edited"),sendResult});
+  try{
+   await assert.rejects(f.start(),/NOTICE_RICH_SCREEN_UNCONFIRMED/);
+   assert.deepEqual(f.events.map(e=>e[0]),["editMessageText","sendRichMessage"]);
+   assert.equal(f.draft.data.screenMessageId,f.oldId);
+  }finally{f.restore();}
+ }
+});
+for(const field of ["title","body"] as const){
+ test("registered notice "+field+" callback updates only the matching private preview",async()=>{
+  const f=noticeHandlerFixture();
+  try{
+   const before=structuredClone(f.draft.data);
+   await f.callback(field);
+   assert.deepEqual(f.events.map(e=>e[0]),["update","plain-edit"]);
+   assert.deepEqual(f.reads,[[f.owner,"announcement"]]);
+   assert.equal(f.draft.step,"awaiting_text");
+   assert.equal(f.draft.revision,8);
+   assert.deepEqual(f.draft.data,{...before,editField:field});
+   assert.deepEqual(f.events[0]!.slice(1,5),[f.owner,"announcement",7,"awaiting_text"]);
+   assert.deepEqual(f.events[1]!.slice(1,4),[f.owner,f.oldId,undefined]);
+   assert.equal(f.events[1]![4],field==="title"?"タイトルを入力してください。":"内容を入力してください。");
+   assert.equal(f.events[1]![5].reply_markup.inline_keyboard[0][0].callback_data,"post:announce:back:8");
+   assert.deepEqual(f.answers,[[]]);
+  }finally{f.restore();}
+ });
+}
+test("registered notice edit callbacks reject each owner, chat, revision, screen and state mismatch without mutation or sending",async()=>{
+ const cases:Array<{label:string;fixture?:Parameters<typeof noticeHandlerFixture>[0];callback?:Parameters<ReturnType<typeof noticeHandlerFixture>["callback"]>[1]}>=[
+  {label:"other owner",callback:{fromId:9876,chatId:9876,messageChatId:9876}},
+  {label:"group",callback:{chatType:"supergroup",chatId:-100}},
+  {label:"wrong private chat",callback:{chatId:9876}},
+  {label:"wrong message chat",callback:{messageChatId:9876}},
+  {label:"wrong revision",callback:{revision:6}},
+  {label:"wrong screen",callback:{messageId:98}},
+  {label:"missing screen",callback:{omitMessage:true}},
+  {label:"missing bound ID",fixture:{data:{screenMessageId:undefined}}},
+  {label:"awaiting input",fixture:{step:"awaiting_text"}},
+  {label:"date picker",fixture:{data:{noticePickerStage:"date_calendar"}}},
+  {label:"recruitment draft",fixture:{data:{kind:"recruitment"}}}
+ ];
+ for(const field of ["title","body"] as const){
+  for(const c of [...cases,{label:"unset field",fixture:{data:{[field]:""}}}]){
+   const f=noticeHandlerFixture(c.fixture);
+   try{
+    const before=structuredClone(f.draft);
+    await f.callback(field,c.callback);
+    assert.deepEqual(f.events,[],c.label);
+    assert.deepEqual(f.draft,before,c.label);
+    if(c.label==="group")assert.deepEqual(f.answers,[]);
+    else assert.ok(f.answers.some(a=>typeof a[0]==="string"&&a[0].includes("古い")),c.label);
+   }finally{f.restore();}
+  }
  }
 });
