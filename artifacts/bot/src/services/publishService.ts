@@ -26,6 +26,7 @@ export type PublishRequest = {
   topicId:number;
   text:string;
   buttons?:readonly (readonly TransportButton[])[];
+  media?:readonly {kind:"photo"|"video";fileId:string}[];
   approved:boolean;
 };
 
@@ -58,7 +59,7 @@ export async function publishPost(telegram:Telegram, req:PublishRequest):
   try{
    const messageId=await createTelegramDispatcher(telegram).publish(
     {chatId:topic.chatId,threadId:topic.threadId},
-    {text:req.text,parseMode:"HTML",buttons:req.buttons});
+    {text:req.text,parseMode:"HTML",buttons:req.buttons,media:req.media});
    await acknowledgeDelivery(claimed.delivery.id,messageId,req.text);
    return {messageId,chatId:topic.chatId,threadId:topic.threadId};
   }catch(error){
