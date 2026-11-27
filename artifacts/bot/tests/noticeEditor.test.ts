@@ -497,3 +497,16 @@ test("registered link edit accepts two lines, exposes real URL and removes it on
   assert.ok(!f.events.filter(e=>e[0]==="editMessageText").at(-1)![1].rich_message.blocks.some((b:any)=>b.type==="buttons"));
  }finally{f.restore();}
 });
+
+test("initial sticker input preserves ability to add title and body afterwards",async()=>{
+ const f=noticeHandlerFixture({step:"awaiting_text",data:{title:"",body:"",editField:"initial",media:[]}});
+ try{
+  await f.receive("sticker","native_sticker_1");
+  assert.equal(f.draft.step,"awaiting_text");
+  await f.receive("text","新タイトル\n説明");
+  assert.equal(f.draft.step,"preview");
+  assert.deepEqual(noticeParts(f.draft.data),{title:"新タイトル",body:"説明"});
+  assert.deepEqual(noticeMedia(f.draft.data),[{kind:"sticker",fileId:"native_sticker_1"}]);
+  assert.equal(f.events.filter(e=>e[0]==="sticker").length,1);
+ }finally{f.restore();}
+});

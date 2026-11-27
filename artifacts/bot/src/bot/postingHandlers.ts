@@ -1427,8 +1427,10 @@ export function registerPostingHandlers(bot:Telegraf):void{
     await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
    }else if(op==="save"){
     await saveAnnouncementEditorDraft(ctx.from.id,rev);
-    await clearNoticeStickerPreviews(ctx.telegram,ctx.from.id,d.data);
-    await bindNoticeStickerPreviews(ctx.from.id,rev,[]);
+    if(noticeStickerPreviews(d.data).length){
+     await clearNoticeStickerPreviews(ctx.telegram,ctx.from.id,d.data);
+     await bindNoticeStickerPreviews(ctx.from.id,rev,[]);
+    }
     await ctx.answerCbQuery("下書きを保存しました");
     await ctx.editMessageText("✅ 告知/予告を非公開保存しました。投稿メニューから再開できます。");
    }else if(op==="cancel"){
@@ -1849,8 +1851,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }
   let next:EditorDraft;
   try{
-   next=await updateDraft(userId,"announcement",d.revision,"preview",
-    {...d.data,editField:null,media:[...media,{kind,fileId}]});
+   next=await updateDraft(userId,"announcement",d.revision,d.step==="awaiting_text"?"awaiting_text":"preview",
+    {...d.data,editField:d.step==="awaiting_text"?"initial":null,media:[...media,{kind,fileId}]});
   }catch(error){
    await showPostScreen(telegram,userId,d,"素材を登録できませんでした。送信した素材は削除していません。",
     Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
