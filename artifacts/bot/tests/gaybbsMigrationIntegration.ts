@@ -16,6 +16,7 @@ import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roo
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
 import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
+import {claimDelivery,markDeliveryUnknown} from "../src/services/postingDelivery.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
@@ -517,6 +518,29 @@ try{
    WHERE owner_user_id=777501`);
  assert.equal(await currentDmTextOwner(777501),"profile");
  assert.equal(await currentDmTextOwner(777502),null);
+ // Report, search and help use the same arbitration; terminal drafts
+ // prevent older pending reports from being silently reactivated.
+ await pool.query("INSERT INTO gaybbs_bug_reports(owner_user_id,state,prompt_message_id,updated_at) VALUES(777501,'pending',1234,NOW()+INTERVAL '2 seconds')");
+ assert.equal(await currentDmTextOwner(777501),"bug_report");
+ await pool.query("UPDATE profile_drafts SET updated_at=NOW()+INTERVAL '3 seconds' WHERE owner_user_id=777501");
+ assert.equal(await currentDmTextOwner(777501),"profile");
+ await pool.query("UPDATE profile_drafts SET step='cancelled',updated_at=NOW()+INTERVAL '4 seconds' WHERE owner_user_id=777501");
+ assert.equal(await currentDmTextOwner(777501),null);
+ await pool.query("INSERT INTO gaybbs_search_sessions(owner_user_id,step,updated_at) VALUES(777501,'keyword',NOW()+INTERVAL '5 seconds')");
+ assert.equal(await currentDmTextOwner(777501),"search");
+ await pool.query("INSERT INTO gaybbs_help_sessions(owner_user_id,section,updated_at) VALUES(777501,'home',NOW()+INTERVAL '6 seconds')");
+ assert.equal(await currentDmTextOwner(777501),"help");
+ const profileTopic=await pool.query(
+  "INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled) VALUES('area_bbs','profile',-1003847210571,987654,'みんなのプロフ テスト',1,NOW(),TRUE) RETURNING topic_id");
+ const profileTopicId=Number(profileTopic.rows[0].topic_id);
+ const firstDelivery=await claimDelivery("profile","777503",777503,1,profileTopicId);
+ assert.equal(firstDelivery.claimed,true);
+ await markDeliveryUnknown(firstDelivery.delivery.id);
+ await assert.rejects(claimDelivery("profile","777503",777503,2,profileTopicId),/PROFILE_PUBLICATION_NEEDS_RECONCILE/);
+ const same=await claimDelivery("profile","777503",777503,1,profileTopicId);
+ assert.equal(same.claimed,false);
+ assert.equal(same.delivery.status,"needs_reconcile");
+ console.log("PROFILE_CROSS_REVISION_DUPLICATE_GUARD=PASS");
  console.log("GAYBBS_DB_DM_INPUT_OWNER_NO_CROSS_MODULE_CAPTURE=PASS");
 
  // Standalone notice participation uses the actual repository and row-locked

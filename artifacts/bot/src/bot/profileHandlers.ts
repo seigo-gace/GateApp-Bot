@@ -316,6 +316,7 @@ export function registerProfileHandlers(
   bot: Telegraf,
   repo: ProfileRepo = profileRepo,
   activeDmOwner:typeof currentDmTextOwner=currentDmTextOwner,
+  compactSectionExit?: (ctx:Context,draft:ProfileDraft,save:boolean)=>Promise<void>,
 ): void {
   bot.command("profile", async ctx => startProfileEditor(ctx,repo));
 
@@ -596,6 +597,9 @@ export function registerProfileHandlers(
     ].includes(draft.step)){
       await ctx.answerCbQuery("古い保存ボタンです");return;
     }
+    if(draft.data.compactOrigin&&compactSectionExit){
+      await compactSectionExit(ctx,draft,true);return;
+    }
     await persistCompleteProfile(ctx,draft);
   });
 
@@ -724,6 +728,9 @@ export function registerProfileHandlers(
       return;
     }
     const toSummary=draft.step==="hair"||draft.step==="body";
+    if(!toSummary&&draft.data.compactOrigin&&compactSectionExit){
+      await compactSectionExit(ctx,draft,false);return;
+    }
     const updated=await repo.putDraft(ctx.from.id,toSummary?"appearance":"preview",
       draft.data,draft.revision);
     await ctx.answerCbQuery();

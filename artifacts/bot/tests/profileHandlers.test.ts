@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {registerProfileHandlers} from "../src/bot/profileHandlers.js";
+import {readFileSync} from "node:fs";
 
-function fixture() {
+function fixture(compactExit?: Parameters<typeof registerProfileHandlers>[3]) {
   const handlers = new Map<string, Function>();
   let draft: any = null;
   let profile: any = null;
@@ -49,8 +50,7 @@ function fixture() {
     action(k: any, fn: Function) { handlers.set(k instanceof RegExp ? "action:" + k.source : "action:" + k, fn); },
     on(k: string, fn: Function) { handlers.set("on:" + k, fn); },
   };
-  registerProfileHandlers(bot as any, repo as any, async () => draft ? "profile" : null,
-    async()=>postingMenuUrl);
+  registerProfileHandlers(bot as any, repo as any, async () => draft ? "profile" : null, compactExit);
   function ctx(message = "") {
     return {
       chat: {type: "private", id: 4321}, from: {id: 4321, username: "valid_user"},
@@ -804,4 +804,29 @@ test("every ②/③ sub-screen has a Save callback and preserves the entire exis
   await f.action(anySectionSave,[rev]);
   assert.equal(f.saves,1,"stale callback cannot save twice:"+step);
  }
+});
+
+test("production retired-profile route leaves every shared appearance action reachable",()=>{
+ const source=readFileSync(new URL("../src/gaybbsBot.ts",import.meta.url),"utf8");
+ const match=source.match(/bot\.action\((\/\^pf:[^\n]*?\/),async ctx=>/);
+ assert.ok(match,"production fallback must be registered");
+ const route=new RegExp(match[1].slice(1,-1));
+ for(const value of ["pf:ap:8:open:h","pf:ap:8:open:b","pf:ap:8:area","pf:ap:8:back",
+  "pf:ap:8:h:0","pf:ap:8:b:0","pf:ar:8:r:0","pf:ar:8:back","pf:section:8:save"]){
+  assert.equal(route.test(value),false,value);
+ }
+ for(const value of ["pf:restart","pf:edit:basic","pf:overview:8:basic"])assert.equal(route.test(value),true,value);
+ assert.match(source,/registerProfileHandlers\(bot,undefined,undefined,returnFromCompactAppearance\)/);
+});
+test("compact appearance Back and Save delegate with the full draft and reject stale revisions",async()=>{
+ const calls:any[]=[];
+ const f=fixture(async(_ctx,d,save)=>{calls.push({data:structuredClone(d.data),save});});
+ const data={title:"test",nickname:"test",heightCm:175,weightKg:80,age:40,position:"タチ",compactOrigin:"recruit",screenMessageId:99,purposeCodes:["サシ"],placeCodes:["場所あり"],media:[]};
+ const d=await f.repo.putDraft(4321,"appearance",data);
+ await f.action(String.raw`^pf:ap:(\d+):back$`,[String(d.revision-1)]);
+ assert.equal(calls.length,0);
+ await f.action(String.raw`^pf:ap:(\d+):back$`,[String(d.revision)]);
+ await f.action(String.raw`^pf:section:(\d+):save$`,[String(d.revision)]);
+ assert.deepEqual(calls,[{data,save:false},{data,save:true}]);
+ assert.equal(f.saves,0,"legacy persistence must not run");
 });
