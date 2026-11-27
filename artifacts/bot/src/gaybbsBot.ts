@@ -21,7 +21,6 @@ import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationH
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
 import {registerNoticeInteractionHandlers,isNoticeApplicationLink,startNoticeApplication} from "./bot/noticeInteractions.js";
-import {startNoticeInlineEdit} from "./bot/postingHandlers.js";
 import {resolveRoomJoinLink,roomJoinDenialReason} from "./services/roomJoinLinks.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
@@ -56,12 +55,6 @@ async function main():Promise<void>{
  registerStartlessNavigationHandlers(bot);
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
-  const noticeEdit=ctx.startPayload?.match(/^ne_([tb])_(\d+)$/);
-  if(noticeEdit){
-   await startNoticeInlineEdit(ctx.telegram,ctx.from.id,Number(noticeEdit[2]),
-    noticeEdit[1]==="t"?"title":"body");
-   return;
-  }
   if(ctx.startPayload?.startsWith("p_")){
    try {
     const origin=await activateTopicDmEntry(ctx.from.id,ctx.startPayload,ctx.telegram);
