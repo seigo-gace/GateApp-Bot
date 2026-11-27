@@ -10,7 +10,7 @@ import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
-import {createRoom,createAnnouncement} from "../src/services/publicPostRepository.js";
+import {createRoom,createAnnouncement,markPostSourcePublished} from "../src/services/publicPostRepository.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
@@ -518,5 +518,96 @@ try{
  assert.equal(await currentDmTextOwner(777501),"profile");
  assert.equal(await currentDmTextOwner(777502),null);
  console.log("GAYBBS_DB_DM_INPUT_OWNER_NO_CROSS_MODULE_CAPTURE=PASS");
+
+ // Standalone notice participation uses the actual repository and row-locked
+ // application transactions. Run after existing outbox/purge fixtures so these
+ // notifications cannot alter their queue ordering or expected counts.
+ const noticeOwner=991810,noticeApplicant=991811,noticeOther=991812;
+ let noticeRevision=8100;
+ async function makeNotice(kind:"announcement"|"preview",participation:string,deadlineAt?:string,linkedRoomId?:number){
+  const {sourceId}=await createAnnouncement(noticeOwner,++noticeRevision,kind,"CI notice participation",
+   undefined,[],[],linkedRoomId,{conditions:{participation,...(deadlineAt?{deadlineAt}:{})}});
+  await markPostSourcePublished(noticeOwner,"announcement",sourceId);
+  return Number(sourceId);
+ }
+ async function noticeState(id:number,status:string,accept:boolean){
+  const r=await pool.query("SELECT status,accept_applications FROM announcement_posts WHERE announcement_id=$1",[id]);
+  assert.deepEqual(r.rows,[{status,accept_applications:accept}]);
+ }
+ async function noticeCounts(id:number,applications:number,notifications:number){
+  const a=await pool.query("SELECT count(*)::int AS n FROM announcement_applications WHERE announcement_id=$1",[id]);
+  const n=await pool.query("SELECT count(*)::int AS n FROM announcement_notifications WHERE announcement_id=$1",[id]);
+  assert.equal(a.rows[0].n,applications);
+  assert.equal(n.rows[0].n,notifications);
+ }
+ async function noticeApplicationState(id:number,applicant:number,appId:number,status:string){
+  const r=await pool.query("SELECT application_id,status FROM announcement_applications WHERE announcement_id=$1 AND applicant_user_id=$2",[id,applicant]);
+  assert.equal(r.rows.length,1);
+  assert.equal(Number(r.rows[0].application_id),appId);
+  assert.equal(r.rows[0].status,status);
+ }
+ for(const kind of ["announcement","preview"] as const){
+  const open=await makeNotice(kind,"public");
+  await noticeState(open,"published",true);
+  await assert.rejects(submitApplication(open,noticeOwner,null),/SELF_APPLICATION_REFUSED/);
+  const joined=await submitApplication(open,noticeApplicant,{source:"notice"});
+  assert.equal(joined.status,"accepted");
+  assert.equal(joined.duplicate,false);
+  const again=await submitApplication(open,noticeApplicant,{source:"notice"},12345);
+  assert.equal(again.applicationId,joined.applicationId);
+  assert.equal(again.status,"accepted");
+  assert.equal(again.duplicate,true);
+  assert.equal(again.resubmitted,false);
+  await assert.rejects(decideApplication(noticeOwner,open,joined.applicationId,"declined"),/APPLICATIONS_CLOSED/);
+  await noticeApplicationState(open,noticeApplicant,joined.applicationId,"accepted");
+  await noticeCounts(open,1,1);
+  await noticeState(open,"published",true);
+  const approval=await makeNotice(kind,"approved_only");
+  await noticeState(approval,"published",true);
+  const waiting=await submitApplication(approval,noticeApplicant,null);
+  const waitingOther=await submitApplication(approval,noticeOther,null);
+  assert.equal(waiting.status,"submitted");
+  assert.equal(waitingOther.status,"submitted");
+  const repeated=await submitApplication(approval,noticeApplicant,null,12346);
+  assert.equal(repeated.applicationId,waiting.applicationId);
+  assert.equal(repeated.duplicate,true);
+  assert.equal(repeated.resubmitted,false);
+  await noticeApplicationState(approval,noticeApplicant,waiting.applicationId,"submitted");
+  await noticeCounts(approval,2,2);
+  await assert.rejects(decideApplication(noticeOther,approval,waiting.applicationId,"accepted"),/APPLICATION_OWNER_MISMATCH/);
+  await assert.rejects(decideApplication(noticeOwner,approval,waiting.applicationId,"held"),/APPLICATION_DECISION_INVALID/);
+  assert.equal((await decideApplication(noticeOwner,approval,waiting.applicationId,"accepted")).status,"accepted");
+  assert.equal((await decideApplication(noticeOwner,approval,waitingOther.applicationId,"declined")).status,"declined");
+  await assert.rejects(decideApplication(noticeOwner,approval,waiting.applicationId,"declined"),/APPLICATION_ALREADY_DECIDED/);
+  await noticeApplicationState(approval,noticeApplicant,waiting.applicationId,"accepted");
+  await noticeApplicationState(approval,noticeOther,waitingOther.applicationId,"declined");
+  await noticeCounts(approval,2,4);
+  await noticeState(approval,"published",true);
+  for(const mode of ["none","unknown"]){
+   const closed=await makeNotice(kind,mode);
+   await noticeState(closed,"published",false);
+   await assert.rejects(submitApplication(closed,noticeApplicant,null),/APPLICATIONS_CLOSED/);
+   await noticeCounts(closed,0,0);
+  }
+  for(const mode of ["public","approved_only"]){
+   const expired=await makeNotice(kind,mode,new Date(Date.now()-3600000).toISOString());
+   await noticeState(expired,"published",true);
+   await assert.rejects(submitApplication(expired,noticeApplicant,null),/APPLICATION_DEADLINE_PASSED/);
+   await noticeCounts(expired,0,0);
+  }
+ }
+ const noticeRoom=await createRoom(noticeOwner,++noticeRevision,"CI notice linked Room",undefined,{visibility:"public"});
+ const roomNotice=await makeNotice("announcement","public",undefined,Number(noticeRoom.sourceId));
+ await noticeState(roomNotice,"published",false);
+ await assert.rejects(submitApplication(roomNotice,noticeApplicant,null),/APPLICATIONS_CLOSED/);
+ // Even if Room ownership opens its shared flag, the standalone notice
+ // participation branch must still reject a Room-linked announcement.
+ const approvedNoticeRoom=await createRoom(noticeOwner,++noticeRevision,"CI approval linked Room",undefined,{visibility:"approved_only"});
+ const roomApprovalNotice=await makeNotice("announcement","approved_only",undefined,Number(approvedNoticeRoom.sourceId));
+ await noticeState(roomApprovalNotice,"published",true);
+ await assert.rejects(submitApplication(roomApprovalNotice,noticeApplicant,null),/APPLICATIONS_CLOSED/);
+ await noticeCounts(roomNotice,0,0);
+ await noticeCounts(roomApprovalNotice,0,0);
+ console.log("GAYBBS_DB_STANDALONE_NOTICE_PARTICIPATION=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
