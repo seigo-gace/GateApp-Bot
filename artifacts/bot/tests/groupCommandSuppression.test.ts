@@ -4,11 +4,12 @@ import {AREA_BBS_CHAT_ID,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,suppressGroupComma
 
 test("shared group-scoped suppression never touches default/other groups",async()=>{
  const written:any[]=[];
+ const cleared=new Set<string>();
  const api={
   getMe:async()=>({id:8872855519}),
   getChatMember:async()=>({status:"administrator"}),
-  setMyCommands:async(commands:unknown,options:unknown)=>{written.push({commands,options});},
-  getMyCommands:async()=>[],
+  setMyCommands:async(commands:unknown,options:unknown)=>{written.push({commands,options});cleared.add(JSON.stringify(options));},
+  getMyCommands:async(options:unknown)=>cleared.has(JSON.stringify(options))?[]:[{command:"start",description:"start"}],
  };
  for(const chat of [AREA_BBS_CHAT_ID,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID]){
   const before=written.length;
@@ -22,6 +23,8 @@ test("shared group-scoped suppression never touches default/other groups",async(
    assert.ok(["chat","chat_administrators"].includes(entry.options.scope.type));
   }
  }
+ assert.equal(written.length,18);
+ await suppressGroupCommandMenu(api as never,AREA_BBS_CHAT_ID);
  assert.equal(written.length,18);
  await assert.rejects(()=>suppressGroupCommandMenu(api as never,-100123),/NOT_ALLOWED/);
  assert.equal(written.length,18);
@@ -42,13 +45,19 @@ test("global suppression clears and reads back all inherited scopes and supporte
  const reads:any[]=[];
  const scopes=await suppressBotDmCommandMenu({
   setMyCommands:async(commands:unknown,options:unknown)=>writes.push({commands,options}),
-  getMyCommands:async(options:unknown)=>{reads.push(options);return [];}
+  getMyCommands:async(options:unknown)=>{reads.push(options);return writes.some(x=>JSON.stringify(x.options)===JSON.stringify(options))?[]:[{command:"start",description:"start"}];}
  } as never);
  assert.deepEqual(scopes,["default","all_private_chats","all_group_chats","all_chat_administrators"]);
  assert.equal(writes.length,12);
- assert.deepEqual(reads,writes.map(x=>x.options));
+ assert.deepEqual(reads,writes.flatMap(x=>[x.options,x.options]));
  for(const scope of scopes){
   assert.deepEqual(writes.filter(x=>x.options.scope.type===scope).map(x=>x.options.language_code),["","ja","en"]);
  }
  assert.ok(writes.every(x=>Array.isArray(x.commands)&&x.commands.length===0));
+});
+
+test("already empty global scopes avoid all writes",async()=>{
+ let reads=0,writes=0;
+ await suppressBotDmCommandMenu({getMyCommands:async()=>{reads++;return [];},setMyCommands:async()=>{writes++;}} as never);
+ assert.equal(reads,12);assert.equal(writes,0);
 });
