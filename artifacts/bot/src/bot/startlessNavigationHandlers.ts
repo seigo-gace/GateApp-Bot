@@ -12,6 +12,7 @@ import {resolveRoomJoinLink,roomJoinDenialReason} from "../services/roomJoinLink
 import {callbackStartlessPayload} from "../services/startlessNavigation.js";
 import {startProfileViewer} from "./profileViewerHandlers.js";
 import {startApplicationEditor} from "./applicationHandlers.js";
+import {isNoticeApplicationLink,openNoticeApplication} from "./noticeInteractions.js";
 
 const safeCommands:Readonly<Record<string,{label:string;callback:string}>>={
  search:{label:"検索/フィルター",callback:"dm:search"},
@@ -59,7 +60,11 @@ export function registerStartlessNavigationHandlers(bot:Telegraf):void{
       Markup.inlineKeyboard([[Markup.button.url("🎥 ROOMへ参加",room.joinUrl)]]));
     else await ctx.telegram.sendMessage(userId,await roomJoinDenialReason(payload));
    }else if(payload.startsWith("a_")){
-    // The original application payload is checked again by the DM handler.
+    if(await isNoticeApplicationLink(payload)){
+     await openNoticeApplication(ctx.telegram,userId,payload);
+     await ctx.answerCbQuery();return;
+    }
+    // Existing recruitment/Room route is unchanged.
     await ctx.telegram.sendMessage(userId,"📝 応募内容を確認",
      Markup.inlineKeyboard([[Markup.button.callback("応募画面を開く","gdm:application:"+payload.slice(2))]]));
    }else if(/^(?:pv|pm|pt)_/.test(payload)){

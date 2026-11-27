@@ -1874,8 +1874,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(d.step==="awaiting_text"&&d.data.editField&&d.data.editField!=="initial")return false;
   const media=noticeMedia(d.data);
   if(media.length>=5){
-   await showPostScreen(telegram,userId,d,"画像・動画・ステッカーは合計最大5件です。送信した素材は未登録です。",
-    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
+   await showNoticeEditorError(telegram,userId,d,"画像・動画・ステッカーは合計最大5件です。送信した素材は未登録です。");
    return true;
   }
   let next:EditorDraft;
@@ -1883,8 +1882,8 @@ export function registerPostingHandlers(bot:Telegraf):void{
    next=await updateDraft(userId,"announcement",d.revision,d.step==="awaiting_text"?"awaiting_text":"preview",
     {...d.data,editField:d.step==="awaiting_text"?"initial":null,media:[...media,{kind,fileId,...stickerInfo}]});
   }catch(error){
-   await showPostScreen(telegram,userId,d,"素材を登録できませんでした。送信した素材は削除していません。",
-    Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
+   const latest=await getDraft(userId,"announcement").catch(()=>null);
+   await showNoticeEditorError(telegram,userId,latest??d,"素材を登録できませんでした。送信した素材は削除していません。");
    return true;
   }
   try{
@@ -2313,6 +2312,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery("公開処理を確認しています");
   let roomSourceMayExist=false;
   let noticePublishAttempt=false;
+  let noticePublication=false;
   let isRecruitment=false;
   try{
    const roomTargets=module==="room"?await verifiedRoomTargets(ctx.from.id):null;
@@ -2418,6 +2418,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
      const kind=draft.data.kind as AnnouncementKind;
      isRecruitment=kind==="recruitment";
      const isNotice=kind==="announcement"||kind==="preview";
+     noticePublication=isNotice;
      if(isNotice)validateNotice(draft.data,ctx.from.id);
      const value=isNotice?noticeText(draft.data):String(draft.data.text);
      const eventAt=draft.data.eventAt?new Date(String(draft.data.eventAt)):undefined;
@@ -2594,7 +2595,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
       "投稿できませんでした。内容を保持しています。";
      await showNoticeEditorError(ctx.telegram,ctx.from.id,current,warning);return;
     }
-    if(!isRecruitment){
+    if(noticePublication){
      const screen="message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined;
      if(screen)try{await ctx.telegram.editMessageText(ctx.from.id,screen,undefined,
       "⚠️ 投稿結果を確認してください。重複防止のため自動再送しません。");}catch{}

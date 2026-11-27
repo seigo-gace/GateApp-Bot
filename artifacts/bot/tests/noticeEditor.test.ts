@@ -515,3 +515,55 @@ test("notice entry link uses notice ownership, not recruitment-only lookup",asyn
   assert.ok(calls[1]![0].includes("INSERT INTO announcement_application_entries"));
  }finally{q.mock.restore();}
 });
+
+test("published notice callback opens its private participation view directly, not the recruitment prompt",async()=>{
+ const {registerStartlessNavigationHandlers}=await import("../src/bot/startlessNavigationHandlers.js");
+ const handlers:Array<{pattern:RegExp,fn:Function}>=[];
+ const bot={action(pattern:RegExp,fn:Function){handlers.push({pattern,fn});}};
+ const calls:any[][]=[];
+ const q=mock.method(pool,"query",async(sql:string,values:any[])=>{
+  assert.ok(sql.includes("announcement_application_entries"));
+  assert.equal(values.length,1);
+  return {rows:[{announcement_id:55,owner_user_id:4321,text:"告知テスト",kind:"announcement",status:"published",accept_applications:true,deadline_at:null,conditions:{participation:"public"}}]};
+ });
+ try{
+  registerStartlessNavigationHandlers(bot as any);
+  const data="gdm:a_"+"A".repeat(32);
+  const action=handlers.find(x=>x.pattern.test(data))!;
+  await action.fn({from:{id:4322},chat:{id:-1003847210571,type:"supergroup"},match:action.pattern.exec(data),
+   telegram:{async sendMessage(...args:any[]){calls.push(args);return {message_id:7};}},
+   answerCbQuery:async()=>{}});
+  assert.equal(calls.length,1);
+  assert.equal(calls[0]![0],4322);
+  assert.match(calls[0]![1],/自由参加.*告知/);
+  assert.deepEqual(calls[0]![2].reply_markup.inline_keyboard.flat().map((b:any)=>b.text),["✅ 参加する","✉️ 主催者へ質問"]);
+ }finally{q.mock.restore();}
+});
+test("actual Telegraf HTTP transport sends Rich JSON and sticker attachment in one multipart request",async()=>{
+ const {Telegram}=await import("telegraf");
+ const {createServer}=await import("node:http");
+ const {once}=await import("node:events");
+ const {prepareNoticeRich}=await import("../src/services/noticeRichMedia.js");
+ let requestBody="",contentType="";
+ const server=createServer((req,res)=>{
+  contentType=String(req.headers["content-type"]??"");
+  const chunks:Buffer[]=[];
+  req.on("data",(b:Buffer)=>chunks.push(b));
+  req.on("end",()=>{requestBody=Buffer.concat(chunks).toString("latin1");res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true,result:{message_id:99}}));});
+ });
+ server.listen(0,"127.0.0.1");await once(server,"listening");
+ const address=server.address();assert.ok(address&&typeof address==="object");
+ const api=new Telegram("123456:LOCAL_TEST",{apiRoot:"http://127.0.0.1:"+address.port});
+ const file=mock.method(api,"getFileLink",async()=>new URL("https://api.telegram.org/file/mock/sticker.png"));
+ const network=mock.method(globalThis,"fetch",async()=>new Response(Buffer.from([137,80,78,71,13,10,26,10,0])));
+ try{
+  const rich=await prepareNoticeRich(api,{kind:"announcement",media:[{kind:"sticker",fileId:"s1"}]},7);
+  assert.equal(rich.ready,true);
+  await (api as any).callApi("editMessageText",{chat_id:4321,message_id:99,...rich.payload,reply_markup:{inline_keyboard:[]}});
+  assert.match(contentType,/multipart\/form-data/);
+  assert.ok(requestBody.includes('name="rich_message"'));
+  assert.ok(requestBody.includes('attach://notice_sticker_0'));
+  assert.ok(requestBody.includes('name="notice_sticker_0"; filename="sticker.png"'));
+  assert.ok(!requestBody.includes('https://api.telegram.org/file/'));
+ }finally{file.mock.restore();network.mock.restore();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});

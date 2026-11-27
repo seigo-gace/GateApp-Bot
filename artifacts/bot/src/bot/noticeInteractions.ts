@@ -39,24 +39,26 @@ function joinOpen(p:NoticeEntry):boolean{
  return p.status==="published"&&p.accept&&
   (!p.deadline||p.deadline.getTime()>Date.now());
 }
+/** Both the first-contact deep link and the existing group callback use
+ * this owner-bound DM view; no generic recruitment prompt is sent. */
+export async function openNoticeApplication(telegram:Telegram,userId:number,payload:string):Promise<void>{
+ validId(userId);
+ const match=/^a_([A-Za-z0-9_-]{32})$/.exec(payload);
+ if(!match)throw Error("NOTICE_LINK_UNAVAILABLE");
+ const p=await entry(match[1]!);
+ if(p.status!=="published")throw Error("NOTICE_LINK_UNAVAILABLE");
+ if(userId===p.owner){await showNoticeOwner(telegram,userId,p.id);return;}
+ const keyboard=Markup.inlineKeyboard([
+  ...(joinOpen(p)?[[Markup.button.callback(p.participation==="public"?"✅ 参加する":"📝 応募する","notice:join:"+match[1])]]:[]),
+  [Markup.button.callback("✉️ 主催者へ質問","notice:question:"+match[1])]
+ ]);
+ await telegram.sendMessage(userId,(p.participation==="public"?"👥 自由参加":p.participation==="approved_only"?"📝 承認制":"📢 受付なし")+"｜告知/予告\n"+
+  p.text.slice(0,1200)+(joinOpen(p)||p.participation==="none"?"":"\n受付終了"),keyboard);
+}
 export async function startNoticeApplication(ctx:Context,payload:string):Promise<void>{
  if(ctx.chat?.type!=="private"||!ctx.from)return;
- const match=/^a_([A-Za-z0-9_-]{32})$/.exec(payload);
- if(!match){await ctx.reply("告知リンクを確認できません。");return;}
- try{
-  const p=await entry(match[1]!);
-  if(ctx.from.id===p.owner){
-   await showNoticeOwner(ctx.telegram,ctx.from.id,p.id);return;
-  }
-  const keyboard=Markup.inlineKeyboard([
-   ...(joinOpen(p)?[[Markup.button.callback(
-    p.participation==="public"?"✅ 参加する":"📝 応募する",
-    "notice:join:"+match[1])]]:[]),
-   [Markup.button.callback("✉️ 主催者へ質問","notice:question:"+match[1])],
-  ]);
-  await ctx.reply((p.participation==="public"?"👥 自由参加":p.participation==="approved_only"?"📝 承認制":"📢 受付なし")+"｜告知/予告\n"+
-   p.text.slice(0,1200)+(joinOpen(p)?"":"\n受付終了"),keyboard);
- }catch{await ctx.reply("この告知の入口を確認できません。");}
+ try{await openNoticeApplication(ctx.telegram,ctx.from.id,payload);}
+ catch{await ctx.reply("この告知の入口を確認できません。");}
 }
 async function showNoticeOwner(telegram:Telegram,owner:number,id:number,screenId?:number){
  const r=await pool.query(`SELECT owner_user_id,text,status,conditions
@@ -146,7 +148,7 @@ export function registerNoticeInteractionHandlers(bot:Telegraf):void{
   await ctx.answerCbQuery();
   try{
    const p=await entry(ctx.match[1]!);
-   if(ctx.from.id===p.owner)throw Error("NOTICE_SELF_DM");
+   if(p.status!=="published"||ctx.from.id===p.owner)throw Error("NOTICE_QUESTION_UNAVAILABLE");
    await setDm(ctx.telegram,ctx.from.id,p.id,p.owner,"individual",
     "message" in ctx.callbackQuery?ctx.callbackQuery.message?.message_id:undefined);
   }catch{await ctx.reply("質問の受付を確認できません。");}
