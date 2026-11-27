@@ -90,6 +90,16 @@ try{
  assert.equal((await getProfile(owner))?.hair,"短髪");
  assert.equal(edits.at(-1)?.[1],1300);
  await assert.rejects(savePrivateDraft(owner,appearance.revision,"test_user_998",true),/PROFILE_DRAFT_STALE/);
+ const cleared=await putDraft(owner,"compact",{...restored!.data,pr:null},restored!.revision);
+ assert.equal((await getDraft(owner))?.data.pr,null);
+ await startCompactProfileEditor(editCtx as any);
+ const reopened=await getDraft(owner);
+ assert.equal(reopened?.data.pr,null,"reopen must not restore the deliberately cleared PR");
+ assert.equal(reopened?.data.prRef,null);
+ await savePrivateDraft(owner,reopened!.revision,"test_user_998");
+ assert.equal((await getProfile(owner))?.pr,null);
+ assert.ok(reopened!.revision>cleared.revision);
+ console.log("PROFILE_CLEAR_PR_REOPEN=PASS");
  console.log("PROFILE_ATOMIC_SECTION_SAVE_AND_RESUME=PASS");
  console.log("PROFILE_MENU_CALLBACK_SCREEN_REBIND=PASS");
  console.log("PROFILE_SHARED_ALBUM_SQL_ROUNDTRIP=PASS");
