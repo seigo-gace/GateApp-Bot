@@ -1,4 +1,4 @@
-import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard} from "../services/noticeEditor.js";
+import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard,buildNoticeRichPreview} from "../services/noticeEditor.js";
 import {showPublishedNoticeOwner} from "./noticeInteractions.js";
 import { Markup, type Telegraf, type Telegram, type Context } from "telegraf";
 import {pool} from "../db/index.js";
@@ -27,7 +27,7 @@ import {makeApplicationLink} from "../services/applicationLinks.js";
 import {updateRoomState,updateRoomDetails} from "../services/roomLifecycle.js";
 import {reconcileRoomPublicCard} from "../services/roomPublicSync.js";
 import {loadRoomPublication,roomPublicationEditor,deletePublishedRoom,recoverFullySentRoom,mayResumeRoomPublication,ensureImmediatePublishedRoomLive} from "../services/roomPublishedEditor.js";
-import {showWizardScreen,removeUserWizardInput,type WizardKeyboard} from "../services/dmWizardScreen.js";
+import {showWizardScreen,removeUserWizardInput,wizardEditFailureKind,type WizardKeyboard} from "../services/dmWizardScreen.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {showRecruitmentPublished,inputInstructions,showRecruitmentDestinationStep} from "./recruitmentHandlers.js";
 import {styledInlineButton as styledRecruitmentButton} from "../services/inlineButtonStyle.js";
@@ -648,29 +648,13 @@ export function announcementSummary(d:EditorDraft):string{
  const dt=(v:unknown)=>v?new Date(String(v)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}):"［未設定］";
  const join=noticeJoin(d.data);
  return ["📢 告知/予告",
-  title?`<a href="https://t.me/GayBBS_bot?start=ne_t_${d.revision}">［編集］</a>タイトル：`+escapeProfileHtml(title):"タイトル：［未設定］",
-  body?`<a href="https://t.me/GayBBS_bot?start=ne_b_${d.revision}">［編集］</a>説明：`+escapeProfileHtml(body):"説明：［未設定］",
+  title?"タイトル："+escapeProfileHtml(title):"タイトル：［未設定］",
+  body?"説明："+escapeProfileHtml(body):"説明：［未設定］",
   "開催日時："+dt(d.data.eventAt),
   "受付期限："+dt(d.data.deadlineAt),
   "参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"［未設定］"),
   ...(d.data.destinationLabel?["投稿先："+escapeProfileHtml(String(d.data.destinationLabel))]:[])
  ].join("\n");
-}
-async function showNoticeMedia(telegram:Telegram,userId:number,d:EditorDraft):Promise<EditorDraft>{
- const media=noticeMedia(d.data);
- const fingerprint=JSON.stringify(media);
- const old=Array.isArray(d.data.noticePreviewIds)?d.data.noticePreviewIds as number[]:[];
- if(!media.length&&!old.length)return d;
- if(d.data.noticePreviewFingerprint===fingerprint)return d;
- for(const id of old){try{await telegram.deleteMessage(userId,id);}catch{/* already gone */}}
- const ids:number[]=[];
- for(const m of media){
-  const sent=m.kind==="photo"?await telegram.sendPhoto(userId,m.fileId):
-   await telegram.sendVideo(userId,m.fileId);
-  ids.push(sent.message_id);
- }
- return updateDraft(userId,"announcement",d.revision,d.step,
-  {...d.data,noticePreviewIds:ids,noticePreviewFingerprint:fingerprint});
 }
 /** Reuse the established Room date picker for notice dates and deadlines. */
 async function announcementDatePicker(t:Telegram,id:number,d:EditorDraft):Promise<void>{
@@ -697,8 +681,43 @@ async function announcementScreen(telegram:Telegram,userId:number,d:EditorDraft)
  if(["date_calendar","time_hour","time_minute"].includes(String(d.data.noticePickerStage||""))){
   await announcementDatePicker(telegram,userId,d);return;
  }
- const displayed=await showNoticeMedia(telegram,userId,d);
- await showPostScreen(telegram,userId,displayed,announcementSummary(displayed),announcementPanel(displayed),true);
+ if(!Number.isSafeInteger(userId)||userId<=0||d.module!=="announcement"||d.data.kind==="recruitment")
+  throw Error("NOTICE_PRIVATE_SCREEN_REQUIRED");
+ const rich=buildNoticeRichPreview(d.data,d.revision);
+ const reply_markup=announcementPanel(d).reply_markup;
+ const raw=telegram as unknown as {callApi:(method:string,args:Record<string,unknown>)=>Promise<unknown>};
+ const old=Number(d.data.screenMessageId);
+ const hasOld=Number.isSafeInteger(old)&&old>0;
+ let screenId=hasOld?old:undefined;
+ if(hasOld){
+  try{
+   await raw.callApi("editMessageText",{chat_id:userId,message_id:old,rich_message:rich,reply_markup});
+  }catch(error){
+   const failure=wizardEditFailureKind(error);
+   if(failure==="rejected")screenId=undefined;
+   else if(failure!=="unchanged")throw error;
+  }
+ }
+ if(screenId===undefined){
+  const sent=await raw.callApi("sendRichMessage",{chat_id:userId,rich_message:rich,reply_markup}) as {message_id?:number}|null;
+  const id=sent?.message_id;
+  if(typeof id!=="number"||!Number.isSafeInteger(id)||id<=0)
+   throw Error("NOTICE_RICH_SCREEN_UNCONFIRMED");
+  await bindDraftScreen(userId,"announcement",d.revision,id);
+  screenId=id;
+  if(hasOld&&old!==screenId){
+   try{await telegram.deleteMessage(userId,old);}
+   catch{console.warn("[NOTICE_OLD_SCREEN_REMOVE_FAILED]");}
+  }
+ }
+ // Retire only the previously tracked private notice preview copies.
+ // Never send separate media previews; the Rich body already contains them.
+ const legacy=Array.isArray(d.data.noticePreviewIds)?d.data.noticePreviewIds:[];
+ for(const id of new Set(legacy)){
+  if(typeof id!=="number"||!Number.isSafeInteger(id)||id<=0||id===screenId||id===old)continue;
+  try{await telegram.deleteMessage(userId,id);}
+  catch{console.warn("[NOTICE_LEGACY_PREVIEW_REMOVE_FAILED]");}
+ }
 }
 async function announcementDestinationPicker(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
  await showPostScreen(telegram,userId,d,announcementSummary(d)+"\n\n公開先を選択してください。",
@@ -1304,7 +1323,7 @@ export function registerPostingHandlers(bot:Telegraf):void{
   if(!privateDM(ctx))return;
   await startAnnouncementEditor(ctx.telegram,ctx.from.id);
  });
- bot.action(/^post:announce:(kind|edit|title|body|date|deadline|link|media|joinmenu|join|profile|destination|topics|back|publish|save|cancel):(\d+)(?::(announcement|preview|public|approved_only|none))?$/,async ctx=>{
+ bot.action(/^post:announce:(title|body|date|deadline|link|media|joinmenu|join|destination|topics|back|publish|save|cancel):(\d+)(?::(public|approved_only|none))?$/,async ctx=>{
   if(!privateDM(ctx))return;
   const op=ctx.match[1],rev=Number(ctx.match[2]);
   const kindChoice=ctx.match[3];
@@ -1313,14 +1332,18 @@ export function registerPostingHandlers(bot:Telegraf):void{
      d.data.kind==="recruitment"){
    await ctx.answerCbQuery("古い操作です。投稿メニューから再度お試しください。");return;
   }
+  if(op==="title"||op==="body"){
+   const message="message" in ctx.callbackQuery?ctx.callbackQuery.message:undefined;
+   const parts=noticeParts(d.data);
+   if(ctx.chat?.id!==ctx.from.id||message?.chat.id!==ctx.from.id||
+      !Number.isSafeInteger(d.data.screenMessageId)||message?.message_id!==d.data.screenMessageId||
+      d.step!=="preview"||d.data.noticePickerStage||!parts[op]||kindChoice!==undefined){
+    await ctx.answerCbQuery("古い編集操作です。告知/予告を開き直してください。");return;
+   }
+  }
   try{
-   if(op==="kind"){
-    if(kindChoice!=="announcement"&&kindChoice!=="preview")throw new Error("ANNOUNCEMENT_KIND_INVALID");
-    const next=await updateDraft(ctx.from.id,"announcement",rev,d.step,{
-     ...d.data,kind:kindChoice,eventAt:kindChoice==="announcement"?null:d.data.eventAt});
-    await ctx.answerCbQuery();await announcementScreen(ctx.telegram,ctx.from.id,next);
-   }else if(["edit","title","body","deadline","link","media"].includes(op)){
-     const editField=op==="edit"?"initial":op;
+   if(["title","body","deadline","link","media"].includes(op)){
+     const editField=op;
      const next=await updateDraft(ctx.from.id,"announcement",rev,
       editField==="media"?"awaiting_media":editField==="deadline"?"preview":"awaiting_text",
       editField==="deadline"?{...d.data,noticePickerStage:"date_calendar",noticeDateField:"deadline",
