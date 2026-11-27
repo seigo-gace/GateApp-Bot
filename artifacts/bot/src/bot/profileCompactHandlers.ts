@@ -426,16 +426,22 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
    let notice:string;
    try{
     const result=await publishProfileToAllBoards(ctx.telegram,ctx.from.id,profile);
-    notice="✅ プロフィールを3掲示板の「みんなのプロフ」に反映しました。"+
-     "（新規"+result.published+"・更新"+result.updated+"・変更なし"+result.unchanged+"）";
+    const incomplete=result.unconfirmed+result.blocked;
+    notice=(incomplete?"⚠️ プロフィールは保存済みです。一部の掲示板は反映未確認です。":
+     "✅ プロフィールを3掲示板の「みんなのプロフ」に反映しました。")+
+     "（新規"+result.published+"・更新"+result.updated+"・変更なし"+result.unchanged+
+     "・未確認"+result.unconfirmed+"・保留"+result.blocked+"）";
    }catch{
     notice="⚠️ プロフィールは保存しましたが、3掲示板への投稿完了は確認できません。"+
      "一部が投稿済みの可能性があるため、自動再送はしません。";
    }
-   await ctx.editMessageText(notice+"\n"+renderProfileBasicPreview(profile,ctx.from.username??""),{
-    parse_mode:"HTML",
-    ...Markup.inlineKeyboard([[button("↩ 元の操作へ戻る","pc:return:"+origin)]])
-   });
+   try{
+    await showWizardScreen(ctx.telegram,ctx.from.id,d.data.screenMessageId,
+     notice+"\n"+renderProfileBasicPreview(profile,ctx.from.username??""),
+     Markup.inlineKeyboard([[button("↩ 元の操作へ戻る","pc:return:"+origin)]]),"HTML");
+   }catch{
+    await ctx.reply("保存は完了しました。表示を更新できなかったため、プロフィールを開き直してください。").catch(()=>undefined);
+   }
    return;
   }
   if(action==="appearance"){
