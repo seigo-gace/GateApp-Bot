@@ -81,3 +81,35 @@ export function noticeCard(data:NoticeDraft,ownerId:number):string{
  if(data.deadlineAt)lines.push("受付終了："+dt(data.deadlineAt));
  return lines.join("\n");
 }
+
+/** Private notice preview only: native RichTextButton callbacks, not deep links.
+ * The existing announcementPanel owns the eight InlineKeyboard controls.
+ * No sending, persistence or public-card rendering is performed here.
+ */
+export function buildNoticeRichPreview(data:NoticeDraft,revision:number){
+ if(!Number.isSafeInteger(revision)||revision<=0)throw Error("NOTICE_REVISION_INVALID");
+ const {title,body}=noticeParts(data);
+ const join=noticeJoin(data);
+ const paragraph=(text:unknown):Record<string,unknown>=>({type:"paragraph",text});
+ const edit=(field:"title"|"body")=>({
+  type:"button",button:{text:"［編集］",style:"link",callback_data:`post:announce:${field}:${revision}`}
+ });
+ const fieldLine=(label:string,value:string,field:"title"|"body")=>
+  paragraph(value?[edit(field)," "+label+"："+value]:label+"：［未設定］");
+ const dt=(value:unknown)=>value?new Date(String(value)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}):"［未設定］";
+ const blocks:Record<string,unknown>[]=[
+  paragraph("📢 告知/予告"),
+  fieldLine("タイトル",title,"title"),
+  fieldLine("説明",body,"body"),
+  paragraph("開催日時："+dt(data.eventAt)),
+  paragraph("受付期限："+dt(data.deadlineAt)),
+  paragraph("参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"［未設定］")),
+ ];
+ if(data.destinationLabel)blocks.push(paragraph("投稿先："+String(data.destinationLabel)));
+ for(const media of noticeMedia(data)){
+  blocks.push(media.kind==="photo"
+   ?{type:"photo",photo:{type:"photo",media:media.fileId}}
+   :{type:"video",video:{type:"video",media:media.fileId}});
+ }
+ return {blocks};
+}
