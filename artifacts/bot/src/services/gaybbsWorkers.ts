@@ -9,7 +9,7 @@ import {updateNextRoomStatusMessage} from "./roomPostStatus.js";
 import {finalizeNextRoom} from "./roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "./announcementArchive.js";
 
-type Worker={name:string;enabled:boolean;busy:boolean;run:()=>Promise<unknown>};
+type Worker={name:string;enabled:boolean;busy:boolean;since?:number;warned?:boolean;run:()=>Promise<unknown>};
 export function startGayBbsWorkers(telegram:Telegram):()=>void{
  let nextCleanupAt=0;
  const workers:Worker[]=[
@@ -48,13 +48,16 @@ export function startGayBbsWorkers(telegram:Telegram):()=>void{
  const timer=setInterval(()=>{
   if(stopped)return;
   for(const w of enabled){
-   if(w.busy)continue;
-   w.busy=true;
+   if(w.busy){
+    if(!w.warned&&w.since!==undefined&&Date.now()-w.since>=60000){w.warned=true;console.warn("GAYBBS_WORKER_STALLED",w.name);}
+    continue;
+   }
+   w.busy=true;w.since=Date.now();w.warned=false;
    void w.run().catch(error=>{
     // Do not print raw Telegram/DB exceptions, secrets or user payload.
     console.error("GAYBBS_WORKER_CHECK_FAILED",w.name,
       error instanceof Error?error.name:"unknown");
-   }).finally(()=>{w.busy=false;});
+   }).finally(()=>{if(w.warned)console.log("GAYBBS_WORKER_SETTLED",w.name);w.busy=false;w.since=undefined;w.warned=false;});
   }
  },15000);
  return ()=>{stopped=true;clearInterval(timer)};

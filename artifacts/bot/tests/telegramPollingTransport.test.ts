@@ -31,3 +31,28 @@ test("polling transport preserves actual updates, offsets and normal no-drop web
   await assert.rejects(pollApiRequest("LOCAL_TEST","getUpdates",{offset:0},controller.signal,request),{name:"AbortError"});
  }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });
+
+test("poll transport reports a failed receive and recovers without changing offset",async()=>{
+ let requests=0;
+ const seen:unknown[]=[];
+ const server=http.createServer((req,res)=>{
+  let b="";req.on("data",c=>b+=c);req.on("end",()=>{
+   seen.push(JSON.parse(b));requests++;
+   if(requests===1){res.destroy();return;}
+   res.end(JSON.stringify({ok:true,result:[]}));
+  });
+ });
+ server.listen(0,"127.0.0.1");await once(server,"listening");
+ const address=server.address();assert.ok(address&&typeof address==="object");
+ const request:Parameters<typeof pollApiRequest>[4]=(_url,options,cb)=>http.request("http://127.0.0.1:"+address.port,options,cb);
+ const fake={callApi:async(_m:string,_p:unknown)=>[]};
+ let ready=0;
+ const status=installPollingTransport(fake as any,"LOCAL_TEST",request,()=>{ready++;});
+ try{
+  await assert.rejects(fake.callApi("getUpdates",{offset:42}),{name:"FetchError"});
+  assert.equal(status().consecutiveFailures,1);
+  await fake.callApi("getUpdates",{offset:42});
+  assert.equal(status().consecutiveFailures,0);assert.equal(ready,1);
+  assert.deepEqual(seen,[{offset:42},{offset:42}]);
+ }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});

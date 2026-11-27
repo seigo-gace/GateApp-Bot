@@ -62,11 +62,12 @@ export function pollApiRequest(token:string,method:PollMethod,payload:Record<str
   }catch{transportError();}
  });
 }
-export function installPollingTransport(telegram:Telegram,token:string,request:Request=https.request):void{
+export function installPollingTransport(telegram:Telegram,token:string,request:Request=https.request,onReady?:()=>void){
  const original=telegram.callApi.bind(telegram) as (method:string,payload:unknown,options?:unknown)=>Promise<unknown>;
  let ready=false;
  let lastSuccess=Date.now();
  let consecutiveFailures=0;
+ let retryUntil=0;
  telegram.callApi=(async(method:string,payload:Record<string,unknown>,options?:{signal?:Signal})=>{
   if(method!=="getUpdates"&&method!=="deleteWebhook")return original(method,payload,options);
   let result:unknown;
@@ -74,6 +75,7 @@ export function installPollingTransport(telegram:Telegram,token:string,request:R
   catch(error){
    if(method==="getUpdates"&&!options?.signal?.aborted){
     consecutiveFailures++;
+    if(error instanceof TelegramError&&error.code===429)retryUntil=Date.now()+1000*(error.parameters?.retry_after??5);
     console.error("GAYBBS_POLLING_FAILURE count="+consecutiveFailures+" since_success_ms="+(Date.now()-lastSuccess),error instanceof Error?error.name:"unknown");
    }
    throw error;
@@ -81,10 +83,12 @@ export function installPollingTransport(telegram:Telegram,token:string,request:R
   if(method==="getUpdates"){
    if(consecutiveFailures)console.log("GAYBBS_POLLING_RECOVERED failures="+consecutiveFailures+" elapsed_ms="+(Date.now()-lastSuccess));
    consecutiveFailures=0;lastSuccess=Date.now();
-   if(!ready){ready=true;console.log("GAYBBS_POLLING_READY");}
+   retryUntil=0;
+   if(!ready){ready=true;console.log("GAYBBS_POLLING_READY");onReady?.();}
    const count=(result as unknown[]).length;
    if(count)console.log("GAYBBS_UPDATE_BATCH_RECEIVED count="+count);
   }
   return result;
  }) as typeof telegram.callApi;
+ return ()=>({lastSuccess,consecutiveFailures,retryUntil});
 }

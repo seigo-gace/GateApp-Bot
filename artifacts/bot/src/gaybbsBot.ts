@@ -2,6 +2,7 @@
 import https from "node:https";
 import { BOT_TOKEN } from "./config/env.js";
 import {installPollingTransport} from "./services/telegramPollingTransport.js";
+import {ActorQueue,boundTelegramCalls} from "./services/runtimeReliability.js";
 import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers } from "./bot/profileHandlers.js";
 import {registerStartlessNavigationHandlers} from "./bot/startlessNavigationHandlers.js";
@@ -31,7 +32,7 @@ import {startGayBbsAdmission,registerGayBbsApprovalHandlers} from "./modules/gay
 import {suppressAreaCommandMenu,GAY_BOARD_CHAT_ID,VIDEO_CHAT_CHAT_ID,
  suppressBotDmCommandMenu,suppressGroupCommandMenu} from "./services/areaMenuSuppression.js";
 import {handleOnlineGateStart,registerOnlineGateCheckHandler} from "./services/onlineGateAccess.js";
-import {pool} from "./db/index.js";
+import {pool,configureGaybbsDatabaseWaits} from "./db/index.js";
 import {registerBugReportHandlers,startBugReport,startBugReportDeliveryWorker} from "./bot/bugReportHandlers.js";
 import {startTumblrBridge} from "./services/tumblrBridgeServer.js";
 import {
@@ -48,17 +49,39 @@ async function main():Promise<void>{
  const bot=new Telegraf(BOT_TOKEN,{
   telegram:{agent:new https.Agent({keepAlive:true,family:4})},
  });
- installPollingTransport(bot.telegram,BOT_TOKEN);
+ let firstPoll=()=>{};
+ boundTelegramCalls(bot.telegram);
+ const pollingHealth=installPollingTransport(bot.telegram,BOT_TOKEN,undefined,()=>firstPoll());
  const me=await bot.telegram.getMe();
  if(me.username?.toLowerCase()!=="gaybbs_bot"||me.id===8086265383)
   throw new Error("GAYBBS_BOT_IDENTITY_MISMATCH");
+ bot.botInfo=me;
+ configureGaybbsDatabaseWaits();
  await runMigrations();
+ const queue=new ActorQueue();
+ const settling=new Map<number,Promise<void>>();
  bot.use(async(ctx,next)=>{
+  boundTelegramCalls(ctx.telegram);
+  let complete!:()=>void;
+  const settled=new Promise<void>(resolve=>{complete=resolve;});
+  settling.set(ctx.update.update_id,settled);
   const started=Date.now();
   const slow=setTimeout(()=>console.warn("GAYBBS_UPDATE_STILL_RUNNING type="+ctx.updateType+" elapsed_ms="+(Date.now()-started)),5000);
-  try{await next();console.log("GAYBBS_UPDATE_COMPLETED type="+ctx.updateType+" elapsed_ms="+(Date.now()-started));}
+  try{
+   const query=ctx.callbackQuery,actor=ctx.from?.id;
+   const screen=query&&"message" in query&&query.message?String(query.message.chat.id)+":"+query.message.message_id:
+    query&&"inline_message_id" in query?query.inline_message_id:undefined;
+   const key=query&&screen&&"data" in query?JSON.stringify([screen,query.data]):undefined;
+   if(actor&&(query||(ctx.chat?.type==="private"&&ctx.updateType==="message"))){
+    await queue.execute(actor,key,async()=>{await next();},async()=>{
+     console.log("GAYBBS_DUPLICATE_CALLBACK_COALESCED");
+     await ctx.answerCbQuery("処理中です。そのままお待ちください。").catch(()=>undefined);
+    });
+   }else await next();
+   console.log("GAYBBS_UPDATE_COMPLETED type="+ctx.updateType+" elapsed_ms="+(Date.now()-started));
+  }
   catch(error){console.error("GAYBBS_UPDATE_FAILED type="+ctx.updateType+" elapsed_ms="+(Date.now()-started));throw error;}
-  finally{clearTimeout(slow);}
+  finally{clearTimeout(slow);settling.delete(ctx.update.update_id);complete();}
  });
  registerBugReportHandlers(bot);
  registerStartlessNavigationHandlers(bot);
@@ -244,6 +267,8 @@ async function main():Promise<void>{
  registerRoomHandlers(bot);
  registerGayBbsApprovalHandlers(bot);
  registerOnlineGateCheckHandler(bot);
+ let maintenance:Promise<void>|undefined;
+ const maintainMenus=async()=>{
  try{
   const areaMenu=await suppressAreaCommandMenu(bot.telegram);
   await pool.query(
@@ -292,38 +317,59 @@ async function main():Promise<void>{
   console.error("GAYBBS_GAY_BOARD_MENU_SUPPRESSION_FAILED",
     error instanceof Error?error.message:"unknown");
  }
- bot.catch((error,ctx)=>{
-  console.error("[GAYBBS_ERROR]",ctx.updateType,
-    error instanceof Error?error.name:"unknown");
+ };
+ firstPoll=()=>{maintenance=maintainMenus().catch(error=>console.error("GAYBBS_MENU_MAINTENANCE_FAILED",error instanceof Error?error.name:"unknown"));};
+ bot.catch(async(error,ctx)=>{
+  console.error("[GAYBBS_ERROR]",ctx.updateType,error instanceof Error?error.name:"unknown");
+  // Telegraf handlerTimeout does not cancel middleware. Never advance the
+  // polling offset while the timed-out handler is still running.
+  await settling.get(ctx.update.update_id);
  });
  let stopWorkers:(()=>void)|undefined;
  let stopReports:(()=>void)|undefined;
  let tumblrBridge:ReturnType<typeof startTumblrBridge>=null;
- const stop=async(signal:string)=>{
-  stopReports?.();
-  stopWorkers?.();
-  if(tumblrBridge)await new Promise<void>(resolve=>tumblrBridge!.close(()=>resolve()));
+ let stopping=false;
+ let monitor:ReturnType<typeof setInterval>|undefined;
+ let recovery=false;
+ const stop=(signal:string)=>{
+  if(stopping)return;
+  stopping=true;
+  stopReports?.();stopWorkers?.();
   bot.stop(signal);
-  await closePool();
  };
- process.once("SIGINT",()=>{void stop("SIGINT")});
- process.once("SIGTERM",()=>{void stop("SIGTERM")});
- await bot.launch({
-  dropPendingUpdates:false,
-  allowedUpdates:["message","callback_query","chat_join_request","inline_query"],
- },()=>{
-  console.log("GAYBBS_BOT_READY bot_id="+me.id);
-  stopWorkers=startGayBbsWorkers(bot.telegram);
-  stopReports=startBugReportDeliveryWorker(bot.telegram);
-  try {
-   tumblrBridge=startTumblrBridge(bot.telegram);
-  } catch(error) {
-   console.error("TUMBLR_BRIDGE_START_FAILED",
-    error instanceof Error?error.message:"unknown");
-  }
- });
+ process.once("SIGINT",()=>{try{stop("SIGINT");}catch{process.exitCode=1;}});
+ process.once("SIGTERM",()=>{try{stop("SIGTERM");}catch{process.exitCode=1;}});
+ try{
+  await bot.launch({
+   dropPendingUpdates:false,
+   allowedUpdates:["message","callback_query","chat_join_request","inline_query"],
+  },()=>{
+   console.log("GAYBBS_BOT_READY bot_id="+me.id);
+   stopWorkers=startGayBbsWorkers(bot.telegram);
+   stopReports=startBugReportDeliveryWorker(bot.telegram);
+   monitor=setInterval(()=>{
+    const health=pollingHealth();
+    if(Date.now()-health.lastSuccess<180000||Date.now()<health.retryUntil)return;
+    console.warn("GAYBBS_POLLING_STALLED elapsed_ms="+(Date.now()-health.lastSuccess)+" active_updates="+settling.size);
+    // Telegraf owns offset synchronization. Restart only when no update
+    // handler is outstanding; never kill an in-flight publish.
+    if(health.consecutiveFailures>=3&&settling.size===0&&!stopping){
+     recovery=true;stop("polling-recovery");
+    }
+   },30000);
+   try{tumblrBridge=startTumblrBridge(bot.telegram);}
+   catch(error){console.error("TUMBLR_BRIDGE_START_FAILED",error instanceof Error?error.name:"unknown");}
+  });
+ }finally{
+  if(monitor)clearInterval(monitor);
+  stopReports?.();stopWorkers?.();
+  if(maintenance)await maintenance;
+  if(tumblrBridge)await new Promise<void>(resolve=>tumblrBridge!.close(()=>resolve()));
+  await closePool();
+ }
+ if(recovery)process.exitCode=1;
 }
 main().catch(error=>{
- console.error("GAYBBS_STARTUP_FAILED",error instanceof Error?error.message:"unknown");
+ console.error("GAYBBS_STARTUP_FAILED",error instanceof Error?error.name:"unknown");
  process.exitCode=1;
 });
