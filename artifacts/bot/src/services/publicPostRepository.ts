@@ -180,7 +180,10 @@ export async function markPostSourcePublished(
       accept_applications=CASE WHEN room_id IS NOT NULL AND EXISTS (
        SELECT 1 FROM room_posts r WHERE r.room_id=announcement_posts.room_id
          AND r.join_visibility='approved_only' AND r.status IN ('draft','scheduled','ready')
-      ) THEN TRUE ELSE FALSE END,
+      ) THEN TRUE
+      WHEN room_id IS NULL AND kind IN ('announcement','preview')
+        AND conditions->>'participation' IN ('public','approved_only') THEN TRUE
+      ELSE FALSE END,
       updated_at=NOW()
     WHERE announcement_id=$1 AND owner_user_id=$2
       AND status IN ('draft','publishing','published') RETURNING announcement_id`;
