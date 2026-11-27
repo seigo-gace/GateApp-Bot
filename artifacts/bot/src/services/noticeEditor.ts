@@ -4,7 +4,7 @@ import {parseJstDateTime,validateAnnouncement} from "./postingDomain.js";
 import type {VerifiedTopic} from "./topicRouting.js";
 import {verifiedOriginTopic,type TopicEntryOrigin} from "./topicDmEntry.js";
 export type NoticeJoin="none"|"public"|"approved_only";
-export type NoticeMedia={kind:"photo"|"video"|"sticker";fileId:string};
+export type NoticeMedia={kind:"photo"|"video"|"sticker";fileId:string;thumbnailId?:string;animated?:boolean};
 export type NoticeDraft=Record<string,unknown>;
 export function noticeParts(data:NoticeDraft):{title:string;body:string}{
  const source=String(data.text||"");
@@ -95,43 +95,32 @@ export function noticeCard(data:NoticeDraft,ownerId:number):string{
  return lines.join("\n");
 }
 
-/** Private notice preview only: native RichTextButton callbacks, not deep links.
- * The existing announcementPanel owns the eight InlineKeyboard controls.
- * No sending, persistence or public-card rendering is performed here.
- */
-export function buildNoticeRichPreview(data:NoticeDraft,revision:number){
+/** The seven body actions edit/register fields; the footer only finalizes. */
+export function buildNoticeRichPreview(data:NoticeDraft,revision:number,stickerPhotos:ReadonlyMap<number,string>=new Map(),error?:string){
  if(!Number.isSafeInteger(revision)||revision<=0)throw Error("NOTICE_REVISION_INVALID");
- const {title,body}=noticeParts(data);
- const join=noticeJoin(data);
+ const {title,body}=noticeParts(data),join=noticeJoin(data),media=noticeMedia(data),link=noticeUrlButton(data);
  const paragraph=(text:unknown):Record<string,unknown>=>({type:"paragraph",text});
- const edit=(field:"title"|"body")=>({
-  type:"button",button:{text:"［編集］",style:"link",callback_data:`post:announce:${field}:${revision}`}
- });
- const fieldLine=(label:string,value:string,field:"title"|"body")=>
-  paragraph(value?[edit(field)," "+label+"："+value]:label+"：［未設定］");
- const dt=(value:unknown)=>value?new Date(String(value)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}):"［未設定］";
+ const line=(label:string,value:string,field:string)=>paragraph([
+  {type:"button",button:{text:value?"［編集］":"［未登録］",style:"link",callback_data:`post:announce:${field}:${revision}`}},
+  " "+label+"："+(value||"未登録")]);
+ const dt=(value:unknown)=>value?new Date(String(value)).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}):"";
  const blocks:Record<string,unknown>[]=[
-  paragraph("📢 告知/予告"),
-  fieldLine("タイトル",title,"title"),
-  fieldLine("説明",body,"body"),
-  paragraph("開催日時："+dt(data.eventAt)),
-  paragraph("受付期限："+dt(data.deadlineAt)),
-  paragraph("参加方法："+(join==="public"?"自由参加":join==="approved_only"?"承認制":"［未設定］")),
+  paragraph("📢 告知/予告"),...(error?[paragraph("⚠️ "+error)]:[]),
+  line("タイトル",title,"title"),line("説明",body,"body"),
+  line("開催日時",dt(data.eventAt),"date"),line("受付期限",dt(data.deadlineAt),"deadline"),
+  line("参加方法",join==="public"?"自由参加":join==="approved_only"?"承認制":"","joinmenu"),
+  line("画像/動画/ステッカー",media.length?media.length+"件（最大5件）":"","media"),
+  line("🔗ボタン",link?link.text+" / "+link.url:"","link")
  ];
  if(data.destinationLabel)blocks.push(paragraph("投稿先："+String(data.destinationLabel)));
- const stickers=noticeMedia(data).filter(x=>x.kind==="sticker");
- if(stickers.length)blocks.push(paragraph("ステッカー："+stickers.length+"件（実物は別メッセージで表示）"));
- for(const media of noticeMedia(data)){
-  if(media.kind==="sticker")continue; // Telegram has no native Rich sticker block.
-  blocks.push(media.kind==="photo"
-   ?{type:"photo",photo:{type:"photo",media:media.fileId}}
-   :{type:"video",video:{type:"video",media:media.fileId}});
+ for(const [i,m] of media.entries()){
+  if(m.kind==="sticker"){
+   const photo=stickerPhotos.get(i);
+   if(photo)blocks.push({type:"photo",photo:{type:"photo",media:photo},...(m.animated?{caption:{text:"ステッカー（静止プレビュー）"}}:{})});
+   else blocks.push(paragraph("ステッカー：画像プレビュー未確認（素材は保持されています）"));
+  }else blocks.push(m.kind==="photo"?{type:"photo",photo:{type:"photo",media:m.fileId}}:{type:"video",video:{type:"video",media:m.fileId}});
  }
- const link=noticeUrlButton(data);
- if(link){
-  blocks.push(paragraph("🔗 リンクボタン（タップして確認）"));
-  blocks.push({type:"buttons",buttons:[link]});
- }
+ if(link)blocks.push({type:"buttons",buttons:[link]});
  return {blocks};
 }
 

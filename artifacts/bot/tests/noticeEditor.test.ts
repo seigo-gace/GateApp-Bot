@@ -46,37 +46,14 @@ test("empty notice is rejected and configured public card fields render",()=>{
  assert.match(noticeCard(data,1),/題名/);
  assert.match(noticeCard(data,1),/受付終了/);
 });
-test("approved notice preview shows only requested eight controls and correct callback routes",()=>{
- const d={module:"announcement",step:"preview",revision:7,
-  data:{kind:"announcement",title:"題名",body:"本文",text:"題名\n本文",participation:"none"}} as const;
- const rows=announcementPanel(d).reply_markup.inline_keyboard;
- assert.deepEqual(rows.map(row=>row.map(x=>x.text)),[
-  ["日時設定","期限設定","参加方法"],
-  ["画像/動画変更","🔗ボタン","下書き保存"],
-  ["投稿する","キャンセル"]
- ]);
- assert.equal(rows.flat().find(x=>x.text==="参加方法")?.callback_data,"post:announce:joinmenu:7");
- assert.equal(rows.flat().find(x=>x.text==="投稿する")?.callback_data,"post:announce:publish:7");
- assert.ok(!rows.flat().some(x=>/プロフ連携|投稿先/.test(x.text)));
- const preview=announcementSummary(d);
- assert.match(preview,/タイトル：題名/);
- assert.match(preview,/説明：本文/);
- assert.doesNotMatch(preview,/\/start|[?&]start=|［編集］|<a\b/);
+test("notice preview uses seven in-body edit/register controls and only three footer buttons",()=>{
+ const d={module:"announcement",step:"preview",revision:7,data:{kind:"announcement",title:"題名",body:"本文",participation:"none"}} as const;
+ assert.deepEqual(announcementPanel(d).reply_markup.inline_keyboard.map(row=>row.map(x=>x.text)),[["投稿する","キャンセル","下書き保存"]]);
  const rich=buildNoticeRichPreview(d.data,d.revision);
- assert.deepEqual(rich.blocks,[
-  {type:"paragraph",text:"📢 告知/予告"},
-  {type:"paragraph",text:[{type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:title:7"}}," タイトル：題名"]},
-  {type:"paragraph",text:[{type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:body:7"}}," 説明：本文"]},
-  {type:"paragraph",text:"開催日時：［未設定］"},
-  {type:"paragraph",text:"受付期限：［未設定］"},
-  {type:"paragraph",text:"参加方法：［未設定］"}
- ]);
- assert.doesNotMatch(JSON.stringify(rich),/\/start|[?&]start=|ne_[tb]_|"url":/);
- assert.match(preview,/開催日時：［未設定］/);
- assert.match(preview,/受付期限：［未設定］/);
- assert.match(preview,/参加方法：［未設定］/);
- assert.ok(!preview.includes("プロフ連携"));
- assert.ok(!preview.includes("投稿先"));
+ const actions=rich.blocks.filter(b=>Array.isArray(b.text)).map(b=>(b.text as any[])[0].button);
+ assert.deepEqual(actions.map(b=>b.callback_data),["title","body","date","deadline","joinmenu","media","link"].map(x=>"post:announce:"+x+":7"));
+ assert.deepEqual(actions.map(b=>b.text),["［編集］","［編集］",...Array(5).fill("［未登録］")]);
+ assert.ok(!JSON.stringify(rich).includes("?start="));
 });
 test("media-only notice can be submitted without title or explanation",()=>{
  const data={kind:"announcement",media:[{kind:"photo",fileId:"photo_1"}]};
@@ -128,50 +105,11 @@ test("selected notice destination is visible on final preview",()=>{
 
  // The adopted 2026-11-15 notice contract distinguishes private preview
  // placeholders from public content. Test the rendered field lines separately.
-const unsetNoticeFields=["タイトル","説明","開催日時","受付期限","参加方法"] as const;
-for(const field of unsetNoticeFields){
- test(`notice media-only preview renders exact unset field: ${field}`,()=>{
-  const data={kind:"announcement",media:[{kind:"video",fileId:"video_1"}]};
-  validateNotice(data,1);
-  const preview=announcementSummary({module:"announcement",step:"preview",revision:10,data});
-  const lines=preview.split("\n").filter(line=>line.includes(field+"："));
-  assert.deepEqual(lines,[field+"：［未設定］"]);
-  const rich=buildNoticeRichPreview(data,10);
-  assert.deepEqual(rich.blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(field+"：")),
-   [{type:"paragraph",text:field+"：［未設定］"}]);
-  assert.doesNotMatch(JSON.stringify(rich),/"type":"button"|"callback_data":/);
- });
-}
-test("notice preview does not offer editing for an unset title or explanation",()=>{
- const cases=[
-  {data:{kind:"announcement",title:"題名",body:""},unset:"説明",present:"タイトル"},
-  {data:{kind:"announcement",title:"",body:"本文"},unset:"タイトル",present:"説明"}
- ];
- for(const {data,unset,present} of cases){
-  const preview=announcementSummary({module:"announcement",step:"preview",revision:11,data});
-  const lines=preview.split("\n");
-  assert.deepEqual(lines.filter(line=>line.includes(unset+"：")),[unset+"：［未設定］"]);
-  const configured=lines.filter(line=>line.includes(present+"："));
-  assert.equal(configured.length,1);
-  assert.doesNotMatch(preview,/［編集］|[?&]start=/);
-  const rich=buildNoticeRichPreview(data,11);
-  const field=present==="タイトル"?"title":"body";
-  const value=present==="タイトル"?data.title:data.body;
-  assert.deepEqual(rich.blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(unset+"：")),
-   [{type:"paragraph",text:unset+"：［未設定］"}]);
-  assert.deepEqual(rich.blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(present+"：")),
-   [{type:"paragraph",text:[{type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:"+field+":11"}}," "+present+"："+value]}]);
-  assert.equal(rich.blocks.filter(block=>JSON.stringify(block).includes('"type":"button"')).length,1);
- }
-});
-test("notice preview keeps unset options non-editable even when text is registered",()=>{
- const data={kind:"announcement",title:"題名",body:"本文",participation:"none",eventAt:null,deadlineAt:null};
- const preview=announcementSummary({module:"announcement",step:"preview",revision:12,data});
- for(const field of ["開催日時","受付期限","参加方法"]){
-  assert.deepEqual(preview.split("\n").filter(line=>line.includes(field+"：")),[field+"：［未設定］"]);
-  assert.deepEqual(buildNoticeRichPreview(data,12).blocks.filter(block=>block.type==="paragraph"&&JSON.stringify(block.text).includes(field+"：")),
-   [{type:"paragraph",text:field+"：［未設定］"}]);
- }
+test("unset fields are tappable registration actions, configured fields are edit actions",()=>{
+ const rich=buildNoticeRichPreview({kind:"announcement",title:"題名"},11);
+ const fields=rich.blocks.filter(b=>Array.isArray(b.text)).map(b=>(b.text as any[])[0].button);
+ assert.equal(fields.length,7);assert.equal(fields[0].text,"［編集］");
+ assert.ok(fields.slice(1).every(b=>b.text==="［未登録］"));
 });
 test("media-only public card omits all private placeholders and edit controls",()=>{
  for(const kind of ["photo","video"]){
@@ -190,8 +128,8 @@ test("Rich notice preview keeps up to five ordered photo and video references in
  const data={kind:"announcement",title:"題名",body:"本文",media};
  const before=JSON.stringify(data);
  const rich=buildNoticeRichPreview(data,7);
- assert.equal(rich.blocks.length,11);
- assert.deepEqual(rich.blocks.slice(6),[
+ assert.equal(rich.blocks.length,13);
+ assert.deepEqual(rich.blocks.slice(8),[
   {type:"photo",photo:{type:"photo",media:"photo_1"}},
   {type:"video",video:{type:"video",media:"video_2"}},
   {type:"photo",photo:{type:"photo",media:"photo_3"}},
@@ -200,8 +138,8 @@ test("Rich notice preview keeps up to five ordered photo and video references in
  ]);
  assert.equal(JSON.stringify(data),before);
  const mediaOnly=buildNoticeRichPreview({kind:"announcement",media:media.slice(0,2)},8);
- assert.deepEqual(mediaOnly.blocks.slice(6),rich.blocks.slice(6,8));
- assert.doesNotMatch(JSON.stringify(mediaOnly),/"type":"button"|"callback_data":/);
+ assert.deepEqual(mediaOnly.blocks.slice(8),rich.blocks.slice(8,10));
+ assert.ok(JSON.stringify(mediaOnly).includes("［未登録］"));
 });
 test("Rich notice preview rejects invalid action revisions",()=>{
  for(const revision of [0,-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
@@ -258,7 +196,9 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
  const forbid=async (...args:any[])=>{events.push(["forbidden",...args]);throw Error("UNEXPECTED_TELEGRAM_IO");};
  const telegram={
   async callApi(method:string,args:Record<string,unknown>){
+   if(typeof args.rich_message==="string")args={...args,rich_message:JSON.parse(args.rich_message)};
    events.push([method,args]);
+   if(options.stickerError&&Object.hasOwn(args,"notice_sticker_0"))throw options.stickerError;
    assert.ok(method==="editMessageText"||method==="sendRichMessage");
    if(method==="editMessageText"){
     if(options.editError)throw options.editError;
@@ -268,7 +208,8 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
   },
   async editMessageText(...args:any[]){events.push(["plain-edit",...args]);return true;},
   async deleteMessage(...args:any[]){events.push(["delete",...args]);return true;},
-  async sendSticker(...args:any[]){events.push(["sticker",...args]);if(options.stickerError)throw options.stickerError;return {message_id:501};},
+  async getFileLink(){return new URL("https://api.telegram.org/file/mock-test/sticker.png");},
+  sendSticker:forbid,
   sendPhoto:forbid,sendVideo:forbid,sendMediaGroup:forbid,sendMessage:forbid,
  };
  const actions:Array<{pattern:RegExp;handler:Function}>=[];
@@ -304,15 +245,16 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
   async function dispatch(i:number):Promise<void>{if(i<list.length)await list[i]!(ctx,()=>dispatch(i+1));}
   await dispatch(0);
  }
+ const network=mock.method(globalThis,"fetch",async()=>new Response(Buffer.from([137,80,78,71,13,10,26,10,0])));
  return {owner,oldId,newId,telegram,events,answers,reads,callback,receive,
   get draft(){return draft;},
   start:()=>startAnnouncementEditor(telegram as any,owner),
-  restore:()=>query.mock.restore()};
+  restore:()=>{network.mock.restore();query.mock.restore();}};
 }
 function assertNoticeRichTransport(args:any,owner:number,messageId?:number){
  assert.equal(args.chat_id,owner);
  assert.equal(args.message_id,messageId);
- assert.deepEqual(args.rich_message.blocks.slice(6),[
+ assert.deepEqual(args.rich_message.blocks.slice(8),[
   {type:"photo",photo:{type:"photo",media:"photo_1"}},
   {type:"video",video:{type:"video",media:"video_2"}}
  ]);
@@ -321,12 +263,10 @@ function assertNoticeRichTransport(args:any,owner:number,messageId?:number){
  assert.deepEqual(args.rich_message.blocks[2],{type:"paragraph",text:[
   {type:"button",button:{text:"［編集］",style:"link",callback_data:"post:announce:body:7"}}," 説明：本文"]});
  assert.deepEqual(args.reply_markup.inline_keyboard.map((row:any[])=>row.map(b=>[b.text,b.callback_data])),[
-  [["日時設定","post:announce:date:7"],["期限設定","post:announce:deadline:7"],["参加方法","post:announce:joinmenu:7"]],
-  [["画像/動画変更","post:announce:media:7"],["🔗ボタン","post:announce:link:7"],["下書き保存","post:announce:save:7"]],
-  [["投稿する","post:announce:publish:7"],["キャンセル","post:announce:cancel:7"]]
+  [["投稿する","post:announce:publish:7"],["キャンセル","post:announce:cancel:7"],["下書き保存","post:announce:save:7"]]
  ]);
 }
-test("notice entry edits the existing private Rich screen with both media and all eight footer callbacks",async()=>{
+test("notice entry edits the existing private Rich screen with both media and three footer callbacks",async()=>{
  const f=noticeHandlerFixture();
  try{
   await f.start();
@@ -410,7 +350,7 @@ test("registered notice edit callbacks reject each owner, chat, revision, screen
   {label:"recruitment draft",fixture:{data:{kind:"recruitment"}}}
  ];
  for(const field of ["title","body"] as const){
-  for(const c of [...cases,{label:"unset field",fixture:{data:{[field]:""}}}]){
+  for(const c of cases){
    const f=noticeHandlerFixture(c.fixture);
    try{
     const before=structuredClone(f.draft);
@@ -424,13 +364,13 @@ test("registered notice edit callbacks reject each owner, chat, revision, screen
  }
 });
 
-test("notice link preview exposes the exact clickable URL and preserves eight controls",()=>{
+test("notice link preview exposes the exact clickable URL and preserves three controls",()=>{
  const data=noticeEdit({kind:"announcement",title:"テスト",body:"説明"},"link","詳細を見る\nhttps://example.com/details");
  const link=noticeUrlButton(data);
  assert.deepEqual(link,{text:"詳細を見る",url:"https://example.com/details"});
  const rich=buildNoticeRichPreview(data,7);
  assert.deepEqual(rich.blocks.at(-1),{type:"buttons",buttons:[link]});
- assert.equal(announcementPanel({module:"announcement",step:"preview",revision:7,data}).reply_markup.inline_keyboard.flat().length,8);
+ assert.equal(announcementPanel({module:"announcement",step:"preview",revision:7,data}).reply_markup.inline_keyboard.flat().length,3);
  assert.equal(buildNoticeRichPreview(noticeEdit(data,"link","なし"),8).blocks.some(x=>x.type==="buttons"),false);
 });
 test("native sticker is saved as sticker, counts toward five, and is not an invalid Rich video",()=>{
@@ -439,7 +379,7 @@ test("native sticker is saved as sticker, counts toward five, and is not an inva
  validateNotice(data,1);
  assert.equal(noticeCard(data,1),"📢 告知");
  const blocks=buildNoticeRichPreview(data,1).blocks;
- assert.ok(blocks.some(x=>x.text==="ステッカー：1件（実物は別メッセージで表示）"));
+ assert.ok(blocks.some(x=>typeof x.text==="string"&&x.text.includes("画像プレビュー未確認")));
  assert.equal(blocks.some(x=>x.type==="video"||x.type==="photo"),false);
  assert.deepEqual(noticeMedia(noticeEdit(data,"media","なし")),[]);
 });
@@ -457,37 +397,35 @@ test("native sticker and mixed albums use native delivery and the registered lin
  assert.deepEqual(calls[2],["sendSticker",target.chatId,"s1",{message_thread_id:8}]);
 });
 
-test("registered sticker receiver persists and previews native sticker before deleting original input",async()=>{
+test("registered sticker is embedded into same Rich editor before input deletion",async()=>{
  const f=noticeHandlerFixture({step:"awaiting_media",data:{media:[]}});
  try{
   await f.receive("sticker","native_sticker_1");
   assert.deepEqual(noticeMedia(f.draft.data),[{kind:"sticker",fileId:"native_sticker_1"}]);
-  assert.equal(f.draft.step,"preview");
-  assert.deepEqual(f.events.map(e=>e[0]),["update","editMessageText","stickers-bind","sticker","stickers-bind","delete"]);
+  assert.deepEqual(f.events.map(e=>e[0]),["update","editMessageText","delete"]);
+  const call=f.events[1]![1];
+  assert.ok(call.notice_sticker_0.source);
+  assert.ok(call.rich_message.blocks.some((b:any)=>b.type==="photo"&&b.photo.media==="attach://notice_sticker_0"));
   assert.deepEqual(f.events.at(-1),["delete",f.owner,101]);
-  assert.deepEqual(f.draft.data.noticeStickerPreviews,[{fileId:"native_sticker_1",messageId:501}]);
-  f.events.length=0;await f.start();
-  assert.deepEqual(f.events.map(e=>e[0]),["editMessageText"]);
-  await f.callback("media",{revision:f.draft.revision});
-  f.events.length=0;await f.receive("text","なし");
+  await f.callback("media",{revision:f.draft.revision});await f.receive("text","なし");
   assert.deepEqual(noticeMedia(f.draft.data),[]);
-  assert.deepEqual(f.draft.data.noticeStickerPreviews,[]);
-  assert.ok(f.events.some(e=>e[0]==="delete"&&e[2]===501));
  }finally{f.restore();}
+});
+test("legacy native sticker copies removed after combined editor rendered",async()=>{
+ const f=noticeHandlerFixture({data:{media:[{kind:"sticker",fileId:"s1"}],noticeStickerPreviews:[{fileId:"s1",messageId:501}]}});
+ try{await f.start();assert.deepEqual(f.events.map(e=>e[0]),["editMessageText","delete","stickers-bind"]);assert.deepEqual(f.events[1],["delete",f.owner,501]);}finally{f.restore();}
 });
 test("notice sticker receiver never consumes another DM owner input",async()=>{
  const f=noticeHandlerFixture({step:"awaiting_media",dmOwner:"profile",data:{media:[]}});
  try{await f.receive("sticker","foreign");assert.deepEqual(f.events,[]);assert.deepEqual(noticeMedia(f.draft.data),[]);}finally{f.restore();}
 });
-test("sticker preview transport uncertainty preserves the original and never repeats the native send",async()=>{
+test("sticker preview transport uncertainty preserves original input and never sends native copy",async()=>{
  const f=noticeHandlerFixture({step:"awaiting_media",data:{media:[]},stickerError:Error("ETIMEDOUT")});
  try{
   await f.receive("sticker","native_sticker_1");
-  assert.equal(f.events.filter(e=>e[0]==="sticker").length,1);
   assert.ok(!f.events.some(e=>e[0]==="delete"&&e[2]===101));
-  assert.deepEqual(f.draft.data.noticeStickerPreviews,[{fileId:"native_sticker_1",messageId:null}]);
-  await assert.rejects(f.start(),/NOTICE_STICKER_PREVIEW_UNCONFIRMED/);
-  assert.equal(f.events.filter(e=>e[0]==="sticker").length,1);
+  assert.ok(!f.events.some(e=>e[0]==="forbidden"));
+  assert.match(JSON.stringify(f.events.at(-1)),/素材は保存/);
  }finally{f.restore();}
 });
 test("registered link edit accepts two lines, exposes real URL and removes it on clear",async()=>{
@@ -514,7 +452,7 @@ test("initial sticker input preserves ability to add title and body afterwards",
   assert.equal(f.draft.step,"preview");
   assert.deepEqual(noticeParts(f.draft.data),{title:"新タイトル",body:"説明"});
   assert.deepEqual(noticeMedia(f.draft.data),[{kind:"sticker",fileId:"native_sticker_1"}]);
-  assert.equal(f.events.filter(e=>e[0]==="sticker").length,1);
+  assert.ok(f.events.filter(e=>e[0]==="editMessageText").every(e=>e[1].rich_message.blocks.some((b:any)=>b.type==="photo")));
  }finally{f.restore();}
 });
 
@@ -527,7 +465,8 @@ test("known notice entry advances directly to publication checks, never opens ch
   assert.equal(f.draft.data.topicId,10);
   assert.equal(f.draft.data.noticeDestinationExplicit,false);
   assert.ok(f.answers.some(a=>a[0]==="公開処理を確認しています"));
-  assert.ok(f.events.some(e=>e[0]==="reply"&&String(e[1]).includes("FEATURE_RELEASE_NOT_VERIFIED")));
+  assert.ok(f.events.some(e=>e[0]==="editMessageText"&&JSON.stringify(e[1].rich_message).includes("告知の公開状態を確認できません")));
+  assert.ok(!f.events.some(e=>e[0]==="reply"));
   assert.ok(!f.events.some(e=>e[0]==="plain-edit"));
  }finally{f.restore();}
 });
@@ -556,4 +495,23 @@ test("known but unregistered notice entry never exposes alternative destination"
   assert.equal(screen[5].reply_markup.inline_keyboard.flat().length,1);
   assert.equal(f.draft.revision,7);
  }finally{f.restore();}
+});
+
+test("unregistered title can be opened from same private body",async()=>{
+ const f=noticeHandlerFixture({data:{title:""}});
+ try{await f.callback("title");assert.equal(f.draft.data.editField,"title");assert.equal(f.draft.step,"awaiting_text");}finally{f.restore();}
+});
+test("notice entry link uses notice ownership, not recruitment-only lookup",async()=>{
+ const {makeNoticeApplicationLink}=await import("../src/services/applicationLinks.js");
+ const calls:any[][]=[];
+ const q=mock.method(pool,"query",async(sql:string,values:any[])=>{
+  calls.push([sql,values]);return {rows:sql.includes("SELECT announcement_id")?[{announcement_id:55}]:[]};
+ });
+ try{
+  const link=await makeNoticeApplicationLink(4321,55);
+  assert.ok(link.startsWith("https://t.me/GayBBS_bot?start=a_"));
+  assert.ok(calls[0]![0].includes("kind IN ('announcement','preview') AND room_id IS NULL"));
+  assert.deepEqual(calls[0]![1],[55,4321]);
+  assert.ok(calls[1]![0].includes("INSERT INTO announcement_application_entries"));
+ }finally{q.mock.restore();}
 });

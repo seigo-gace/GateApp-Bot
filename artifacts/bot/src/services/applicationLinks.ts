@@ -19,6 +19,19 @@ export async function makeApplicationLink(
    AND owner_user_id=$2 AND kind='recruitment'
    AND status IN ('draft','published')`,[announcementId,ownerId]);
  if(a.rows.length!==1)throw new Error("APPLICATION_SOURCE_NOT_OWNED");
+ return createApplicationEntry(announcementId);
+}
+/** Same opaque token storage; standalone notice ownership is distinct from recruitment. */
+export async function makeNoticeApplicationLink(ownerId:number,announcementId:number):Promise<string>{
+ if(!Number.isSafeInteger(ownerId)||ownerId<=0||!Number.isSafeInteger(announcementId)||announcementId<=0)throw Error("NOTICE_SOURCE_NOT_OWNED");
+ const a=await pool.query(
+  `SELECT announcement_id FROM announcement_posts WHERE announcement_id=$1
+   AND owner_user_id=$2 AND kind IN ('announcement','preview') AND room_id IS NULL
+   AND status IN ('draft','published') AND conditions->>'participation' IN ('none','public','approved_only')`,[announcementId,ownerId]);
+ if(a.rows.length!==1)throw Error("NOTICE_SOURCE_NOT_OWNED");
+ return createApplicationEntry(announcementId);
+}
+async function createApplicationEntry(announcementId:number):Promise<string>{
  const token=newApplicationToken();
  await pool.query(
   `INSERT INTO announcement_application_entries(token_hash,announcement_id,expires_at)
