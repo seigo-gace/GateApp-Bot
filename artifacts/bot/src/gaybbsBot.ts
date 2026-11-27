@@ -4,7 +4,7 @@ import { BOT_TOKEN } from "./config/env.js";
 import { Markup, Telegraf } from "telegraf";
 import { registerProfileHandlers } from "./bot/profileHandlers.js";
 import {registerStartlessNavigationHandlers} from "./bot/startlessNavigationHandlers.js";
-import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/profileCompactHandlers.js";
+import {registerCompactProfileHandlers,startCompactProfileEditor,returnFromCompactAppearance} from "./bot/profileCompactHandlers.js";
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
@@ -209,12 +209,14 @@ async function main():Promise<void>{
  // Retired profile keyboards must not recreate the old seven-position wizard.
  // The real current compact profile editor reuses the exact tapped DM message.
  // Preserve existing draft/profile and already published messages.
- bot.action(/^pf:/,async ctx=>{
+ // Current compact appearance uses the shared pf:ap/ar/section handlers.
+ // Do not consume these callbacks in the retired-screen fallback.
+ bot.action(/^pf:(?!(?:ap|ar|section):)/,async ctx=>{
   if(ctx.chat?.type!=="private"||!ctx.from)return;
   await ctx.answerCbQuery("現在のプロフィール画面を開きます。");
   await startCompactProfileEditor(ctx);
  });
- registerProfileHandlers(bot);
+ registerProfileHandlers(bot,undefined,undefined,returnFromCompactAppearance);
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
  registerPostingHandlers(bot);
