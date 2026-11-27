@@ -11,7 +11,11 @@ export function registerProfilePostManagement(bot:Telegraf):void{
  bot.command("myprofileposts",async ctx=>{
   if(!privateDM(ctx))return;
   const pubs=await listProfilePublications(ctx.from.id);
-  if(!pubs.length){await ctx.reply("公開済みプロフィール投稿はありません。/profile で登録できます。");return;}
+  if(!pubs.length){
+   await ctx.reply("公開済みプロフィール投稿はありません。",Markup.inlineKeyboard([
+    [Markup.button.callback("プロフ作成・編集","pf:restart")],
+   ]));return;
+  }
   const rows=pubs.map(p=>[
    Markup.button.callback("投稿 "+targetId(p.chatId,p.threadId)+"（"+p.status+"）",
     "pfpost:detail:"+targetId(p.chatId,p.threadId)),
