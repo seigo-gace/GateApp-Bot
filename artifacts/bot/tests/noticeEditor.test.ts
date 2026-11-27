@@ -1,7 +1,7 @@
 import test, {mock} from "node:test";
 import assert from "node:assert/strict";
 import {noticeParts,noticeText,noticeEdit,noticeJoin,noticeMedia,
- validateNotice,noticeCard,buildNoticeRichPreview,noticeUrlButton} from "../src/services/noticeEditor.js";
+ validateNotice,noticeCard,buildNoticeRichPreview,noticeUrlButton,resolveNoticeDestination} from "../src/services/noticeEditor.js";
 import {pool} from "../src/db/index.js";
 import {announcementPanel,announcementSummary,startAnnouncementEditor,registerPostingHandlers} from "../src/bot/postingHandlers.js";
 
@@ -107,14 +107,16 @@ test("notice date picker supports explicit removal of both optional dates",async
  assert.match(source,/noticePickerStage:null,noticeDateField:null/);
 });
 
-test("notice publish uses selected destination and never loops to picker",async()=>{
- const {readFileSync}=await import("node:fs");
- const source=readFileSync(new URL("../src/bot/postingHandlers.ts",import.meta.url),"utf8");
- const branch=source.slice(source.indexOf('}else if(op==="destination"||op==="publish"){'));
- assert.ok(branch.startsWith('}else if(op==="destination"||op==="publish"){'));
- assert.match(branch,/Number\.isSafeInteger\(selectedTopicId\)&&selectedTopicId>0/);
- assert.match(branch,/await publishAccepted\(ctx,"announcement",rev,selectedTopicId\);/);
- assert.ok(branch.indexOf('await publishAccepted(ctx,"announcement",rev,selectedTopicId);')<branch.indexOf('await announcementDestinationPicker(ctx.telegram,ctx.from.id,current);'));
+test("notice routing uses exact entry, only offers selection for unknown entry",()=>{
+ const a={id:10,board:"area_bbs",purpose:"announcement",chatId:-1003847210571,threadId:8,title:"入口",enabled:true,verifiedAt:new Date()} as const;
+ const b={...a,id:11,threadId:9,title:"別Topic"};
+ const options=[a,b];
+ assert.deepEqual(resolveNoticeDestination(options,a,{topicId:11,noticeDestinationExplicit:true}),{kind:"direct",topic:a});
+ assert.deepEqual(resolveNoticeDestination(options,{chatId:a.chatId,threadId:99},{}),{kind:"unavailable"});
+ assert.deepEqual(resolveNoticeDestination(options,null,{}),{kind:"choose",topics:options});
+ assert.deepEqual(resolveNoticeDestination(options,null,{topicId:11}),{kind:"choose",topics:options});
+ assert.deepEqual(resolveNoticeDestination(options,null,{topicId:11,noticeDestinationExplicit:true}),{kind:"direct",topic:b});
+ assert.deepEqual(resolveNoticeDestination(options,null,{topicId:99,noticeDestinationExplicit:true}),{kind:"choose",topics:options});
 });
 
 test("selected notice destination is visible on final preview",()=>{
@@ -210,7 +212,7 @@ test("Rich notice preview rejects invalid action revisions",()=>{
 /** Execute the actual notice entry and registered callback. Only I/O is faked.
  * Unknown SQL or Telegram operations must fail rather than escape to production.
  */
-function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>;editError?:Error;sendResult?:unknown;dmOwner?:string;stickerError?:Error}={}){
+function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>;editError?:Error;sendResult?:unknown;dmOwner?:string;stickerError?:Error;origin?:{chatId:number;threadId:number};topics?:any[]}={}){
  const owner=4321,oldId=99,newId=200;
  let draft={step:options.step??"preview",revision:7,data:{
   kind:"announcement",title:"題名",body:"本文",screenMessageId:oldId,
@@ -219,6 +221,11 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
  } as Record<string,unknown>};
  const events:any[][]=[],answers:any[][]=[],reads:any[][]=[];
  const query=mock.method(pool,"query", (async(sql:string,values:any[])=>{
+  if(sql.includes("FROM topic_dm_entry_sessions s"))return {rows:options.origin?[{chat_id:options.origin.chatId,message_thread_id:options.origin.threadId}]:[]};
+  if(sql.includes("FROM board_menu_sessions s"))return {rows:[]};
+  if(sql.startsWith("SELECT * FROM posting_topics WHERE purpose="))return {rows:options.topics??[]};
+  if(sql.startsWith("SELECT * FROM posting_topics WHERE topic_id="))return {rows:(options.topics??[]).filter(x=>Number(x.topic_id)===values[0])};
+  if(sql.includes("FROM gaybbs_feature_release_gates"))return {rows:[]}; // deliberately closed; no actual publication
   if(sql.includes("SELECT module FROM (")&&sql.includes("candidates ORDER BY updated_at")){
    assert.equal(values[0],owner);
    return {rows:[{module:options.dmOwner??"announcement"}]};
@@ -271,9 +278,9 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
   action(pattern:unknown,handler:Function){if(pattern instanceof RegExp)actions.push({pattern,handler});},
   on(key:string,fn:Function){handlers.set(key,[...(handlers.get(key)??[]),fn]);}
  };
- async function callback(field:"title"|"body"|"link"|"media"|"back",overrides:{fromId?:number;chatId?:number;chatType?:string;messageChatId?:number;messageId?:number;revision?:number;omitMessage?:boolean}={}){
+ async function callback(field:"title"|"body"|"link"|"media"|"back"|"publish"|"topics",overrides:{fromId?:number;chatId?:number;chatType?:string;messageChatId?:number;messageId?:number;revision?:number;omitMessage?:boolean;raw?:string}={}){
   actions.length=0;handlers.clear();registerPostingHandlers(bot as any);
-  const data="post:announce:"+field+":"+(overrides.revision??7);
+  const data=overrides.raw??"post:announce:"+field+":"+(overrides.revision??7);
   const matching=actions.filter(a=>a.pattern.test(data));
   assert.equal(matching.length,1,"exactly one registered notice callback");
   const action=matching[0]!;
@@ -284,7 +291,7 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
    callbackQuery:{data,...(overrides.omitMessage?{}:{message:{message_id:overrides.messageId??oldId,
     chat:{type:"private",id:overrides.messageChatId??owner}}})},
    telegram,answerCbQuery:async (...args:any[])=>{answers.push(args);},
-   reply:forbid,editMessageText:forbid,
+   reply:async (...args:any[])=>{events.push(["reply",...args]);},editMessageText:forbid,
   };
   await action.handler(ctx);
  }
@@ -508,5 +515,45 @@ test("initial sticker input preserves ability to add title and body afterwards",
   assert.deepEqual(noticeParts(f.draft.data),{title:"新タイトル",body:"説明"});
   assert.deepEqual(noticeMedia(f.draft.data),[{kind:"sticker",fileId:"native_sticker_1"}]);
   assert.equal(f.events.filter(e=>e[0]==="sticker").length,1);
+ }finally{f.restore();}
+});
+
+const noticeTopicRows=[{topic_id:10,board_key:"area_bbs",purpose:"announcement",chat_id:-1003847210571,message_thread_id:8,title:"入口Topic",verified_at:new Date(Date.now()-1000).toISOString(),enabled:true},
+ {topic_id:11,board_key:"area_bbs",purpose:"announcement",chat_id:-1003847210571,message_thread_id:9,title:"別Topic",verified_at:new Date(Date.now()-1000).toISOString(),enabled:true}];
+test("known notice entry advances directly to publication checks, never opens chooser",async()=>{
+ const f=noticeHandlerFixture({origin:{chatId:-1003847210571,threadId:8},topics:noticeTopicRows,data:{topicId:11,noticeDestinationExplicit:true}});
+ try{
+  await f.callback("publish");
+  assert.equal(f.draft.data.topicId,10);
+  assert.equal(f.draft.data.noticeDestinationExplicit,false);
+  assert.ok(f.answers.some(a=>a[0]==="公開処理を確認しています"));
+  assert.ok(f.events.some(e=>e[0]==="reply"&&String(e[1]).includes("FEATURE_RELEASE_NOT_VERIFIED")));
+  assert.ok(!f.events.some(e=>e[0]==="plain-edit"));
+ }finally{f.restore();}
+});
+test("unknown entry exposes actual verified topic buttons, accepts selection even for sticker-only notice",async()=>{
+ const f=noticeHandlerFixture({topics:noticeTopicRows,data:{title:"",body:"",text:"",media:[]}});
+ try{
+  // A sticker-only draft; populate media through the real input handler.
+  await f.receive("sticker","test_sticker");
+  await f.callback("publish",{revision:f.draft.revision});
+  const screen=f.events.filter(e=>e[0]==="plain-edit").at(-1)!;
+  assert.match(screen[4],/入口のトピックが不明/);
+  const buttons=screen[5].reply_markup.inline_keyboard.flat();
+  assert.ok(buttons.some((b:any)=>b.callback_data==="post:choose:announcement:"+f.draft.revision+":11"));
+  await f.callback("publish",{raw:"post:choose:announcement:"+f.draft.revision+":11"});
+  assert.equal(f.draft.data.topicId,11);
+  assert.equal(f.draft.data.noticeDestinationExplicit,true);
+  assert.match(String(f.draft.data.destinationLabel),/別Topic/);
+ }finally{f.restore();}
+});
+test("known but unregistered notice entry never exposes alternative destination",async()=>{
+ const f=noticeHandlerFixture({origin:{chatId:-1003847210571,threadId:77},topics:noticeTopicRows});
+ try{
+  await f.callback("publish");
+  const screen=f.events.filter(e=>e[0]==="plain-edit").at(-1)!;
+  assert.match(screen[4],/別のトピックには投稿しません/);
+  assert.equal(screen[5].reply_markup.inline_keyboard.flat().length,1);
+  assert.equal(f.draft.revision,7);
  }finally{f.restore();}
 });

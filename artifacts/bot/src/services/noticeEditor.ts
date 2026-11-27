@@ -1,6 +1,8 @@
 /** General-user notice editor only. Never changes Recruitment/Room/Profile state. */
 import {escapeProfileHtml} from "./profileCore.js";
 import {parseJstDateTime,validateAnnouncement} from "./postingDomain.js";
+import type {VerifiedTopic} from "./topicRouting.js";
+import {verifiedOriginTopic,type TopicEntryOrigin} from "./topicDmEntry.js";
 export type NoticeJoin="none"|"public"|"approved_only";
 export type NoticeMedia={kind:"photo"|"video"|"sticker";fileId:string};
 export type NoticeDraft=Record<string,unknown>;
@@ -131,4 +133,17 @@ export function buildNoticeRichPreview(data:NoticeDraft,revision:number){
   blocks.push({type:"buttons",buttons:[link]});
  }
  return {blocks};
+}
+
+/** A known authenticated entry always wins. Never silently send to another Topic.
+ * A user-selected verified destination is honored only when there is no entry. */
+export function resolveNoticeDestination(topics:readonly VerifiedTopic[],origin:TopicEntryOrigin|null,data:NoticeDraft):
+ {kind:"direct";topic:VerifiedTopic}|{kind:"choose";topics:readonly VerifiedTopic[]}|{kind:"unavailable"}{
+ if(origin){
+  const exact=verifiedOriginTopic(topics,origin);
+  return exact?{kind:"direct",topic:exact}:{kind:"unavailable"};
+ }
+ const chosen=data.noticeDestinationExplicit===true?topics.find(x=>x.id===Number(data.topicId)):undefined;
+ if(chosen)return {kind:"direct",topic:chosen};
+ return {kind:"choose",topics};
 }

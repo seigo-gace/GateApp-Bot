@@ -1,4 +1,4 @@
-import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard,buildNoticeRichPreview,noticeUrlButton,noticeStickerPreviews,type NoticeStickerPreview} from "../services/noticeEditor.js";
+import {noticeParts,noticeText,noticeJoin,noticeMedia,noticeEdit,validateNotice,noticeCard,buildNoticeRichPreview,noticeUrlButton,noticeStickerPreviews,type NoticeStickerPreview,resolveNoticeDestination} from "../services/noticeEditor.js";
 import {showPublishedNoticeOwner} from "./noticeInteractions.js";
 import { Markup, type Telegraf, type Telegram, type Context } from "telegraf";
 import {pool} from "../db/index.js";
@@ -12,7 +12,7 @@ import { buildRoomCard, buildAnnouncementCard, validateAnnouncement,
   validateRoom,assertHttpsMeetingUrl,parseJstDateTime,parseRoomDetails,type AnnouncementKind } from "../services/postingDomain.js";
 import { beginDraft,getDraft,getWaitingDraft,updateDraft,bindDraftScreen,bindNoticeStickerPreviews,createRoom,createLinkButton,markRoomDraftSaved,
  createAnnouncement,markDraftPublished,markPostSourcePublished,saveAnnouncementEditorDraft,type PostModule,type EditorDraft } from "../services/publicPostRepository.js";
-import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose} from "../services/topicRouting.js";
+import {BOARD_KEYS,BOARD_TITLES,type BoardKey,type PostPurpose,type VerifiedTopic} from "../services/topicRouting.js";
 import { currentMenuOrigin } from "../services/menuOriginRepository.js";
 import { currentTopicDmEntry,assertTopicDmEntryDestination,verifiedOriginTopic } from "../services/topicDmEntry.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
@@ -750,12 +750,27 @@ async function announcementScreen(telegram:Telegram,userId:number,d:EditorDraft)
   catch{console.warn("[NOTICE_LEGACY_PREVIEW_REMOVE_FAILED]");}
  }
 }
-async function announcementDestinationPicker(telegram:Telegram,userId:number,d:EditorDraft):Promise<void>{
- await showPostScreen(telegram,userId,d,announcementSummary(d)+"\n\n公開先を選択してください。",
-  Markup.inlineKeyboard([
-   [Markup.button.callback("📍 検証済みTopicから選択",`post:announce:topics:${d.revision}`)],
-   [Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]
-  ]),true);
+async function currentNoticeOrigin(userId:number){
+ return await currentTopicDmEntry(userId)??await currentMenuOrigin(userId);
+}
+async function announcementDestinationPicker(telegram:Telegram,userId:number,d:EditorDraft,
+ options:readonly VerifiedTopic[],page=0):Promise<void>{
+ const pageSize=10,last=Math.max(0,Math.ceil(options.length/pageSize)-1);
+ page=Math.max(0,Math.min(last,page));
+ const rows=options.slice(page*pageSize,(page+1)*pageSize).map(t=>[
+  Markup.button.callback(BOARD_TITLES[t.board]+" / "+t.title,`post:choose:announcement:${d.revision}:${t.id}`)]);
+ const navigation=[];
+ if(page>0)navigation.push(Markup.button.callback("⬅ 前へ",`post:announce:topicpage:${d.revision}:${page-1}`));
+ if(page<last)navigation.push(Markup.button.callback("次へ ➡",`post:announce:topicpage:${d.revision}:${page+1}`));
+ if(navigation.length)rows.push(navigation);
+ rows.push([Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]);
+ await showPostScreen(telegram,userId,d,options.length?
+  "入口のトピックが不明です。投稿先を選択してください。（"+(page+1)+"/"+(last+1)+"）":
+  "投稿できるトピックが確認できません。下書きは保持しています。",Markup.inlineKeyboard(rows));
+}
+async function showNoticeOriginUnavailable(t:Telegram,id:number,d:EditorDraft){
+ await showPostScreen(t,id,d,"入口のトピックに告知/予告の投稿先登録がありません。別のトピックには投稿しません。下書きは保持しています。",
+  Markup.inlineKeyboard([[Markup.button.callback("↩ 戻る",`post:announce:back:${d.revision}`)]]));
 }
 /** Announcement is selected by its menu, not by an extra mandatory kind page. */
 export async function startAnnouncementEditor(telegram:Telegram,userId:number,screenId?:number):Promise<void>{
@@ -1395,31 +1410,37 @@ export function registerPostingHandlers(bot:Telegraf):void{
        pickerMonth:jstCurrentMonth(),pickerDay:null,pickerHour:null});
      await ctx.answerCbQuery();
      await announcementDatePicker(ctx.telegram,ctx.from.id,next);
-    }else if(op==="destination"||op==="publish"){
-    if(op==="publish"&&!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
-     await ctx.answerCbQuery("文章または画像・動画を登録してください。");return;
+    }else if(op==="destination"||op==="publish"||op==="topics"){
+    if(!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
+     await ctx.answerCbQuery("文章または画像・動画・ステッカーを登録してください。");return;
     }
-    // A verified selection already exists: publish through the same guarded,
-    // receipt-backed path as other posts instead of reopening the picker.
-    const selectedTopicId=Number(d.data.topicId);
-    if(op==="publish"&&Number.isSafeInteger(selectedTopicId)&&selectedTopicId>0){
-     await publishAccepted(ctx,"announcement",rev,selectedTopicId);
+    const origin=await currentNoticeOrigin(ctx.from.id);
+    const options=await listVerifiedTopics("announcement");
+    const route=resolveNoticeDestination(options,origin,d.data);
+    if(route.kind==="unavailable"){
+     await ctx.answerCbQuery();
+     await showNoticeOriginUnavailable(ctx.telegram,ctx.from.id,d);return;
+    }
+    if(route.kind==="direct"){
+     const selected=route.topic;
+     const label=BOARD_TITLES[selected.board]+" / "+selected.title;
+     const explicit=!origin;
+     const current=d.step==="preview"&&d.data.topicId===selected.id&&
+       d.data.destinationLabel===label&&d.data.noticeDestinationExplicit===explicit?d:
+      await updateDraft(ctx.from.id,"announcement",rev,"preview",
+       {...d.data,topicId:selected.id,destinationLabel:label,noticeDestinationExplicit:explicit,editField:null});
+     if(op==="publish"){
+      if(current.revision!==rev)await announcementScreen(ctx.telegram,ctx.from.id,current);
+      await publishAccepted(ctx,"announcement",current.revision,selected.id);
+     }else{
+      await ctx.answerCbQuery();
+      await announcementScreen(ctx.telegram,ctx.from.id,current);
+     }
      return;
     }
-    const current=op==="publish"&&d.step==="awaiting_text"?
-     await updateDraft(ctx.from.id,"announcement",rev,"preview",d.data):d;
+    const current=d.step==="preview"?d:await updateDraft(ctx.from.id,"announcement",rev,"preview",{...d.data,editField:null});
     await ctx.answerCbQuery();
-    await announcementDestinationPicker(ctx.telegram,ctx.from.id,current);
-   }else if(op==="topics"){
-    if(!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
-     await ctx.answerCbQuery("文章または画像・動画を登録してください。");return;
-    }
-    const current=await getDraft(ctx.from.id,"announcement");
-    if(!current||current.revision!==rev||current.step!=="preview"){
-     await ctx.answerCbQuery("本文の入力を完了してから選択してください。");return;
-    }
-    await ctx.answerCbQuery();
-    await destinationMenu(ctx,"announcement",rev);
+    await announcementDestinationPicker(ctx.telegram,ctx.from.id,current,route.topics);
    }else if(op==="back"){
     const next=await updateDraft(ctx.from.id,"announcement",rev,
      (noticeText(d.data).trim()||noticeMedia(d.data).length)?"preview":"awaiting_text",
@@ -1446,6 +1467,21 @@ export function registerPostingHandlers(bot:Telegraf):void{
   }catch{
    await ctx.answerCbQuery("操作できません。投稿メニューから再度お試しください。");
   }
+ });
+ bot.action(/^post:announce:topicpage:(\d+):(\d+)$/,async ctx=>{
+  if(!privateDM(ctx))return;
+  const rev=Number(ctx.match[1]),page=Number(ctx.match[2]);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!d||d.revision!==rev||d.step!=="preview"||d.data.kind==="recruitment"){
+   await ctx.answerCbQuery("古い操作です。");return;
+  }
+  const origin=await currentNoticeOrigin(ctx.from.id);
+  const options=await listVerifiedTopics("announcement");
+  const route=resolveNoticeDestination(options,origin,d.data);
+  await ctx.answerCbQuery();
+  if(route.kind==="choose")await announcementDestinationPicker(ctx.telegram,ctx.from.id,d,route.topics,page);
+  else if(route.kind==="unavailable")await showNoticeOriginUnavailable(ctx.telegram,ctx.from.id,d);
+  else await announcementScreen(ctx.telegram,ctx.from.id,d);
  });
  bot.action(/^post:announce:dt:(month|day|hour|minute|manual|clear):(\d+)(?::(\d{2,8}))?$/,async ctx=>{
   if(!privateDM(ctx))return;
@@ -2211,6 +2247,23 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }else{
     const d=await getDraft(ctx.from.id,module as PostModule);
     if(!d||d.step!=="preview"||d.revision!==rev)throw new Error("下書きが更新されています。");
+    // The general notice uses its own validator (including media-only drafts).
+    // Never let the legacy recruitment preview reject a valid notice selection.
+    if(module==="announcement"&&(d.data.kind==="announcement"||d.data.kind==="preview")){
+     validateNotice(d.data,ctx.from.id);
+     const selected=await getVerifiedTopic(topicId,"announcement");
+     const origin=await currentNoticeOrigin(ctx.from.id);
+     if(origin&&(origin.chatId!==selected.chatId||origin.threadId!==selected.threadId)){
+      await ctx.answerCbQuery("入口のトピックが確認できました。元のトピックへ投稿します。");
+      await announcementScreen(ctx.telegram,ctx.from.id,d);return;
+     }
+     const next=await updateDraft(ctx.from.id,"announcement",rev,"preview",
+      {...d.data,topicId,destinationLabel:BOARD_TITLES[selected.board]+" / "+selected.title,
+       noticeDestinationExplicit:!origin});
+     await ctx.answerCbQuery();
+     await announcementScreen(ctx.telegram,ctx.from.id,next);
+     return;
+    }
     text=preview(module,d);
    }
    // ROOM is always routed through verified origin + same-group video Topic.
@@ -2225,17 +2278,6 @@ export function registerPostingHandlers(bot:Telegraf):void{
    }
    const selected=await getVerifiedTopic(topicId,module as PostPurpose);
    await assertTopicDmEntryDestination(ctx.from.id,selected.chatId,selected.threadId);
-   if(module==="announcement"){
-    const d=await getDraft(ctx.from.id,"announcement");
-    if(!d||d.step!=="preview"||d.revision!==rev)throw new Error("ANNOUNCEMENT_DRAFT_STALE");
-    if(d.data.kind==="announcement"||d.data.kind==="preview"){
-     const next=await updateDraft(ctx.from.id,"announcement",rev,"preview",
-      {...d.data,topicId,destinationLabel:BOARD_TITLES[selected.board]+" / "+selected.title});
-     await ctx.answerCbQuery();
-     await announcementScreen(ctx.telegram,ctx.from.id,next);
-     return;
-    }
-   }
    await ctx.answerCbQuery();
    await ctx.editMessageText(
     "公開確認：\n"+text+"\n\n投稿先："+escapeProfileHtml(selected.board)+" / "+escapeProfileHtml(selected.title)+
@@ -2321,9 +2363,14 @@ export function registerPostingHandlers(bot:Telegraf):void{
     const draft=await getDraft(ctx.from.id,module);
     if(!draft||draft.step!=="preview"||draft.revision!==revision)
      throw new Error("投稿下書きが変更されています。");
-    if(module==="announcement"&&(draft.data.kind==="announcement"||draft.data.kind==="preview")&&
-      draft.data.topicId!==topicId)
-      throw new Error("ANNOUNCEMENT_DESTINATION_STALE");
+    if(module==="announcement"&&(draft.data.kind==="announcement"||draft.data.kind==="preview")){
+     if(draft.data.topicId!==topicId)throw Error("ANNOUNCEMENT_DESTINATION_STALE");
+     const origin=await currentNoticeOrigin(ctx.from.id);
+     if(origin&&(origin.chatId!==destination.chatId||origin.threadId!==destination.threadId))
+      throw Error("ANNOUNCEMENT_ORIGIN_CHANGED");
+     if(!origin&&draft.data.noticeDestinationExplicit!==true)throw Error("ANNOUNCEMENT_ORIGIN_UNKNOWN");
+     await assertFeatureReleased("announcement");
+    }
     if(module==="link"){
      const payload=draft.data as LinkDraft;
      const link=await createLinkButton(ctx.from.id,revision,payload);
