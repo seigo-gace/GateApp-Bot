@@ -16,7 +16,7 @@ export async function makeApplicationLink(
 ):Promise<string>{
  const a=await pool.query(
   `SELECT announcement_id FROM announcement_posts WHERE announcement_id=$1
-   AND owner_user_id=$2 AND kind='recruitment'
+   AND owner_user_id=$2 AND kind IN ('recruitment','announcement','preview')
    AND status IN ('draft','published')`,[announcementId,ownerId]);
  if(a.rows.length!==1)throw new Error("APPLICATION_SOURCE_NOT_OWNED");
  const token=newApplicationToken();

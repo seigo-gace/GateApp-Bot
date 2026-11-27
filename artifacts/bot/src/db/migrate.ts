@@ -406,6 +406,31 @@ export async function runMigrations(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(announcement_id,applicant_user_id)
       );
+      -- General-user notices reuse announcement applications; relay state only.
+      CREATE TABLE IF NOT EXISTS notice_dm_sessions (
+        owner_user_id BIGINT PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        recipient_user_id BIGINT,
+        scope TEXT NOT NULL CHECK (scope IN ('individual','accepted','all')),
+        screen_message_id BIGINT,
+        expires_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS notice_direct_messages (
+        message_id BIGSERIAL PRIMARY KEY,
+        announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),
+        sender_user_id BIGINT NOT NULL,
+        recipient_user_id BIGINT NOT NULL,
+        content TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'sending'
+          CHECK (state IN ('sending','sent','needs_reconcile')),
+        telegram_message_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        sent_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS notice_dm_history_idx
+       ON notice_direct_messages(announcement_id,created_at DESC);
+
       CREATE TABLE IF NOT EXISTS announcement_room_dispatches (
         dispatch_id BIGSERIAL PRIMARY KEY,
         announcement_id BIGINT NOT NULL REFERENCES announcement_posts(announcement_id),

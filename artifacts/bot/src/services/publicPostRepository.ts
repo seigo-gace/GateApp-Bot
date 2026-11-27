@@ -4,7 +4,7 @@ import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
 
 export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_media"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
@@ -42,7 +42,7 @@ export async function getDraft(id:number,module:PostModule):Promise<EditorDraft|
 export async function getWaitingDraft(id:number):Promise<EditorDraft|null>{
  const r=await pool.query(
   `SELECT module,step,data,revision FROM public_post_drafts
-   WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_datetime','awaiting_room_url')
+   WHERE owner_user_id=$1 AND step IN ('awaiting_text','awaiting_datetime','awaiting_room_url','awaiting_media')
    ORDER BY updated_at DESC LIMIT 1`,[validOwner(id)]
  );
  return r.rows[0]??null;
@@ -88,13 +88,13 @@ export async function createAnnouncement(id:number,revision:number,kind:Announce
  const r=await pool.query(
   `INSERT INTO announcement_posts
      (request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,room_id,
-      profile_snapshot,conditions,status)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft')
+      profile_snapshot,conditions,status,deadline_at)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft',NULLIF($11::text,'')::timestamptz)
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
   [key,id,kind,text,eventAt||null,purposeCodes,placeCodes,linkedRoomId||null,
    details?.profileSnapshot?JSON.stringify(details.profileSnapshot):null,
-   JSON.stringify(details?.conditions??{})]
+   JSON.stringify(details?.conditions??{}),String(details?.conditions?.deadlineAt??"")]
  );
  return {sourceId:String(r.rows[0].announcement_id)};
 }
@@ -177,7 +177,9 @@ export async function markPostSourcePublished(
     WHERE link_post_id=$1 AND owner_user_id=$2
       AND status IN ('draft','published') RETURNING link_post_id`:
   `UPDATE announcement_posts SET status='published',
-      accept_applications=CASE WHEN room_id IS NOT NULL AND EXISTS (
+      accept_applications=CASE WHEN room_id IS NULL AND kind IN ('announcement','preview')
+        AND conditions->>'participation' IN ('public','approved_only') THEN TRUE
+        WHEN room_id IS NOT NULL AND EXISTS (
        SELECT 1 FROM room_posts r WHERE r.room_id=announcement_posts.room_id
          AND r.join_visibility='approved_only' AND r.status IN ('draft','scheduled','ready')
       ) THEN TRUE ELSE FALSE END,

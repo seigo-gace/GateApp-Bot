@@ -7,7 +7,7 @@ import {registerCompactProfileHandlers,startCompactProfileEditor} from "./bot/pr
 import {registerProfileViewerHandlers,startProfileViewer} from "./bot/profileViewerHandlers.js";
 import {registerProfilePostManagement} from "./bot/profilePublicationHandlers.js";
 import {parseProfileViewerPayload} from "./services/profilePublicView.js";
-import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startLinkEditor } from "./bot/postingHandlers.js";
+import { registerPostingHandlers, startRoomEditor, startAnnouncementEditor, startNoticeInlineEdit, startLinkEditor } from "./bot/postingHandlers.js";
 import {registerCompactRecruitmentHandlers,startCompactRecruitmentEditor} from "./bot/recruitmentHandlers.js";
 import {registerPostingMenuUtilityHandlers,startPostingMenuUtility} from "./bot/postingMenuUtilityHandlers.js";
 import { registerTopicBindingHandlers } from "./bot/topicBindingHandlers.js";
@@ -18,6 +18,7 @@ import {registerSearchHandlers,startSearchEditor} from "./bot/searchHandlers.js"
 import {registerOperationHelpHandlers,startOperationHelp} from "./bot/operationHelpHandlers.js";
 import {registerApplicationHandlers,startApplicationEditor} from "./bot/applicationHandlers.js";
 import {registerRoomHandlers} from "./bot/roomHandlers.js";
+import {registerNoticeInteractionHandlers} from "./bot/noticeInteractions.js";
 import {resolveRoomJoinLink,roomJoinDenialReason} from "./services/roomJoinLinks.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/index.js";
@@ -49,6 +50,12 @@ async function main():Promise<void>{
  await runMigrations();
  bot.start(async ctx=>{
   if(ctx.chat.type!=="private")return;
+  const noticeEdit=ctx.startPayload?.match(/^ne_([tb])_(\d+)$/);
+  if(noticeEdit){
+   await startNoticeInlineEdit(ctx.telegram,ctx.from.id,Number(noticeEdit[2]),
+    noticeEdit[1]==="t"?"title":"body");
+   return;
+  }
   if(ctx.startPayload?.startsWith("p_")){
    try {
     const origin=await activateTopicDmEntry(ctx.from.id,ctx.startPayload,ctx.telegram);
@@ -184,6 +191,7 @@ async function main():Promise<void>{
  registerProfileViewerHandlers(bot);
  registerProfilePostManagement(bot);
  registerPostingHandlers(bot);
+ registerNoticeInteractionHandlers(bot);
  registerTopicBindingHandlers(bot);
  registerGeneralGuideHandlers(bot);
  registerMenuPanelHandlers(bot);

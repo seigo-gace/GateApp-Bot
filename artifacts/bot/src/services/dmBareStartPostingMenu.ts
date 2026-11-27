@@ -107,13 +107,14 @@ export async function bareStartPostingExtra(chatId: number) {
   const [ready, urls, inviteUrl] = await Promise.all([
     postingDmFeaturesReady(),
     loadPostingNavUrls(chatId),
-    commonGateUrl(),
+    commonGateUrl().catch(()=>null),
   ]);
   const rows = APPROVED_POSTING_ROWS.map((row) =>
     row.map((label) => {
       const colorize=<T extends object>(button:T):T & {style:"primary"|"success"|"danger"}=>
         ({...button,style:postingButtonStyle(label)});
-      if(label==="紹介/招待")return colorize(gateInviteCopyButton(label,inviteUrl));
+      if(label==="紹介/招待")return colorize(inviteUrl?
+        gateInviteCopyButton(label,inviteUrl):Markup.button.callback(label,"dm:nav-unavailable"));
       if (STATIC_URL_LABELS.has(label)) {
         const url = label==="クリエーター投稿"
           ? "https://t.me/CreateVdobot?start=creator" : urls.get(label);

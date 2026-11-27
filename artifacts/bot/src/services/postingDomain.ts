@@ -82,7 +82,7 @@ export function validateAnnouncement(d:AnnouncementDraft):AnnouncementDraft{
  validateAnnouncementTags({purposeCodes:d.purposeCodes||[],placeCodes:d.placeCodes||[]});
  if(d.kind==="recruitment"&&(!d.purposeCodes||d.purposeCodes.length===0))
   throw new Error("RECRUITMENT_PURPOSE_REQUIRED");
- if(d.kind!=="recruitment"&&(d.capacity||d.deadlineAt))
+ if(d.kind!=="recruitment"&&d.capacity)
   throw new Error("ANNOUNCEMENT_RECRUITMENT_ONLY_FIELDS");
  if(d.capacity!==undefined&&d.capacity!==null&&
    (!Number.isInteger(d.capacity)||d.capacity<1||d.capacity>1000))
