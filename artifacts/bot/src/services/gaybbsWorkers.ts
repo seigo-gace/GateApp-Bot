@@ -10,7 +10,7 @@ import {finalizeNextRoom} from "./roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "./announcementArchive.js";
 
 type Worker={name:string;enabled:boolean;busy:boolean;since?:number;warned?:boolean;run:()=>Promise<unknown>};
-export function startGayBbsWorkers(telegram:Telegram):()=>void{
+export function startGayBbsWorkers(telegram:Telegram):()=>Promise<void>{
  let nextCleanupAt=0;
  const workers:Worker[]=[
   {name:"room-announcement",enabled:process.env.GAYBBS_ROOM_EVENT_WORKER_ENABLED==="enabled",
@@ -43,8 +43,9 @@ export function startGayBbsWorkers(telegram:Telegram):()=>void{
  ];
  // For a non-enabled worker there is no timer or DB/Telegram access.
  const enabled=workers.filter(w=>w.enabled);
- if(!enabled.length)return ()=>{};
+ if(!enabled.length)return async()=>{};
  let stopped=false;
+ const running=new Set<Promise<void>>();
  const timer=setInterval(()=>{
   if(stopped)return;
   for(const w of enabled){
@@ -53,12 +54,13 @@ export function startGayBbsWorkers(telegram:Telegram):()=>void{
     continue;
    }
    w.busy=true;w.since=Date.now();w.warned=false;
-   void w.run().catch(error=>{
+   const task=Promise.resolve().then(()=>w.run()).then(()=>undefined).catch(error=>{
     // Do not print raw Telegram/DB exceptions, secrets or user payload.
     console.error("GAYBBS_WORKER_CHECK_FAILED",w.name,
       error instanceof Error?error.name:"unknown");
-   }).finally(()=>{if(w.warned)console.log("GAYBBS_WORKER_SETTLED",w.name);w.busy=false;w.since=undefined;w.warned=false;});
+   }).finally(()=>{if(w.warned)console.log("GAYBBS_WORKER_SETTLED",w.name);w.busy=false;w.since=undefined;w.warned=false;running.delete(task);});
+   running.add(task);
   }
  },15000);
- return ()=>{stopped=true;clearInterval(timer)};
+ return async()=>{stopped=true;clearInterval(timer);await Promise.allSettled([...running]);};
 }

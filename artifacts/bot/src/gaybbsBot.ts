@@ -318,15 +318,18 @@ async function main():Promise<void>{
     error instanceof Error?error.message:"unknown");
  }
  };
- firstPoll=()=>{maintenance=maintainMenus().catch(error=>console.error("GAYBBS_MENU_MAINTENANCE_FAILED",error instanceof Error?error.name:"unknown"));};
+ firstPoll=()=>{
+  if(stopping){bot.stop("shutdown-requested");return;}
+  maintenance=maintainMenus().catch(error=>console.error("GAYBBS_MENU_MAINTENANCE_FAILED",error instanceof Error?error.name:"unknown"));
+ };
  bot.catch(async(error,ctx)=>{
   console.error("[GAYBBS_ERROR]",ctx.updateType,error instanceof Error?error.name:"unknown");
   // Telegraf handlerTimeout does not cancel middleware. Never advance the
   // polling offset while the timed-out handler is still running.
   await settling.get(ctx.update.update_id);
  });
- let stopWorkers:(()=>void)|undefined;
- let stopReports:(()=>void)|undefined;
+ let stopWorkers:(()=>Promise<void>)|undefined;
+ let stopReports:(()=>Promise<void>)|undefined;
  let tumblrBridge:ReturnType<typeof startTumblrBridge>=null;
  let stopping=false;
  let monitor:ReturnType<typeof setInterval>|undefined;
@@ -334,7 +337,7 @@ async function main():Promise<void>{
  const stop=(signal:string)=>{
   if(stopping)return;
   stopping=true;
-  stopReports?.();stopWorkers?.();
+  void stopReports?.();void stopWorkers?.();
   bot.stop(signal);
  };
  process.once("SIGINT",()=>{try{stop("SIGINT");}catch{process.exitCode=1;}});
@@ -362,8 +365,7 @@ async function main():Promise<void>{
   });
  }finally{
   if(monitor)clearInterval(monitor);
-  stopReports?.();stopWorkers?.();
-  if(maintenance)await maintenance;
+  await Promise.allSettled([stopReports?.(),stopWorkers?.(),maintenance]);
   if(tumblrBridge)await new Promise<void>(resolve=>tumblrBridge!.close(()=>resolve()));
   await closePool();
  }

@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import {runMigrations} from "../src/db/migrate.js";
-import {pool,closePool} from "../src/db/index.js";
+import {pool,closePool,configureGaybbsDatabaseWaits} from "../src/db/index.js";
 import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
 import {updateRoomState,changeRoomVisibility} from "../src/services/roomLifecycle.js";
 import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
@@ -24,6 +24,26 @@ if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
 try{
+ configureGaybbsDatabaseWaits();
+ const lock=await pool.connect();
+ const waiting=await pool.connect();
+ try{
+  assert.equal((await waiting.query("SHOW lock_timeout")).rows[0].lock_timeout,"5s");
+  assert.equal((await waiting.query("SHOW statement_timeout")).rows[0].statement_timeout,"1min");
+  await lock.query("BEGIN");
+  await lock.query("SELECT pg_advisory_xact_lock(187631)");
+  await waiting.query("BEGIN");
+  await waiting.query("SET LOCAL lock_timeout = '100ms'");
+  await assert.rejects(waiting.query("SELECT pg_advisory_xact_lock(187631)"),{code:"55P03"});
+  await waiting.query("ROLLBACK");
+  await lock.query("ROLLBACK");
+  await waiting.query("BEGIN");
+  await waiting.query("SET LOCAL statement_timeout = '100ms'");
+  await assert.rejects(waiting.query("SELECT pg_sleep(1)"),{code:"57014"});
+  await waiting.query("ROLLBACK");
+  assert.equal((await waiting.query("SELECT 1 AS ok")).rows[0].ok,1);
+  console.log("GAYBBS_DB_WAIT_LIMITS_AND_RECOVERY=PASS");
+ }finally{await lock.query("ROLLBACK").catch(()=>{});await waiting.query("ROLLBACK").catch(()=>{});lock.release();waiting.release();}
  await runMigrations();
  await runMigrations(); // idempotency when a container is restarted.
  for(const table of ["profiles","profile_tags","profile_media","profile_publications",
