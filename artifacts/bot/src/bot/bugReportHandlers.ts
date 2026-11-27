@@ -10,6 +10,7 @@ import {bareStartPostingExtra,defaultBareStartChatId}
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
 import {currentTopicDmEntry} from "../services/topicDmEntry.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
+import {currentDmTextOwner} from "../services/dmInputOwner.js";
 
 const REPORT_LIMIT=2000;
 const REPORT_LABEL="🐞 不具合を報告";
@@ -133,6 +134,8 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    "SELECT id,prompt_message_id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' LIMIT 1",
    [ctx.from.id]);
   if(!pending.rows.length)return next();
+  // Never let an abandoned report consume another editor's ordinary DM text.
+  if(await currentDmTextOwner(ctx.from.id)!=="bug_report")return next();
   const text=normalizeBugReport(ctx.message.text);
   if(!text){
    // The shared DM contract requires removing even invalid user input.
