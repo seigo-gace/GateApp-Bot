@@ -210,7 +210,7 @@ test("Rich notice preview rejects invalid action revisions",()=>{
 /** Execute the actual notice entry and registered callback. Only I/O is faked.
  * Unknown SQL or Telegram operations must fail rather than escape to production.
  */
-function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>;editError?:Error;sendResult?:unknown}={}){
+function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>;editError?:Error;sendResult?:unknown;dmOwner?:string;stickerError?:Error}={}){
  const owner=4321,oldId=99,newId=200;
  let draft={step:options.step??"preview",revision:7,data:{
   kind:"announcement",title:"題名",body:"本文",screenMessageId:oldId,
@@ -219,6 +219,16 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
  } as Record<string,unknown>};
  const events:any[][]=[],answers:any[][]=[],reads:any[][]=[];
  const query=mock.method(pool,"query", (async(sql:string,values:any[])=>{
+  if(sql.includes("SELECT module FROM (")&&sql.includes("candidates ORDER BY updated_at")){
+   assert.equal(values[0],owner);
+   return {rows:[{module:options.dmOwner??"announcement"}]};
+  }
+  if(sql.includes("'{noticeStickerPreviews}'")){
+   assert.equal(values[0],owner);assert.equal(values[1],draft.revision);
+   draft.data.noticeStickerPreviews=JSON.parse(values[2]);
+   events.push(["stickers-bind",structuredClone(draft.data.noticeStickerPreviews)]);
+   return {rows:[{owner_user_id:owner}]};
+  }
   assert.equal(values[1],"announcement");
   if(sql==="SELECT step,data,revision FROM public_post_drafts WHERE owner_user_id=$1 AND module=$2"){
    reads.push(values);
@@ -251,16 +261,18 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
   },
   async editMessageText(...args:any[]){events.push(["plain-edit",...args]);return true;},
   async deleteMessage(...args:any[]){events.push(["delete",...args]);return true;},
+  async sendSticker(...args:any[]){events.push(["sticker",...args]);if(options.stickerError)throw options.stickerError;return {message_id:501};},
   sendPhoto:forbid,sendVideo:forbid,sendMediaGroup:forbid,sendMessage:forbid,
  };
  const actions:Array<{pattern:RegExp;handler:Function}>=[];
+ const handlers=new Map<string,Function[]>();
  const bot={
   command(_key:unknown,_fn:Function){},
   action(pattern:unknown,handler:Function){if(pattern instanceof RegExp)actions.push({pattern,handler});},
-  on(_key:unknown,_fn:Function){}
+  on(key:string,fn:Function){handlers.set(key,[...(handlers.get(key)??[]),fn]);}
  };
- async function callback(field:"title"|"body",overrides:{fromId?:number;chatId?:number;chatType?:string;messageChatId?:number;messageId?:number;revision?:number;omitMessage?:boolean}={}){
-  registerPostingHandlers(bot as any);
+ async function callback(field:"title"|"body"|"link"|"media"|"back",overrides:{fromId?:number;chatId?:number;chatType?:string;messageChatId?:number;messageId?:number;revision?:number;omitMessage?:boolean}={}){
+  actions.length=0;handlers.clear();registerPostingHandlers(bot as any);
   const data="post:announce:"+field+":"+(overrides.revision??7);
   const matching=actions.filter(a=>a.pattern.test(data));
   assert.equal(matching.length,1,"exactly one registered notice callback");
@@ -276,7 +288,16 @@ function noticeHandlerFixture(options:{step?:string;data?:Record<string,unknown>
   };
   await action.handler(ctx);
  }
- return {owner,oldId,newId,telegram,events,answers,reads,callback,
+ async function receive(type:"sticker"|"text",input:string){
+  actions.length=0;handlers.clear();registerPostingHandlers(bot as any);
+  const ctx={from:{id:owner},chat:{type:"private",id:owner},telegram,
+   message:{message_id:101,...(type==="sticker"?{sticker:{file_id:input}}:{text:input})}};
+  const list=handlers.get(type)??[];
+  assert.ok(list.length>0);
+  async function dispatch(i:number):Promise<void>{if(i<list.length)await list[i]!(ctx,()=>dispatch(i+1));}
+  await dispatch(0);
+ }
+ return {owner,oldId,newId,telegram,events,answers,reads,callback,receive,
   get draft(){return draft;},
   start:()=>startAnnouncementEditor(telegram as any,owner),
   restore:()=>query.mock.restore()};
@@ -427,4 +448,52 @@ test("native sticker and mixed albums use native delivery and the registered lin
  assert.deepEqual(calls.map(x=>x[0]),["sendMessage","sendMediaGroup","sendSticker","sendPhoto"]);
  assert.equal(calls[0]![3].reply_markup.inline_keyboard[0][0].url,"https://example.com/");
  assert.deepEqual(calls[2],["sendSticker",target.chatId,"s1",{message_thread_id:8}]);
+});
+
+test("registered sticker receiver persists and previews native sticker before deleting original input",async()=>{
+ const f=noticeHandlerFixture({step:"awaiting_media",data:{media:[]}});
+ try{
+  await f.receive("sticker","native_sticker_1");
+  assert.deepEqual(noticeMedia(f.draft.data),[{kind:"sticker",fileId:"native_sticker_1"}]);
+  assert.equal(f.draft.step,"preview");
+  assert.deepEqual(f.events.map(e=>e[0]),["update","editMessageText","stickers-bind","sticker","stickers-bind","delete"]);
+  assert.deepEqual(f.events.at(-1),["delete",f.owner,101]);
+  assert.deepEqual(f.draft.data.noticeStickerPreviews,[{fileId:"native_sticker_1",messageId:501}]);
+  f.events.length=0;await f.start();
+  assert.deepEqual(f.events.map(e=>e[0]),["editMessageText"]);
+  await f.callback("media",{revision:f.draft.revision});
+  f.events.length=0;await f.receive("text","なし");
+  assert.deepEqual(noticeMedia(f.draft.data),[]);
+  assert.deepEqual(f.draft.data.noticeStickerPreviews,[]);
+  assert.ok(f.events.some(e=>e[0]==="delete"&&e[2]===501));
+ }finally{f.restore();}
+});
+test("notice sticker receiver never consumes another DM owner input",async()=>{
+ const f=noticeHandlerFixture({step:"awaiting_media",dmOwner:"profile",data:{media:[]}});
+ try{await f.receive("sticker","foreign");assert.deepEqual(f.events,[]);assert.deepEqual(noticeMedia(f.draft.data),[]);}finally{f.restore();}
+});
+test("sticker preview transport uncertainty preserves the original and never repeats the native send",async()=>{
+ const f=noticeHandlerFixture({step:"awaiting_media",data:{media:[]},stickerError:Error("ETIMEDOUT")});
+ try{
+  await f.receive("sticker","native_sticker_1");
+  assert.equal(f.events.filter(e=>e[0]==="sticker").length,1);
+  assert.ok(!f.events.some(e=>e[0]==="delete"&&e[2]===101));
+  assert.deepEqual(f.draft.data.noticeStickerPreviews,[{fileId:"native_sticker_1",messageId:null}]);
+  await assert.rejects(f.start(),/NOTICE_STICKER_PREVIEW_UNCONFIRMED/);
+  assert.equal(f.events.filter(e=>e[0]==="sticker").length,1);
+ }finally{f.restore();}
+});
+test("registered link edit accepts two lines, exposes real URL and removes it on clear",async()=>{
+ const f=noticeHandlerFixture();
+ try{
+  await f.callback("link");assert.equal(f.draft.data.editField,"link");
+  await f.receive("text","詳細を見る\nhttps://example.com/path");
+  assert.equal(f.draft.step,"preview");
+  const rich=f.events.filter(e=>e[0]==="editMessageText").at(-1)![1].rich_message;
+  assert.deepEqual(rich.blocks.at(-1),{type:"buttons",buttons:[{text:"詳細を見る",url:"https://example.com/path"}]});
+  await f.callback("link",{revision:f.draft.revision});
+  await f.receive("text","なし");
+  assert.equal(f.draft.data.linkUrl,null);
+  assert.ok(!f.events.filter(e=>e[0]==="editMessageText").at(-1)![1].rich_message.blocks.some((b:any)=>b.type==="buttons"));
+ }finally{f.restore();}
 });
