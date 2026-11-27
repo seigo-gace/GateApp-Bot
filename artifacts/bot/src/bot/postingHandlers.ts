@@ -1221,6 +1221,13 @@ export function registerPostingHandlers(bot:Telegraf):void{
     if(op==="publish"&&!noticeText(d.data).trim()&&!noticeMedia(d.data).length){
      await ctx.answerCbQuery("文章または画像・動画を登録してください。");return;
     }
+    // A verified selection already exists: publish through the same guarded,
+    // receipt-backed path as other posts instead of reopening the picker.
+    const selectedTopicId=Number(d.data.topicId);
+    if(op==="publish"&&Number.isSafeInteger(selectedTopicId)&&selectedTopicId>0){
+     await publishAccepted(ctx,"announcement",rev,selectedTopicId);
+     return;
+    }
     const current=op==="publish"&&d.step==="awaiting_text"?
      await updateDraft(ctx.from.id,"announcement",rev,"preview",d.data):d;
     await ctx.answerCbQuery();
