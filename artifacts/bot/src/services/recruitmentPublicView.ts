@@ -82,7 +82,7 @@ export function legacyRecruitmentIdentity(input:RecruitmentInput,snapshot:unknow
   const basic=recruitmentIdentitySnapshot(snapshot);
   if(renderRecruitmentPreview(input,basic)===rendered||renderRecruitmentCard(input,basic)===rendered)return basic;
  }catch{/* old linked records can lack a current snapshot */}
- const decode=(v:string)=>v.replace(/&(amp|lt|gt|quot);/g,(_m,k:string)=>({amp:"&",lt:"<",gt:">",quot:'"'}[k]??""));
+ const decode=(v:string)=>v.replace(/&(amp|lt|gt|quot);/g,(_m,k:string)=>(({amp:"&",lt:"<",gt:">",quot:'"'} as Record<string,string>)[k]??""));
  const candidates:ProfileBasicDraft[]=[];
  for(const match of rendered.matchAll(/(?:^|\n)🪪 ([^\n]+)\n(\d+)cm \| (\d+)kg \| (\d+)歳 \| ([^\n]+)/g)){
   try{
