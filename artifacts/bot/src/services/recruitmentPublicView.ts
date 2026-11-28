@@ -7,7 +7,7 @@ import {profilePanelRows,VIEW_TOKEN_PATTERN} from "./profilePublicView.js";
 import type {TransportButton} from "./telegramDispatcher.js";
 import {isProfilePosition,type ProfileBasicDraft} from "./profileCore.js";
 import {validLikeTags} from "./profileLike.js";
-import {validateRecruitmentExtras,type RecruitmentInput} from "./recruitmentCompose.js";
+import {validateRecruitmentExtras,renderRecruitmentPreview,renderRecruitmentCard,type RecruitmentInput} from "./recruitmentCompose.js";
 import type {SavedProfile} from "./profileRepository.js";
 
 export const RECRUITMENT_UI_VERSION=1;
@@ -67,11 +67,37 @@ export function recruitmentPanelProfile(input:RecruitmentInput,basic:ProfileBasi
   likeTags:input.likeTags,loveTags:input.loveTags,purposeCodes:input.purposeCodes,placeCodes:input.placeCodes,
   media:input.media,pr:input.body};
 }
+/** Recover the exact identity from the legacy sent receipt if an old linked
+ * edit had changed the displayed basic values without updating its snapshot.
+ * Never use a current private profile for migration. Match the complete old
+ * renderer to the receipt before accepting the recovered identity. */
+export function legacyRecruitmentIdentity(input:RecruitmentInput,snapshot:unknown,rendered:string):ProfileBasicDraft{
+ if(input.mode==="manual"){
+  const basic=recruitmentIdentitySnapshot(input);
+  if(renderRecruitmentPreview(input)!==rendered&&renderRecruitmentCard(input)!==rendered)
+   throw Error("RECRUITMENT_LEGACY_RECEIPT_MISMATCH");
+  return basic;
+ }
+ try{
+  const basic=recruitmentIdentitySnapshot(snapshot);
+  if(renderRecruitmentPreview(input,basic)===rendered||renderRecruitmentCard(input,basic)===rendered)return basic;
+ }catch{/* old linked records can lack a current snapshot */}
+ const decode=(v:string)=>v.replace(/&(amp|lt|gt|quot);/g,(_m,k:string)=>({amp:"&",lt:"<",gt:">",quot:'"'}[k]??""));
+ const candidates:ProfileBasicDraft[]=[];
+ for(const match of rendered.matchAll(/(?:^|\n)🪪 ([^\n]+)\n(\d+)cm \| (\d+)kg \| (\d+)歳 \| ([^\n]+)/g)){
+  try{
+   const basic=recruitmentIdentitySnapshot({nickname:decode(match[1]!),heightCm:Number(match[2]),weightKg:Number(match[3]),age:Number(match[4]),position:decode(match[5]!)});
+   if(renderRecruitmentPreview(input,basic)===rendered)candidates.push(basic);
+  }catch{/* invalid or unrelated text in the user's body */}
+ }
+ if(candidates.length!==1)throw Error("RECRUITMENT_LEGACY_RECEIPT_MISMATCH");
+ return candidates[0]!;
+}
 export async function resolveRecruitmentPanel(token:string,chatId:number,messageId?:number){
  if(!VIEW_TOKEN_PATTERN.test(token)||!Number.isSafeInteger(chatId)||chatId>=0||
    (messageId!==undefined&&!positive(messageId)))return null;
  const r=await pool.query(
-  `SELECT a.owner_user_id,a.revision,a.text,a.conditions,a.profile_snapshot,a.purpose_codes,a.place_codes
+  `SELECT DISTINCT a.owner_user_id,a.revision,a.text,a.conditions,a.profile_snapshot,a.purpose_codes,a.place_codes
    FROM announcement_posts a
    JOIN posting_deliveries d ON d.source_type='announcement' AND d.source_id=a.announcement_id::text
     AND d.owner_user_id=a.owner_user_id AND d.status='sent' AND d.telegram_message_id IS NOT NULL
