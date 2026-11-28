@@ -20,7 +20,7 @@ export type RecruitmentBackfillResult={
 export async function backfillRecruitmentCards(telegram:Telegram,dryRun=true):Promise<RecruitmentBackfillResult>{
  const q=await pool.query(
   "SELECT announcement_id,owner_user_id,revision,text,conditions,profile_snapshot,purpose_codes,place_codes,status"+
-  " FROM announcement_posts WHERE kind='recruitment' AND status IN ('published','publishing','sync_error') ORDER BY announcement_id");
+  " FROM announcement_posts WHERE kind='recruitment' AND room_id IS NULL AND status IN ('published','publishing','sync_error') ORDER BY announcement_id");
  const stats:RecruitmentBackfillResult={publishedSources:0,sentReceipts:0,alreadyCurrent:0,
   eligibleSources:0,eligibleReceipts:0,updatedSources:0,updatedReceipts:0,
   unresolved:0,uncertain:0,nonPublishedUnresolved:0};
@@ -65,7 +65,7 @@ export async function backfillRecruitmentCards(telegram:Telegram,dryRun=true):Pr
    const username=await verifiedRecruitmentUsername(telegram,owner);
    const claim=await pool.query(
     "UPDATE announcement_posts SET status='publishing',updated_at=NOW() WHERE announcement_id=$1 AND owner_user_id=$2"+
-    " AND revision=$3 AND status='published' AND kind='recruitment' AND conditions->>'recruitmentUiVersion' IS DISTINCT FROM $4"+
+    " AND revision=$3 AND status='published' AND kind='recruitment' AND room_id IS NULL AND conditions->>'recruitmentUiVersion' IS DISTINCT FROM $4"+
     " RETURNING announcement_id",[sourceId,owner,revision,String(RECRUITMENT_UI_VERSION)]);
    if(claim.rows.length!==1){stats.unresolved++;continue;}
    claimed=true;
@@ -85,7 +85,7 @@ export async function backfillRecruitmentCards(telegram:Telegram,dryRun=true):Pr
    const final=await pool.query(
     "UPDATE announcement_posts SET status='published',profile_snapshot=$4::jsonb,"+
     " conditions=conditions||$5::jsonb,updated_at=NOW() WHERE announcement_id=$1 AND owner_user_id=$2"+
-    " AND revision=$3 AND status='publishing' AND kind='recruitment' RETURNING announcement_id",
+    " AND revision=$3 AND status='publishing' AND kind='recruitment' AND room_id IS NULL RETURNING announcement_id",
     [sourceId,owner,revision,JSON.stringify(input.mode==="linked"?basic:null),
      JSON.stringify({viewToken:token,recruitmentUiVersion:RECRUITMENT_UI_VERSION})]);
    if(final.rows.length!==1)throw Error("RECRUITMENT_BACKFILL_SOURCE_CONFLICT");
