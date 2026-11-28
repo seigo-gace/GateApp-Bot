@@ -26,7 +26,7 @@ export async function loadPublishedRecruitment(owner:number,sourceId:number):Pro
   " AND d.source_id=a.announcement_id::text AND d.owner_user_id=a.owner_user_id"+
   " AND d.status='sent' AND d.telegram_message_id IS NOT NULL"+
   " JOIN posting_topics t ON t.topic_id=d.posting_topic_id"+
-  " WHERE a.announcement_id=$1 AND a.owner_user_id=$2 AND a.kind='recruitment'"+
+  " WHERE a.announcement_id=$1 AND a.owner_user_id=$2 AND a.kind='recruitment' AND a.room_id IS NULL"+
   " AND a.status='published' ORDER BY d.delivery_id DESC LIMIT 1",[sourceId,owner]);
  if(r.rows.length!==1)throw Error("RECRUITMENT_PUBLICATION_NOT_FOUND");
  const x=r.rows[0];
@@ -58,7 +58,7 @@ export async function applyPublishedRecruitmentEdit(
  const username=await verifiedRecruitmentUsername(telegram,owner);
  const claim=await pool.query(
   "UPDATE announcement_posts SET status='publishing',updated_at=NOW()"+
-  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment'"+
+  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment' AND room_id IS NULL"+
   " AND status='published' AND revision=$3 RETURNING announcement_id",
   [sourceId,owner,expectedRevision]);
  if(claim.rows.length!==1)throw Error("RECRUITMENT_EDIT_CONFLICT");
@@ -126,7 +126,7 @@ export async function deletePublishedRecruitment(
   throw Error("RECRUITMENT_TOPIC_CHANGED");
  const claim=await pool.query(
   "UPDATE announcement_posts SET status='publishing',updated_at=NOW()"+
-  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment'"+
+  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment' AND room_id IS NULL"+
   " AND status='published' RETURNING announcement_id",[sourceId,owner]);
  if(claim.rows.length!==1)throw Error("RECRUITMENT_DELETE_CONFLICT");
  try{
@@ -167,7 +167,7 @@ export async function rememberPublishedRecruitmentDmScreen(
  const q=await pool.query(
   "UPDATE announcement_posts SET conditions=jsonb_set(conditions,"+
   " '{dmScreenMessageId}',to_jsonb($3::bigint),true),updated_at=NOW()"+
-  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment'"+
+  " WHERE announcement_id=$1 AND owner_user_id=$2 AND kind='recruitment' AND room_id IS NULL"+
   " AND status IN ('published','publishing') RETURNING announcement_id",
   [sourceId,owner,dmMessageId]);
  if(q.rows.length!==1)throw Error("RECRUITMENT_DM_RECEIPT_NOT_FOUND");
