@@ -3,7 +3,7 @@ import {styledInlineButton} from "../services/inlineButtonStyle.js";
  * One free-text message -> owned draft -> field-specific edit -> reviewed post.
  * Native inline keyboard is a fallback for unverified rich inline editor support.
  */
-import {Markup,type Telegraf,type Telegram} from "telegraf";
+import {Markup,type Telegraf,type Telegram,type Context} from "telegraf";
 import {getProfile} from "../services/profileRepository.js";
 import {PROFILE_POSITIONS,escapeProfileHtml,isProfilePosition} from "../services/profileCore.js";
 import {PURPOSE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js";
@@ -14,19 +14,25 @@ import {currentTopicDmEntry,assertTopicDmEntryDestination,assertBoundTopicDmEntr
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {listVerifiedTopics,getVerifiedTopic} from "../services/postingDelivery.js";
 import {BOARD_TITLES} from "../services/topicRouting.js";
-import {ownerUsernameLink} from "../services/telegramUsernameLink.js";
+import {ensureRecruitmentViewToken,recruitmentViewRows,verifiedRecruitmentUsername,RECRUITMENT_UI_VERSION} from "../services/recruitmentPublicView.js";
+import {PROFILE_ALBUM_LIMIT,compactAlbumText,compactAlbumRows,updateCompactAlbumText,updateCompactAlbumMedia,type CompactAlbumState,type ProfileMediaItem} from "../services/profileMedia.js";
+import {sendProfileAlbum} from "./profileViewerHandlers.js";
+import {appearanceKeyboard,appearanceText,choiceKeyboard,choiceText,areaBlocksKeyboard,areaBlocksText,areaChildrenKeyboard,areaChildrenText} from "../services/profileAppearancePanel.js";
+import {HAIR_CHOICES,BODY_CHOICES,type AppearanceValues} from "../services/profileAppearance.js";
+import {PROFILE_AREA_BLOCKS,areaChildren,toggleProfileArea,isAreaBlock,type ProfileAreaValues} from "../services/profileArea.js";
+import {nextSelection} from "../services/inlineSelection.js";
 import {publishPost,assertFeatureReleased} from "../services/publishService.js";
 import {loadPublishedRecruitment,applyPublishedRecruitmentEdit,deletePublishedRecruitment,rememberPublishedRecruitmentDmScreen} from "../services/recruitmentPublishedEdit.js";
 import {showWizardScreen,removeUserWizardInput} from "../services/dmWizardScreen.js";
 import {currentDmTextOwner} from "../services/dmInputOwner.js";
-import {buildRecruitmentRichPreview} from "../services/recruitmentRichPreview.js";
+
 import {recruitmentGroups,recruitmentAreaBlockOptions,recruitmentTopicsForAreaBlock,recruitmentTopicsForGroup} from "../services/recruitmentDestinationHierarchy.js";
 import {recruitmentDecisionRow,recruitmentSelectionRows} from "../services/recruitmentButtonLayout.js";
 import {recruitmentCompactSelectorRows} from "../services/recruitmentButtonLayout.js";
 import {LIKE_CATEGORIES,likePageBounds,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
 import {roomRecruitmentCategoryRows,roomRecruitmentTagRows,roomRecruitmentTagHeading} from "../services/roomRecruitmentTagPanels.js";
 import {parseRecruitmentMessage,changeRecruitmentField,
- renderRecruitmentPreview,validateRecruitmentReady,recruitmentTextPhase,type RecruitmentInput} from "../services/recruitmentCompose.js";
+ renderRecruitmentCard,recruitmentExtras,validateRecruitmentReady,recruitmentTextPhase,type RecruitmentInput} from "../services/recruitmentCompose.js";
 
 type EditField="title"|"nickname"|"stats"|"body";
 const asInput=(d:EditorDraft)=>({
@@ -84,87 +90,54 @@ function recruitmentSelectorRows(d:EditorDraft){
 }
 function keyboard(d:EditorDraft){
  const rev=d.revision;
- const data=asInput(d);
- const rows:any[][]=recruitmentEditorFieldRows(data.mode,rev,{
-  edit:field=>`recruit:edit:${rev}:${field}`,
-  position:()=>`recruit:panel:${rev}:position`,
-  like:()=>`recruit:panel:${rev}:like`,
-  love:()=>`recruit:panel:${rev}:love`,
-  purpose:()=>`recruit:panel:${rev}:purpose`,
-  place:()=>`recruit:panel:${rev}:place`,
- },{
-  position:!!data.position,like:!!data.likeTags?.length,love:!!data.loveTags?.length,
-  purpose:data.purposeCodes.length>0,place:data.placeCodes.length>0,
- });
  const finalRow=d.data.publishedSourceId?
   [b("✅ 変更を反映",`recruit:post:${rev}`,"success"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]:decisionRow(rev);
- rows.push([finalRow[0]!,b("🪪 プロフ登録","pc:from:recruit","primary"),finalRow[1]!]);
- return Markup.inlineKeyboard(rows);
-}
-function initialKeyboard(d:EditorDraft){
- const finalRow=decisionRow(d.revision);
+ const count=asInput(d).media?.length??0;
  return Markup.inlineKeyboard([...recruitmentSelectorRows(d),
+  [b("🖼️🎬 アルバム "+count+"/"+PROFILE_ALBUM_LIMIT,`recruit:albumopen:${rev}`,"primary"),
+   b("容姿/エリア",`recruit:appearance:${rev}`,"primary")],
   [finalRow[0]!,b("🪪 プロフ登録","pc:from:recruit","primary"),finalRow[1]!]]);
+}
+function initialKeyboard(d:EditorDraft){return keyboard(d);}
+function albumState(d:EditorDraft):CompactAlbumState{
+ return {media:asInput(d).media??[],mediaNextId:Number(d.data.mediaNextId??1),
+  replaceMediaId:typeof d.data.replaceMediaId==="number"?d.data.replaceMediaId:undefined};
+}
+async function showAlbum(telegram:Telegram,id:number,d:EditorDraft,notice=""){
+ const rev=d.revision,p="recruit:";
+ const rows=compactAlbumRows({album:p+"albumview:"+rev,back:p+"albumback:"+rev,
+  save:p+"post:"+rev,cancel:p+"cancel:"+rev});
+ await show(telegram,id,d,(notice?notice+"\n\n":"")+compactAlbumText("相手募集",albumState(d)),
+  Markup.inlineKeyboard(rows.map(row=>row.map(v=>b(v.text,v.callback,v.style)))));
+}
+function appearanceData(d:EditorDraft):AppearanceValues&ProfileAreaValues{
+ const input=asInput(d),pending=d.data.recruitPendingRegion;
+ return {hair:input.hair,body:input.appearanceBody,region:input.region,area:input.area,
+  pendingRegion:typeof pending==="string"&&isAreaBlock(pending)?pending:null};
+}
+async function showAppearance(telegram:Telegram,id:number,d:EditorDraft){
+ const x=appearanceData(d),r=d.revision,step=d.data.recruitAppearanceStep;
+ if(step==="hair"||step==="body"){
+  const kind=step==="hair"?"h":"b";
+  return show(telegram,id,d,choiceText(kind,x,"ra"),choiceKeyboard(kind,r,x,"ra"));
+ }
+ if(step==="area-blocks")return show(telegram,id,d,areaBlocksText(x,"ra"),areaBlocksKeyboard(r,x,"ra"));
+ if(step==="area-children")return show(telegram,id,d,areaChildrenText(x,"ra"),areaChildrenKeyboard(r,x,"ra"));
+ return show(telegram,id,d,appearanceText(x,"ra"),appearanceKeyboard(r,"ra"));
 }
 export function inputInstructions(linked:boolean){
  return linked?
   "📢 相手募集を作成\n保存済みプロフィールと連動します。タイトルを入力し、必要なら募集内容も同じメッセージで送信してください。\n\n"+
-   "1行目：タイトル\n2行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。":
+   "1行目：タイトル\n2行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\n会える方を探しています。\n時間は相談で決めたいです。\n\n🖼️🎬 アルバムから写真・動画を合計5件まで登録できます。":
   "📢 相手募集を作成\nプロフィール未登録のため、この募集だけに使う情報を1通で入力してください。"+
   "\n\n1行目：タイトル\n2行目：ニックネーム\n3行目：身長 体重 年齢"+
-  "\n4行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。";
+  "\n4行目以降：募集内容（任意・改行自由）\n\n例：\n今夜遊べる人募集\nゼロ\n175 80 40\n会える方を探しています。\n時間は相談で決めたいです。\n\n🖼️🎬 アルバムから写真・動画を合計5件まで登録できます。";
 }
 async function showPreview(telegram:Telegram,id:number,d:EditorDraft,warning=""){
  const input=asInput(d);
  const profile=input.mode==="linked"?await getProfile(id):null;
- const destinations=await listVerifiedTopics("announcement");
- // A published edit always reflects the actual delivery receipt; a fresh draft
- // reflects only the explicitly selected verified topic, never an old DM entry.
- const publishedId=Number(d.data.publishedSourceId);
- const published=Number.isSafeInteger(publishedId)&&publishedId>0?
-  await loadPublishedRecruitment(id,publishedId):null;
- const selected=published?
-  destinations.find(t=>t.id===published.topicId&&t.chatId===published.chatId&&t.threadId===published.threadId):
-  destinations.find(t=>t.id===Number(d.data.selectedTopicId));
- if(published&&!selected)throw Error("RECRUITMENT_PUBLICATION_TOPIC_NOT_VERIFIED");
- const rawDestination=selected?
-  BOARD_TITLES[selected.board]+"\n"+selected.title+" / 投稿ID："+(published?published.sourceId:"未発行"):
-  "投稿先グループ：未選択\n投稿先を選んでから公開してください。";
- const fullKeyboard=keyboard(d);
- // The Rich editor has buttons beside the field text. Keep only the shared
- // selectors/publish/back buttons below it; plain mode uses all edit buttons.
- const actionRows=fullKeyboard.reply_markup.inline_keyboard.filter(row=>
-  !row.some(button=>"callback_data" in button&&
-    String(button.callback_data).startsWith("recruit:edit:")));
- try{
-  const api=telegram as unknown as {callApi:(method:string,payload:Record<string,unknown>)=>Promise<any>};
-  const old=typeof d.data.screenMessageId==="number"?d.data.screenMessageId:undefined;
-  const rich=buildRecruitmentRichPreview(input,d.revision,rawDestination,warning,profile,!!d.data.publishedSourceId);
-  const payload={chat_id:id,rich_message:rich,
-    reply_markup:{inline_keyboard:actionRows}};
-  if(old){
-   try{
-    await api.callApi("editMessageText",{...payload,message_id:old});
-    return;
-   }catch(e){
-    if(e instanceof Error&&/message is not modified/i.test(e.message))return;
-    // On an unsupported edit, the regular-mode fallback retains all buttons.
-   }
-  }else{
-   const sent=await api.callApi("sendRichMessage",payload);
-   if(!Number.isSafeInteger(sent?.message_id)||sent.message_id<=0)
-    throw Error("RICH_MESSAGE_ID_INVALID");
-   await bindDraftScreen(id,"announcement",d.revision,sent.message_id);
-   return;
-  }
- }catch{
-  // Telegram API/SDK or device support cannot be assumed in advance.
- }
- await show(telegram,id,d,rawDestination.split("\n").map(escapeProfileHtml).join("\n")+"\n"+
-  renderRecruitmentPreview(input,profile)+
-  "\n\n"+(d.data.publishedSourceId?"📢 公開済み募集を編集中":"📢 相手募集（未投稿）")+
-  "\n📝各項目を変更しても他の入力は保持します。"+
-  (warning?"\n"+escapeProfileHtml(warning):""),fullKeyboard,true);
+ await show(telegram,id,d,renderRecruitmentCard(input,profile)+
+  (warning?"\n\n"+escapeProfileHtml(warning):""),keyboard(d),true);
 }
 export async function showRecruitmentDestinationStep(telegram:Telegram,id:number,d:EditorDraft,
  stage:"groups"|"blocks"|"topics",board?:"area_bbs"|"gay_board"|"video_chat",index=0,page=0,namespace:"recruit"|"room"="recruit"){
@@ -263,6 +236,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
     return;
    }
   }
+  if(previous.step==="awaiting_media"){await showAlbum(telegram,userId,previous);return;}
+  if(previous.step==="awaiting_tags"&&previous.data.recruitAppearanceStep){await showAppearance(telegram,userId,previous);return;}
   if(previous.step==="preview"){
    await showPreview(telegram,userId,previous);return;
   }
@@ -296,7 +271,7 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
   kind:"recruitment",recruitmentFlow:"compact",
   recruitmentMode:linked?"linked":"manual",
   mode:linked?"linked":"manual",profileRevision:linked?profile!.revision:null,
-  purposeCodes:[],placeCodes:[],
+  purposeCodes:[],placeCodes:[],media:[],mediaNextId:1,
   likeTags:linked?validLikeTags(profile!.likeTags??[]):[],
   loveTags:linked?validLikeTags(profile!.loveTags??[]):[],
   ...(entry?{entryChatId:entry.chatId,entryThreadId:entry.threadId}:{}),
@@ -329,13 +304,13 @@ async function publishRecruitment(
  // Fail before writing an announcement or application token when public release is closed.
  await assertFeatureReleased("announcement");
  // The posted message is rendered exclusively by the Bot, never forwarded.
- const text=renderRecruitmentPreview(data,profile);
+ const text=renderRecruitmentCard(data,profile);
  const snapshot=profile?{
   nickname:profile.nickname,heightCm:profile.heightCm,weightKg:profile.weightKg,
   age:profile.age,position:profile.position,
  }:null;
  const conditions={
-  inputMode:data.mode,title:data.title,
+  inputMode:data.mode,title:data.title,...recruitmentExtras(data),recruitmentUiVersion:RECRUITMENT_UI_VERSION,
   likeTags:validLikeTags(data.likeTags??[]),loveTags:validLikeTags(data.loveTags??[]),
   ...(data.mode==="manual"?{
    nickname:data.nickname,heightCm:data.heightCm,weightKg:data.weightKg,
@@ -343,14 +318,16 @@ async function publishRecruitment(
   }:{}),
  };
  // No default recruitment deadline or application approval flow was authorized.
- const usernameLink=await ownerUsernameLink(telegram,owner);
+ const username=await verifiedRecruitmentUsername(telegram,owner);
+ if(!username)throw Error("RECRUITMENT_OWNER_USERNAME_REQUIRED");
  const ann=await createAnnouncement(owner,d.revision,"recruitment",data.body,
   undefined,data.purposeCodes,data.placeCodes,undefined,
   {profileSnapshot:snapshot,conditions});
+ const token=await ensureRecruitmentViewToken(owner,Number(ann.sourceId));
  const sent=await publishPost(telegram,{
   sourceType:"announcement",destinationPurpose:"announcement",sourceId:ann.sourceId,
   ownerId:owner,revision:d.revision,topicId,text,approved:true,
-  buttons:[[{text:"🔗 募集者へ連絡",url:usernameLink}]],
+  buttons:recruitmentViewRows(token,username),
  });
  await markPostSourcePublished(owner,"announcement",ann.sourceId);
  if(Number.isSafeInteger(d.data.screenMessageId)&&Number(d.data.screenMessageId)>0)
@@ -376,11 +353,8 @@ export async function showRecruitmentPublished(
  const topics=await listVerifiedTopics("announcement");
  const topic=topics.find(t=>t.chatId===sent.chatId&&t.threadId===sent.threadId);
  if(!topic)throw Error("RECRUITMENT_TOPIC_NOT_VERIFIED");
- const profile=record.input.mode==="linked"?await getProfile(ctx.from.id):null;
- const details=renderRecruitmentPreview(record.input,profile);
- const screen=escapeProfileHtml(BOARD_TITLES[topic.board])+
-  "\n"+escapeProfileHtml(topic.title)+" / 投稿ID："+sent.sourceId+
-  "\n"+details+"\n\n✅ 募集を投稿しました。";
+ const details=renderRecruitmentCard(record.input,record.snapshot);
+ const screen="✅ 募集を投稿しました。\n\n"+details;
  await ctx.editMessageText(screen,{
   parse_mode:"HTML",
   ...Markup.inlineKeyboard([
@@ -478,8 +452,18 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   // The same active-owner arbitration used by the other DM wizards.
   if(await currentDmTextOwner(ctx.from.id)!=="announcement")return next();
   const d=await getDraft(ctx.from.id,"announcement");
+  if(d?.data.recruitmentFlow==="compact"&&d.step==="awaiting_media"){
+   const cleared=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
+   const notice=cleared?"":"⚠️ 入力メッセージを削除できませんでした。手動で削除してください。";
+   try{
+    const state=updateCompactAlbumText(albumState(d),ctx.message.text);
+    const next=await updateDraft(ctx.from.id,"announcement",d.revision,"awaiting_media",{...d.data,...state});
+    await showAlbum(ctx.telegram,ctx.from.id,next,notice);
+   }catch(e){await showAlbum(ctx.telegram,ctx.from.id,d,"⚠️ "+(e instanceof Error?e.message:"入力を確認してください。")+(notice?"\n"+notice:""));}
+   return;
+  }
   const phase=d?.data.recruitmentFlow==="compact"?
-   recruitmentTextPhase(d.step,d.data.recruitPanelReturnStep):null;
+   (d.step==="preview"?"initial":recruitmentTextPhase(d.step,d.data.recruitPanelReturnStep)):null;
   if(!d||!phase)return next();
   const cleared=await removeUserWizardInput(ctx.telegram,ctx.chat.id,ctx.message.message_id);
   const warning=cleared?"":"⚠️ 入力メッセージを削除できませんでした。手動で削除してください。";
@@ -511,6 +495,102 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
     initialKeyboard(d);
    await show(ctx.telegram,ctx.from.id,d,message,buttons,true);
   }
+ });
+ bot.action(/^recruit:albumopen:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))||!["preview","awaiting_text"].includes(d.step)){await ctx.answerCbQuery("古い操作です");return;}
+  const next=await updateDraft(ctx.from.id,"announcement",d.revision,"awaiting_media",{...d.data,recruitAlbumReturnStep:d.step,replaceMediaId:undefined});
+  await ctx.answerCbQuery();await showAlbum(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^recruit:albumview:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]),"awaiting_media")){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();
+  if(!albumState(d).media?.length){await ctx.telegram.sendMessage(ctx.from.id,"アルバムはまだ空です。");return;}
+  try{await sendProfileAlbum(ctx.telegram,ctx.from.id,{media:albumState(d).media});}
+  catch{await ctx.telegram.sendMessage(ctx.from.id,"アルバムを表示できませんでした。");}
+ });
+ async function returnRecruitmentEditor(telegram:Telegram,id:number,d:EditorDraft,from:"album"|"appearance"){
+  const step=(from==="album"?d.data.recruitAlbumReturnStep:d.data.recruitAppearanceReturnStep)==="awaiting_text"?"awaiting_text":"preview";
+  const next=await updateDraft(id,"announcement",d.revision,step,{...d.data,
+   replaceMediaId:undefined,recruitAppearanceStep:null,recruitPendingRegion:null,recruitAlbumReturnStep:null,recruitAppearanceReturnStep:null});
+  if(step==="awaiting_text")await show(telegram,id,next,inputInstructions(asInput(next).mode==="linked"),initialKeyboard(next));
+  else await showPreview(telegram,id,next);
+ }
+ bot.action(/^recruit:albumback:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]),"awaiting_media")){await ctx.answerCbQuery("古い操作です");return;}
+  await ctx.answerCbQuery();await returnRecruitmentEditor(ctx.telegram,ctx.from.id,d,"album");
+ });
+ const mediaInput=async(ctx:Context,next:()=>Promise<unknown>,kind:"photo"|"video")=>{
+  if(ctx.chat?.type!=="private"||!ctx.from||await currentDmTextOwner(ctx.from.id)!=="announcement")return next();
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!d||d.data.recruitmentFlow!=="compact"||d.step!=="awaiting_media")return next();
+  const message=ctx.message;
+  if(!message)return next();
+  const photo=kind==="photo"&&"photo" in message?message.photo.at(-1):undefined;
+  const video=kind==="video"&&"video" in message?message.video:undefined;
+  const fileId=photo?.file_id??video?.file_id;
+  if(!fileId)return next();
+  const entry:ProfileMediaItem={type:kind,fileId,sourceMessageId:message.message_id,
+   ...("media_group_id" in message&&typeof message.media_group_id==="string"?{mediaGroupId:message.media_group_id}:{})};
+  let updated=d,notice="";
+  try{
+   const state=updateCompactAlbumMedia(albumState(d),entry);
+   updated=await updateDraft(ctx.from.id,"announcement",d.revision,"awaiting_media",{...d.data,...state});
+  }catch(e){notice="⚠️ "+(e instanceof Error&&e.message==="PROFILE_ALBUM_FULL"?"アルバムは5件までです。差し替えるか、既存の項目を削除してください。":"アルバムへの登録に失敗しました。");}
+  if(!await removeUserWizardInput(ctx.telegram,ctx.chat.id,message.message_id))notice+=(notice?"\n":"")+"⚠️ 媒体メッセージを削除できません。手動で削除してください。";
+  await showAlbum(ctx.telegram,ctx.from.id,updated,notice);
+ };
+ bot.on("photo",async(ctx,next)=>mediaInput(ctx,next,"photo"));
+ bot.on("video",async(ctx,next)=>mediaInput(ctx,next,"video"));
+ bot.action(/^recruit:appearance:(\d+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,Number(ctx.match[1]))||!["preview","awaiting_text"].includes(d.step)){await ctx.answerCbQuery("古い操作です");return;}
+  const next=await updateDraft(ctx.from.id,"announcement",d.revision,"awaiting_tags",{...d.data,recruitAppearanceStep:"appearance",recruitAppearanceReturnStep:d.step,recruitPendingRegion:null});
+  await ctx.answerCbQuery();await showAppearance(ctx.telegram,ctx.from.id,next);
+ });
+ bot.action(/^ra:(ap|ar|section):(\d+):(.+)$/,async ctx=>{
+  if(ctx.chat?.type!=="private")return;
+  const [,family,revision,action]=ctx.match,rev=Number(revision);
+  const d=await getDraft(ctx.from.id,"announcement");
+  if(!active(d,rev,"awaiting_tags")||!d.data.recruitAppearanceStep){await ctx.answerCbQuery("古い操作です");return;}
+  const step=String(d.data.recruitAppearanceStep),x=appearanceData(d);
+  let data={...d.data};
+  if(family==="section"&&action==="save"){
+   await ctx.answerCbQuery();await returnRecruitmentEditor(ctx.telegram,ctx.from.id,d,"appearance");return;
+  }else if(family==="ap"&&action==="back"&&step==="appearance"){
+   await ctx.answerCbQuery();await returnRecruitmentEditor(ctx.telegram,ctx.from.id,d,"appearance");return;
+  }else if(family==="ap"&&step==="appearance"&&(action==="open:h"||action==="open:b"||action==="area")){
+   data.recruitAppearanceStep=action==="area"?"area-blocks":action==="open:h"?"hair":"body";
+  }else if(family==="ap"&&action==="back"&&(step==="hair"||step==="body"))data.recruitAppearanceStep="appearance";
+  else if(family==="ar"&&action==="back"&&(step==="area-blocks"||step==="area-children")){
+   data.recruitAppearanceStep=step==="area-children"?"area-blocks":"appearance";data.recruitPendingRegion=null;
+  }else if(family==="ap"&&/^h:\d+$/.test(action)&&step==="hair"){
+   const value=HAIR_CHOICES[Number(action.slice(2))];
+   if(!value){await ctx.answerCbQuery("無効です");return;}
+   data.hair=nextSelection("single-optional",x.hair?[x.hair]:[],value,HAIR_CHOICES)[0]??null;
+  }else if(family==="ap"&&/^b:\d+$/.test(action)&&step==="body"){
+   const value=BODY_CHOICES[Number(action.slice(2))];
+   if(!value){await ctx.answerCbQuery("無効です");return;}
+   data.appearanceBody=nextSelection("single-optional",x.body?[x.body]:[],value,BODY_CHOICES)[0]??null;
+  }else if(family==="ar"&&/^r:\d+$/.test(action)&&step==="area-blocks"){
+   const region=PROFILE_AREA_BLOCKS[Number(action.slice(2))];
+   if(!region){await ctx.answerCbQuery("無効です");return;}
+   const children=areaChildren(region);
+   if(children.length===1){const v=toggleProfileArea(x,region,children[0]!);data={...data,region:v.region,area:v.area,recruitPendingRegion:null};}
+   else {data.recruitAppearanceStep="area-children";data.recruitPendingRegion=region;}
+  }else if(family==="ar"&&/^a:\d+$/.test(action)&&step==="area-children"&&x.pendingRegion){
+   const child=areaChildren(x.pendingRegion)[Number(action.slice(2))];
+   if(!child){await ctx.answerCbQuery("無効です");return;}
+   const v=toggleProfileArea(x,x.pendingRegion,child);data={...data,region:v.region,area:v.area};
+  }else {await ctx.answerCbQuery("古い操作です");return;}
+  const next=await updateDraft(ctx.from.id,"announcement",rev,"awaiting_tags",data);
+  await ctx.answerCbQuery();await showAppearance(ctx.telegram,ctx.from.id,next);
  });
  bot.action(/^recruit:edit:(\d+):(title|nickname|stats|body)$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
@@ -601,7 +681,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
    b("キャンセル",`recruit:cancel:${rev}`,"danger")]);
   const ready=!!data.title?.trim();
   const profile=ready&&data.mode==="linked"?await getProfile(id):null;
-  const preview=ready?renderRecruitmentPreview(data,profile):
+  const preview=ready?renderRecruitmentCard(data,profile):
    escapeProfileHtml(inputInstructions(data.mode==="linked"));
   const heading=panel==="position"?"ポジションを選択してください（1つ必須）。":
    panel==="purpose"?"目的タグを選択してください（複数選択可能）。":
@@ -758,16 +838,16 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   if(ctx.chat?.type!=="private")return;
   let d=await getDraft(ctx.from.id,"announcement");
   if(!active(d,Number(ctx.match[1]))||
-     !["preview","awaiting_text","awaiting_tags"].includes(d.step)){
+     !["preview","awaiting_text","awaiting_tags","awaiting_media"].includes(d.step)){
    await ctx.answerCbQuery("古い投稿ボタンです");return;
   }
-  if(d.step==="awaiting_text"){
+  if(d.step==="awaiting_text"||!asInput(d).title?.trim()){
    await ctx.answerCbQuery("募集情報を入力してから投稿してください",{show_alert:true});
    return;
   }
-  if(d.step==="awaiting_tags"){
+  if(d.step==="awaiting_tags"||d.step==="awaiting_media"){
    d=await updateDraft(ctx.from.id,"announcement",d.revision,"preview",{
-    ...d.data,recruitPanel:null,recruitPanelReturnStep:null});
+    ...d.data,recruitPanel:null,recruitPanelReturnStep:null,replaceMediaId:undefined,recruitAppearanceStep:null,recruitPendingRegion:null});
   }
   try{
    if(await checkLinkedProfileChanged(ctx.telegram,ctx.from.id,d)){
@@ -823,7 +903,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   if(ctx.chat?.type!=="private")return;
   const d=await getDraft(ctx.from.id,"announcement");
   if(!active(d,Number(ctx.match[1]))||
-     !["preview","awaiting_text","awaiting_tags","awaiting_recruitment_edit"].includes(d.step)){
+     !["preview","awaiting_text","awaiting_tags","awaiting_recruitment_edit","awaiting_media"].includes(d.step)){
    await ctx.answerCbQuery("古い操作です");return;
   }
   // Published-edit cancellation must discard unsaved changes but preserve
