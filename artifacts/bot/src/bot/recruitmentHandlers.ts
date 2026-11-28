@@ -96,7 +96,7 @@ function keyboard(d:EditorDraft){
  return Markup.inlineKeyboard([...recruitmentSelectorRows(d),
   [b("🖼️🎬 アルバム "+count+"/"+PROFILE_ALBUM_LIMIT,`recruit:albumopen:${rev}`,"primary"),
    b("容姿/エリア",`recruit:appearance:${rev}`,"primary")],
-  [finalRow[0]!,b("🪪 プロフ登録","pc:from:recruit","primary"),finalRow[1]!]]);
+  [finalRow[0]!,b("🪪 プロフ登録","pc:from:recruit","primary"),b("キャンセル",`recruit:cancel:${rev}`,"danger")]]);
 }
 function initialKeyboard(d:EditorDraft){return keyboard(d);}
 function albumState(d:EditorDraft):CompactAlbumState{
@@ -219,7 +219,8 @@ export async function startCompactRecruitmentEditor(telegram:Telegram,userId:num
     // Older drafts may omit body entirely; it is an optional field.
     body:typeof previous.data.body==="string"?previous.data.body:"",
    };
-   const missingText=["preview","awaiting_tags","awaiting_recruitment_edit"].includes(previous.step)&&
+   const missingText=(["preview","awaiting_recruitment_edit"].includes(previous.step)||
+    (previous.step==="awaiting_tags"&&previous.data.recruitPanelReturnStep==="preview"&&!previous.data.recruitAppearanceStep))&&
     (typeof recovered.title!=="string"||!recovered.title.trim());
    const changed=missingText||recovered.body!==previous.data.body||
     recovered.mode!==previous.data.mode||
