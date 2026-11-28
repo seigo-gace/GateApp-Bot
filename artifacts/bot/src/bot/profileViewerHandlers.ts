@@ -5,17 +5,19 @@ import {parseProfileViewerPayload,profileViewerUrl,resolvePublishedProfileView,r
  type ViewerPurpose} from "../services/profilePublicView.js";
 import type {SavedProfile} from "../services/profileRepository.js";
 import {PROFILE_ALBUM_LIMIT} from "../services/profileMedia.js";
+import {resolveRecruitmentPanel,recruitmentViewRows,verifiedRecruitmentUsername} from "../services/recruitmentPublicView.js";
+import {renderRecruitmentCard} from "../services/recruitmentCompose.js";
 import {profileSearchHashtag} from "../services/profileHashtag.js";
 export {profileSearchHashtag} from "../services/profileHashtag.js";
 
 type ProfileMedia={itemId?:number;fileId:string;type:"photo"|"video"};
-function availableMedia(profile:SavedProfile):ProfileMedia[]{
+function availableMedia(profile:Pick<SavedProfile,"media">):ProfileMedia[]{
  // Keep older references in storage untouched; display at most the adopted five.
  return (profile.media??[]).slice(0,PROFILE_ALBUM_LIMIT);
 }
 /** A Telegram media album is a group of 2-5 original file references. */
 export async function sendProfileAlbum(
- telegram:Context["telegram"],userId:number,profile:SavedProfile
+ telegram:Context["telegram"],userId:number,profile:Pick<SavedProfile,"media">
 ):Promise<number>{
  const items=availableMedia(profile);
  if(!Number.isSafeInteger(userId)||userId<=0)throw Error("PROFILE_ALBUM_ACTOR_INVALID");
@@ -99,6 +101,7 @@ export async function startProfileViewer(ctx:Context,payload:string):Promise<voi
 /** Media display never edits or forwards the owner's original upload. */
 export function registerProfileViewerHandlers(bot:Telegraf):void{
  registerPublicProfilePanelHandlers(bot);
+ registerPublicRecruitmentPanelHandlers(bot);
  bot.action(/^pfv:pr:([A-Za-z0-9_-]{32})$/,async ctx=>{
   if(ctx.chat?.type!=="private")return;
   const profile=await resolvePublishedProfileView(ctx.match[1]!);
@@ -205,6 +208,44 @@ export function registerPublicProfilePanelHandlers(bot:Telegraf):void{
   }catch{
    // Never replace or broadcast-edit the shared group post as a fallback.
    await ctx.answerCbQuery("表示できません。Telegramの更新状態をご確認ください。",{show_alert:true});
+  }
+ });
+}
+
+/** Same ephemeral transport and panel presentation as profiles. The source
+ * resolver is recruitment-specific and cannot expose private profile media. */
+export function registerPublicRecruitmentPanelHandlers(bot:Telegraf):void{
+ bot.action(/^rv:contact:([A-Za-z0-9_-]{32})$/,async ctx=>{
+  await ctx.answerCbQuery("投稿者にTelegram usernameが設定されていません。",{show_alert:true});
+ });
+ bot.action(/^rv:show:([A-Za-z0-9_-]{32}):(profile|photo|video|like|love)$/,async ctx=>{
+  const msg=ctx.callbackQuery.message;
+  if(!msg||!ctx.chat||ctx.chat.type!=="supergroup"){await ctx.answerCbQuery("公開募集から操作してください");return;}
+  const token=ctx.match[1]!,mode=ctx.match[2] as "profile"|"photo"|"video"|"like"|"love";
+  const ephemeralId=(msg as typeof msg & {ephemeral_message_id?:number}).ephemeral_message_id;
+  try{
+   if(ephemeralId!==undefined&&(!Number.isSafeInteger(ephemeralId)||ephemeralId<=0))throw Error("EPHEMERAL_ID_INVALID");
+   const source=await resolveRecruitmentPanel(token,ctx.chat.id,ephemeralId?undefined:msg.message_id);
+   if(!source){await ctx.answerCbQuery("公開状態を確認できません");return;}
+   const username=await verifiedRecruitmentUsername(ctx.telegram,source.ownerId).catch(()=>null);
+   const rich_message=mode==="profile"?
+    {html:renderRecruitmentCard(source.input,source.basic).replace(/\n/g,"<br/>")}:
+    profilePanelRich(source.profile,mode);
+   const reply_markup=Markup.inlineKeyboard(recruitmentViewRows(token,username).map(row=>row.map(v=>
+    v.url?Markup.button.url(v.text,v.url):Markup.button.callback(v.text,v.callback_data!)
+   ))).reply_markup;
+   const api=ctx.telegram as unknown as BotApiCaller;
+   if(ephemeralId)await api.callApi("editEphemeralMessageText",{
+    chat_id:ctx.chat.id,receiver_user_id:ctx.from.id,ephemeral_message_id:ephemeralId,rich_message,reply_markup,
+   });
+   else await api.callApi("sendRichMessage",{
+    chat_id:ctx.chat.id,rich_message,reply_markup,ephemeral_message_parameters:{
+     callback_query_id:ctx.callbackQuery.id,replace_callback_query_message:true,
+    },
+   });
+   await ctx.answerCbQuery();
+  }catch{
+   await ctx.answerCbQuery("表示できません。Telegramの更新状態をご確認ください。",{show_alert:true}).catch(()=>undefined);
   }
  });
 }

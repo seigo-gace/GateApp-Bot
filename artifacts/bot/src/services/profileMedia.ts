@@ -79,3 +79,44 @@ export function deleteProfileMedia(items:readonly ProfileMediaItem[],itemId:numb
  if(!present.some(x=>x.itemId===itemId))throw Error("PROFILE_MEDIA_ITEM_NOT_FOUND");
  return present.filter(x=>x.itemId!==itemId);
 }
+
+/** Shared compact album editor. The caller owns the draft and publish action. */
+export type CompactAlbumState={media?:ProfileMediaItem[];mediaNextId?:number;replaceMediaId?:number};
+export function compactAlbumText(label:string,d:CompactAlbumState):string{
+ const media=numberProfileMedia(d.media);
+ return "🖼️🎬 "+label+"のアルバム\n画像・動画は合計"+PROFILE_ALBUM_LIMIT+"件まで。"+
+  "\nTelegramの添付から写真・動画を送ってください。"+
+  "\n既存の画像/動画を変える場合「差替 番号」、消す場合「削除 番号」と入力。"+
+  "\n登録済み "+media.length+"/"+PROFILE_ALBUM_LIMIT+"件"+
+  (media.length?"\n"+media.map(v=>"No."+v.itemId+" "+(v.type==="photo"?"🖼️画像":"🎬動画")).join("\n"):"")+
+  (d.replaceMediaId?"\n差替対象：No."+d.replaceMediaId:"")+
+  "\n元画像をグループへ自動公開しません。";
+}
+export function compactAlbumRows(callbacks:{album:string;back:string;save:string;cancel:string},saveLabel="✅ 保存・投稿"){
+ return [
+  [{text:"🖼️アルバムを見る",callback:callbacks.album,style:"primary" as const}],
+  [{text:"↩ 戻る",callback:callbacks.back,style:undefined},
+   {text:saveLabel,callback:callbacks.save,style:"success" as const},
+   {text:"キャンセル",callback:callbacks.cancel,style:"danger" as const}],
+ ];
+}
+export function updateCompactAlbumText<T extends CompactAlbumState>(d:T,text:string):T{
+ const value=text.trim(),match=/^(削除|差替)\s*(\d+)$/.exec(value),old=numberProfileMedia(d.media);
+ if(match){
+  const id=Number(match[2]);
+  if(!old.some(v=>v.itemId===id))throw Error("指定番号はアルバムにありません。");
+  if(match[1]==="削除")return {...d,media:deleteProfileMedia(old,id),replaceMediaId:undefined};
+  return {...d,replaceMediaId:id};
+ }
+ if(value==="差替取消")return {...d,replaceMediaId:undefined};
+ throw Error("画像・動画は添付で送信。差替・削除は番号を指定してください。");
+}
+export function updateCompactAlbumMedia<T extends CompactAlbumState>(d:T,entry:ProfileMediaItem):T{
+ const old=numberProfileMedia(d.media);
+ if(old.some(v=>v.sourceMessageId===entry.sourceMessageId))return d;
+ const replace=d.replaceMediaId;
+ const id=Math.max(d.mediaNextId??1,...old.map(v=>(v.itemId??0)+1),1);
+ const media=replace!==undefined?replaceProfileMedia(old,replace,entry):
+  numberProfileMedia(appendProfileMedia(old,{...entry,itemId:id}));
+ return {...d,media,mediaNextId:replace!==undefined?id:id+1,replaceMediaId:undefined};
+}

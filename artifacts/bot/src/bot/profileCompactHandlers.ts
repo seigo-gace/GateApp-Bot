@@ -14,7 +14,7 @@ import {PROFILE_POSITIONS,isProfilePosition,parseProfileBasic,renderProfileBasic
 import {parseRecruitmentMessage} from "../services/recruitmentCompose.js";
 import {PURPOSE_TAGS,PLACE_TAGS,normalizePlaceCodes} from "../services/announcementTags.js";
 import {LIKE_CATEGORIES,likePageBounds,toggleLike,validLikeTags,type LikeTag} from "../services/profileLike.js";
-import {PROFILE_ALBUM_LIMIT,appendProfileMedia,replaceProfileMedia,deleteProfileMedia,numberProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
+import {PROFILE_ALBUM_LIMIT,compactAlbumText,compactAlbumRows,updateCompactAlbumText,updateCompactAlbumMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {sendProfileAlbum} from "./profileViewerHandlers.js";
 import {publishProfileToAllBoards} from "../services/profileBoardPublication.js";
 import {startCompactRecruitmentEditor} from "./recruitmentHandlers.js";
@@ -130,23 +130,12 @@ function panelText(d:ProfileDraft):string{
   "📍 場所あり/なしは択一、足ありは独立して選択できます。";
 }
 function mediaText(d:ProfileDraft):string{
- const media=numberProfileMedia(d.data.media);
- return "🖼️🎬 プロフィールのアルバム\n画像・動画は合計"+PROFILE_ALBUM_LIMIT+"件まで。"+
-  "\nTelegramの添付から写真・動画を送ってください。"+
-  "\n既存の画像/動画を変える場合「差替 番号」、消す場合「削除 番号」と入力。"+
-  "\n登録済み "+media.length+"/"+PROFILE_ALBUM_LIMIT+"件"+
-  (media.length?"\n"+media.map(v=>"No."+v.itemId+" "+(v.type==="photo"?"🖼️画像":"🎬動画")).join("\n"):"")+
-  (d.data.replaceMediaId?"\n差替対象：No."+d.data.replaceMediaId:"")+
-  "\n元画像をグループへ自動公開しません。";
+ return compactAlbumText("プロフィール",d.data);
 }
 function mediaKeyboard(d:ProfileDraft){
- const r=d.revision;
- return Markup.inlineKeyboard([
-  [button("🖼️アルバムを見る","pc:"+r+":album","primary")],
-  [button("↩ 戻る","pc:"+r+":back"),
-   button("✅ 保存・投稿","pc:"+r+":save","success"),
-   button("キャンセル","pc:"+r+":cancel","danger")],
- ]);
+ const r=d.revision,p="pc:"+r+":";
+ return Markup.inlineKeyboard(compactAlbumRows({album:p+"album",back:p+"back",save:p+"save",cancel:p+"cancel"})
+  .map(row=>row.map(v=>button(v.text,v.callback,v.style))));
 }
 async function render(telegram:Telegram,id:number,d:ProfileDraft,notice=""){
  const markup=d.step==="compact_panel"?panelKeyboard(d):
@@ -496,17 +485,7 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
     const next=await profiles.putDraft(ctx.from.id,"compact",{...d.data,...parsed},d.revision);
     await render(ctx.telegram,ctx.from.id,next,notice);
    }else{
-    const text=ctx.message.text.trim();
-    const match=/^(削除|差替)\s*(\d+)$/.exec(text);
-    const old=numberProfileMedia(d.data.media);
-    let data={...d.data};
-    if(match){
-     const id=Number(match[2]);
-     if(!old.some(v=>v.itemId===id))throw Error("指定番号はアルバムにありません。");
-     if(match[1]==="削除")data={...data,media:deleteProfileMedia(old,id),replaceMediaId:undefined};
-     else data={...data,replaceMediaId:id};
-    }else if(text==="差替取消")data={...data,replaceMediaId:undefined};
-    else throw Error("画像・動画は添付で送信。差替・削除は番号を指定してください。");
+    const data=updateCompactAlbumText(d.data,ctx.message.text);
     const next=await profiles.putDraft(ctx.from.id,"compact_media",data,d.revision);
     await render(ctx.telegram,ctx.from.id,next,notice);
    }
@@ -534,15 +513,8 @@ export function registerCompactProfileHandlers(bot:Telegraf):void{
   const deleted=await removeUserWizardInput(ctx.telegram,ctx.chat.id,message.message_id);
   const notice=deleted?"":"⚠️ 媒体メッセージを削除できません。手動で削除してください。";
   try{
-   const old=numberProfileMedia(d.data.media);
-   const replace=d.data.replaceMediaId;
-   const id=Math.max(d.data.mediaNextId??1,...old.map(v=>(v.itemId??0)+1),1);
-   const updated=replace!==undefined?
-    replaceProfileMedia(old,replace,entry):
-    numberProfileMedia(appendProfileMedia(old,{...entry,itemId:id}));
-   const next=await profiles.putDraft(ctx.from.id,"compact_media",{
-    ...d.data,media:updated,mediaNextId:replace!==undefined?id:id+1,
-    replaceMediaId:undefined},d.revision);
+   const data=updateCompactAlbumMedia(d.data,entry);
+   const next=await profiles.putDraft(ctx.from.id,"compact_media",data,d.revision);
    await render(ctx.telegram,ctx.from.id,next,notice);
   }catch(e){
    await render(ctx.telegram,ctx.from.id,d,

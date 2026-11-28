@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {appendProfileMedia,validateProfileMedia,numberProfileMedia,replaceProfileMedia,deleteProfileMedia} from "../src/services/profileMedia.js";
+import {appendProfileMedia,validateProfileMedia,numberProfileMedia,replaceProfileMedia,deleteProfileMedia,compactAlbumText,compactAlbumRows,updateCompactAlbumText,updateCompactAlbumMedia,type CompactAlbumState} from "../src/services/profileMedia.js";
 test("Telegram media references only",()=>{
  const a=appendProfileMedia([],{type:"photo",fileId:"photo-id",sourceMessageId:100});
  const b=appendProfileMedia(a,{type:"video",fileId:"video-id",sourceMessageId:101});
@@ -37,4 +37,20 @@ test("③ media item numbers remain stable through replacement and deletion",()=
  assert.throws(()=>replaceProfileMedia(deleted,1,{type:"photo",fileId:"x",sourceMessageId:504}),/NOT_FOUND/);
  assert.throws(()=>replaceProfileMedia(deleted,2,{type:"photo",fileId:"x",sourceMessageId:502}),/DUPLICATE/);
  validateProfileMedia(deleted);
+});
+
+test("compact album registration is shared, preserves item numbers and respects five-item cap",()=>{
+ let state:CompactAlbumState={media:[],mediaNextId:1};
+ for(let i=1;i<=5;i++)state=updateCompactAlbumMedia(state,{type:i===3?"video":"photo",fileId:"item"+i,sourceMessageId:i});
+ assert.equal(state.media!.length,5);
+ assert.throws(()=>updateCompactAlbumMedia(state,{type:"photo",fileId:"six",sourceMessageId:6}),/PROFILE_ALBUM_FULL/);
+ state=updateCompactAlbumText(state,"差替 3");
+ state=updateCompactAlbumMedia(state,{type:"photo",fileId:"replacement",sourceMessageId:7});
+ assert.equal(state.media!.find(x=>x.itemId===3)?.fileId,"replacement");
+ state=updateCompactAlbumText(state,"削除 2");
+ state=updateCompactAlbumMedia(state,{type:"video",fileId:"new",sourceMessageId:8});
+ assert.deepEqual(state.media!.map(x=>x.itemId),[1,3,4,5,6]);
+ const profile=compactAlbumText("プロフィール",state);
+ assert.equal(compactAlbumText("相手募集",state),profile.replace("プロフィール","相手募集"));
+ assert.deepEqual(compactAlbumRows({album:"a",back:"b",save:"s",cancel:"c"}).map(row=>row.length),[1,3]);
 });

@@ -45,6 +45,8 @@ jobs:
           trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
           docker cp "$container:/app/gaybbs.mjs" /tmp/gaybbs-ci-bundle/gaybbs.mjs
           docker cp "$container:/app/backfillExistingProfileKeyboards.mjs" /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
+          docker cp "$container:/app/backfillExistingRecruitmentCards.mjs" /tmp/gaybbs-ci-bundle/backfillExistingRecruitmentCards.mjs
+          node --check /tmp/gaybbs-ci-bundle/backfillExistingRecruitmentCards.mjs
           node --check /tmp/gaybbs-ci-bundle/gaybbs.mjs
           docker cp "$container:/app/refreshStartlessExistingPosts.mjs" /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
           node --check /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
@@ -61,6 +63,7 @@ jobs:
           path: |
             /tmp/gaybbs-ci-bundle/gaybbs.mjs
             /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
+            /tmp/gaybbs-ci-bundle/backfillExistingRecruitmentCards.mjs
             /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
             /tmp/gaybbs-ci-bundle/notice-codecs/
             /tmp/gaybbs-ci-bundle/notice-codecs.sha256
