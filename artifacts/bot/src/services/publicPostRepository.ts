@@ -17,7 +17,7 @@ export async function beginDraft(id:number,module:PostModule,step:EditorDraft["s
  // are removed. Allocate above the owner's previous legacy announcement keys
  // so a new notice never aliases an earlier source/delivery. Other modules
  // retain the existing revision allocation.
- if(module==="announcement"&&(data.kind==="announcement"||data.kind==="preview")){
+ if(module==="announcement"&&(data.kind==="announcement"||data.kind==="preview"||data.kind==="recruitment")){
   const r=await pool.query(
    `INSERT INTO public_post_drafts(owner_user_id,module,step,data,revision)
     SELECT $1::bigint,'announcement',$2::text,$3::jsonb,
