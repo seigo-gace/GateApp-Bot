@@ -545,6 +545,7 @@ export function registerCompactRecruitmentHandlers(bot:Telegraf){
   }catch(e){notice="⚠️ "+(e instanceof Error&&e.message==="PROFILE_ALBUM_FULL"?"アルバムは5件までです。差し替えるか、既存の項目を削除してください。":"アルバムへの登録に失敗しました。");}
   if(!await removeUserWizardInput(ctx.telegram,ctx.chat.id,message.message_id))notice+=(notice?"\n":"")+"⚠️ 媒体メッセージを削除できません。手動で削除してください。";
   await showAlbum(ctx.telegram,ctx.from.id,updated,notice);
+  return;
  };
  bot.on("photo",async(ctx,next)=>mediaInput(ctx,next,"photo"));
  bot.on("video",async(ctx,next)=>mediaInput(ctx,next,"video"));
