@@ -16,6 +16,11 @@ const ALLOWED_CHATS = new Set<number>([
   BOARD_GROUP_CHAT_IDS.video_chat,
   BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
+// Navigation-only parent blocks. Hokkaido and Okinawa also serve as posting destinations.
+export const AREA_BLOCK_TOPIC_IDS = new Set<number>([621,990,991,992,993,994,995,996,997,998,999]);
+export function isAreaBlockTopic(chatId:number,threadId:number):boolean{
+ return chatId===BOARD_GROUP_CHAT_IDS.area_bbs&&AREA_BLOCK_TOPIC_IDS.has(threadId);
+}
 const tokenPattern=/^p_([A-Za-z0-9_-]{32})$/;
 export function topicEntryDirectDmUrl(token:string):string{
  if(!/^[A-Za-z0-9_-]{32}$/.test(token))throw Error("TOPIC_ENTRY_TOKEN_INVALID");
@@ -39,7 +44,7 @@ export function permittedTopicDmEntry(chatId:number,threadId:number):boolean{
 export async function assertPostingDoorwayAllowed(
  chatId:number,threadId:number,title?:string,
 ):Promise<void>{
- if(!permittedTopicDmEntry(chatId,threadId))
+ if(!permittedTopicDmEntry(chatId,threadId)||isAreaBlockTopic(chatId,threadId))
   throw Error("TOPIC_ENTRY_EXCLUDED_BY_MASTER");
  const q=await pool.query<{blocked:boolean}>(
   `SELECT (
