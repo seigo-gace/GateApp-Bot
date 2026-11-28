@@ -1,8 +1,13 @@
 /** Single-message recruitment editor. A profile is read-only when linked.
  * The final input field consumes ALL remaining lines, including newlines.
  */
-import {parseProfileBasic,escapeProfileHtml,isProfilePosition} from "./profileCore.js";
+import {parseProfileBasic,escapeProfileHtml,isProfilePosition,renderProfileStyleRecruitment} from "./profileCore.js";
 import type {ProfileBasicDraft} from "./profileCore.js";
+import type {AppearanceValues} from "./profileAppearance.js";
+import type {ProfileAreaValues} from "./profileArea.js";
+import {validateAppearance} from "./profileAppearance.js";
+import {validateProfileArea} from "./profileArea.js";
+import {validateProfileMedia, type ProfileMediaItem} from "./profileMedia.js";
 import {validateAnnouncementTags} from "./announcementTags.js";
 import {validLikeTags,type LikeTag} from "./profileLike.js";
 export type RecruitmentInput={
@@ -10,6 +15,9 @@ export type RecruitmentInput={
  nickname?:string;heightCm?:number;weightKg?:number;age?:number;position?:string;
  purposeCodes:string[];placeCodes:string[];
  likeTags?:LikeTag[];loveTags?:LikeTag[];
+ hair?:AppearanceValues["hair"];appearanceBody?:AppearanceValues["body"];
+ region?:ProfileAreaValues["region"];area?:ProfileAreaValues["area"];
+ media?:ProfileMediaItem[];mediaNextId?:number;
 };
 /** The selector panel opened before first input still belongs to the text-entry phase.
  * A selector opened from preview must not re-consume arbitrary new text.
@@ -93,6 +101,37 @@ export function renderRecruitmentPreview(
  if(draft.placeCodes.length)rows.push("📍 場所："+draft.placeCodes.map(t=>"#"+e(t)).join(" "));
  return rows.join("\n");
 }
+/** The recruitment card and the profile card share one presentation owner.
+ * The recruitment description is not the profile's body-type field. */
+export function recruitmentCardProfile(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
+ const basic=d.mode==="linked"?profile:{
+  nickname:d.nickname??"",heightCm:d.heightCm??0,weightKg:d.weightKg??0,
+  age:d.age??0,position:isProfilePosition(d.position??"")?d.position:undefined,
+ };
+ if(!basic)throw Error("PROFILE_REQUIRED_FOR_LINKED_RECRUITMENT");
+ const position=isProfilePosition(basic.position??"")?basic.position:undefined;
+ return {
+  nickname:basic.nickname,heightCm:basic.heightCm,weightKg:basic.weightKg,age:basic.age,
+  position,title:d.title,hair:d.hair,body:d.appearanceBody,region:d.region,area:d.area,
+  likeTags:validLikeTags(d.likeTags??[]),loveTags:validLikeTags(d.loveTags??[]),
+  purposeCodes:d.purposeCodes,placeCodes:d.placeCodes,media:d.media??[],
+ };
+}
+export function renderRecruitmentCard(d:RecruitmentInput,profile?:ProfileBasicDraft|null):string{
+ const p=recruitmentCardProfile(d,profile);
+ return renderProfileStyleRecruitment({...p,position:isProfilePosition(p.position??"")?p.position as ProfileBasicDraft["position"]:undefined},d.body);
+}
+export function validateRecruitmentExtras(d:RecruitmentInput):void{
+ validateAppearance({hair:d.hair,body:d.appearanceBody});
+ validateProfileArea({region:d.region,area:d.area});
+ validateProfileMedia(d.media);
+}
+export function recruitmentExtras(d:RecruitmentInput){
+ validateRecruitmentExtras(d);
+ return {hair:d.hair??null,appearanceBody:d.appearanceBody??null,
+  region:d.region??null,area:d.area??null,media:d.media??[],
+  mediaNextId:d.mediaNextId??1};
+}
 /** Shared personal-information validation independent of Announcement-specific tags. */
 export function validateRecruitmentIdentityReady(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
  if(!d.title?.trim())throw Error("RECRUITMENT_INPUT_INCOMPLETE");
@@ -104,6 +143,7 @@ export function validateRecruitmentIdentityReady(d:RecruitmentInput,profile?:Pro
 }
 export function validateRecruitmentReady(d:RecruitmentInput,profile?:ProfileBasicDraft|null){
  validateRecruitmentIdentityReady(d,profile);
+ validateRecruitmentExtras(d);
  validateAnnouncementTags({purposeCodes:d.purposeCodes,placeCodes:d.placeCodes});
  if(d.purposeCodes.length===0)throw Error("目的を1つ以上選択してください。");
 }
