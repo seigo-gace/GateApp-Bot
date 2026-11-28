@@ -21,7 +21,7 @@ SOCKET_PATH = SECRETS / "userbot_verify.sock"
 MAX_REQUEST_BYTES = 2048
 MAX_RESPONSE_BYTES = 8192
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-ACTIONS = frozenset({"health", "bot_start_menu", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke", "topic_entry_audit", "video_sale_readback", "video_sale_payment_form"})
+ACTIONS = frozenset({"health", "bot_start_menu", "help_button_burst_smoke", "profile_button_smoke", "link_button_smoke", "link_registration_smoke", "link_inline_query_smoke", "link_send_saved_smoke", "link_photo_caption_smoke", "link_video_caption_smoke", "link_rich_flow_smoke", "room_private_smoke", "room_public_readback", "room_public_post_smoke", "profile_topics_readback", "profile_topics_by_id", "bug_report_inbox_provision", "bug_report_delivery_smoke", "topic_entry_audit", "video_sale_readback", "video_sale_payment_form"})
 # Project-approved groups only; never turn this into an arbitrary chat reader.
 ROOM_READ_CHATS = frozenset({-1003847210571, -1002373696859, -1003770334893})
 EXPECTED_MENU = [
@@ -380,6 +380,33 @@ async def process_request(client: Any, request: Any) -> dict[str, Any]:
         if options:
             latest = max(options, key=lambda m: m.id)
             labels = [[b.text for b in row] for row in latest.buttons]
+            if action == "help_button_burst_smoke":
+                # Fixed, private, read-only help navigation. Never publish,
+                # change a profile, submit an application or open another session.
+                from time import monotonic
+                if labels != EXPECTED_MENU:
+                    raise RuntimeError("HELP_BURST_MENU_INVALID")
+                started = monotonic()
+                results = await asyncio.gather(
+                    *(latest.click(text="操作説明") for _ in range(5)),
+                    return_exceptions=True)
+                rejected = [r for r in results if isinstance(r, BaseException)]
+                if any(type(r).__name__ not in {"DataInvalidError", "MessageIdInvalidError"}
+                       for r in rejected) or len(rejected) == 5:
+                    raise RuntimeError("HELP_BURST_CALLBACK_FAILED")
+                for _ in range(24):
+                    recent = await client.get_messages(bot, limit=20)
+                    help_screens = [m for m in recent if not m.out and m.id >= latest.id
+                                    and "知りたい機能を選択してください。" in (m.raw_text or "")]
+                    if help_screens:
+                        if len(help_screens) != 1 or help_screens[0].id != latest.id:
+                            raise RuntimeError("HELP_BURST_SCREEN_DUPLICATED")
+                        return {"request_id": request_id, "action": action, "status": "PASS",
+                                "presses": 5, "accepted_callbacks": 5-len(rejected),
+                                "stale_rejections": len(rejected), "same_screen": True,
+                                "screen_count": 1, "elapsed_ms": round((monotonic()-started)*1000)}
+                    await asyncio.sleep(0.5)
+                raise RuntimeError("HELP_BURST_SCREEN_MISSING")
             if action == "link_button_smoke":
                 # Bounded in-DM click verification. No public post, edit or session copy.
                 from datetime import datetime, timezone, timedelta
@@ -473,6 +500,8 @@ async def serve_resident(client: Any, stop: asyncio.Event) -> None:
                 "USERBOT_REPORT_TARGET_UNSAFE", "USERBOT_REPORT_IDENTITY_CONFLICT",
                 "USERBOT_BUG_REPORT_MENU_NOT_VISIBLE", "USERBOT_BUG_REPORT_SCREEN_NOT_OPENED",
                 "USERBOT_REPORT_E2E_INCOMPLETE", "USERBOT_BUG_REPORT_STALE_MENU_REMAINS",
+                "HELP_BURST_MENU_INVALID", "HELP_BURST_CALLBACK_FAILED",
+                "HELP_BURST_SCREEN_DUPLICATED", "HELP_BURST_SCREEN_MISSING",
             }
             code = str(exc) if str(exc) in safe_codes else "INTERNAL"
             response = {"status": "FAIL", "error": code}

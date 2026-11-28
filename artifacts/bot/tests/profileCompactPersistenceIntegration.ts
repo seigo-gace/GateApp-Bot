@@ -5,7 +5,7 @@ import {join} from "node:path";
 import {pool} from "../src/db/index.js";
 import {runMigrations} from "../src/db/migrate.js";
 import {putDraft,getDraft,getProfile,savePrivateDraft} from "../src/services/profileRepository.js";
-import {startCompactProfileEditor} from "../src/bot/profileCompactHandlers.js";
+import {startCompactProfileEditor,returnFromCompactAppearance} from "../src/bot/profileCompactHandlers.js";
 
 const owner=900000000098;
 const previous=process.env.PROFILE_PR_STORAGE_DIR;
@@ -66,6 +66,41 @@ try{
  assert.equal(edits.length,1);
  assert.equal(edits[0]?.[1],1300,"profile must open on the tapped menu message");
  assert.ok((refreshed?.revision??0)>prior.revision);
+ // Exercise the actual shared appearance exit against PostgreSQL.
+ const appearance=await putDraft(owner,"appearance",{
+  ...refreshed!.data,compactOrigin:"profile",hair:"短髪",age:41,pr:"変更した自己PR"
+ },refreshed!.revision);
+ const answers:string[]=[];
+ const editCtx={
+  chat:{type:"private"},from:{id:owner,username:"test_user_998"},
+  callbackQuery:{message:{message_id:1300}},
+  telegram:{editMessageText:async(...args:unknown[])=>{edits.push(args);}},
+  answerCbQuery:async(message?:string)=>{answers.push(message??"");},
+  reply:async()=>{throw Error("UNEXPECTED_PROFILE_FALLBACK_REPLY");}
+ };
+ await returnFromCompactAppearance(editCtx as any,appearance,true);
+ const restored=await getDraft(owner);
+ assert.equal(restored?.step,"compact");
+ assert.equal(restored?.revision,appearance.revision+1);
+ assert.equal(restored?.data.screenMessageId,1300);
+ assert.equal(restored?.data.compactOrigin,"profile");
+ assert.equal(restored?.data.media?.length,5);
+ assert.equal(restored?.data.pr,"変更した自己PR");
+ assert.equal((await getProfile(owner))?.age,41);
+ assert.equal((await getProfile(owner))?.hair,"短髪");
+ assert.equal(edits.at(-1)?.[1],1300);
+ await assert.rejects(savePrivateDraft(owner,appearance.revision,"test_user_998",true),/PROFILE_DRAFT_STALE/);
+ const cleared=await putDraft(owner,"compact",{...restored!.data,pr:null},restored!.revision);
+ assert.equal((await getDraft(owner))?.data.pr,null);
+ await startCompactProfileEditor(editCtx as any);
+ const reopened=await getDraft(owner);
+ assert.equal(reopened?.data.pr,null,"reopen must not restore the deliberately cleared PR");
+ assert.equal(reopened?.data.prRef,null);
+ await savePrivateDraft(owner,reopened!.revision,"test_user_998");
+ assert.equal((await getProfile(owner))?.pr,null);
+ assert.ok(reopened!.revision>cleared.revision);
+ console.log("PROFILE_CLEAR_PR_REOPEN=PASS");
+ console.log("PROFILE_ATOMIC_SECTION_SAVE_AND_RESUME=PASS");
  console.log("PROFILE_MENU_CALLBACK_SCREEN_REBIND=PASS");
  console.log("PROFILE_SHARED_ALBUM_SQL_ROUNDTRIP=PASS");
 }finally{

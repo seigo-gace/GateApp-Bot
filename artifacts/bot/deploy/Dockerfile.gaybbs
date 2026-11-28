@@ -15,6 +15,7 @@ FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/gaybbs.mjs /app/gaybbs.mjs
+COPY --from=build --chown=node:node /src/artifacts/bot/dist/repairTwoVideoChatPinnedEntries.mjs /app/repairTwoVideoChatPinnedEntries.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/backfillExistingProfileKeyboards.mjs /app/backfillExistingProfileKeyboards.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/refreshStartlessExistingPosts.mjs /app/refreshStartlessExistingPosts.mjs
 COPY --from=build --chown=node:node /src/artifacts/bot/dist/publishMenuPanels.mjs /app/publishMenuPanels.mjs
@@ -26,6 +27,10 @@ COPY --from=build --chown=node:node /src/artifacts/bot/deploy/topic-board-ledger
 # undici preload: Node fetch in Docker/WSL must prefer IPv4 for api.telegram.org
 USER root
 RUN npm install --omit=dev undici@6.21.3
+# Export codec packages for the existing offline image update route.
+RUN mkdir -p /app/notice-codecs && apk update && apk fetch --recursive --output /app/notice-codecs libwebp-tools \
+    && apk add --no-network --no-cache /app/notice-codecs/*.apk \
+    && /usr/bin/dwebp -version
 RUN mkdir -p /app/preload && printf '%s\n' \
   '/** Prefer IPv4 for Telegram Bot API in Docker/WSL (undici dual-stack hang). */' \
   'import { Agent, setGlobalDispatcher } from "undici";' \

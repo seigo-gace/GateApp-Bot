@@ -73,6 +73,36 @@ class ResidentSafetyTests(unittest.TestCase):
         self.assertTrue(out["link_editor_opened"])
         self.assertEqual(c.sent,["/start"])
 
+    def test_help_burst_is_fixed_five_private_clicks_on_one_screen(self):
+        class HelpClient(MockClient):
+            def __init__(self, duplicate=False):
+                super().__init__()
+                self.clicks = 0
+                self.duplicate = duplicate
+            async def get_messages(self, bot, limit):
+                if self.clicks:
+                    ids = [11, 12] if self.duplicate else [11]
+                    return [SimpleNamespace(id=i, out=False,
+                        raw_text="📚 操作説明\n知りたい機能を選択してください。") for i in ids]
+                messages = await super().get_messages(bot, limit)
+                for m in messages:
+                    async def click(text):
+                        assert text == "操作説明"
+                        self.clicks += 1
+                        await asyncio.sleep(0)
+                    m.click = click
+                return messages
+        c = HelpClient()
+        request = {"request_id":"help-burst-1", "action":"help_button_burst_smoke"}
+        result = asyncio.run(process_request(c, request))
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(c.clicks, 5)
+        self.assertEqual(result["screen_count"], 1)
+        self.assertEqual(result["accepted_callbacks"], 5)
+        self.assertEqual(c.sent, ["/start"])
+        with self.assertRaisesRegex(RuntimeError, "HELP_BURST_SCREEN_DUPLICATED"):
+            asyncio.run(process_request(HelpClient(duplicate=True), request))
+
     def test_link_registration_uses_only_resident_allowlisted_action(self):
         from unittest.mock import AsyncMock
         c=MockClient()
@@ -129,6 +159,34 @@ class ResidentSafetyTests(unittest.TestCase):
             asyncio.run(process_request(c, {"request_id": "x", "action": "health"}))
         self.assertEqual(c.sent, [])
 
+
+
+class HelpBurstMergeTests(unittest.TestCase):
+    def test_merge_preserves_independent_adopted_source_and_rejects_wrong_anchor(self):
+        import userbot_help_burst_merge as m
+        root = pathlib.Path(__file__).resolve().parent
+        reference = (root / "userbot_resident_ipc.py").read_text(encoding="utf-8")
+        reference_client = (root / "userbot_test_client.py").read_text(encoding="utf-8")
+        resident_block = m.verified_block(reference, m.RESIDENT_START, m.RESIDENT_END)
+        client_block = m.verified_block(reference_client, m.CLIENT_START, m.CLIENT_END)
+        # Simulate a separately adopted source, preserving all unrelated actions,
+        # and the live client's insertion anchor without relying on its link branch.
+        base = reference.replace(m.ACTION_WITH_BURST, m.ACTION_ANCHOR, 1)
+        base = base.replace(resident_block, "", 1).replace(m.ERRORS, "", 1)
+        base = base.replace(m.ACTION_ANCHOR, '"existing_action", ' + m.ACTION_ANCHOR, 1)
+        base_client = reference_client.replace(client_block, "", 1)
+        result, result_client = m.merge(base, base_client, reference, reference_client)
+        self.assertIn('"existing_action"', result)
+        self.assertIn(resident_block, result)
+        self.assertIn(client_block, result_client)
+        self.assertEqual(result.replace(m.ACTION_WITH_BURST, m.ACTION_ANCHOR, 1)
+                         .replace(resident_block, "", 1).replace(m.ERRORS, "", 1), base)
+        self.assertEqual(result_client.replace(client_block, "", 1), base_client)
+        with self.assertRaises(ValueError):
+            m.merge(base.replace(m.RESIDENT_END, '            if action == "different":\n'),
+                    base_client, reference, reference_client)
+        with self.assertRaises(ValueError):
+            m.merge(result, result_client, reference, reference_client)
 
 class ExactProfileTopicReadbackTests(unittest.TestCase):
     """Exact DB-bound topic IDs, no Telegram session, group join or credentials."""

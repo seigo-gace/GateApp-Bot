@@ -24,6 +24,13 @@ pool.on("error", (err: any) => {
   }
 });
 
+/** Only the dedicated GayBBS runtime calls this before its first connection.
+ * PostgreSQL cancels blocked statements at the server, not just the caller. */
+export function configureGaybbsDatabaseWaits():void{
+ if(pool.totalCount!==0)throw Error("GAYBBS_DB_POOL_ALREADY_OPEN");
+ Object.assign(pool.options,{lock_timeout:5000,statement_timeout:60000});
+}
+
 export const db = drizzle(pool, { schema });
 
 export async function closePool(): Promise<void> {

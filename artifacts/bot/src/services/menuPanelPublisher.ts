@@ -5,6 +5,7 @@
 import type { Telegram } from "telegraf";
 import { createTelegramDispatcher } from "./telegramDispatcher.js";
 import { pool } from "../db/index.js";
+import {isAreaBlockTopic} from "./topicDmEntry.js";
 import {commonGateUrl} from "./commonGateInvite.js";
 import {POSTING_EDITOR_SPECS,POSTING_PUBLIC_NAV_LABELS,POSTING_FEATURES,POSTING_CREATOR_URL,POSTING_TALK_URL,POSTING_BUG_REPORT_URL,loadPostingFeatureReadiness} from "./postingMenuRoutes.js";
 import {newMenuToken,tokenHash} from "./menuOrigin.js";
@@ -93,7 +94,8 @@ export async function publishExistingMenuPanel(
  const claim=await pool.query(
   `UPDATE board_menu_panels SET state='publishing',updated_at=NOW()
    WHERE chat_id=$1 AND message_thread_id=$2 AND state IN ('verified','published')
-   RETURNING *`,[chatId,threadId]);
+     AND NOT ($3::boolean AND panel_type='posting')
+   RETURNING *`,[chatId,threadId,isAreaBlockTopic(chatId,threadId)]);
  if(claim.rows.length!==1)throw new Error("PANEL_NOT_VERIFIED_OR_RECONCILE_REQUIRED");
  const panel=claim.rows[0] as PanelRow;
  let messageId=panel.message_id?Number(panel.message_id):null;

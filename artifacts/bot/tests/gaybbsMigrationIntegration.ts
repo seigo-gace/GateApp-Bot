@@ -3,23 +3,47 @@
  */
 import assert from "node:assert/strict";
 import {runMigrations} from "../src/db/migrate.js";
-import {pool,closePool} from "../src/db/index.js";
+import {pool,closePool,configureGaybbsDatabaseWaits} from "../src/db/index.js";
 import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
 import {updateRoomState,changeRoomVisibility} from "../src/services/roomLifecycle.js";
 import {projectNextRoomEvent} from "../src/services/announcementRoomEvents.js";
 import {deliverNextAnnouncementNotification} from "../src/services/announcementNotifications.js";
 import type {Telegram} from "telegraf";
 import {getAuthorizedRoom,listAuthorizedRooms} from "../src/services/roomAccess.js";
-import {createRoom,createAnnouncement} from "../src/services/publicPostRepository.js";
+import {createRoom,createAnnouncement,markPostSourcePublished,beginDraft,getDraft} from "../src/services/publicPostRepository.js";
+import {registerPostingHandlers} from "../src/bot/postingHandlers.js";
 import {purgeDisposableAnnouncements,purgeAbandonedDrafts} from "../src/services/announcementPurge.js";
 import {roomStatusMessage,updateNextRoomStatusMessage} from "../src/services/roomPostStatus.js";
 import {finalizeNextRoom} from "../src/services/roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "../src/services/announcementArchive.js";
 import {currentDmTextOwner} from "../src/services/dmInputOwner.js";
+import {claimDelivery,markDeliveryUnknown} from "../src/services/postingDelivery.js";
+import {makeNoticeApplicationLink,makeApplicationLink} from "../src/services/applicationLinks.js";
+import {isNoticeApplicationLink} from "../src/bot/noticeInteractions.js";
 if(!process.env.DATABASE_URL?.endsWith("/gaybbs_test"))
  throw new Error("INTEGRATION_MUST_USE_GAYBBS_TEST_DB");
 
 try{
+ configureGaybbsDatabaseWaits();
+ const lock=await pool.connect();
+ const waiting=await pool.connect();
+ try{
+  assert.equal((await waiting.query("SHOW lock_timeout")).rows[0].lock_timeout,"5s");
+  assert.equal((await waiting.query("SHOW statement_timeout")).rows[0].statement_timeout,"1min");
+  await lock.query("BEGIN");
+  await lock.query("SELECT pg_advisory_xact_lock(187631)");
+  await waiting.query("BEGIN");
+  await waiting.query("SET LOCAL lock_timeout = '100ms'");
+  await assert.rejects(waiting.query("SELECT pg_advisory_xact_lock(187631)"),{code:"55P03"});
+  await waiting.query("ROLLBACK");
+  await lock.query("ROLLBACK");
+  await waiting.query("BEGIN");
+  await waiting.query("SET LOCAL statement_timeout = '100ms'");
+  await assert.rejects(waiting.query("SELECT pg_sleep(1)"),{code:"57014"});
+  await waiting.query("ROLLBACK");
+  assert.equal((await waiting.query("SELECT 1 AS ok")).rows[0].ok,1);
+  console.log("GAYBBS_DB_WAIT_LIMITS_AND_RECOVERY=PASS");
+ }finally{await lock.query("ROLLBACK").catch(()=>{});await waiting.query("ROLLBACK").catch(()=>{});lock.release();waiting.release();}
  await runMigrations();
  await runMigrations(); // idempotency when a container is restarted.
  for(const table of ["profiles","profile_tags","profile_media","profile_publications",
@@ -517,6 +541,208 @@ try{
    WHERE owner_user_id=777501`);
  assert.equal(await currentDmTextOwner(777501),"profile");
  assert.equal(await currentDmTextOwner(777502),null);
+ // Report, search and help use the same arbitration; terminal drafts
+ // prevent older pending reports from being silently reactivated.
+ await pool.query("INSERT INTO gaybbs_bug_reports(owner_user_id,state,prompt_message_id,updated_at) VALUES(777501,'pending',1234,NOW()+INTERVAL '2 seconds')");
+ assert.equal(await currentDmTextOwner(777501),"bug_report");
+ await pool.query("UPDATE profile_drafts SET updated_at=NOW()+INTERVAL '3 seconds' WHERE owner_user_id=777501");
+ assert.equal(await currentDmTextOwner(777501),"profile");
+ await pool.query("UPDATE profile_drafts SET step='cancelled',updated_at=NOW()+INTERVAL '4 seconds' WHERE owner_user_id=777501");
+ assert.equal(await currentDmTextOwner(777501),null);
+ await pool.query("INSERT INTO gaybbs_search_sessions(owner_user_id,step,updated_at) VALUES(777501,'keyword',NOW()+INTERVAL '5 seconds')");
+ assert.equal(await currentDmTextOwner(777501),"search");
+ await pool.query("INSERT INTO gaybbs_help_sessions(owner_user_id,section,updated_at) VALUES(777501,'home',NOW()+INTERVAL '6 seconds')");
+ assert.equal(await currentDmTextOwner(777501),"help");
+ const profileTopic=await pool.query(
+  "INSERT INTO posting_topics(board_key,purpose,chat_id,message_thread_id,title,verified_by,verified_at,enabled) VALUES('area_bbs','profile',-1003847210571,987654,'みんなのプロフ テスト',1,NOW(),TRUE) RETURNING topic_id");
+ const profileTopicId=Number(profileTopic.rows[0].topic_id);
+ const firstDelivery=await claimDelivery("profile","777503",777503,1,profileTopicId);
+ assert.equal(firstDelivery.claimed,true);
+ await markDeliveryUnknown(firstDelivery.delivery.id);
+ await assert.rejects(claimDelivery("profile","777503",777503,2,profileTopicId),/PROFILE_PUBLICATION_NEEDS_RECONCILE/);
+ const same=await claimDelivery("profile","777503",777503,1,profileTopicId);
+ assert.equal(same.claimed,false);
+ assert.equal(same.delivery.status,"needs_reconcile");
+ console.log("PROFILE_CROSS_REVISION_DUPLICATE_GUARD=PASS");
  console.log("GAYBBS_DB_DM_INPUT_OWNER_NO_CROSS_MODULE_CAPTURE=PASS");
+
+ // Standalone notice participation uses the actual repository and row-locked
+ // application transactions. Run after existing outbox/purge fixtures so these
+ // notifications cannot alter their queue ordering or expected counts.
+ const noticeOwner=991810,noticeApplicant=991811,noticeOther=991812;
+ let noticeRevision=8100;
+ async function makeNotice(kind:"announcement"|"preview",participation:string,deadlineAt?:string,linkedRoomId?:number){
+  const {sourceId}=await createAnnouncement(noticeOwner,++noticeRevision,kind,"CI notice participation",
+   undefined,[],[],linkedRoomId,{conditions:{participation,...(deadlineAt?{deadlineAt}:{})}});
+  await markPostSourcePublished(noticeOwner,"announcement",sourceId);
+  return Number(sourceId);
+ }
+ async function noticeState(id:number,status:string,accept:boolean){
+  const r=await pool.query("SELECT status,accept_applications FROM announcement_posts WHERE announcement_id=$1",[id]);
+  assert.deepEqual(r.rows,[{status,accept_applications:accept}]);
+ }
+ async function noticeCounts(id:number,applications:number,notifications:number){
+  const a=await pool.query("SELECT count(*)::int AS n FROM announcement_applications WHERE announcement_id=$1",[id]);
+  const n=await pool.query("SELECT count(*)::int AS n FROM announcement_notifications WHERE announcement_id=$1",[id]);
+  assert.equal(a.rows[0].n,applications);
+  assert.equal(n.rows[0].n,notifications);
+ }
+ async function noticeApplicationState(id:number,applicant:number,appId:number,status:string){
+  const r=await pool.query("SELECT application_id,status FROM announcement_applications WHERE announcement_id=$1 AND applicant_user_id=$2",[id,applicant]);
+  assert.equal(r.rows.length,1);
+  assert.equal(Number(r.rows[0].application_id),appId);
+  assert.equal(r.rows[0].status,status);
+ }
+ for(const kind of ["announcement","preview"] as const){
+  const open=await makeNotice(kind,"public");
+  await noticeState(open,"published",true);
+  const link=await makeNoticeApplicationLink(noticeOwner,open);
+  const payload=new URL(link).searchParams.get("start")!;
+  assert.equal(await isNoticeApplicationLink(payload),true);
+  await assert.rejects(makeNoticeApplicationLink(noticeOther,open),/NOTICE_SOURCE_NOT_OWNED/);
+  await assert.rejects(makeApplicationLink(noticeOwner,open),/APPLICATION_SOURCE_NOT_OWNED/);
+  await assert.rejects(submitApplication(open,noticeOwner,null),/SELF_APPLICATION_REFUSED/);
+  const joined=await submitApplication(open,noticeApplicant,{source:"notice"});
+  assert.equal(joined.status,"accepted");
+  assert.equal(joined.duplicate,false);
+  const again=await submitApplication(open,noticeApplicant,{source:"notice"},12345);
+  assert.equal(again.applicationId,joined.applicationId);
+  assert.equal(again.status,"accepted");
+  assert.equal(again.duplicate,true);
+  assert.equal(again.resubmitted,false);
+  await assert.rejects(decideApplication(noticeOwner,open,joined.applicationId,"declined"),/APPLICATIONS_CLOSED/);
+  await noticeApplicationState(open,noticeApplicant,joined.applicationId,"accepted");
+  await noticeCounts(open,1,1);
+  const joinedNotice=await pool.query(
+   "SELECT recipient_user_id,payload,event_key FROM announcement_notifications WHERE announcement_id=$1",[open]);
+  assert.equal(joinedNotice.rows.length,1);
+  assert.equal(Number(joinedNotice.rows[0].recipient_user_id),noticeOwner);
+  assert.deepEqual(joinedNotice.rows[0].payload,{applicationId:joined.applicationId,action:"notice_joined"});
+  assert.equal(joinedNotice.rows[0].event_key,"application:"+joined.applicationId+":notice_joined");
+  await noticeState(open,"published",true);
+  const approval=await makeNotice(kind,"approved_only");
+  await noticeState(approval,"published",true);
+  const waiting=await submitApplication(approval,noticeApplicant,null);
+  const waitingOther=await submitApplication(approval,noticeOther,null);
+  assert.equal(waiting.status,"submitted");
+  assert.equal(waitingOther.status,"submitted");
+  const repeated=await submitApplication(approval,noticeApplicant,null,12346);
+  assert.equal(repeated.applicationId,waiting.applicationId);
+  assert.equal(repeated.duplicate,true);
+  assert.equal(repeated.resubmitted,false);
+  await noticeApplicationState(approval,noticeApplicant,waiting.applicationId,"submitted");
+  await noticeCounts(approval,2,2);
+  await assert.rejects(decideApplication(noticeOther,approval,waiting.applicationId,"accepted"),/APPLICATION_OWNER_MISMATCH/);
+  await assert.rejects(decideApplication(noticeOwner,approval,waiting.applicationId,"held"),/APPLICATION_DECISION_INVALID/);
+  assert.equal((await decideApplication(noticeOwner,approval,waiting.applicationId,"accepted")).status,"accepted");
+  assert.equal((await decideApplication(noticeOwner,approval,waitingOther.applicationId,"declined")).status,"declined");
+  await assert.rejects(decideApplication(noticeOwner,approval,waiting.applicationId,"declined"),/APPLICATION_ALREADY_DECIDED/);
+  await noticeApplicationState(approval,noticeApplicant,waiting.applicationId,"accepted");
+  await noticeApplicationState(approval,noticeOther,waitingOther.applicationId,"declined");
+  await noticeCounts(approval,2,4);
+  const approvedNotice=await pool.query(
+   "SELECT recipient_user_id,payload FROM announcement_notifications WHERE announcement_id=$1 AND payload->>'action'='accepted'",[approval]);
+  assert.equal(approvedNotice.rows.length,1);
+  assert.equal(Number(approvedNotice.rows[0].recipient_user_id),noticeApplicant);
+  assert.deepEqual(approvedNotice.rows[0].payload,{applicationId:waiting.applicationId,action:"accepted"});
+  await noticeState(approval,"published",true);
+  for(const mode of ["none","unknown"]){
+   const closed=await makeNotice(kind,mode);
+   await noticeState(closed,"published",false);
+   await assert.rejects(submitApplication(closed,noticeApplicant,null),/APPLICATIONS_CLOSED/);
+   await noticeCounts(closed,0,0);
+  }
+  for(const mode of ["public","approved_only"]){
+   const expired=await makeNotice(kind,mode,new Date(Date.now()-3600000).toISOString());
+   await noticeState(expired,"published",true);
+   await assert.rejects(submitApplication(expired,noticeApplicant,null),/APPLICATION_DEADLINE_PASSED/);
+   await noticeCounts(expired,0,0);
+  }
+ }
+ const noticeRoom=await createRoom(noticeOwner,++noticeRevision,"CI notice linked Room",undefined,{visibility:"public"});
+ const roomNotice=await makeNotice("announcement","public",undefined,Number(noticeRoom.sourceId));
+ await noticeState(roomNotice,"published",false);
+ await assert.rejects(submitApplication(roomNotice,noticeApplicant,null),/APPLICATIONS_CLOSED/);
+ // Even if Room ownership opens its shared flag, the standalone notice
+ // participation branch must still reject a Room-linked announcement.
+ const approvedNoticeRoom=await createRoom(noticeOwner,++noticeRevision,"CI approval linked Room",undefined,{visibility:"approved_only"});
+ const roomApprovalNotice=await makeNotice("announcement","approved_only",undefined,Number(approvedNoticeRoom.sourceId));
+ await noticeState(roomApprovalNotice,"published",true);
+ await assert.rejects(submitApplication(roomApprovalNotice,noticeApplicant,null),/APPLICATIONS_CLOSED/);
+ await noticeCounts(roomNotice,0,0);
+ await noticeCounts(roomApprovalNotice,0,0);
+ await assert.rejects(makeNoticeApplicationLink(noticeOwner,roomNotice),/NOTICE_SOURCE_NOT_OWNED/);
+ // Full registered publish callback, real isolated DB and fake Telegram only.
+ // The earlier unit fixture intentionally kept release closed; exercise the
+ // actual successful route, including repeat publication after draft deletion.
+ const publicationOwner=991820;
+ const publicationTopic=Number(topic.rows[0].topic_id);
+ const callbacks:Array<{pattern:RegExp;handler:Function}>=[];
+ const fakeBot={command(){},on(){},action(pattern:unknown,handler:Function){
+  if(pattern instanceof RegExp)callbacks.push({pattern,handler});
+ }};
+ registerPostingHandlers(fakeBot as any);
+ const sentNotices:Array<{text:string;thread:number;buttons:any}>=[];
+ const sentStickers:string[]=[];
+ let ownerPanels=0;
+ const fakeTelegram={
+  async getChat(chatId:number){assert.equal(chatId,-1002373696859);return {id:chatId,type:"supergroup"};},
+  async getMe(){return {id:123456};},
+  async getChatMember(chatId:number,botId:number){assert.equal(chatId,-1002373696859);assert.equal(botId,123456);return {status:"administrator"};},
+  async sendMessage(chatId:number,text:string,extra:any){
+   assert.equal(chatId,-1002373696859);assert.equal(extra.message_thread_id,123);
+   sentNotices.push({text,thread:extra.message_thread_id,buttons:extra.reply_markup.inline_keyboard});
+   return {message_id:90000+sentNotices.length};
+  },
+  async sendSticker(chatId:number,fileId:string,extra:any){
+   assert.equal(chatId,-1002373696859);assert.equal(extra.message_thread_id,123);
+   sentStickers.push(fileId);return {message_id:91000+sentStickers.length};
+  },
+  async editMessageText(chatId:number,id:number,_inline:unknown,text:string){
+   assert.equal(chatId,publicationOwner);assert.ok(id>=100);assert.match(text,/告知\/予告 管理/);
+   ownerPanels++;return true;
+  },
+  async callApi(){throw Error("PUBLISH_MUST_NOT_REUPLOAD_PREVIEW");},
+  async deleteMessage(){throw Error("UNEXPECTED_DELETE");}
+ };
+ const publications:string[]=[];
+ for(let i=1;i<=2;i++){
+  const draft=await beginDraft(publicationOwner,"announcement","preview",{
+   kind:"announcement",title:"CI notice "+i,body:"test only",participation:"public",
+   topicId:publicationTopic,noticeDestinationExplicit:true,destinationLabel:"old label",
+   screenMessageId:100+i,media:[{kind:"sticker",fileId:"ci_sticker_"+i}],
+   linkLabel:"詳細",linkUrl:"https://example.com/"
+  });
+  const data="post:announce:publish:"+draft.revision;
+  const action=callbacks.find(x=>x.pattern.test(data));assert.ok(action);
+  const replies:string[]=[];
+  await action.handler({from:{id:publicationOwner},chat:{id:publicationOwner,type:"private"},
+   match:action.pattern.exec(data),callbackQuery:{data,message:{message_id:100+i,chat:{id:publicationOwner,type:"private"}}},
+   telegram:fakeTelegram,answerCbQuery:async()=>{},reply:async(text:string)=>{replies.push(text);}});
+  assert.deepEqual(replies,[]);
+  assert.equal(await getDraft(publicationOwner,"announcement"),null);
+  const sources=await pool.query(
+   "SELECT announcement_id,status,text,accept_applications FROM announcement_posts WHERE owner_user_id=$1 ORDER BY announcement_id",
+   [publicationOwner]);
+  assert.equal(sources.rows.length,i);
+  const source=sources.rows.at(-1)!;
+  assert.equal(source.status,"published");assert.equal(source.accept_applications,true);
+  assert.equal(source.text,"CI notice "+i+"\ntest only");
+  publications.push(String(source.announcement_id));
+  const delivery=await pool.query(
+   "SELECT status,telegram_message_id,posting_topic_id FROM posting_deliveries WHERE source_type='announcement' AND source_id=$1",
+   [publications.at(-1)]);
+  assert.equal(delivery.rows.length,1);assert.equal(delivery.rows[0].status,"sent");
+  assert.equal(Number(delivery.rows[0].telegram_message_id),90000+i);
+  assert.equal(Number(delivery.rows[0].posting_topic_id),publicationTopic);
+  assert.equal(sentNotices.length,i);assert.equal(ownerPanels,i);
+  assert.ok(sentNotices.at(-1)!.buttons.flat().some((x:any)=>x.callback_data?.startsWith("gdm:a_")));
+  assert.ok(sentNotices.at(-1)!.buttons.flat().some((x:any)=>x.url==="https://example.com/"));
+ }
+ assert.notEqual(publications[0],publications[1]);
+ assert.deepEqual(sentStickers,["ci_sticker_1","ci_sticker_2"]);
+ console.log("GAYBBS_DB_NOTICE_REAL_CALLBACK_REPEAT_PUBLICATION=PASS");
+ console.log("GAYBBS_DB_NOTICE_ENTRY_OWNER_AND_KIND=PASS");
+ console.log("GAYBBS_DB_STANDALONE_NOTICE_PARTICIPATION=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}

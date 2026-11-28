@@ -9,8 +9,8 @@ import {updateNextRoomStatusMessage} from "./roomPostStatus.js";
 import {finalizeNextRoom} from "./roomTerminalFinalizer.js";
 import {archiveNextTerminalAnnouncement} from "./announcementArchive.js";
 
-type Worker={name:string;enabled:boolean;busy:boolean;run:()=>Promise<unknown>};
-export function startGayBbsWorkers(telegram:Telegram):()=>void{
+type Worker={name:string;enabled:boolean;busy:boolean;since?:number;warned?:boolean;run:()=>Promise<unknown>};
+export function startGayBbsWorkers(telegram:Telegram):()=>Promise<void>{
  let nextCleanupAt=0;
  const workers:Worker[]=[
   {name:"room-announcement",enabled:process.env.GAYBBS_ROOM_EVENT_WORKER_ENABLED==="enabled",
@@ -43,19 +43,24 @@ export function startGayBbsWorkers(telegram:Telegram):()=>void{
  ];
  // For a non-enabled worker there is no timer or DB/Telegram access.
  const enabled=workers.filter(w=>w.enabled);
- if(!enabled.length)return ()=>{};
+ if(!enabled.length)return async()=>{};
  let stopped=false;
+ const running=new Set<Promise<void>>();
  const timer=setInterval(()=>{
   if(stopped)return;
   for(const w of enabled){
-   if(w.busy)continue;
-   w.busy=true;
-   void w.run().catch(error=>{
+   if(w.busy){
+    if(!w.warned&&w.since!==undefined&&Date.now()-w.since>=60000){w.warned=true;console.warn("GAYBBS_WORKER_STALLED",w.name);}
+    continue;
+   }
+   w.busy=true;w.since=Date.now();w.warned=false;
+   const task=Promise.resolve().then(()=>w.run()).then(()=>undefined).catch(error=>{
     // Do not print raw Telegram/DB exceptions, secrets or user payload.
     console.error("GAYBBS_WORKER_CHECK_FAILED",w.name,
       error instanceof Error?error.name:"unknown");
-   }).finally(()=>{w.busy=false;});
+   }).finally(()=>{if(w.warned)console.log("GAYBBS_WORKER_SETTLED",w.name);w.busy=false;w.since=undefined;w.warned=false;running.delete(task);});
+   running.add(task);
   }
  },15000);
- return ()=>{stopped=true;clearInterval(timer)};
+ return async()=>{stopped=true;clearInterval(timer);await Promise.allSettled([...running]);};
 }

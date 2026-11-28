@@ -49,6 +49,11 @@ jobs:
           docker cp "$container:/app/refreshStartlessExistingPosts.mjs" /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
           node --check /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
           node --check /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
+          docker cp "$container:/app/notice-codecs" /tmp/gaybbs-ci-bundle/notice-codecs
+          docker run --rm --network none --entrypoint /usr/bin/dwebp gaybbs:ci -version
+          docker run --rm --network none --entrypoint sh gaybbs:ci -ec 'printf "%s" UklGRhwAAABXRUJQVlA4TBAAAAAvA8AAAAfQyP5H/wMR0f8A | base64 -d > /tmp/notice.webp; dwebp /tmp/notice.webp -o /tmp/notice.png; node -e "const b=require(\"fs\").readFileSync(\"/tmp/notice.png\");if(b.readUInt32BE(0)!==0x89504e47||b.readUInt32BE(16)!==4||b.readUInt32BE(20)!==4)process.exit(1)"'
+          echo NOTICE_WEBP_DECODE=PASS
+          (cd /tmp/gaybbs-ci-bundle && sha256sum notice-codecs/*.apk > notice-codecs.sha256)
           sha256sum /tmp/gaybbs-ci-bundle/gaybbs.mjs
       - uses: actions/upload-artifact@v4
         with:
@@ -57,5 +62,7 @@ jobs:
             /tmp/gaybbs-ci-bundle/gaybbs.mjs
             /tmp/gaybbs-ci-bundle/backfillExistingProfileKeyboards.mjs
             /tmp/gaybbs-ci-bundle/refreshStartlessExistingPosts.mjs
+            /tmp/gaybbs-ci-bundle/notice-codecs/
+            /tmp/gaybbs-ci-bundle/notice-codecs.sha256
           if-no-files-found: error
           retention-days: 2

@@ -21,6 +21,7 @@ export function renderAnnouncementNotification(payload:EventPayload):string{
  const action=String(payload.action||payload.kind||"");
  const label:Record<string,string>={
   submitted:"📨 新しい応募が届きました。下のボタンから確認できます。",
+  notice_joined:"告知に新しい参加者が登録されました",
   accepted:"✅ 応募が承認されました。下のボタンから参加状況を確認できます。",
   held:"⏸ 応募が保留されました。主催者の連絡をお待ちください。",
   declined:"❌ 応募が見送られました。",

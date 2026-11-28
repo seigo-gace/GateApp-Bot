@@ -2,7 +2,7 @@ import {Markup,type Telegraf} from "telegraf";
 import {getProfile,listProfilePublications} from "../services/profileRepository.js";
 import {renderPublicProfile,escapeProfileHtml} from "../services/profileCore.js";
 import {hidePublishedProfile} from "../services/profilePublicationControl.js";
-import {startProfileEditor} from "./profileHandlers.js";
+import {startCompactProfileEditor} from "./profileCompactHandlers.js";
 
 const privateDM=(ctx:{chat?:{type:string};from?:{id:number}})=>
  ctx.chat?.type==="private"&&!!ctx.from;
@@ -11,7 +11,11 @@ export function registerProfilePostManagement(bot:Telegraf):void{
  bot.command("myprofileposts",async ctx=>{
   if(!privateDM(ctx))return;
   const pubs=await listProfilePublications(ctx.from.id);
-  if(!pubs.length){await ctx.reply("公開済みプロフィール投稿はありません。/profile で登録できます。");return;}
+  if(!pubs.length){
+   await ctx.reply("公開済みプロフィール投稿はありません。",Markup.inlineKeyboard([
+    [Markup.button.callback("プロフ作成・編集","pf:restart")],
+   ]));return;
+  }
   const rows=pubs.map(p=>[
    Markup.button.callback("投稿 "+targetId(p.chatId,p.threadId)+"（"+p.status+"）",
     "pfpost:detail:"+targetId(p.chatId,p.threadId)),
@@ -48,7 +52,7 @@ export function registerProfilePostManagement(bot:Telegraf):void{
   if(!exists){await ctx.answerCbQuery("対象の投稿がありません");return;}
   await ctx.answerCbQuery();
   if(action==="edit"){
-   await startProfileEditor(ctx);
+   await startCompactProfileEditor(ctx);
    return;
   }
   const p=await getProfile(ctx.from.id);

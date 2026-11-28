@@ -38,6 +38,16 @@ export async function claimDelivery(
  const cx=await pool.connect();
  try{
   await cx.query("BEGIN");
+  if(sourceType==="profile"){
+   // Serialize first-publication claims across revisions of this owner/topic.
+   // A previous ambiguous or sent-but-unrecorded delivery cannot become a new
+   // publication merely because the user saved a newer profile revision.
+   await cx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",["profile:"+ownerId+":"+topicId]);
+   const prior=await cx.query(
+    "SELECT 1 FROM posting_deliveries WHERE source_type='profile' AND owner_user_id=$1 AND posting_topic_id=$2 AND operation_key<>$3 AND status IN ('sending','sent','needs_reconcile') LIMIT 1",
+    [ownerId,topicId,op]);
+   if(prior.rows.length)throw Error("PROFILE_PUBLICATION_NEEDS_RECONCILE");
+  }
   const existing=await cx.query(
    "INSERT INTO posting_deliveries (source_type,source_id,owner_user_id,source_revision,posting_topic_id,operation_key,status,inline_buttons) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7::jsonb) ON CONFLICT (operation_key) DO NOTHING RETURNING delivery_id,status,telegram_message_id",
    [sourceType,sourceId,ownerId,revision,topicId,op,JSON.stringify(buttons)]

@@ -26,8 +26,6 @@ CHATS = {"area": -1003847210571, "video": -1002373696859, "category": -100377033
 TARGETS = {
     "area": {
         0: [1379],
-        7: [995, 994, 993],
-        8: [992, 991, 990, 621, 999, 998, 997, 996],
         9: [44, 105],
     },
     "video": {},
@@ -39,7 +37,9 @@ TARGETS = {
 # These specialist entrypoints have their own existing owners; this normal-topic
 # publisher may not place ANY additional buttons inside the video forum.
 # Announcement topics are excluded across all three forums.
-assert set(TARGETS["area"][8]) == {992, 991, 990, 621, 999, 998, 997, 996}
+# Navigation-only parent blocks must not be repopulated.
+AREA_BLOCK_TOPIC_IDS = frozenset({621,990,991,992,993,994,995,996,997,998,999})
+assert not AREA_BLOCK_TOPIC_IDS.intersection(t for ids in TARGETS["area"].values() for t in ids)
 
 BOT_NODE = r"""
 'use strict';

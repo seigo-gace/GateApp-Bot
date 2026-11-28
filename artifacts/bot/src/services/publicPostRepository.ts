@@ -4,7 +4,7 @@ import {validateLinkDraft,type LinkDraft} from "./linkButtonDomain.js";
 
 export type PostModule="room"|"announcement"|"link";
 export type EditorDraft={
- module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
+ module:PostModule; step:"awaiting_kind"|"awaiting_text"|"awaiting_media"|"awaiting_recruitment_edit"|"cancelled"|"awaiting_datetime"|"awaiting_room_url"|"awaiting_tags"|"preview"|"saved"|"published";
  revision:number; data:Record<string,unknown>;
 };
 function validOwner(id:number):number{
@@ -13,6 +13,23 @@ function validOwner(id:number):number{
 }
 export async function beginDraft(id:number,module:PostModule,step:EditorDraft["step"],
  data:Record<string,unknown>={}):Promise<EditorDraft>{
+ // Standalone notice sources retain their request key after temporary drafts
+ // are removed. Allocate above the owner's previous legacy announcement keys
+ // so a new notice never aliases an earlier source/delivery. Other modules
+ // retain the existing revision allocation.
+ if(module==="announcement"&&(data.kind==="announcement"||data.kind==="preview")){
+  const r=await pool.query(
+   `INSERT INTO public_post_drafts(owner_user_id,module,step,data,revision)
+    SELECT $1::bigint,'announcement',$2::text,$3::jsonb,
+      (COALESCE(MAX(CASE WHEN request_key ~ ('^announcement:'||$1::bigint::text||':[0-9]{1,10}$')
+        THEN split_part(request_key,':',3)::bigint END),0)+1)::integer
+    FROM announcement_posts WHERE owner_user_id=$1::bigint
+    ON CONFLICT(owner_user_id,module) DO UPDATE SET
+     step=EXCLUDED.step,data=EXCLUDED.data,
+     revision=GREATEST(public_post_drafts.revision+1,EXCLUDED.revision),updated_at=NOW()
+    RETURNING step,data,revision`,[validOwner(id),step,JSON.stringify(data)]);
+  return {module,...r.rows[0]};
+ }
  const r=await pool.query(
   `INSERT INTO public_post_drafts(owner_user_id,module,step,data)
    VALUES ($1,$2,$3,$4::jsonb)
@@ -31,6 +48,13 @@ export async function bindDraftScreen(id:number,module:PostModule,revision:numbe
   "UPDATE public_post_drafts SET data=jsonb_set(data,'{screenMessageId}',to_jsonb($4::integer),true) WHERE owner_user_id=$1 AND module=$2 AND revision=$3 RETURNING owner_user_id",
   [validOwner(id),module,revision,messageId]);
  if(r.rows.length!==1)throw new Error("POST_DRAFT_STALE");
+}
+/** Record only Bot-owned native sticker preview receipts on this notice revision. */
+export async function bindNoticeStickerPreviews(id:number,revision:number,previews:readonly {fileId:string;messageId:number|null}[]):Promise<void>{
+ const r=await pool.query(
+  "UPDATE public_post_drafts SET data=jsonb_set(data,'{noticeStickerPreviews}',$3::jsonb,true) WHERE owner_user_id=$1 AND module='announcement' AND revision=$2 RETURNING owner_user_id",
+  [validOwner(id),revision,JSON.stringify(previews)]);
+ if(r.rows.length!==1)throw Error("POST_DRAFT_STALE");
 }
 export async function getDraft(id:number,module:PostModule):Promise<EditorDraft|null>{
  const r=await pool.query(
@@ -88,13 +112,13 @@ export async function createAnnouncement(id:number,revision:number,kind:Announce
  const r=await pool.query(
   `INSERT INTO announcement_posts
      (request_key,owner_user_id,kind,text,event_at,purpose_codes,place_codes,room_id,
-      profile_snapshot,conditions,status)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft')
+      profile_snapshot,conditions,status,deadline_at)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft',NULLIF($11::text,'')::timestamptz)
    ON CONFLICT(request_key) DO UPDATE SET request_key=EXCLUDED.request_key
    RETURNING announcement_id`,
   [key,id,kind,text,eventAt||null,purposeCodes,placeCodes,linkedRoomId||null,
    details?.profileSnapshot?JSON.stringify(details.profileSnapshot):null,
-   JSON.stringify(details?.conditions??{})]
+   JSON.stringify(details?.conditions??{}),String(details?.conditions?.deadlineAt??"")]
  );
  return {sourceId:String(r.rows[0].announcement_id)};
 }
@@ -180,7 +204,10 @@ export async function markPostSourcePublished(
       accept_applications=CASE WHEN room_id IS NOT NULL AND EXISTS (
        SELECT 1 FROM room_posts r WHERE r.room_id=announcement_posts.room_id
          AND r.join_visibility='approved_only' AND r.status IN ('draft','scheduled','ready')
-      ) THEN TRUE ELSE FALSE END,
+      ) THEN TRUE
+      WHEN room_id IS NULL AND kind IN ('announcement','preview')
+        AND conditions->>'participation' IN ('public','approved_only') THEN TRUE
+      ELSE FALSE END,
       updated_at=NOW()
     WHERE announcement_id=$1 AND owner_user_id=$2
       AND status IN ('draft','publishing','published') RETURNING announcement_id`;

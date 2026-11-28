@@ -12,6 +12,12 @@ function validId(id:number):number{
  if(!Number.isSafeInteger(id)||id<=0)throw new Error("APPLICATION_ID_INVALID");
  return id;
 }
+/** Only standalone notices opt in to the notice participation rules. */
+function noticeParticipation(post:{kind:unknown;room_id:unknown;conditions?:{participation?:unknown}|null}):"public"|"approved_only"|null{
+ if(post.room_id!==null||!["announcement","preview"].includes(String(post.kind)))return null;
+ const mode=post.conditions?.participation;
+ return mode==="public"||mode==="approved_only"?mode:null;
+}
 export async function submitApplication(
  announcementId:number,applicantId:number,consentedProfile:Record<string,unknown>|null,
  // Stable per DM application entry, so repeated confirmation cannot notify twice.
@@ -22,12 +28,14 @@ export async function submitApplication(
  try{
   await c.query("BEGIN");
   const post=await c.query(
-   `SELECT owner_user_id,kind,status,capacity,accept_applications,deadline_at
+   `SELECT owner_user_id,kind,status,capacity,accept_applications,deadline_at,conditions,room_id
     FROM announcement_posts WHERE announcement_id=$1 FOR UPDATE`,[announcementId]);
-  if(post.rows.length!==1||post.rows[0].kind!=="recruitment"||
-    post.rows[0].status!=="published"||post.rows[0].accept_applications!==true)
-   throw new Error("APPLICATIONS_CLOSED");
+  if(post.rows.length!==1)throw new Error("APPLICATIONS_CLOSED");
   const p=post.rows[0];
+  const noticeMode=noticeParticipation(p);
+  if((p.kind!=="recruitment"&&!noticeMode)||
+    p.status!=="published"||p.accept_applications!==true)
+   throw new Error("APPLICATIONS_CLOSED");
   if(Number(p.owner_user_id)===applicantId)throw new Error("SELF_APPLICATION_REFUSED");
   if(p.deadline_at && new Date(p.deadline_at).getTime()<=Date.now())
    throw new Error("APPLICATION_DEADLINE_PASSED");
@@ -40,11 +48,11 @@ export async function submitApplication(
   }
   const insert=await c.query(
    `INSERT INTO announcement_applications
-     (announcement_id,applicant_user_id,consented_profile)
-    VALUES($1,$2,$3::jsonb)
+     (announcement_id,applicant_user_id,consented_profile,status)
+    VALUES($1,$2,$3::jsonb,$4)
     ON CONFLICT(announcement_id,applicant_user_id) DO NOTHING
     RETURNING application_id,status`,
-   [announcementId,applicantId,JSON.stringify(consentedProfile)]);
+   [announcementId,applicantId,JSON.stringify(consentedProfile),noticeMode==="public"?"accepted":"submitted"]);
   const duplicate=insert.rows.length===0;
   const row=duplicate?(await c.query(
    `SELECT application_id,status FROM announcement_applications
@@ -54,7 +62,7 @@ export async function submitApplication(
   const id=validId(Number(row.application_id));
   const freshAttempt=Number.isSafeInteger(attemptCreatedAtMs)&&
    Number(attemptCreatedAtMs)>0;
-  const resubmitAllowed=duplicate&&freshAttempt&&
+  const resubmitAllowed=p.kind==="recruitment"&&duplicate&&freshAttempt&&
    ["submitted","held"].includes(String(row.status));
   if(resubmitAllowed){
    // Preserve the original application ID and existing decision state.
@@ -63,9 +71,20 @@ export async function submitApplication(
      WHERE announcement_id=$1 AND applicant_user_id=$2 AND status IN ('submitted','held')`,
     [announcementId,applicantId,JSON.stringify(consentedProfile)]);
   }
+  if(!duplicate&&noticeMode==="public"&&p.capacity!==null){
+   const taken=await c.query(
+    `SELECT count(*)::int AS n FROM announcement_applications
+     WHERE announcement_id=$1 AND status='accepted'`,[announcementId]);
+   if(Number(taken.rows[0].n)>=Number(p.capacity)){
+    await c.query(
+     `UPDATE announcement_posts SET revision=revision+1,status='filled',
+      accept_applications=FALSE,updated_at=NOW() WHERE announcement_id=$1`,[announcementId]);
+   }
+  }
   let resubmitted=false;
   if(!duplicate||resubmitAllowed){
-   const key="application:"+id+":submitted"+
+   const action=noticeMode==="public"?"notice_joined":"submitted";
+   const key="application:"+id+":"+action+
     (freshAttempt?":"+String(attemptCreatedAtMs):"");
    const notify=await c.query(
     `INSERT INTO announcement_notifications
@@ -73,7 +92,7 @@ export async function submitApplication(
      VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(event_key) DO NOTHING
      RETURNING notification_id`,
     [announcementId,p.owner_user_id,key,
-     JSON.stringify({applicationId:id,action:"submitted"})]);
+     JSON.stringify({applicationId:id,action})]);
    resubmitted=resubmitAllowed&&notify.rows.length===1;
   }
   await c.query("COMMIT");
@@ -91,19 +110,27 @@ export async function decideApplication(
  try{
   await c.query("BEGIN");
   const post=await c.query(
-   `SELECT owner_user_id,status,kind,capacity,accept_applications
+   `SELECT owner_user_id,status,kind,capacity,accept_applications,conditions,room_id,deadline_at
     FROM announcement_posts WHERE announcement_id=$1 FOR UPDATE`,[announcementId]);
   if(post.rows.length!==1||Number(post.rows[0].owner_user_id)!==ownerUserId)
    throw new Error("APPLICATION_OWNER_MISMATCH");
   const p=post.rows[0];
-  if(p.kind!=="recruitment"||p.status!=="published"||!p.accept_applications)
+  const noticeMode=noticeParticipation(p);
+  if((p.kind!=="recruitment"&&noticeMode!=="approved_only")||p.status!=="published"||!p.accept_applications)
    throw new Error("APPLICATIONS_CLOSED");
+  if(noticeMode==="approved_only"){
+   if(decision==="held")throw new Error("APPLICATION_DECISION_INVALID");
+   if(p.deadline_at&&new Date(p.deadline_at).getTime()<=Date.now())
+    throw new Error("APPLICATION_DEADLINE_PASSED");
+  }
   const app=await c.query(
    `SELECT applicant_user_id,status FROM announcement_applications
     WHERE application_id=$1 AND announcement_id=$2 FOR UPDATE`,
    [applicationId,announcementId]);
   if(app.rows.length!==1||!["submitted","held"].includes(app.rows[0].status))
    throw new Error("APPLICATION_ALREADY_DECIDED");
+  if(noticeMode==="approved_only"&&Number(app.rows[0].applicant_user_id)===ownerUserId)
+   throw new Error("SELF_APPLICATION_REFUSED");
   if(decision==="accepted"&&p.capacity!==null){
    const taken=await c.query(
     `SELECT count(*)::int AS n FROM announcement_applications

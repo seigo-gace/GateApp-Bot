@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseTopicEntryPayload,canReuseUncertainEntry,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic,permittedTopicDmEntry,VIDEO_SPECIALIST_ENTRY_TOPIC_IDS} from "../src/services/topicDmEntry.js";
+import {parseTopicEntryPayload,topicEntryDirectDmUrl,canReuseUncertainEntry,TOPIC_ENTRY_TEXT,TOPIC_ENTRY_BUTTON,assertBoundTopicDmEntry,draftTopicEntryOrigin,verifiedOriginTopic,permittedTopicDmEntry,VIDEO_SPECIALIST_ENTRY_TOPIC_IDS,isAreaBlockTopic,AREA_BLOCK_TOPIC_IDS} from "../src/services/topicDmEntry.js";
 import {APPROVED_POSTING_ROWS} from "../src/services/menuPanelRenderer.js";
 
 test("a forum topic has one DM doorway, not a group-side editor keyboard",()=>{
@@ -15,6 +15,14 @@ test("entry links use opaque p_ token; raw group and topic IDs never accepted",(
  assert.equal(parseTopicEntryPayload("p_"+token),token);
  for(const bad of ["p_-1003847210571_66","p_66","p_","m_"+token,"p_"+token+"extra","p_"+token+"\n66"]){
   assert.throws(()=>parseTopicEntryPayload(bad),/TOPIC_ENTRY_PAYLOAD_INVALID/);
+ }
+});
+
+test("pinned entry URL opens the Bot DM with opaque topic origin, not a callback toast",()=>{
+ const token="A".repeat(32);
+ assert.equal(topicEntryDirectDmUrl(token),"https://t.me/GayBBS_bot?start=p_"+token);
+ for(const bad of ["", "abc", "-1002373696859_1605"]){
+  assert.throws(()=>topicEntryDirectDmUrl(bad),/TOPIC_ENTRY_TOKEN_INVALID/);
  }
 });
 
@@ -75,14 +83,14 @@ test("uncertain entry can be repaired only when original Telegram message ID exi
  }
 });
 
-test("Master: video forum allows only video, sticker and profile topic entry buttons",()=>{
+test("Master: video forum allows explicitly approved video-chat, paid video, sticker and profile entrances",()=>{
  const video=-1002373696859;
- assert.deepEqual([...VIDEO_SPECIALIST_ENTRY_TOPIC_IDS].sort((a,b)=>a-b),[1613,1695,4640]);
- for(const t of [1613,1695,4640]){
+ assert.deepEqual([...VIDEO_SPECIALIST_ENTRY_TOPIC_IDS].sort((a,b)=>a-b),[1605,1613,1695,4640]);
+ for(const t of [1605,1613,1695,4640]){
   assert.equal(permittedTopicDmEntry(video,t),true);
   assert.deepEqual(draftTopicEntryOrigin(video,t),{chatId:video,threadId:t});
  }
- for(const t of [1,1605,1634,1723,1724,4291,4672]){
+ for(const t of [1,1634,1723,1724,4291,4672]){
   assert.equal(permittedTopicDmEntry(video,t),false);
   assert.throws(()=>draftTopicEntryOrigin(video,t),/TOPIC_ENTRY_DRAFT_CONTEXT_INVALID/);
  }
@@ -95,4 +103,13 @@ test("Master: no posting entry button on announcement Topic 1 in any group",()=>
  assert.equal(permittedTopicDmEntry(-1003847210571,1379),true);
  assert.equal(permittedTopicDmEntry(-1003770334893,783),true);
  assert.equal(permittedTopicDmEntry(-1003847210571,116),true);
+});
+
+test("Master: eleven area navigation-only blocks are excluded from public posting-button placement only",()=>{
+ assert.equal(AREA_BLOCK_TOPIC_IDS.size,11);
+ for(const id of [621,990,991,992,993,994,995,996,997,998,999]){
+  assert.equal(isAreaBlockTopic(-1003847210571,id),true);
+  assert.equal(isAreaBlockTopic(-1003770334893,id),false);
+ }
+ for(const id of [49,104,50,51,65,81,92,96,102,103,116,1379])assert.equal(isAreaBlockTopic(-1003847210571,id),false);
 });

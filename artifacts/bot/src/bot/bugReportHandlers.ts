@@ -10,6 +10,7 @@ import {bareStartPostingExtra,defaultBareStartChatId}
 import {currentMenuOrigin} from "../services/menuOriginRepository.js";
 import {currentTopicDmEntry} from "../services/topicDmEntry.js";
 import {showWizardScreen} from "../services/dmWizardScreen.js";
+import {currentDmTextOwner} from "../services/dmInputOwner.js";
 
 const REPORT_LIMIT=2000;
 const REPORT_LABEL="🐞 不具合を報告";
@@ -133,6 +134,8 @@ export function registerBugReportHandlers(bot:Telegraf):void{
    "SELECT id,prompt_message_id FROM gaybbs_bug_reports WHERE owner_user_id=$1 AND state='pending' LIMIT 1",
    [ctx.from.id]);
   if(!pending.rows.length)return next();
+  // Never let an abandoned report consume another editor's ordinary DM text.
+  if(await currentDmTextOwner(ctx.from.id)!=="bug_report")return next();
   const text=normalizeBugReport(ctx.message.text);
   if(!text){
    // The shared DM contract requires removing even invalid user input.
@@ -187,14 +190,15 @@ export function registerBugReportHandlers(bot:Telegraf):void{
 /** Only reports that were never sent (queued due to missing configuration)
  * may be retried. Uncertain Telegram sends remain parked for reconciliation.
  */
-export function startBugReportDeliveryWorker(t:Telegram):()=>void {
- let busy=false;
+export function startBugReportDeliveryWorker(t:Telegram):()=>Promise<void> {
+ let stopped=false;
+ let active:Promise<void>|undefined;
+ let startedAt=0;
+ let warned=false;
  const tick=async()=>{
-  if(busy)return;
-  busy=true;
   try{
    const recipient=recipientId();
-   if(recipient)for(let n=0;n<5;n++){
+   if(recipient)for(let n=0;n<5&&!stopped;n++){
     const claimed=await pool.query<{id:string;owner_user_id:string;body:string}>(
      `UPDATE gaybbs_bug_reports SET state='forwarding',updated_at=NOW()
        WHERE id=(SELECT id FROM gaybbs_bug_reports WHERE state='queued'
@@ -220,7 +224,7 @@ export function startBugReportDeliveryWorker(t:Telegram):()=>void {
    // A separate delivery record prevents operator success from implying Userbot success.
    const userbotId=userbotRecipientId();
    if(userbotId){
-    for(let n=0;n<5;n++){
+    for(let n=0;n<5&&!stopped;n++){
      const claimed=await pool.query<{report_id:string;owner_user_id:string;body:string}>(
       `UPDATE gaybbs_bug_report_userbot_delivery d
        SET state='forwarding',updated_at=NOW()
@@ -250,9 +254,15 @@ export function startBugReportDeliveryWorker(t:Telegram):()=>void {
   }catch(error){
    console.error("BUG_REPORT_DELIVERY_WORKER_FAILED",
     error instanceof Error?error.name:"unknown");
-  }finally{busy=false;}
+  }
  };
- void tick();
- const timer=setInterval(()=>{void tick();},60_000);
- return ()=>clearInterval(timer);
+ const schedule=()=>{
+  if(stopped)return;
+  if(active){if(!warned&&Date.now()-startedAt>=60000){warned=true;console.warn("BUG_REPORT_WORKER_STALLED");}return;}
+  startedAt=Date.now();warned=false;
+  active=tick().finally(()=>{if(warned)console.log("BUG_REPORT_WORKER_SETTLED");active=undefined;});
+ };
+ schedule();
+ const timer=setInterval(schedule,60_000);
+ return async()=>{stopped=true;clearInterval(timer);await active;};
 }
