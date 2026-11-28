@@ -11,7 +11,8 @@ class NormalPostingProtectionTests(unittest.TestCase):
  def test_exact_scope(self):
   self.assertEqual(len(CHATS),3)
   self.assertEqual(TARGETS['video'],{})
-  self.assertEqual(sum(len(p) for group in TARGETS.values() for p in group.values()),15)
+  self.assertEqual(sum(len(p) for group in TARGETS.values() for p in group.values()),4)
+  self.assertFalse({49,621,990,991,992,993,994,995,996,997,998,999,104}&{t for ids in TARGETS['area'].values() for t in ids})
   for group, pages in TARGETS.items():
    for ids in pages.values():
     self.assertFalse({1,48,1613,210,1695,4640,1000,273,1724,4291,18}&set(ids))
