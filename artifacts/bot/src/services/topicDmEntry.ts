@@ -16,8 +16,8 @@ const ALLOWED_CHATS = new Set<number>([
   BOARD_GROUP_CHAT_IDS.video_chat,
   BOARD_GROUP_CHAT_IDS.gay_board,
 ]);
-// Master-confirmed regional navigation blocks, not child posting destinations.
-export const AREA_BLOCK_TOPIC_IDS = new Set<number>([49,621,990,991,992,993,994,995,996,997,998,999,104]);
+// Navigation-only parent blocks. Hokkaido and Okinawa also serve as posting destinations.
+export const AREA_BLOCK_TOPIC_IDS = new Set<number>([621,990,991,992,993,994,995,996,997,998,999]);
 export function isAreaBlockTopic(chatId:number,threadId:number):boolean{
  return chatId===BOARD_GROUP_CHAT_IDS.area_bbs&&AREA_BLOCK_TOPIC_IDS.has(threadId);
 }

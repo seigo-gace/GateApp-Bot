@@ -105,11 +105,11 @@ test("Master: no posting entry button on announcement Topic 1 in any group",()=>
  assert.equal(permittedTopicDmEntry(-1003847210571,116),true);
 });
 
-test("Master: thirteen area navigation blocks are excluded from public posting-button placement only",()=>{
- assert.equal(AREA_BLOCK_TOPIC_IDS.size,13);
- for(const id of [49,621,990,991,992,993,994,995,996,997,998,999,104]){
+test("Master: eleven area navigation-only blocks are excluded from public posting-button placement only",()=>{
+ assert.equal(AREA_BLOCK_TOPIC_IDS.size,11);
+ for(const id of [621,990,991,992,993,994,995,996,997,998,999]){
   assert.equal(isAreaBlockTopic(-1003847210571,id),true);
   assert.equal(isAreaBlockTopic(-1003770334893,id),false);
  }
- for(const id of [50,51,65,81,92,96,102,103,116,1379])assert.equal(isAreaBlockTopic(-1003847210571,id),false);
+ for(const id of [49,104,50,51,65,81,92,96,102,103,116,1379])assert.equal(isAreaBlockTopic(-1003847210571,id),false);
 });

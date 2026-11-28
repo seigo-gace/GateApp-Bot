@@ -38,7 +38,7 @@ TARGETS = {
 # publisher may not place ANY additional buttons inside the video forum.
 # Announcement topics are excluded across all three forums.
 # Navigation-only parent blocks must not be repopulated.
-AREA_BLOCK_TOPIC_IDS = frozenset({49,621,990,991,992,993,994,995,996,997,998,999,104})
+AREA_BLOCK_TOPIC_IDS = frozenset({621,990,991,992,993,994,995,996,997,998,999})
 assert not AREA_BLOCK_TOPIC_IDS.intersection(t for ids in TARGETS["area"].values() for t in ids)
 
 BOT_NODE = r"""
