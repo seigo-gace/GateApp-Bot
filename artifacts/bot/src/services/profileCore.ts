@@ -68,14 +68,40 @@ export type ProfileDisplayExtras = {
  media?:readonly {type:string;fileId:string}[];
  title?:string;purposeCodes?:readonly string[];placeCodes?:readonly string[];
 };
+/** Shared compact tag formatter: retain the complete stored list, limit only the card. */
+export function compactProfileTags(v:readonly {category:string;tag:string}[]|undefined,ellipsis=false):string{
+ const values=v??[];
+ const text=values.slice(0,3).map(x=>escapeProfileHtml(profileSearchHashtag(x.tag))).join(" ");
+ return text+(ellipsis&&values.length>3?" …":"");
+}
+/** Recruitment uses the same profile fields/order, but retains the entire
+ * recruitment body and the copyable one-line identity. No profile write. */
+export function renderProfileStyleRecruitment(
+ p:ProfileBasicDraft & ProfileDisplayExtras,body:string,
+):string{
+ const e=(v:string|null|undefined)=>escapeProfileHtml(v??"");
+ return [
+  "🪪 <b>"+e(p.nickname)+"</b>",
+  "📢 <b>"+e(p.title)+"</b>",
+  "<code>"+p.heightCm+"cm | "+p.weightKg+"kg | "+p.age+"歳 | "+e(p.position||"未選択")+"</code>",
+  "<b>髪型：</b>"+e(p.hair)+" | <b>体型：</b>"+e(p.body),
+  "✈️ <b>エリア：</b>"+(p.region&&p.area?e(p.region)+" ＞ "+e(p.area):""),
+  "💖 <b>#Like</b> | "+compactProfileTags(p.likeTags,true),
+  "💘 <b>#Love</b> | "+compactProfileTags(p.loveTags,true),
+  ...(p.purposeCodes?.length?["🎯 <b>目的：</b>"+p.purposeCodes.map(t=>e(profileSearchHashtag(t))).join(" ")]:[]),
+  ...(p.placeCodes?.length?["📍 <b>場所：</b>"+p.placeCodes.map(t=>e(profileSearchHashtag(t))).join(" ")]:[]),
+  "",
+  "📝 <b>募集内容</b>",
+  e(body),
+ ].join("\n");
+}
 /** Fixed-profile card body. Show headings with blank values, never "未登録".
  * Only the first three tags of each purpose appear on the card; detailed
  * viewing and Telegram media reveal are separate, explicitly selected flows.
  */
 function displayProfileLines(p:ProfileBasicDraft & ProfileDisplayExtras,displayName:string):string[]{
  const compact=(v:string|null|undefined)=>escapeProfileHtml(v??"");
- const tags=(v:readonly {category:string;tag:string}[]|undefined)=>
-  (v??[]).slice(0,3).map(x=>compact(profileSearchHashtag(x.tag))).join(" ");
+ const tags=(v:readonly {category:string;tag:string}[]|undefined)=>compactProfileTags(v);
  const pr=p.pr?.trim().replace(/\s+/g," ").slice(0,180)??"";
  return [
   "🪪 "+displayName,
