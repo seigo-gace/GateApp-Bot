@@ -5,8 +5,9 @@ import {currentDmTextOwner} from "../services/dmInputOwner.js";
 import {profileOverviewButtons} from "../services/profileOverviewLayout.js";
 import {nextSelection,selectionRows,positionChoiceRows} from "../services/inlineSelection.js";
 import {LIKE_CATEGORIES,likeCategoryRows,likeItemRows,likePageIndex,toggleLike,validLikeTags,tagPurposeDescription,type ProfileTagPurpose} from "../services/profileLike.js";
-import {HAIR_CHOICES,BODY_CHOICES,HAIR_ROWS,BODY_ROWS} from "../services/profileAppearance.js";
-import {PROFILE_AREA_BLOCKS,areaChildren,areaButtonRows,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
+import {HAIR_CHOICES,BODY_CHOICES} from "../services/profileAppearance.js";
+import {PROFILE_AREA_BLOCKS,areaChildren,toggleProfileArea,isAreaBlock,type ProfileAreaBlock} from "../services/profileArea.js";
+import {appearanceKeyboard,appearanceText,choiceKeyboard,choiceText,areaBlocksKeyboard,areaBlocksText,areaChildrenKeyboard,areaChildrenText} from "../services/profileAppearancePanel.js";
 import {editMessageToDmPostingMenu} from "../services/dmPostingMenuRestore.js";
 import {PROFILE_ALBUM_LIMIT,appendProfileMedia,mediaStatus,numberProfileMedia,replaceProfileMedia,deleteProfileMedia,type ProfileMediaItem} from "../services/profileMedia.js";
 import {
@@ -62,89 +63,6 @@ const overviewKeyboard=(revision:number)=>Markup.inlineKeyboard(
 );
 /** The ② summary has exactly four adjacent buttons, with no filler. */
 const saveSectionButton=(rev:number)=>Markup.button.callback("保存",`pf:section:${rev}:save`);
-const appearanceKeyboard=(revision:number)=>Markup.inlineKeyboard([
- [
-  Markup.button.callback("髪型",`pf:ap:${revision}:open:h`),
-  Markup.button.callback("体型",`pf:ap:${revision}:open:b`),
-  Markup.button.callback("エリア",`pf:ap:${revision}:area`),
-  Markup.button.callback("戻る",`pf:ap:${revision}:back`),
- ],
- [saveSectionButton(revision)],
-]);
-const appearanceText=(data:ProfileDraft["data"])=>[
-  "🪪 プロフィール｜容姿/エリア",
-  "髪型："+(data.hair||"未設定"),
-  "体型："+(data.body||"未設定"),
-  "エリア："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
-  "",
-  "髪型・体型・エリアは任意です。変更したい項目を選んでください。",
-  "［戻る］でプロフィール一覧へ。［保存］は①〜⑤をまとめて非公開保存します。",
-].join("\n");
-const choiceKeyboard=(kind:"h"|"b",revision:number,data:ProfileDraft["data"])=>{
- const rows=kind==="h"
-  ?selectionRows(HAIR_ROWS,data.hair?[data.hair]:[],
-    v=>`pf:ap:${revision}:h:${HAIR_CHOICES.indexOf(v)}`)
-  :selectionRows(BODY_ROWS,data.body?[data.body]:[],
-    v=>`pf:ap:${revision}:b:${BODY_CHOICES.indexOf(v)}`);
- const styled=rows.map(row=>row.map(b=>({
-   ...Markup.button.callback(b.text,b.callback_data),
-   style:kind==="h"?"primary" as const:"success" as const,
- })));
- return Markup.inlineKeyboard([
-   ...styled.slice(0,-1),
-   [...styled[styled.length-1]!,
-    Markup.button.callback("↩ 戻る",`pf:ap:${revision}:back`)],
-   [saveSectionButton(revision)],
- ]);
-};
-const choiceText=(kind:"h"|"b",data:ProfileDraft["data"])=>
-  [
-    kind==="h"?"💈 髪型を選択してください":"💪 体型を選択してください",
-    "現在："+(kind==="h"?(data.hair||"未設定"):(data.body||"未設定")),
-    "任意で1つ選択。✅選択中／▫️未選択。同じ候補で解除できます。",
-    "［↩ 戻る］で容姿/エリアの一覧へ。［保存］は①〜⑤すべてを非公開で保存します。",
-  ].join("\n");
-
-/** Region IDs are independent of any Telegram topic IDs or deep links. */
-const areaBlocksKeyboard=(revision:number,data:ProfileDraft["data"])=>{
- const rows=areaButtonRows(PROFILE_AREA_BLOCKS,"↩ 戻る");
- return Markup.inlineKeyboard([
- ...rows.map(row=>row.map(label=>{
-  if(label==="↩ 戻る")return Markup.button.callback(label,`pf:ar:${revision}:back`);
-  const index=PROFILE_AREA_BLOCKS.indexOf(label as ProfileAreaBlock);
-  const checked=data.region===label&&data.area!=null;
-  return Markup.button.callback((checked?"✅ ":"▫️ ")+label,
-   `pf:ar:${revision}:r:${index}`);
- })),[saveSectionButton(revision)],
- ]);
-};
-const areaBlocksText=(data:ProfileDraft["data"])=>[
- "📍 エリアを選択してください",
- "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
- "全国13ブロックから地域を選び、その中のエリアを1つ選択してください。",
- "北海道・沖縄は直接選択・解除できます。別の地域を見るだけでは現在の選択は消えません。",
- "✅選択中／▫️未選択。［↩ 戻る］で容姿/エリアの一覧へ。［保存］で全項目を非公開保存します。",
-].join("\n");
-const areaChildrenKeyboard=(revision:number,data:ProfileDraft["data"])=>{
- const block=data.pendingRegion;
- if(!block)throw Error("PROFILE_AREA_BLOCK_MISSING");
- const options=areaChildren(block);
- return Markup.inlineKeyboard([
- ...areaButtonRows(options).map(row=>row.map(label=>{
-  if(label==="↩ 戻る")return Markup.button.callback(label,`pf:ar:${revision}:back`);
-  const index=options.indexOf(label);
-  return Markup.button.callback((data.region===block&&data.area===label?"✅ ":"▫️ ")+label,
-   `pf:ar:${revision}:a:${index}`);
- })),[saveSectionButton(revision)],
- ]);
-};
-const areaChildrenText=(data:ProfileDraft["data"])=>[
- "📍 "+data.pendingRegion+"｜エリアを選択",
- "現在："+(data.region&&data.area?data.region+" ＞ "+data.area:"未設定"),
- "エリアを1つ選択してください。✅選択中／▫️未選択。同じエリアの再押下で解除、別候補で変更できます。",
- "［↩ 戻る］で全国13ブロックへ。［保存］で全項目を非公開保存します。",
-].join("\n");
-
 const profileTagPurpose=(data:ProfileDraft["data"]):ProfileTagPurpose=>data.tagPurpose==="love"?"love":"like";
 const tagValues=(data:ProfileDraft["data"])=>
  profileTagPurpose(data)==="love"?(data.loveTags??[]):(data.likeTags??[]);
