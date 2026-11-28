@@ -6,7 +6,7 @@ import {getVerifiedTopic} from "./postingDelivery.js";
 import {assertFeatureReleased} from "./publishService.js";
 import {createTelegramDispatcher} from "./telegramDispatcher.js";
 import {validLikeTags} from "./profileLike.js";
-import {ensureRecruitmentViewToken,recruitmentIdentitySnapshot,recruitmentInputFromRow,recruitmentViewRows,verifiedRecruitmentUsername,RECRUITMENT_UI_VERSION} from "./recruitmentPublicView.js";
+import {ensureRecruitmentViewToken,recruitmentIdentitySnapshot,legacyRecruitmentIdentity,recruitmentInputFromRow,recruitmentViewRows,verifiedRecruitmentUsername,RECRUITMENT_UI_VERSION} from "./recruitmentPublicView.js";
 import type {ProfileBasicDraft} from "./profileCore.js";
 
 export type PublishedRecruitment={
@@ -20,7 +20,7 @@ export async function loadPublishedRecruitment(owner:number,sourceId:number):Pro
  if(!validId(owner)||!validId(sourceId))throw Error("RECRUITMENT_PUBLICATION_INVALID");
  const r=await pool.query(
   "SELECT a.announcement_id,a.revision,a.text,a.conditions,a.profile_snapshot,a.purpose_codes,a.place_codes,"+
-  " d.telegram_message_id,d.posting_topic_id,t.chat_id,t.message_thread_id"+
+  " d.telegram_message_id,d.rendered_text,d.posting_topic_id,t.chat_id,t.message_thread_id"+
   " FROM announcement_posts a"+
   " JOIN posting_deliveries d ON d.source_type='announcement'"+
   " AND d.source_id=a.announcement_id::text AND d.owner_user_id=a.owner_user_id"+
@@ -31,7 +31,8 @@ export async function loadPublishedRecruitment(owner:number,sourceId:number):Pro
  if(r.rows.length!==1)throw Error("RECRUITMENT_PUBLICATION_NOT_FOUND");
  const x=r.rows[0];
  const input=recruitmentInputFromRow(x);
- const snapshot=input.mode==="linked"?recruitmentIdentitySnapshot(x.profile_snapshot):null;
+ const snapshot=input.mode==="linked"?(x.conditions?.recruitmentUiVersion===RECRUITMENT_UI_VERSION?
+  recruitmentIdentitySnapshot(x.profile_snapshot):legacyRecruitmentIdentity(input,x.profile_snapshot,String(x.rendered_text??""))):null;
  const result={sourceId,sourceRevision:Number(x.revision),
   topicId:Number(x.posting_topic_id),chatId:Number(x.chat_id),
   threadId:Number(x.message_thread_id),messageId:Number(x.telegram_message_id),input,snapshot};
