@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
- parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,
+ parseRecruitmentMessage,changeRecruitmentField,renderRecruitmentPreview,renderRecruitmentCard,recruitmentExtras,
  validateRecruitmentReady,validateRecruitmentIdentityReady,recruitmentTextPhase,
 } from "../src/services/recruitmentCompose.js";
 import {buildRecruitmentRichPreview} from "../src/services/recruitmentRichPreview.js";
@@ -227,4 +227,30 @@ test("four-line re-entry preserves separately selected Like/Love and original pu
  assert.match(renderRecruitmentPreview(retained),/#Love：#乳首/);
  assert.match(renderRecruitmentPreview(retained),/目的：#サシ/);
  assert.match(renderRecruitmentPreview(retained),/場所：#場所あり/);
+});
+
+test("profile-style recruitment card has one copyable identity line, independent compact tags and full body",()=>{
+ const d=parseRecruitmentMessage("募集<&\nゼロ\n175 80 40\n1行目\n2行目",false);
+ d.position="リバ";
+ d.hair="短髪";d.appearanceBody="ガッチリ";d.region="東京";d.area="新宿";
+ d.likeTags=["胸筋","腹筋","背中","腕"].map(tag=>({category:"パーツ",tag}));
+ d.loveTags=["胸筋","腹筋","背中"].map(tag=>({category:"パーツ",tag}));
+ const card=renderRecruitmentCard(d);
+ assert.match(card,/<code>175cm \| 80kg \| 40歳 \| リバ<\/code>/);
+ assert.match(card,/📢 <b>募集&lt;&amp;<\/b>/);
+ assert.match(card,/#Like<\/b> \| #胸筋 #腹筋 #背中 …/);
+ assert.match(card,/#Love<\/b> \| #胸筋 #腹筋 #背中\n/);
+ assert.doesNotMatch(card,/#腕/);
+ assert.match(card,/1行目\n2行目$/);
+ assert.equal(d.likeTags.length,4);
+ assert.equal(d.loveTags.length,3);
+ assert.equal(recruitmentExtras(d).appearanceBody,"ガッチリ");
+ assert.equal(d.body,"1行目\n2行目");
+});
+test("linked recruitment never implicitly exposes profile's private media or appearance",()=>{
+ const d=parseRecruitmentMessage("募集\n本文",true);
+ const profile={nickname:"ゼロ",heightCm:175,weightKg:80,age:40,position:"リバ" as const,hair:"短髪",media:[{fileId:"private"}]};
+ const card=renderRecruitmentCard(d,profile);
+ assert.doesNotMatch(card,/短髪|private/);
+ assert.deepEqual(recruitmentExtras(d).media,[]);
 });
