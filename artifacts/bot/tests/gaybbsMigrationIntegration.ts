@@ -2,6 +2,9 @@
  * CI assigns temporary Postgres 16 and a dedicated test database.
  */
 import assert from "node:assert/strict";
+import {backfillRecruitmentCards} from "../src/services/recruitmentCardBackfill.js";
+import {renderRecruitmentPreview,renderRecruitmentCard,type RecruitmentInput} from "../src/services/recruitmentCompose.js";
+import {resolveRecruitmentPanel} from "../src/services/recruitmentPublicView.js";
 import {runMigrations} from "../src/db/migrate.js";
 import {pool,closePool,configureGaybbsDatabaseWaits} from "../src/db/index.js";
 import {submitApplication,decideApplication} from "../src/services/announcementApplications.js";
@@ -744,5 +747,44 @@ try{
  console.log("GAYBBS_DB_NOTICE_REAL_CALLBACK_REPEAT_PUBLICATION=PASS");
  console.log("GAYBBS_DB_NOTICE_ENTRY_OWNER_AND_KIND=PASS");
  console.log("GAYBBS_DB_STANDALONE_NOTICE_PARTICIPATION=PASS");
+ // Migration on real isolated PostgreSQL with fake Telegram: preserve message ID,
+ // full published identity and body, and do not send or delete anything.
+ const legacyInput:RecruitmentInput={mode:"manual",title:"Legacy CI recruitment",body:"body\nsecond line",nickname:"CI user",heightCm:175,weightKg:80,age:40,position:"リバ",purposeCodes:[],placeCodes:[],likeTags:[],loveTags:[]};
+ const legacySource=await pool.query(
+  `INSERT INTO announcement_posts(request_key,owner_user_id,kind,text,status,conditions,purpose_codes,place_codes)
+    VALUES('ci-recruit-backfill',991821,'recruitment',$1,'published',$2::jsonb,'{}','{}') RETURNING announcement_id,revision`,
+  [legacyInput.body,JSON.stringify({...legacyInput,inputMode:"manual"})]);
+ const legacyId=String(legacySource.rows[0].announcement_id);
+ await pool.query(
+  `INSERT INTO posting_deliveries(source_type,source_id,owner_user_id,source_revision,posting_topic_id,operation_key,status,telegram_message_id,inline_buttons,rendered_text)
+    VALUES('announcement',$1,991821,$2,$3,'ci-recruit-backfill-delivery','sent',987654,'[]'::jsonb,$4)`,
+  [legacyId,legacySource.rows[0].revision,publicationTopic,renderRecruitmentPreview(legacyInput)]);
+ let migrated=0;
+ const legacyTelegram={
+  async getChat(id:number){assert.equal(id,991821);return {id,username:"ci_recruitment_owner"};},
+  async editMessageText(chatId:number,messageId:number,_inline:unknown,body:string,extra:any){
+   assert.equal(chatId,-1002373696859);assert.equal(messageId,987654);
+   assert.equal(body,renderRecruitmentCard(legacyInput));assert.equal(extra.parse_mode,"HTML");
+   assert.deepEqual(extra.reply_markup.inline_keyboard.map((r:any)=>r.map((x:any)=>x.text)),[["🪪","🖼️","🎞️","💖","💘"],["連絡する"]]);
+   migrated++;return {message_id:messageId,chat:{id:chatId}};
+  },
+  async sendMessage(){throw Error("BACKFILL_MUST_NOT_SEND");},
+  async deleteMessage(){throw Error("BACKFILL_MUST_NOT_DELETE");}
+ } as unknown as Telegram;
+ const dry=await backfillRecruitmentCards(legacyTelegram,true);
+ assert.ok(dry.eligibleReceipts>=1);assert.equal(migrated,0);
+ const changed=await backfillRecruitmentCards(legacyTelegram,false);
+ assert.equal(changed.updatedReceipts,1);assert.equal(migrated,1);
+ const legacyRow=(await pool.query("SELECT conditions,status FROM announcement_posts WHERE announcement_id=$1",[legacyId])).rows[0];
+ assert.equal(legacyRow.status,"published");
+ const resolved=await resolveRecruitmentPanel(legacyRow.conditions.viewToken,-1002373696859,987654);
+ assert.equal(resolved?.basic.nickname,"CI user");
+ assert.equal(resolved?.input.body,legacyInput.body);
+ assert.equal(await resolveRecruitmentPanel(legacyRow.conditions.viewToken,-1002373696859,987655),null);
+ const readback=await backfillRecruitmentCards(legacyTelegram,true);
+ assert.ok(readback.alreadyCurrent>=1);
+ assert.equal((await backfillRecruitmentCards(legacyTelegram,false)).updatedReceipts,0);
+ assert.equal(migrated,1);
+ console.log("GAYBBS_DB_RECRUITMENT_BACKFILL_SAME_MESSAGE_ID_AND_VIEW=PASS");
  console.log("GAYBBS_DB_MIGRATION_AND_APPLICATION_CONCURRENCY=PASS");
 }finally{await closePool();}
