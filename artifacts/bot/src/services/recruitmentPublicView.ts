@@ -28,7 +28,7 @@ export async function ensureRecruitmentViewToken(owner:number,sourceId:number):P
  const candidate=randomBytes(24).toString("base64url");
  const r=await pool.query(
   "UPDATE announcement_posts SET conditions=jsonb_set(conditions,'{viewToken}',to_jsonb(COALESCE(conditions->>'viewToken',$3::text)),true)"+
-  " WHERE owner_user_id=$1 AND announcement_id=$2 AND kind='recruitment' AND status IN ('draft','publishing','published')"+
+  " WHERE owner_user_id=$1 AND announcement_id=$2 AND kind='recruitment' AND room_id IS NULL AND status IN ('draft','publishing','published')"+
   " RETURNING conditions->>'viewToken' AS token",[owner,sourceId,candidate]);
  const token=r.rows[0]?.token;
  if(r.rows.length!==1||typeof token!=="string"||!VIEW_TOKEN_PATTERN.test(token))throw Error("RECRUITMENT_VIEW_TOKEN_INVALID");
@@ -103,7 +103,7 @@ export async function resolveRecruitmentPanel(token:string,chatId:number,message
     AND d.owner_user_id=a.owner_user_id AND d.status='sent' AND d.telegram_message_id IS NOT NULL
    JOIN posting_topics t ON t.topic_id=d.posting_topic_id AND t.purpose='announcement'
     AND t.enabled=TRUE AND t.verified_at IS NOT NULL AND t.verified_by IS NOT NULL
-   WHERE a.kind='recruitment' AND a.status='published' AND a.conditions->>'viewToken'=$1
+   WHERE a.kind='recruitment' AND a.room_id IS NULL AND a.status='published' AND a.conditions->>'viewToken'=$1
     AND a.conditions->>'recruitmentUiVersion'=$4 AND t.chat_id=$2
     AND ($3::bigint IS NULL OR d.telegram_message_id=$3::bigint)`,
   [token,chatId,messageId??null,String(RECRUITMENT_UI_VERSION)]);
